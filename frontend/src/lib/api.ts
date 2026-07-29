@@ -70,7 +70,7 @@ export function clearStoredAuth() {
 }
 
 export function getTenantFromHostname(): string {
-  if (typeof window === 'undefined') return 'demo-school';
+  if (typeof window === 'undefined') return '';
 
   // Prefer stored tenant ID (from successful login) over hostname detection
   const stored = getStoredTenantId();
@@ -79,7 +79,7 @@ export function getTenantFromHostname(): string {
   const hostname = window.location.hostname;
   
   if (hostname === 'edutrack.covenantsynergy.in' || hostname === 'api-edutrack.covenantsynergy.in') {
-    return 'demo-school';
+    return '';
   } else if (hostname.endsWith('.edutrack.covenantsynergy.in')) {
     const parts = hostname.replace('.edutrack.covenantsynergy.in', '').split('.');
     const sub = parts[parts.length - 1];
@@ -87,7 +87,7 @@ export function getTenantFromHostname(): string {
       return sub;
     }
   } else if (hostname === 'edutrack.com' || hostname === 'www.edutrack.com' || hostname === 'app.edutrack.com') {
-    return 'demo-school';
+    return '';
   } else if (hostname.endsWith('.edutrack.com')) {
     const parts = hostname.replace('.edutrack.com', '').split('.');
     const sub = parts[parts.length - 1];
@@ -106,7 +106,7 @@ export function getTenantFromHostname(): string {
     }
   }
 
-  return 'demo-school';
+  return '';
 }
 
 export const api = axios.create({
@@ -125,8 +125,11 @@ api.interceptors.request.use(
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      // Inject resolved tenant ID
-      config.headers['X-Tenant-ID'] = getTenantFromHostname();
+      // Inject resolved tenant ID if present
+      const tenantId = getTenantFromHostname();
+      if (tenantId) {
+        config.headers['X-Tenant-ID'] = tenantId;
+      }
     }
     return config;
   },
