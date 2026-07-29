@@ -422,7 +422,7 @@ function SettingsPageContent() {
                       className="bg-slate-50 border border-slate-200 border-r-0 rounded-l-xl px-4 h-full text-[13px] text-slate-800 focus:outline-none focus:border-[#2E5BFF] w-1/2"
                     />
                     <span className="bg-slate-100 border border-slate-200 border-l-0 rounded-r-xl px-4 h-full text-[13px] text-slate-400 w-1/2 select-none truncate flex items-center justify-center">
-                      .edutrack.com
+                      .edutrack.covenantsynergy.in
                     </span>
                   </div>
                 </div>
@@ -849,7 +849,7 @@ function SettingsPageContent() {
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100 text-left text-[11px] space-y-2">
               <div className="flex justify-between">
                 <span className="text-slate-400">Subdomain:</span>
-                <span className="text-slate-700 font-semibold">{subdomain}.edutrack.com</span>
+                <span className="text-slate-700 font-semibold">{subdomain}.edutrack.covenantsynergy.in</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Primary Bank:</span>

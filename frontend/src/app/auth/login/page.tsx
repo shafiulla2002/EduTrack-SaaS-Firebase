@@ -20,34 +20,35 @@ function LoginContent() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname;
-      const hostParts = hostname.split('.');
-      const isVercelApp = hostname.includes('vercel.app');
-      const isEdutrackDomain = hostname.includes('edutrack.com');
-      const isCovenTrackDomain = hostname.includes('edutrack.covenantsynergy.in');
       
       let isSubdomain = false;
       let tenant = '';
       
-      if (isCovenTrackDomain) {
-        if (hostParts.length > 3 && hostParts[0] !== 'www' && hostParts[0] !== 'api') {
+      if (hostname.endsWith('.edutrack.covenantsynergy.in') && hostname !== 'edutrack.covenantsynergy.in' && hostname !== 'api-edutrack.covenantsynergy.in') {
+        const parts = hostname.replace('.edutrack.covenantsynergy.in', '').split('.');
+        const sub = parts[parts.length - 1];
+        if (sub !== 'www' && sub !== 'api') {
           isSubdomain = true;
-          tenant = hostParts[0];
+          tenant = sub;
         }
-      } else if (isEdutrackDomain) {
-        if (hostParts.length > 2 && hostParts[0] !== 'www' && hostParts[0] !== 'app') {
+      } else if (hostname.endsWith('.edutrack.com') && hostname !== 'edutrack.com' && hostname !== 'www.edutrack.com' && hostname !== 'app.edutrack.com') {
+        const parts = hostname.replace('.edutrack.com', '').split('.');
+        const sub = parts[parts.length - 1];
+        if (sub !== 'www' && sub !== 'api' && sub !== 'app') {
           isSubdomain = true;
-          tenant = hostParts[0];
+          tenant = sub;
         }
-      } else if (isVercelApp) {
-        if (hostParts.length > 3) {
+      } else if (hostname.endsWith('.vercel.app')) {
+        const parts = hostname.replace('.vercel.app', '').split('.');
+        if (parts.length > 1 && parts[0] !== 'www') {
           isSubdomain = true;
-          tenant = hostParts[0];
+          tenant = parts[0];
         }
-      } else {
-        // Localhost: school1.localhost -> length = 2, localhost -> length = 1
-        if (hostParts.length > 1 && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+      } else if (hostname !== 'localhost' && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+        const parts = hostname.split('.');
+        if (parts.length > 1 && parts[0] !== 'localhost' && parts[0] !== 'www' && isNaN(Number(parts[0]))) {
           isSubdomain = true;
-          tenant = hostParts[0];
+          tenant = parts[0];
         }
       }
 

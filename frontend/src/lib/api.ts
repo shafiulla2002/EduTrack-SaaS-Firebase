@@ -77,30 +77,32 @@ export function getTenantFromHostname(): string {
   if (stored) return stored;
 
   const hostname = window.location.hostname;
-  const hostParts = hostname.split('.');
-
-  const isVercelApp = hostname.includes('vercel.app');
-  const isEdutrackDomain = hostname.includes('edutrack.com');
-  const isCovenTrackDomain = hostname.includes('edutrack.covenantsynergy.in');
-
-  if (isCovenTrackDomain) {
-    if (hostParts.length > 3 && hostParts[0] !== 'www' && hostParts[0] !== 'api') {
-      return hostParts[0];
+  
+  if (hostname === 'edutrack.covenantsynergy.in' || hostname === 'api-edutrack.covenantsynergy.in') {
+    return 'demo-school';
+  } else if (hostname.endsWith('.edutrack.covenantsynergy.in')) {
+    const parts = hostname.replace('.edutrack.covenantsynergy.in', '').split('.');
+    const sub = parts[parts.length - 1];
+    if (sub !== 'www' && sub !== 'api') {
+      return sub;
     }
-  } else if (isEdutrackDomain) {
-    if (hostParts.length > 2 && hostParts[0] !== 'www' && hostParts[0] !== 'app') {
-      return hostParts[0];
+  } else if (hostname === 'edutrack.com' || hostname === 'www.edutrack.com' || hostname === 'app.edutrack.com') {
+    return 'demo-school';
+  } else if (hostname.endsWith('.edutrack.com')) {
+    const parts = hostname.replace('.edutrack.com', '').split('.');
+    const sub = parts[parts.length - 1];
+    if (sub !== 'www' && sub !== 'api' && sub !== 'app') {
+      return sub;
     }
-  } else if (isVercelApp) {
-    // Standard Vercel deployment URL (e.g. project-name.vercel.app) has 3 parts.
-    // Explicit tenant subdomain (e.g. school1.project-name.vercel.app) has 4 parts.
-    if (hostParts.length > 3 && hostParts[0] !== 'www') {
-      return hostParts[0];
+  } else if (hostname.endsWith('.vercel.app')) {
+    const parts = hostname.replace('.vercel.app', '').split('.');
+    if (parts.length > 1 && parts[0] !== 'www') {
+      return parts[0];
     }
   } else {
-    // Local development (e.g. school1.localhost)
-    if (hostParts.length > 1 && hostParts[0] !== 'localhost' && hostParts[0] !== 'www' && isNaN(Number(hostParts[0]))) {
-      return hostParts[0];
+    const parts = hostname.split('.');
+    if (parts.length > 1 && parts[0] !== 'localhost' && parts[0] !== 'www' && isNaN(Number(parts[0]))) {
+      return parts[0];
     }
   }
 
