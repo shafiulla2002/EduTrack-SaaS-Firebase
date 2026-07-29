@@ -20,8 +20,13 @@ export class TenantMiddleware implements NestMiddleware {
       const hostParts = hostname.split('.');
       const isVercelApp = hostname.includes('vercel.app');
       const isEdutrackDomain = hostname.includes('edutrack.com');
+      const isCovenTrackDomain = hostname.includes('edutrack.covenantsynergy.in') || hostname.includes('api-edutrack.covenantsynergy.in');
 
-      if (isEdutrackDomain) {
+      if (isCovenTrackDomain) {
+        if (hostParts.length > 3 && hostParts[0] !== 'www' && hostParts[0] !== 'api' && hostParts[0] !== 'api-edutrack') {
+          tenantSubdomain = hostParts[0];
+        }
+      } else if (isEdutrackDomain) {
         if (hostParts.length > 2 && hostParts[0] !== 'www' && hostParts[0] !== 'app') {
           tenantSubdomain = hostParts[0];
         }

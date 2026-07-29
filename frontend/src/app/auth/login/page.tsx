@@ -23,12 +23,18 @@ function LoginContent() {
       const hostParts = hostname.split('.');
       const isVercelApp = hostname.includes('vercel.app');
       const isEdutrackDomain = hostname.includes('edutrack.com');
+      const isCovenTrackDomain = hostname.includes('edutrack.covenantsynergy.in');
       
       let isSubdomain = false;
       let tenant = '';
       
-      if (isEdutrackDomain) {
-        if (hostParts.length > 2 && hostParts[0] !== 'www') {
+      if (isCovenTrackDomain) {
+        if (hostParts.length > 3 && hostParts[0] !== 'www' && hostParts[0] !== 'api') {
+          isSubdomain = true;
+          tenant = hostParts[0];
+        }
+      } else if (isEdutrackDomain) {
+        if (hostParts.length > 2 && hostParts[0] !== 'www' && hostParts[0] !== 'app') {
           isSubdomain = true;
           tenant = hostParts[0];
         }
@@ -47,7 +53,7 @@ function LoginContent() {
 
       if (isSubdomain && tenant) {
         // Redirect to central Auth Hub
-        const authHubUrl = process.env.NEXT_PUBLIC_AUTH_HUB_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://edu-track-saa-s-orcin.vercel.app');
+        const authHubUrl = process.env.NEXT_PUBLIC_AUTH_HUB_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://edutrack.covenantsynergy.in');
         const returnUrl = window.location.href.replace('/auth/login', '/auth/callback');
         window.location.href = `${authHubUrl}/auth/login?portal=${portal}&tenant=${tenant}&returnUrl=${encodeURIComponent(returnUrl)}`;
       }
