@@ -50,9 +50,11 @@ export class AuthService {
 
   async sendOtp(phone: string, portal?: string): Promise<any> {
     const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
+    let targetTenantId: string | undefined;
 
     // If portal parameter is provided, validate role match before dispatching OTP
     if (portal) {
+      const p = portal.toLowerCase();
       const users = await this.prisma.user.findMany({
         where: { phone: { endsWith: normalizedPhone } }
       });
@@ -71,15 +73,15 @@ export class AuthService {
       const isAdmin = users.some(u => u.role === Role.SCHOOL_ADMIN || u.role === Role.SUPER_ADMIN || (u.role as string) === 'ADMIN');
       const isTeacher = users.some(u => u.role === Role.TEACHER || u.role === Role.STAFF || u.role === Role.DRIVER);
       const isParent = users.some(u => u.role === Role.PARENT) || matchingStudents.length > 0;
+      const isStudent = users.some(u => u.role === Role.STUDENT);
+
       const userExists = users.length > 0 || matchingStudents.length > 0;
 
-      const p = portal.toLowerCase();
-
       if (p === 'admin') {
-        if (userExists && !isAdmin) {
-          throw new BadRequestException('This mobile number is not authorized for the selected portal. Please log in through the appropriate portal.');
-        }
-        if (!userExists) {
+        if (!isAdmin) {
+          if (userExists) {
+            throw new BadRequestException('This mobile number is not authorized for the Administrator portal. Please log in through the appropriate portal.');
+          }
           return {
             success: false,
             notFound: true,
@@ -87,11 +89,13 @@ export class AuthService {
             message: 'School Administrator account not found. Redirecting to School Registration page...'
           };
         }
+        const matchedUser = users.find(u => u.role === Role.SCHOOL_ADMIN || u.role === Role.SUPER_ADMIN || (u.role as string) === 'ADMIN');
+        if (matchedUser) targetTenantId = matchedUser.tenantId;
       } else if (p === 'teacher') {
-        if (userExists && !isTeacher) {
-          throw new BadRequestException('This mobile number is not authorized for the selected portal. Please log in through the appropriate portal.');
-        }
-        if (!userExists || !isTeacher) {
+        if (!isTeacher) {
+          if (userExists) {
+            throw new BadRequestException('This mobile number is not authorized for the Teacher Portal. Please log in through the appropriate portal.');
+          }
           return {
             success: false,
             notFound: true,
@@ -99,11 +103,13 @@ export class AuthService {
             message: 'Teacher or Driver account not found. Please contact your School Administrator to obtain portal access.'
           };
         }
-      } else if (p === 'parent' || p === 'student') {
-        if (userExists && !isParent) {
-          throw new BadRequestException('This mobile number is not authorized for the selected portal. Please log in through the appropriate portal.');
-        }
-        if (!userExists || !isParent) {
+        const matchedUser = users.find(u => u.role === Role.TEACHER || u.role === Role.STAFF || u.role === Role.DRIVER);
+        if (matchedUser) targetTenantId = matchedUser.tenantId;
+      } else if (p === 'parent') {
+        if (!isParent) {
+          if (userExists) {
+            throw new BadRequestException('This mobile number is not authorized for the Parent Portal. Please log in through the appropriate portal.');
+          }
           return {
             success: false,
             notFound: true,
@@ -111,7 +117,33 @@ export class AuthService {
             message: 'Parent account not found. Please contact your School Administrator to obtain Parent Portal access.'
           };
         }
+        const matchedUser = users.find(u => u.role === Role.PARENT);
+        if (matchedUser) {
+          targetTenantId = matchedUser.tenantId;
+        } else if (matchingStudents.length > 0) {
+          targetTenantId = matchingStudents[0].tenantId;
+        }
+      } else if (p === 'student') {
+        if (!isStudent) {
+          if (userExists) {
+            throw new BadRequestException('This mobile number is not authorized for the Student Desk. Please log in through the appropriate portal.');
+          }
+          return {
+            success: false,
+            notFound: true,
+            portal: 'student',
+            message: 'Student account not found. Please contact your School Administrator to obtain Student Desk access.'
+          };
+        }
+        const matchedUser = users.find(u => u.role === Role.STUDENT);
+        if (matchedUser) targetTenantId = matchedUser.tenantId;
       }
+    } else {
+      const user = await this.prisma.user.findFirst({
+        where: { phone: { endsWith: normalizedPhone } },
+        select: { tenantId: true },
+      });
+      if (user) targetTenantId = user.tenantId;
     }
 
     const isSecurityDisabled = this.configService.get<string>('DISABLE_OTP_SECURITY') === 'true';
@@ -175,19 +207,14 @@ export class AuthService {
     let logoUrl: string | undefined;
 
     try {
-      const user = await this.prisma.user.findFirst({
-        where: { phone: { endsWith: normalizedPhone } },
-        select: { tenantId: true },
-      });
-
-      if (user?.tenantId) {
+      if (targetTenantId) {
         const [tenant, setup] = await Promise.all([
           this.prisma.tenant.findUnique({
-            where: { id: user.tenantId },
+            where: { id: targetTenantId },
             select: { name: true, logoUrl: true },
           }),
           this.prisma.schoolSetup.findUnique({
-            where: { tenantId: user.tenantId },
+            where: { tenantId: targetTenantId },
             select: { schoolName: true, schoolLogo: true },
           }),
         ]);
@@ -276,109 +303,111 @@ export class AuthService {
     }
 
     // --- AUTO-ASSOCIATION FOR PARENTS AND STUDENTS ---
-    // Search for students linked to this phone number
-    const matchingStudents = await this.prisma.studentProfile.findMany({
-      where: {
-        OR: [
-          { user: { phone: { endsWith: normalizedPhone } } },
-          { fatherPhone: { endsWith: normalizedPhone } },
-          { motherPhone: { endsWith: normalizedPhone } },
-          { guardianPhone: { endsWith: normalizedPhone } }
-        ]
-      },
-      include: {
-        user: true
-      }
-    });
+    // Search for students linked to this phone number only if Parent Portal is selected
+    if (portal && portal.toLowerCase() === 'parent') {
+      const matchingStudents = await this.prisma.studentProfile.findMany({
+        where: {
+          OR: [
+            { user: { phone: { endsWith: normalizedPhone } } },
+            { fatherPhone: { endsWith: normalizedPhone } },
+            { motherPhone: { endsWith: normalizedPhone } },
+            { guardianPhone: { endsWith: normalizedPhone } }
+          ]
+        },
+        include: {
+          user: true
+        }
+      });
 
-    let parentUser = await this.prisma.user.findFirst({
-      where: {
-        role: Role.PARENT,
-        phone: { endsWith: normalizedPhone }
-      },
-      include: {
-        parentProfile: true
-      }
-    });
+      let parentUser = await this.prisma.user.findFirst({
+        where: {
+          role: Role.PARENT,
+          phone: { endsWith: normalizedPhone }
+        },
+        include: {
+          parentProfile: true
+        }
+      });
 
-    if (matchingStudents.length > 0) {
-      const firstStudent = matchingStudents[0];
-      const tenantId = firstStudent.tenantId;
+      if (matchingStudents.length > 0) {
+        const firstStudent = matchingStudents[0];
+        const tenantId = firstStudent.tenantId;
 
-      if (!parentUser) {
-        const parentName = firstStudent.fatherName || firstStudent.motherName || `Parent of ${firstStudent.user.name}`;
-        const parentEmail = `parent.${normalizedPhone}@edutrack.local`;
-        const passwordHash = await bcrypt.hash('Welcome@123', 10);
-        const parentPhone = `${tenantId.substring(0, 8)}-${normalizedPhone}`;
+        if (!parentUser) {
+          const parentName = firstStudent.fatherName || firstStudent.motherName || `Parent of ${firstStudent.user.name}`;
+          const parentEmail = `parent.${normalizedPhone}@edutrack.local`;
+          const passwordHash = await bcrypt.hash('Welcome@123', 10);
+          const parentPhone = `${tenantId.substring(0, 8)}-${normalizedPhone}`;
 
-        parentUser = await this.prisma.$transaction(async (tx) => {
-          let existing = await tx.user.findFirst({
-            where: {
-              OR: [
-                { email: parentEmail },
-                { phone: parentPhone, role: Role.PARENT }
-              ]
-            },
-            include: { parentProfile: true }
-          });
-          if (existing) return existing;
+          parentUser = await this.prisma.$transaction(async (tx) => {
+            let existing = await tx.user.findFirst({
+              where: {
+                OR: [
+                  { email: parentEmail },
+                  { phone: parentPhone, role: Role.PARENT }
+                ]
+              },
+              include: { parentProfile: true }
+            });
+            if (existing) return existing;
 
-          const user = await tx.user.create({
-            data: {
-              email: parentEmail,
-              name: parentName,
-              passwordHash,
-              role: Role.PARENT,
-              phone: parentPhone,
-              tenantId,
-            }
-          });
-
-          const profile = await tx.parentProfile.create({
-            data: {
-              userId: user.id,
-            }
-          });
-
-          return {
-            ...user,
-            parentProfile: profile
-          } as any;
-        });
-      }
-
-      // Link students to the parent profile
-      if (parentUser && parentUser.parentProfile) {
-        for (const student of matchingStudents) {
-          let relationship = "Guardian";
-          if (student.fatherPhone && student.fatherPhone.replace(/\D/g, '').endsWith(normalizedPhone)) {
-            relationship = "Father";
-          } else if (student.motherPhone && student.motherPhone.replace(/\D/g, '').endsWith(normalizedPhone)) {
-            relationship = "Mother";
-          }
-
-          await this.prisma.parentStudent.upsert({
-            where: {
-              parentId_studentId: {
-                parentId: parentUser.parentProfile.id,
-                studentId: student.id
+            const user = await tx.user.create({
+              data: {
+                email: parentEmail,
+                name: parentName,
+                passwordHash,
+                role: Role.PARENT,
+                phone: parentPhone,
+                tenantId,
               }
-            },
-            update: {},
-            create: {
-              parentId: parentUser.parentProfile.id,
-              studentId: student.id,
-              relationship,
-              isPrimary: true
-            }
-          }).catch(() => {});
+            });
 
-          // Also set legacy field for backward compatibility
-          if (student.parentProfileId !== parentUser.parentProfile.id) {
-            await this.prisma.studentProfile.update({
-              where: { id: student.id },
-              data: { parentProfileId: parentUser.parentProfile.id }
+            const profile = await tx.parentProfile.create({
+              data: {
+                userId: user.id,
+              }
+            });
+
+            return {
+              ...user,
+              parentProfile: profile
+            } as any;
+          });
+        }
+
+        // Link students to the parent profile
+        if (parentUser && parentUser.parentProfile) {
+          for (const student of matchingStudents) {
+            let relationship = "Guardian";
+            if (student.fatherPhone && student.fatherPhone.replace(/\D/g, '').endsWith(normalizedPhone)) {
+              relationship = "Father";
+            } else if (student.motherPhone && student.motherPhone.replace(/\D/g, '').endsWith(normalizedPhone)) {
+              relationship = "Mother";
+            }
+
+            await this.prisma.parentStudent.upsert({
+              where: {
+                parentId_studentId: {
+                  parentId: parentUser.parentProfile.id,
+                  studentId: student.id
+                }
+              },
+              update: {},
+              create: {
+                parentId: parentUser.parentProfile.id,
+                studentId: student.id,
+                relationship,
+                isPrimary: true
+              }
             }).catch(() => {});
+
+            // Also set legacy field for backward compatibility
+            if (student.parentProfileId !== parentUser.parentProfile.id) {
+              await this.prisma.studentProfile.update({
+                where: { id: student.id },
+                data: { parentProfileId: parentUser.parentProfile.id }
+              }).catch(() => {});
+            }
           }
         }
       }
@@ -389,11 +418,18 @@ export class AuthService {
 
     if (portal) {
       const p = portal.toLowerCase();
-      if (p === 'parent' || p === 'student') {
+      if (p === 'parent') {
         user = await this.prisma.user.findFirst({
           where: {
             phone: { endsWith: normalizedPhone },
             role: Role.PARENT
+          },
+        });
+      } else if (p === 'student') {
+        user = await this.prisma.user.findFirst({
+          where: {
+            phone: { endsWith: normalizedPhone },
+            role: Role.STUDENT
           },
         });
       } else if (p === 'teacher') {
