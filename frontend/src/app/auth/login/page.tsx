@@ -19,45 +19,32 @@ function LoginContent() {
   // Redirect to central Auth Hub if we are on a subdomain
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      
-      let isSubdomain = false;
-      let tenant = '';
-      
-      if (hostname.endsWith('.edutrack.covenantsynergy.in') && hostname !== 'edutrack.covenantsynergy.in' && hostname !== 'api-edutrack.covenantsynergy.in') {
-        const parts = hostname.replace('.edutrack.covenantsynergy.in', '').split('.');
-        const sub = parts[parts.length - 1];
-        if (sub !== 'www' && sub !== 'api') {
-          isSubdomain = true;
-          tenant = sub;
-        }
-      } else if (hostname.endsWith('.edutrack.com') && hostname !== 'edutrack.com' && hostname !== 'www.edutrack.com' && hostname !== 'app.edutrack.com') {
-        const parts = hostname.replace('.edutrack.com', '').split('.');
-        const sub = parts[parts.length - 1];
-        if (sub !== 'www' && sub !== 'api' && sub !== 'app') {
-          isSubdomain = true;
-          tenant = sub;
-        }
-      } else if (hostname.endsWith('.vercel.app')) {
-        const parts = hostname.replace('.vercel.app', '').split('.');
-        if (parts.length > 1 && parts[0] !== 'www') {
-          isSubdomain = true;
-          tenant = parts[0];
-        }
-      } else if (hostname !== 'localhost' && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-        const parts = hostname.split('.');
-        if (parts.length > 1 && parts[0] !== 'localhost' && parts[0] !== 'www' && isNaN(Number(parts[0]))) {
-          isSubdomain = true;
-          tenant = parts[0];
-        }
-      }
+    const hostname = window.location.hostname;
 
-      if (isSubdomain && tenant) {
-        // Redirect to central Auth Hub
-        const authHubUrl = process.env.NEXT_PUBLIC_AUTH_HUB_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://edutrack.covenantsynergy.in');
-        const returnUrl = window.location.href.replace('/auth/login', '/auth/callback');
-        window.location.href = `${authHubUrl}/auth/login?portal=${portal}&tenant=${tenant}&returnUrl=${encodeURIComponent(returnUrl)}`;
-      }
+// Central platform domains
+const isCentralDomain =
+  hostname === 'edutrack.covenantsynergy.in' ||
+  hostname === 'api-edutrack.covenantsynergy.in';
+
+// Only treat real school subdomains as tenants
+const isSchoolSubdomain =
+  hostname.endsWith('.edutrack.covenantsynergy.in');
+
+if (isSchoolSubdomain) {
+  const tenant = hostname.split('.')[0];
+
+  const authHubUrl =
+    process.env.NEXT_PUBLIC_AUTH_HUB_URL ||
+    'https://edutrack.covenantsynergy.in';
+
+  const returnUrl = window.location.href.replace(
+    '/auth/login',
+    '/auth/callback'
+  );
+
+  window.location.href =
+    `${authHubUrl}/auth/login?portal=${portal}&tenant=${tenant}&returnUrl=${encodeURIComponent(returnUrl)}`;
+}
     }
   }, [portal]);
 
