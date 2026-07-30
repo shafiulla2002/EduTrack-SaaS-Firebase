@@ -80,6 +80,9 @@ export class SupportService {
           user: smtpUser,
           pass: smtpPass,
         },
+        tls: {
+          rejectUnauthorized: false,
+        },
       });
 
       // Email 1: Alert to support desk
