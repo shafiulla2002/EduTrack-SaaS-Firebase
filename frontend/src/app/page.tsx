@@ -1,10 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { Shield, BookOpen, GraduationCap, Users, User, ArrowRight } from 'lucide-react';
+import { Shield, BookOpen, GraduationCap, Users, ArrowRight } from 'lucide-react';
+import ContactSupportModal from '@/components/ContactSupportModal';
 
 export default function LandingPage() {
+  const [supportModalOpen, setSupportModalOpen] = useState(false);
+
   const roles = [
     {
       title: 'School Administrator',
@@ -53,10 +56,14 @@ export default function LandingPage() {
           </span>
         </div>
 
-        <button className="px-5 py-2 rounded-xl text-sm font-semibold glass-panel text-slate-300 hover:text-white transition-all">
+        <button
+          onClick={() => setSupportModalOpen(true)}
+          className="px-5 py-2 rounded-xl text-sm font-semibold glass-panel text-slate-300 hover:text-white transition-all cursor-pointer"
+        >
           Contact Support
         </button>
       </header>
+
 
       {/* Main Content */}
       <section className="flex-1 max-w-7xl mx-auto px-6 flex flex-col justify-center items-center text-center py-12 z-10">
@@ -106,6 +113,11 @@ export default function LandingPage() {
           &copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved. EduTrack is a registered trademark.
         </p>
       </footer>
+
+      {supportModalOpen && (
+        <ContactSupportModal onClose={() => setSupportModalOpen(false)} />
+      )}
     </main>
   );
 }
+

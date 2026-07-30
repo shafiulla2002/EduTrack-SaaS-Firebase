@@ -23,6 +23,7 @@ import { ParentPortalModule } from './parent-portal/parent-portal.module';
 import { ExamConfigModule } from './exam-config/exam-config.module';
 import { TransportModule } from './transport/transport.module';
 import { LeaveManagementModule } from './leave-management/leave-management.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { LeaveManagementModule } from './leave-management/leave-management.modul
     ExamConfigModule,
     TransportModule,
     LeaveManagementModule,
+    SupportModule,
   ],
   controllers: [],
   providers: [],
@@ -77,6 +79,7 @@ export class AppModule implements NestModule {
         'auth/verify-otp',
         'auth/exchange-code',
         'tenant/register',
+        'support/contact',
       )
       .forRoutes('*');
   }

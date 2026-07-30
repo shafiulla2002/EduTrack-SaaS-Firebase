@@ -1323,3 +1323,20 @@ model ExamSubject {
   @@unique([examId, subjectId, subjectType])
   @@index([tenantId])
 }
+
+model SupportRequest {
+  id          String   @id @default(uuid())
+  name        String
+  schoolName  String
+  email       String
+  phone       String
+  subject     String
+  message     String   @db.Text
+  status      String   @default("OPEN")
+  emailSent   Boolean  @default(false)
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
