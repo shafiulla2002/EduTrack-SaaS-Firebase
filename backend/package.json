@@ -38,6 +38,7 @@
     "nodemailer": "^9.0.3",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdfkit": "^0.19.1",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3"
@@ -52,6 +53,7 @@
     "@types/node": "^20.11.5",
     "@types/nodemailer": "^8.0.1",
     "@types/passport-jwt": "^4.0.0",
+    "@types/pdfkit": "^0.17.6",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
     "eslint": "^8.56.0",

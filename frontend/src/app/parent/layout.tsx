@@ -31,6 +31,11 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
   const { children: childrenList, selectedChild, setSelectedChildId } = useParent();
   const [showSwitcher, setShowSwitcher] = useState(false);
 
+  const isPrintReceiptPage = pathname?.includes('/parent/fees/receipts/');
+  if (isPrintReceiptPage) {
+    return <div className="bg-white min-h-screen text-slate-800 font-sans">{children}</div>;
+  }
+
   const navigationItems = [
     { name: 'Dashboard', href: '/parent', icon: Home, isBottom: true },
     { name: 'Student Profile', href: '/parent/profile', icon: User, isBottom: true },
@@ -226,7 +231,7 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
       {/* Main Layout Container */}
       <div className="flex-1 flex w-full relative min-w-0">
         {/* Desktop Sidebar */}
-        <aside className="hidden lg:block w-[260px] bg-white border-r border-slate-200 h-[calc(100vh-72px)] sticky top-[72px] overflow-y-auto py-6 px-4 select-none shadow-sm">
+        <aside className="hidden lg:block w-[260px] bg-white border-r border-slate-200 h-[calc(100vh-72px)] fixed top-[72px] left-0 overflow-y-auto py-6 px-4 select-none shadow-sm z-30">
           <nav className="space-y-6">
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-3">
@@ -257,7 +262,7 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
         </aside>
 
         {/* Content Panel */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 bg-slate-50">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 bg-slate-50 lg:pl-[260px]">
           {children}
         </main>
       </div>

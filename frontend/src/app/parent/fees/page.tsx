@@ -51,6 +51,7 @@ export default function FeesPage() {
 
   // Receipt viewer
   const [viewingReceipt, setViewingReceipt] = useState<any>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string>('');
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const fetchFees = useCallback(async (childId: string) => {
@@ -218,8 +219,66 @@ export default function FeesPage() {
     }
   };
 
-  const handleOpenPrintReceipt = (invId: string) => {
-    window.open(`/dashboard/billing/invoices/${invId}`, '_blank');
+  const handleOpenPrintReceipt = async (inv: any) => {
+    if (!selectedChild) return;
+    try {
+      setActionLoadingId(`${inv.id}-print`);
+      const res = await api.get(`/parent-portal/children/${selectedChild.id}/invoices/${inv.id}/pdf/download`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+
+      let iframe = document.getElementById('print-receipt-iframe') as HTMLIFrameElement;
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'print-receipt-iframe';
+        iframe.style.position = 'fixed';
+        iframe.style.width = '0px';
+        iframe.style.height = '0px';
+        iframe.style.border = 'none';
+        document.body.appendChild(iframe);
+      }
+      iframe.src = url;
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      };
+    } catch (err) {
+      console.error('Failed to print receipt:', err);
+      alert('Failed to open print dialog. Please try again.');
+    } finally {
+      setActionLoadingId('');
+    }
+  };
+
+  const handleDownloadReceipt = async (inv: any) => {
+    if (!selectedChild) return;
+    try {
+      setActionLoadingId(`${inv.id}-download`);
+      const res = await api.get(`/parent-portal/children/${selectedChild.id}/invoices/${inv.id}/pdf/download`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+
+      const studentName = selectedChild.name.replace(/\s+/g, '_');
+      const invoiceNo = inv.invoiceNo || `INV-${inv.id.substring(0, 8).toUpperCase()}`;
+      link.setAttribute('download', `SchoolFeeReceipt_${studentName}_${invoiceNo}.pdf`);
+
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download receipt PDF:', err);
+      alert('Failed to download receipt PDF. Please try again.');
+    } finally {
+      setActionLoadingId('');
+    }
   };
 
   // ── Guards ────────────────────────────────────────────────────────────────
@@ -516,17 +575,27 @@ export default function FeesPage() {
 
                       <div className="flex gap-2">
                         <button
-                          onClick={() => handleOpenPrintReceipt(inv.id)}
-                          className="px-3 py-1.5 bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                          onClick={() => handleOpenPrintReceipt(inv)}
+                          disabled={!!actionLoadingId}
+                          className="px-3 py-1.5 bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                         >
-                          <Printer className="w-3.5 h-3.5 text-slate-600" />
+                          {actionLoadingId === `${inv.id}-print` ? (
+                            <div className="w-3.5 h-3.5 border-2 border-[#1a365d] border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Printer className="w-3.5 h-3.5 text-slate-600" />
+                          )}
                           <span>Print</span>
                         </button>
                         <button
-                          onClick={() => handleOpenPrintReceipt(inv.id)}
-                          className="px-3 py-1.5 bg-[#1a365d] text-white hover:bg-[#2a4365] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                          onClick={() => handleDownloadReceipt(inv)}
+                          disabled={!!actionLoadingId}
+                          className="px-3 py-1.5 bg-[#1a365d] text-white hover:bg-[#2a4365] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
                         >
-                          <Download className="w-3.5 h-3.5" />
+                          {actionLoadingId === `${inv.id}-download` ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Download className="w-3.5 h-3.5" />
+                          )}
                           <span>Download PDF</span>
                         </button>
                       </div>
@@ -793,17 +862,27 @@ export default function FeesPage() {
 
             <div className="flex justify-end gap-2 pt-2">
               <button
-                onClick={() => handleOpenPrintReceipt(viewingReceipt.id)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                onClick={() => handleOpenPrintReceipt(viewingReceipt)}
+                disabled={!!actionLoadingId}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
               >
-                <Printer className="w-3.5 h-3.5" />
+                {actionLoadingId === `${viewingReceipt.id}-print` ? (
+                  <div className="w-3.5 h-3.5 border-2 border-[#1a365d] border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <Printer className="w-3.5 h-3.5" />
+                )}
                 <span>Print Receipt</span>
               </button>
               <button
-                onClick={() => handleOpenPrintReceipt(viewingReceipt.id)}
-                className="px-4 py-2 bg-[#1a365d] hover:bg-[#2a4365] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                onClick={() => handleDownloadReceipt(viewingReceipt)}
+                disabled={!!actionLoadingId}
+                className="px-4 py-2 bg-[#1a365d] hover:bg-[#2a4365] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
               >
-                <Download className="w-3.5 h-3.5" />
+                {actionLoadingId === `${viewingReceipt.id}-download` ? (
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
                 <span>Download PDF</span>
               </button>
             </div>

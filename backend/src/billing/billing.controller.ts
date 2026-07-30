@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Res } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -26,6 +26,12 @@ export class BillingController {
   @Get('invoices/:id/pdf')
   async getPdfData(@Param('id') id: string) {
     return this.billingService.getInvoicePDFData(id);
+  }
+
+  @Get('invoices/:id/pdf/download')
+  async downloadInvoicePdf(@Param('id') id: string, @Res() res: any) {
+    const data = await this.billingService.getInvoicePDFData(id);
+    return this.billingService.generateReceiptPdfStream(data, res);
   }
 
   @Post('invoices/:id/void')

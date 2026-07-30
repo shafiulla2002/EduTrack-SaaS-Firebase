@@ -892,6 +892,21 @@ export class ParentPortalService {
     };
   }
 
+  async generateInvoicePdf(userId: string, studentId: string, invoiceId: string, res: any) {
+    const student = await this.verifyOwnership(userId, studentId);
+
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+
+    if (!invoice || invoice.studentId !== student.id || invoice.tenantId !== student.tenantId) {
+      throw new NotFoundException('Invoice receipt not found.');
+    }
+
+    const pdfData = await this.billingService.getInvoicePDFData(invoiceId);
+    return this.billingService.generateReceiptPdfStream(pdfData, res);
+  }
+
 
   /**
    * Pay an invoice (or open-opportunity fee statement) for a student.

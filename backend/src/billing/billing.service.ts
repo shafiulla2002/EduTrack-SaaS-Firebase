@@ -1145,6 +1145,139 @@ export class BillingService {
     };
   }
 
+  async generateReceiptPdfStream(data: any, res: any) {
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ size: 'A4', margin: 40 });
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename=SchoolFeeReceipt_${data.studentName.replace(/\s+/g, '_')}_${data.invoiceNo}.pdf`,
+    });
+
+    doc.pipe(res);
+
+    // 1. Draw Header Background Rect (Dark Blue #1a365d)
+    doc.rect(0, 0, 595.28, 120).fill('#1a365d');
+
+    // 2. Draw Orange Divider Line (#ed8936)
+    doc.rect(0, 120, 595.28, 6).fill('#ed8936');
+
+    // 3. Logo Drawing
+    let logoDrawn = false;
+    if (data.schoolLogo) {
+      try {
+        const https = require('https');
+        const http = require('http');
+        const client = data.schoolLogo.startsWith('https') ? https : http;
+
+        const logoBuffer = await new Promise<Buffer>((resolve, reject) => {
+          client.get(data.schoolLogo, (logoRes) => {
+            const chunks = [];
+            logoRes.on('data', (chunk) => chunks.push(chunk));
+            logoRes.on('end', () => resolve(Buffer.concat(chunks)));
+            logoRes.on('error', (err) => reject(err));
+          }).on('error', (err) => reject(err));
+        });
+
+        doc.image(logoBuffer, 40, 25, { width: 70, height: 70 });
+        logoDrawn = true;
+      } catch (err) {
+        console.error('Failed to fetch school logo image for PDF:', err);
+      }
+    }
+
+    if (!logoDrawn) {
+      // White circle placeholder
+      doc.fillColor('#ffffff');
+      doc.circle(75, 60, 30).fill();
+      doc.fillColor('#1a365d');
+      doc.fontSize(16).font('Helvetica-Bold').text('ET', 60, 52, { width: 30, align: 'center' });
+    }
+
+    // 4. Header Text
+    doc.fillColor('#ffffff');
+    doc.fontSize(18).font('Helvetica-Bold').text(data.schoolName.toUpperCase(), 130, 32, { width: 425 });
+    doc.fontSize(9).font('Helvetica-Oblique').fillColor('#cbd5e1').text(data.schoolSubtitle || 'Inspiring Excellence, Nurturing Values', 130, 57, { width: 425 });
+    doc.fontSize(8).font('Helvetica').fillColor('#cbd5e1').text(data.schoolAddress || '', 130, 72, { width: 425 });
+    if (data.schoolPhone) {
+      doc.text(`Phone: ${data.schoolPhone}`, 130, 85);
+    }
+
+    // 5. Title
+    doc.fillColor('#1a365d');
+    doc.fontSize(16).font('Helvetica-Bold').text('OFFICIAL FEE RECEIPT', 40, 150, { align: 'center' });
+
+    // 6. Metadata grid details
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#4a5568');
+
+    // Left Column
+    doc.text('Receipt No:', 40, 185);
+    doc.font('Helvetica-Bold').fillColor('#1a202c').text(data.invoiceNo, 120, 185);
+
+    doc.font('Helvetica-Bold').fillColor('#4a5568').text('Receipt Date:', 40, 202);
+    doc.font('Helvetica').fillColor('#2d3748').text(data.invoiceDate, 120, 202);
+
+    // Right Column
+    doc.font('Helvetica-Bold').fillColor('#4a5568').text('Academic Year:', 340, 185);
+    doc.font('Helvetica').fillColor('#2d3748').text(data.academicYear, 440, 185);
+
+    doc.font('Helvetica-Bold').fillColor('#4a5568').text('Admission Ref:', 340, 202);
+    doc.font('Helvetica').fillColor('#2d3748').text(data.admissionRef, 440, 202);
+
+    // 7. Gray background card for student details
+    doc.roundedRect(40, 230, 515.28, 90, 6).fill('#f7fafc').stroke('#e2e8f0');
+
+    // Col 1
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#718096').text('STUDENT NAME', 55, 245);
+    doc.fontSize(12).font('Helvetica-Bold').fillColor('#1a365d').text(data.studentName, 55, 258);
+
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#718096').text("PARENT'S DETAILS", 55, 282);
+    doc.fontSize(9).font('Helvetica').fillColor('#2d3748').text(`Father: ${data.fatherName || 'N/A'}  |  Mother: ${data.motherName || 'N/A'}`, 55, 295);
+
+    // Col 2
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#718096').text('CLASS & SECTION', 350, 245);
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#1a365d').text(`${data.className} - ${data.sectionName}`, 350, 258);
+
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#718096').text('ROLL NUMBER', 470, 245);
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#1a365d').text(data.rollNo || 'N/A', 470, 258);
+
+    // 8. Particulars Table
+    doc.rect(40, 340, 515.28, 22).fill('#ebf8ff');
+    doc.fillColor('#1a365d').fontSize(9).font('Helvetica-Bold');
+    doc.text('Sl. No', 50, 347);
+    doc.text('Particulars Description', 100, 347);
+    doc.text('Amount Paid', 460, 347, { width: 85, align: 'right' });
+
+    let y = 362;
+    doc.fontSize(9).font('Helvetica').fillColor('#2d3748');
+    data.items.forEach((item, index) => {
+      doc.lineCap('butt').moveTo(40, y).lineTo(555.28, y).stroke('#edf2f7');
+
+      doc.text(String(index + 1), 50, y + 8);
+      doc.font('Helvetica-Bold').text(item.particulars, 100, y + 8);
+      doc.font('Helvetica-Bold').text(`Rs. ${item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 460, y + 8, { width: 85, align: 'right' });
+      y += 26;
+    });
+
+    doc.lineCap('butt').moveTo(40, y).lineTo(555.28, y).stroke('#edf2f7');
+
+    y += 15;
+
+    // 9. Grand Total Banner
+    doc.rect(340, y, 215.28, 36).fill('#1a365d');
+    doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold').text('GRAND TOTAL PAID', 355, y + 13);
+    doc.fontSize(12).font('Helvetica-Bold').text(`Rs. ${data.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, 460, y + 12, { width: 85, align: 'right' });
+
+    // Payment method info
+    doc.fillColor('#718096').fontSize(8).font('Helvetica').text(`Payment Mode: ${data.paymentMethod || 'UPI'}`, 40, y + 10);
+    doc.text(`Transaction ID: ${data.transactionId || 'N/A'}`, 40, y + 22);
+
+    // Disclaimer
+    doc.fillColor('#a0aec0').fontSize(7).text('This is a computer generated fee receipt. No physical signature is required. For verification query, contact the accounting department.', 40, 780, { width: 515.28, align: 'center' });
+
+    doc.end();
+  }
+
   // ── BULK IMPORT STUDENTS ───────────────────────────────────────────────────
 
   async importStudentsBulk(studentDataList: any[]) {

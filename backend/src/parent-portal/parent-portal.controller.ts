@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { ParentPortalService } from './parent-portal.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -70,6 +70,16 @@ export class ParentPortalController {
     @Body() data: any
   ) {
     return this.portalService.payInvoice(req.user.sub, studentId, invoiceId, data);
+  }
+
+  @Get('children/:studentId/invoices/:invoiceId/pdf/download')
+  async downloadInvoicePdf(
+    @Req() req: any,
+    @Res() res: any,
+    @Param('studentId') studentId: string,
+    @Param('invoiceId') invoiceId: string,
+  ) {
+    return this.portalService.generateInvoicePdf(req.user.sub, studentId, invoiceId, res);
   }
 
   @Get('children/:studentId/timetable')
