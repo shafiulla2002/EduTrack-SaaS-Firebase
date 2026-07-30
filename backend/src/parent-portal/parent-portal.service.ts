@@ -1200,6 +1200,25 @@ export class ParentPortalService {
     });
   }
 
+  async getTeacherComplaints(userId: string, studentId: string) {
+    const student = await this.verifyOwnership(userId, studentId);
+    return this.prisma.behaviorCase.findMany({
+      where: {
+        studentId: student.id,
+        behaviorType: 'Complaint',
+        tenantId: student.tenantId,
+      },
+      include: {
+        teacher: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async getComplaints(userId: string) {
     const parent = await this.getParentProfile(userId);
     const complaints = await this.prisma.complaint.findMany({

@@ -92,6 +92,11 @@ export class ParentPortalController {
     return this.portalService.getAnnouncements(req.user.sub, studentId);
   }
 
+  @Get('children/:studentId/teacher-complaints')
+  async getTeacherComplaints(@Req() req: any, @Param('studentId') studentId: string) {
+    return this.portalService.getTeacherComplaints(req.user.sub, studentId);
+  }
+
   @Get('complaints')
   async getComplaints(@Req() req: any) {
     return this.portalService.getComplaints(req.user.sub);
