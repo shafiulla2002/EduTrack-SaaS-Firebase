@@ -75,6 +75,30 @@ export class TeachersService {
         },
       });
 
+      // Synchronize initial TeacherSkill records for TEACHER roles
+      if (userRole === Role.TEACHER && data.subjectsTaught) {
+        for (const subName of data.subjectsTaught) {
+          if (!subName) continue;
+          let subject = await tx.subject.findFirst({
+            where: { name: { equals: subName, mode: 'insensitive' }, tenantId }
+          });
+          if (!subject) {
+            subject = await tx.subject.create({
+              data: { name: subName, tenantId }
+            });
+          }
+          await tx.teacherSkill.create({
+            data: {
+              teacherId: profile.id,
+              subjectId: subject.id,
+              skillLevel: 'Expert',
+              yearsOfExperience: 5,
+              tenantId
+            }
+          });
+        }
+      }
+
       return { user, profile };
     });
   }
@@ -342,7 +366,7 @@ export class TeachersService {
         });
       }
 
-      return tx.staffProfile.update({
+      const updatedProfile = await tx.staffProfile.update({
         where: { id },
         data: {
           employeeId: data.employeeId !== undefined ? data.employeeId : undefined,
@@ -356,6 +380,64 @@ export class TeachersService {
           subjectsTaught: data.subjectsTaught !== undefined ? data.subjectsTaught : undefined,
         }
       });
+
+      // Synchronize TeacherSkill records if subjectsTaught or skills array is updated
+      if (data.skills !== undefined || data.subjectsTaught !== undefined) {
+        const skillsToSave = data.skills !== undefined
+          ? data.skills
+          : (data.subjectsTaught || []).map((sub: string) => ({ subject: sub, level: 'Expert', exp: 5 }));
+
+        const activeSubjectIds: string[] = [];
+
+        for (const sk of skillsToSave) {
+          const subName = sk.subject;
+          if (!subName) continue;
+
+          // Find or create the Subject entity
+          let subject = await tx.subject.findFirst({
+            where: { name: { equals: subName, mode: 'insensitive' }, tenantId }
+          });
+
+          if (!subject) {
+            subject = await tx.subject.create({
+              data: { name: subName, tenantId }
+            });
+          }
+
+          activeSubjectIds.push(subject.id);
+
+          // Upsert the TeacherSkill record
+          await tx.teacherSkill.upsert({
+            where: {
+              teacherId_subjectId: {
+                teacherId: id,
+                subjectId: subject.id
+              }
+            },
+            create: {
+              teacherId: id,
+              subjectId: subject.id,
+              skillLevel: sk.level || 'Expert',
+              yearsOfExperience: sk.exp ?? 5,
+              tenantId
+            },
+            update: {
+              skillLevel: sk.level || 'Expert',
+              yearsOfExperience: sk.exp ?? 5
+            }
+          });
+        }
+
+        // Delete any TeacherSkill records that are not in the new activeSubjectIds
+        await tx.teacherSkill.deleteMany({
+          where: {
+            teacherId: id,
+            subjectId: { notIn: activeSubjectIds }
+          }
+        });
+      }
+
+      return updatedProfile;
     });
   }
 

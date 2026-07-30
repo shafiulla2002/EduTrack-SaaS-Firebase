@@ -317,7 +317,12 @@ export default function SchoolStaffPage() {
         qualification: editingStaff.qualification,
         status: editingStaff.status,
         avatarUrl: editingStaff.avatarUrl || null,
-        subjectsTaught: editingStaff.skills ? editingStaff.skills.map((s: any) => s.subject).filter(Boolean) : []
+        subjectsTaught: editingStaff.skills ? editingStaff.skills.map((s: any) => s.subject).filter(Boolean) : [],
+        skills: editingStaff.skills ? editingStaff.skills.map((s: any) => ({
+          subject: s.subject,
+          level: s.level,
+          exp: s.exp
+        })).filter((s: any) => s.subject) : []
       });
       setEditingStaff(null);
       loadStaff();
