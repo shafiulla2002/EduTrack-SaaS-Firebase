@@ -1044,21 +1044,21 @@ export default function StudentsDirectory() {
                       <h3 className="text-base font-bold text-slate-800">Fee Information Summary</h3>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                      <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Allocated Amt</span>
-                        <span className="text-slate-800 text-lg font-extrabold block mt-1">₹{overallAllocated.toLocaleString()}</span>
+                      <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl">
+                        <span className="text-slate-500 dark:text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Allocated Amt</span>
+                        <span className="text-slate-850 dark:text-slate-100 text-lg font-extrabold block mt-1">₹{overallAllocated.toLocaleString()}</span>
                       </div>
-                      <div className="p-4 bg-emerald-50/40 border border-emerald-100/50 rounded-xl">
-                        <span className="text-emerald-600 text-[10px] font-bold uppercase tracking-wider block">Total Paid</span>
-                        <span className="text-emerald-700 text-lg font-extrabold block mt-1">₹{overallPaid.toLocaleString()}</span>
+                      <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl">
+                        <span className="text-emerald-700 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider block">Total Paid</span>
+                        <span className="text-emerald-800 dark:text-emerald-300 text-lg font-extrabold block mt-1">₹{overallPaid.toLocaleString()}</span>
                       </div>
-                      <div className="p-4 bg-amber-50/40 border border-amber-100/50 rounded-xl">
-                        <span className="text-amber-600 text-[10px] font-bold uppercase tracking-wider block">Pending Bal</span>
-                        <span className="text-amber-700 text-lg font-extrabold block mt-1">₹{overallPending.toLocaleString()}</span>
+                      <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl">
+                        <span className="text-amber-700 dark:text-amber-400 text-[10px] font-bold uppercase tracking-wider block">Pending Bal</span>
+                        <span className="text-amber-800 dark:text-amber-300 text-lg font-extrabold block mt-1">₹{overallPending.toLocaleString()}</span>
                       </div>
-                      <div className="p-4 bg-purple-50/40 border border-purple-100/50 rounded-xl">
-                        <span className="text-purple-600 text-[10px] font-bold uppercase tracking-wider block">Discount Given</span>
-                        <span className="text-purple-700 text-lg font-extrabold block mt-1">₹{recFees.discVal.toLocaleString()}</span>
+                      <div className="p-4 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 rounded-xl">
+                        <span className="text-purple-700 dark:text-purple-400 text-[10px] font-bold uppercase tracking-wider block">Discount Given</span>
+                        <span className="text-purple-800 dark:text-purple-300 text-lg font-extrabold block mt-1">₹{recFees.discVal.toLocaleString()}</span>
                       </div>
                     </div>
                   </div>
