@@ -5,7 +5,7 @@ import {
   Search, ArrowLeft, Plus, X, Phone, Mail, Award, Receipt, 
   CheckCircle, AlertTriangle, ChevronDown, ChevronUp, User, 
   MapPin, Calendar as CalendarIcon, DollarSign, BookOpen, ShieldAlert,
-  Percent, Trash2, ChevronLeft, ChevronRight, ChevronsLeft
+  Percent, Trash2
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
@@ -704,10 +704,10 @@ export default function StudentsDirectory() {
             </div>
 
             {/* Mobile Card View */}
-            <div className="block md:hidden space-y-4 p-4">
+            <div className="block md:hidden divide-y divide-slate-100">
               {loading ? (
                 Array.from({ length: 3 }).map((_, idx) => (
-                  <div key={idx} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm space-y-3 animate-pulse">
+                  <div key={idx} className="p-4 space-y-3 animate-pulse">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-slate-200" />
@@ -719,7 +719,7 @@ export default function StudentsDirectory() {
                       </div>
                       <div className="h-5 w-24 bg-slate-200 rounded-full" />
                     </div>
-                    <div className="h-10 bg-slate-100 dark:bg-slate-700 rounded-xl" />
+                    <div className="h-10 bg-slate-100 rounded-xl" />
                     <div className="flex justify-between pt-2">
                       <div className="h-4 w-24 bg-slate-200 rounded" />
                       <div className="flex gap-2">
@@ -730,7 +730,7 @@ export default function StudentsDirectory() {
                   </div>
                 ))
               ) : filteredStudents.length === 0 ? (
-                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-8 text-center text-slate-400 font-light shadow-sm">
+                <div className="p-8 text-center text-slate-400 font-light">
                   No matching student records found.
                 </div>
               ) : (
@@ -740,19 +740,19 @@ export default function StudentsDirectory() {
                   const pendingPercentage = student.pendingPercentage ?? (totalFees > 0 ? Math.round((student.balanceDue / totalFees) * 100) : 0);
                   const financialStatus = student.financialStatus || (hasDue ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
                   return (
-                    <div key={student.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all space-y-3">
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="flex items-center gap-3 min-w-0">
+                    <div key={student.id} className="p-4 space-y-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-3">
                           <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
-                          <div className="min-w-0">
-                            <span className="px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50 text-[10px] font-bold font-mono">
+                          <div>
+                            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold font-mono">
                               Roll: {student.rollNo}
                             </span>
-                            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-1 truncate">{student.name}</h4>
-                            <p className="text-xs text-slate-400 font-medium mt-0.5 truncate">{student.email}</p>
+                            <h4 className="text-sm font-bold text-slate-800 mt-1">{student.name}</h4>
+                            <p className="text-xs text-slate-400 font-medium mt-0.5">{student.email}</p>
                           </div>
                         </div>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5 shrink-0 ${
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 ${
                           hasDue 
                             ? 'bg-amber-50 text-amber-600 border border-amber-200' 
                             : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
@@ -762,34 +762,34 @@ export default function StudentsDirectory() {
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 text-xs text-slate-500 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-250/10 dark:border-slate-800/20">
+                      <div className="grid grid-cols-2 gap-3 text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-250/10">
                         <div>
                           <span className="text-[10px] text-slate-400 block font-semibold uppercase">Class & Section</span>
-                          <span className="font-bold text-slate-700 dark:text-slate-300 block mt-0.5">
+                          <span className="font-bold text-slate-700 block mt-0.5">
                             {student.class} - {student.section.replace('Section ', '')}
                           </span>
                         </div>
                         <div>
                           <span className="text-[10px] text-slate-400 block font-semibold uppercase">Parent / Guardian</span>
-                          <span className="font-bold text-slate-700 dark:text-slate-300 block mt-0.5 truncate">{student.fatherName}</span>
+                          <span className="font-bold text-slate-700 block mt-0.5">{student.fatherName}</span>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100 dark:border-slate-700/50">
-                        <a href={`tel:${student.phone}`} className="flex items-center gap-1 text-slate-500 hover:text-blue-600 text-xs font-semibold min-h-[44px]">
+                      <div className="flex justify-between items-center pt-2">
+                        <a href={`tel:${student.phone}`} className="flex items-center gap-1 text-slate-500 text-xs font-semibold hover:text-blue-600 min-h-[44px]">
                           <Phone className="w-3.5 h-3.5" />
                           {student.phone}
                         </a>
                         <div className="flex gap-2">
                           <button
                             onClick={() => setEditingStudent(student)}
-                            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-green-600 hover:border-green-200 hover:bg-green-50/30 transition-all text-xs font-bold min-h-[44px]"
+                            className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:text-green-600 hover:border-green-200 hover:bg-green-50/30 transition-all text-xs font-bold min-h-[44px]"
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => handleViewDetails(student)}
-                            className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/30 transition-all text-xs font-bold min-h-[44px] cursor-pointer"
+                            className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/30 transition-all text-xs font-bold min-h-[44px] cursor-pointer"
                           >
                             View Profile
                           </button>
@@ -809,51 +809,60 @@ export default function StudentsDirectory() {
                   <span className="font-bold text-slate-800">{Math.min(page * limit, total)}</span> of{' '}
                   <span className="font-bold text-slate-800">{total}</span> records (Page <span className="font-bold text-slate-800">{page}</span> of <span className="font-bold text-slate-800">{totalPages}</span>)
                 </div>
-                <div className="flex items-center gap-1.5 justify-center w-full sm:w-auto">
+                <div className="flex flex-wrap items-center gap-1.5 justify-center">
                   <button
                     disabled={page === 1}
                     onClick={() => loadStudents(1)}
-                    className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-350 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all flex items-center justify-center min-w-[36px] min-h-[36px] cursor-pointer"
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
                     title="First Page"
                   >
-                    <ChevronsLeft className="w-4 h-4" />
+                    First
                   </button>
                   <button
                     disabled={page === 1}
                     onClick={() => loadStudents(page - 1)}
-                    className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-650 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all flex items-center justify-center min-w-[36px] min-h-[36px] cursor-pointer"
-                    title="Previous Page"
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    Previous
                   </button>
                   
-                  {/* Page numbers scrollable container */}
-                  <div className="flex items-center gap-1 overflow-x-auto max-w-[160px] xs:max-w-[240px] sm:max-w-none no-scrollbar py-1 px-0.5 scroll-smooth">
-                    {Array.from({ length: totalPages }).map((_, i) => {
-                      const pNum = i + 1;
-                      return (
-                        <button
-                          key={pNum}
-                          onClick={() => loadStudents(pNum)}
-                          className={`shrink-0 px-3 py-1.5 rounded-xl border text-xs font-bold min-w-[36px] min-h-[36px] transition-all cursor-pointer ${
-                            page === pNum
-                              ? 'bg-[#2E5BFF] border-[#2E5BFF] text-white shadow-md shadow-blue-500/20'
-                              : 'border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-700 text-slate-650 dark:text-slate-300 hover:bg-slate-50'
-                          }`}
-                        >
-                          {pNum}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {Array.from({ length: totalPages }).map((_, i) => {
+                    const pNum = i + 1;
+                    if (totalPages > 5 && Math.abs(page - pNum) > 1 && pNum !== 1 && pNum !== totalPages) {
+                      if (pNum === 2 || pNum === totalPages - 1) {
+                        return <span key={pNum} className="text-slate-400 text-xs px-1 select-none">...</span>;
+                      }
+                      return null;
+                    }
+                    return (
+                      <button
+                        key={pNum}
+                        onClick={() => loadStudents(pNum)}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-bold min-h-[38px] transition-all cursor-pointer ${
+                          page === pNum
+                            ? 'bg-[#2E5BFF] border-[#2E5BFF] text-white'
+                            : 'border-slate-200 bg-white text-slate-650 hover:bg-slate-50'
+                        }`}
+                      >
+                        {pNum}
+                      </button>
+                    );
+                  })}
 
                   <button
                     disabled={page === totalPages}
                     onClick={() => loadStudents(page + 1)}
-                    className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-700 text-slate-650 dark:text-slate-300 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all flex items-center justify-center min-w-[36px] min-h-[36px] cursor-pointer"
-                    title="Next Page"
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    Next
+                  </button>
+                  <button
+                    disabled={page === totalPages}
+                    onClick={() => loadStudents(totalPages)}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
+                    title="Last Page"
+                  >
+                    Last
                   </button>
                 </div>
               </div>
@@ -862,23 +871,23 @@ export default function StudentsDirectory() {
 
           {/* Floating Bulk Actions Bar */}
           {(selectedIds.length > 0 || selectedClass !== 'All' || selectedSection !== 'All' || selectedYear !== 'All' || search !== '') && filteredStudents.length > 0 && (
-            <div className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl shadow-xl flex flex-row flex-wrap sm:flex-nowrap items-center justify-between sm:justify-start gap-2.5 sm:gap-4 z-40 border border-slate-800 animate-slide-up max-w-[95%] w-[calc(100%-2rem)] sm:w-auto">
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
-                <span className="text-[11px] font-bold text-slate-300 tracking-wide">
+            <div className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-3 sm:gap-4 z-40 border border-slate-800 animate-slide-up max-w-[90%] sm:max-w-max">
+              <div className="flex items-center gap-3">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                <span className="text-xs font-semibold text-slate-300">
                   {selectedIds.length > 0 ? (
                     <span>
-                      <strong className="text-white font-black">{selectedIds.length}</strong> selected
+                      <strong className="text-white font-bold">{selectedIds.length}</strong> student(s) selected
                     </span>
                   ) : (
                     <span>
-                      <strong className="text-white font-black">{filteredStudents.length}</strong> match filters
+                      <strong className="text-white font-bold">{filteredStudents.length}</strong> student(s) match filters
                     </span>
                   )}
                 </span>
               </div>
-              <div className="h-3 w-px bg-slate-800 hidden sm:block shrink-0" />
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="h-4 w-px bg-slate-800 hidden sm:block" />
+              <div className="flex gap-3">
                 {selectedIds.length > 0 && (
                   <button
                     onClick={() => setDeleteConfirm({
@@ -889,10 +898,10 @@ export default function StudentsDirectory() {
                       className: selectedClass !== 'All' ? selectedClass : undefined,
                       sectionName: selectedSection !== 'All' ? selectedSection : undefined
                     })}
-                    className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-black text-[10px] tracking-wide shadow-sm transition-all cursor-pointer min-h-[30px] flex items-center gap-1 shrink-0"
+                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs shadow-md transition-all cursor-pointer min-h-[38px] flex items-center gap-1.5"
                   >
-                    <Trash2 className="w-3 h-3" />
-                    Selected ({selectedIds.length})
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete Selected ({selectedIds.length})
                   </button>
                 )}
                 <button
@@ -907,10 +916,10 @@ export default function StudentsDirectory() {
                       sectionName: selectedSection !== 'All' ? selectedSection : undefined
                     });
                   }}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-750 font-bold text-[10px] tracking-wide transition-all cursor-pointer min-h-[30px] flex items-center gap-1 shrink-0"
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:text-white font-semibold text-xs transition-all cursor-pointer min-h-[38px] flex items-center gap-1.5"
                 >
                   <Trash2 className="w-3.5 h-3.5 text-slate-400" />
-                  All Filtered ({filteredStudents.length})
+                  Delete All Filtered ({filteredStudents.length})
                 </button>
               </div>
             </div>
