@@ -664,7 +664,7 @@ export default function DashboardLayout({
                 clearStoredAuth();
                 window.location.href = '/auth/login';
               }}
-              className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 text-[12px] sm:text-[13px] font-semibold text-red-600 bg-red-50/50 hover:bg-red-50 rounded-xl transition-all border border-red-100/80 min-h-[38px] cursor-pointer"
+              className="hidden md:flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 text-[12px] sm:text-[13px] font-semibold text-red-600 bg-red-50/50 hover:bg-red-50 rounded-xl transition-all border border-red-100/80 min-h-[38px] cursor-pointer"
               title="Logout"
             >
               <svg className="w-4 h-4 stroke-red-600 fill-none" viewBox="0 0 24 24">
