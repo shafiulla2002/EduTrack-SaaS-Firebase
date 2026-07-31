@@ -679,7 +679,7 @@ export default function DashboardLayout({
 
         {/* Page content panel viewport */}
         <main className={`p-4 sm:p-8 print:p-0 print:max-w-none print:m-0 flex-1 max-w-7xl w-full mx-auto min-w-0 ${
-          currentUser?.role === 'TEACHER' || currentUser?.role === 'SCHOOL_ADMIN' ? 'pb-24 lg:pb-8' : ''
+          currentUser?.role === 'TEACHER' || currentUser?.role === 'SCHOOL_ADMIN' ? 'pb-20 lg:pb-8' : ''
         }`}>
           {children}
         </main>
@@ -693,12 +693,12 @@ export default function DashboardLayout({
         onClick={() => setMobileOpen(false)}
       >
         <div
-          className={`w-[280px] bg-white h-full py-6 pb-24 select-none overflow-y-auto flex flex-col justify-between transition-transform duration-300 ease-in-out transform ${
+          className={`w-[280px] bg-white dark:bg-slate-800 h-full select-none flex flex-col justify-between transition-transform duration-300 ease-in-out transform ${
             mobileOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
           onClick={(e) => e.stopPropagation()}
         >
-          <div>
+          <div className="flex-1 overflow-y-auto py-6">
             <div className="flex items-center gap-3 px-6 mb-6">
               <div className="w-[48px] h-[48px] bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200 shrink-0 overflow-hidden">
                 {logoUrl ? (
@@ -776,7 +776,7 @@ export default function DashboardLayout({
             </nav>
           </div>
           {/* Mobile Logout Button */}
-          <div className="px-6 pt-4 pb-20 border-t border-slate-100">
+          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 shrink-0">
             <button
               onClick={() => {
                 clearStoredAuth();
