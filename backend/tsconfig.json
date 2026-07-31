@@ -19,6 +19,6 @@
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "index.mts"],
   "exclude": ["node_modules", "dist", "prisma", "test"]
 }
