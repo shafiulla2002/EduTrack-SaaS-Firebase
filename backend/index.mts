@@ -1,4 +1,4 @@
 import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
+const require = createRequire(eval('import.meta.url'));
 const handler = require('./src/main');
 export default handler;
