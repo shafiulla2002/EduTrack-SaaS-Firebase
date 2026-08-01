@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
-import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2 } from 'lucide-react';
+import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search } from 'lucide-react';
 
 export default function HomeworkPage() {
   const [homeworks, setHomeworks] = useState<any[]>([]);
@@ -14,9 +14,16 @@ export default function HomeworkPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingHomework, setEditingHomework] = useState<any | null>(null);
 
-  // Send Homework state
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [hwToSend, setHwToSend] = useState<any | null>(null);
+  // Share Homework state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [hwToShare, setHwToShare] = useState<any | null>(null);
+  const [isAutoBroadcast, setIsAutoBroadcast] = useState(false);
+  const [shareStep, setShareStep] = useState<'details' | 'select_parents' | 'send_list'>('details');
+  const [studentsForShare, setStudentsForShare] = useState<any[]>([]);
+  const [loadingStudentsForShare, setLoadingStudentsForShare] = useState(false);
+  const [selectedStudents, setSelectedStudents] = useState<Record<string, boolean>>({});
+  const [sentStudents, setSentStudents] = useState<Record<string, boolean>>({});
+  const [shareSearchTerm, setShareSearchTerm] = useState('');
   const [sendingState, setSendingState] = useState<'idle' | 'sending' | 'completed'>('idle');
   const [sendResult, setSendResult] = useState<any | null>(null);
 
@@ -131,17 +138,74 @@ export default function HomeworkPage() {
   };
 
   const triggerSendConfirm = (hw: any) => {
-    setHwToSend(hw);
+    openShareModal(hw);
+  };
+
+  const openShareModal = async (hw: any) => {
+    setHwToShare(hw);
+    setIsAutoBroadcast(false);
+    setShareStep('details');
+    setStudentsForShare([]);
+    setSelectedStudents({});
+    setSentStudents({});
+    setShareSearchTerm('');
     setSendingState('idle');
     setSendResult(null);
-    setShowConfirmModal(true);
+    setShowShareModal(true);
+    
+    setLoadingStudentsForShare(true);
+    try {
+      const res = await api.get(`/teacher-portal/classes/${hw.classSectionId}/students`);
+      setStudentsForShare(res.data);
+      // Select all by default
+      const initialSelected: Record<string, boolean> = {};
+      res.data.forEach((s: any) => {
+        initialSelected[s.id] = true;
+      });
+      setSelectedStudents(initialSelected);
+    } catch (err) {
+      console.error('Failed to load students for sharing:', err);
+    } finally {
+      setLoadingStudentsForShare(false);
+    }
+  };
+
+  const formatPhoneNumber = (phone: string) => {
+    if (!phone) return '';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 10) {
+      return '91' + cleaned;
+    }
+    return cleaned;
+  };
+
+  const generateHomeworkMessage = (hw: any) => {
+    if (!hw) return '';
+    const dateStr = hw.dueDate.split('T')[0];
+    return `📚 Homework Assignment
+
+School: Cambridge International School
+
+Class: ${hw.classSection?.class?.name || ''}
+
+Section: ${hw.classSection?.section?.name || ''}
+
+Subject: ${hw.subject?.name || ''}
+
+Homework: ${hw.title} - ${hw.description}
+
+Due Date: ${dateStr}
+
+Kindly ensure your child completes the homework before the due date.
+
+Thank you.`;
   };
 
   const handleSendHomeworkBulk = async () => {
-    if (!hwToSend) return;
+    if (!hwToShare) return;
     setSendingState('sending');
     try {
-      const res = await api.post(`/teacher-portal/homework/${hwToSend.id}/send-to-parents`);
+      const res = await api.post(`/teacher-portal/homework/${hwToShare.id}/send-to-parents`);
       setSendResult(res.data);
       setSendingState('completed');
     } catch (err) {
@@ -355,85 +419,332 @@ export default function HomeworkPage() {
         </div>
       )}
 
-      {/* Bulk Send Confirmation & Summary Centered Modal */}
-      {showConfirmModal && hwToSend && (
+      {/* WhatsApp Share Dialog / Modal */}
+      {showShareModal && hwToShare && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4 animate-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4 animate-scale-in">
-            {sendingState === 'idle' && (
-              <>
-                <h3 className="text-lg font-bold text-slate-900">Send Homework to Parents</h3>
-                <p className="text-sm text-slate-500 font-light leading-relaxed">
-                  Are you sure you want to send this homework to all parents of students in this class?
-                </p>
-                <div className="flex justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowConfirmModal(false);
-                      setHwToSend(null);
-                    }}
-                    className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSendHomeworkBulk}
-                    className="px-4 py-2 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold cursor-pointer"
-                  >
-                    Send
-                  </button>
-                </div>
-              </>
-            )}
-
-            {sendingState === 'sending' && (
-              <div className="flex flex-col items-center justify-center py-6 space-y-4">
-                <Loader2 className="w-10 h-10 animate-spin text-[#2E5BFF]" />
-                <p className="text-sm text-slate-600 font-bold">Sending homework to parents...</p>
-                <p className="text-xs text-slate-400">Please do not close this window</p>
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
+            
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="font-black text-slate-900 text-base leading-none">Share Homework</h3>
+                <p className="text-[11px] text-slate-400 font-semibold mt-1">WhatsApp Sharing options & distribution</p>
               </div>
-            )}
+              <button
+                onClick={() => {
+                  setShowShareModal(false);
+                  setHwToShare(null);
+                }}
+                className="p-2 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
 
-            {sendingState === 'completed' && sendResult && (
-              <>
-                <h3 className="text-lg font-bold text-emerald-600 flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                  Bulk Send Complete
-                </h3>
-                <p className="text-sm text-slate-700 font-medium">
-                  Homework has been sent successfully to all parents.
-                </p>
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/50 space-y-2 text-xs text-slate-600 font-semibold">
-                  <div className="flex justify-between">
-                    <span>Total Students:</span>
-                    <span className="font-extrabold text-slate-800">{sendResult.totalStudents}</span>
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              
+              {shareStep === 'details' && (
+                <>
+                  {/* Homework Summary Card */}
+                  <div className="bg-[#f7fafc] border border-[#e2e8f0] p-4 rounded-2xl space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Homework details</span>
+                      <span className="bg-blue-50 border border-blue-100 text-[#2E5BFF] px-2 py-0.5 rounded text-[10px] font-bold">
+                        {hwToShare.classSection?.class?.name} - {hwToShare.classSection?.section?.name} • {hwToShare.subject?.name}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-slate-800 text-[14px]">{hwToShare.title}</h4>
+                      <p className="text-xs text-slate-500 font-light mt-1 whitespace-pre-wrap">{hwToShare.description}</p>
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-semibold flex gap-3">
+                      <span>Due Date: {hwToShare.dueDate.split('T')[0]}</span>
+                      <span>•</span>
+                      <span>
+                        Recipients:{' '}
+                        {loadingStudentsForShare ? (
+                          <span className="animate-pulse">Loading...</span>
+                        ) : (
+                          `${studentsForShare.length} parents`
+                        )}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Successfully Sent:</span>
-                    <span className="font-extrabold text-emerald-600">{sendResult.successfullySent}</span>
+
+                  {/* Mode Selector */}
+                  <div className="space-y-3">
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">WhatsApp Sharing Mode</div>
+                    
+                    {/* Auto Broadcast Option */}
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between opacity-80">
+                      <div>
+                        <div className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
+                          <span>Automatic WhatsApp Broadcast</span>
+                          <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-sans">Future</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Sends automated message to all parents via API</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={isAutoBroadcast}
+                        disabled={true}
+                        readOnly
+                        className="w-9 h-5 rounded-full appearance-none bg-slate-200 checked:bg-[#2E5BFF] transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-4 after:h-4 after:bg-white after:rounded-full after:transition-transform checked:after:translate-x-4 cursor-not-allowed opacity-60"
+                      />
+                    </div>
+
+                    {/* Manual Option Indicator */}
+                    <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center justify-between">
+                      <div>
+                        <div className="text-xs font-extrabold text-[#2E5BFF]">Manual WhatsApp Sharing</div>
+                        <div className="text-[10px] text-blue-500 font-semibold mt-0.5">Choose recipients and share using WhatsApp Web/App deep link</div>
+                      </div>
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Failed (Missing/Invalid Phone Numbers):</span>
-                    <span className="font-extrabold text-rose-600">{sendResult.failed}</span>
+
+                  {/* Integration Configured Note */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-800 flex gap-2">
+                    <span className="text-sm shrink-0">⚠️</span>
+                    <div>
+                      <span className="font-bold">Notice:</span> Automatic WhatsApp broadcasting is not configured yet. Please use Manual WhatsApp Sharing.
+                    </div>
                   </div>
-                </div>
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowConfirmModal(false);
-                      setHwToSend(null);
-                      setSendingState('idle');
-                      setSendResult(null);
-                    }}
-                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
-              </>
-            )}
+
+                  {/* Action Button */}
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setShareStep('select_parents')}
+                      className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/10"
+                    >
+                      Share via WhatsApp
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {shareStep === 'select_parents' && (
+                <>
+                  {/* Select Parents Header */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Recipients</span>
+                    <button
+                      onClick={() => {
+                        const allSelected = Object.keys(selectedStudents).length === studentsForShare.length;
+                        const nextSelected: Record<string, boolean> = {};
+                        if (!allSelected) {
+                          studentsForShare.forEach((s) => {
+                            nextSelected[s.id] = true;
+                          });
+                        }
+                        setSelectedStudents(nextSelected);
+                      }}
+                      className="text-xs text-[#2E5BFF] font-bold hover:underline cursor-pointer"
+                    >
+                      {Object.keys(selectedStudents).length === studentsForShare.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+
+                  {/* Search Recipients */}
+                  <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus-within:border-[#2E5BFF] transition-all">
+                    <Search className="w-4 h-4 text-slate-400 mr-2" />
+                    <input
+                      type="text"
+                      placeholder="Search by student or parent name..."
+                      value={shareSearchTerm}
+                      onChange={(e) => setShareSearchTerm(e.target.value)}
+                      className="bg-transparent border-none text-[13px] font-medium text-slate-800 outline-none w-full placeholder-slate-400"
+                    />
+                  </div>
+
+                  {/* Recipient List */}
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
+                    {studentsForShare.filter(s =>
+                      s.user.name.toLowerCase().includes(shareSearchTerm.toLowerCase()) ||
+                      (s.fatherName && s.fatherName.toLowerCase().includes(shareSearchTerm.toLowerCase())) ||
+                      (s.motherName && s.motherName.toLowerCase().includes(shareSearchTerm.toLowerCase()))
+                    ).map((student) => {
+                      const parentName = student.fatherName || student.motherName || 'Parent';
+                      const parentPhone = student.fatherPhone || student.motherPhone || student.guardianPhone || 'N/A';
+                      const isChecked = !!selectedStudents[student.id];
+
+                      return (
+                        <div
+                          key={student.id}
+                          onClick={() => {
+                            setSelectedStudents((prev) => {
+                              const next = { ...prev };
+                              if (next[student.id]) {
+                                delete next[student.id];
+                              } else {
+                                next[student.id] = true;
+                              }
+                              return next;
+                            });
+                          }}
+                          className={`p-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                            isChecked
+                              ? 'bg-blue-50/40 border-[#2E5BFF]'
+                              : 'bg-white border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              readOnly
+                              className="rounded border-slate-350 text-[#2E5BFF] focus:ring-[#2E5BFF] w-4.5 h-4.5 pointer-events-none"
+                            />
+                            <div>
+                              <div className="text-xs font-extrabold text-slate-800">{student.user.name}</div>
+                              <div className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                                {parentName} • {parentPhone}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {studentsForShare.length === 0 && (
+                      <div className="text-center py-8 text-slate-400 text-xs italic">
+                        No students enrolled in this class.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShareStep('details')}
+                      className="flex-1 py-3 border border-slate-200 text-slate-600 font-bold rounded-2xl text-xs hover:bg-slate-50 cursor-pointer"
+                    >
+                      Back
+                    </button>
+                    <button
+                      disabled={Object.keys(selectedStudents).length === 0}
+                      onClick={() => {
+                        // If only 1 parent is selected, open WhatsApp directly
+                        const selectedIds = Object.keys(selectedStudents);
+                        if (selectedIds.length === 1) {
+                          const student = studentsForShare.find(s => s.id === selectedIds[0]);
+                          if (student) {
+                            const phone = student.fatherPhone || student.motherPhone || student.guardianPhone || '';
+                            const message = generateHomeworkMessage(hwToShare);
+                            const formattedPhone = formatPhoneNumber(phone);
+                            const url = formattedPhone 
+                              ? `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`
+                              : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+                            window.open(url, '_blank');
+                            setSentStudents({ [student.id]: true });
+                          }
+                        }
+                        setShareStep('send_list');
+                      }}
+                      className="flex-1 py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {shareStep === 'send_list' && (
+                <>
+                  {/* Message Preview */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Prefilled Message Preview</div>
+                    <textarea
+                      readOnly
+                      rows={6}
+                      value={generateHomeworkMessage(hwToShare)}
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-700 leading-relaxed focus:outline-none resize-none"
+                    />
+                  </div>
+
+                  {/* Action List */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Send Status ({Object.keys(sentStudents).length} / {Object.keys(selectedStudents).length} Sent)
+                    </div>
+                    
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
+                      {studentsForShare.filter(s => !!selectedStudents[s.id]).map((student) => {
+                        const parentName = student.fatherName || student.motherName || 'Parent';
+                        const parentPhone = student.fatherPhone || student.motherPhone || student.guardianPhone || '';
+                        const isSent = !!sentStudents[student.id];
+
+                        return (
+                          <div
+                            key={student.id}
+                            className="p-3 rounded-xl bg-white border border-slate-250 flex items-center justify-between animate-in fade-in"
+                          >
+                            <div>
+                              <div className="text-xs font-extrabold text-slate-800">{student.user.name}</div>
+                              <div className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                                {parentName} • {parentPhone || 'No Phone'}
+                              </div>
+                            </div>
+                            
+                            {isSent ? (
+                              <button
+                                onClick={() => {
+                                  const message = generateHomeworkMessage(hwToShare);
+                                  const formattedPhone = formatPhoneNumber(parentPhone);
+                                  const url = formattedPhone 
+                                    ? `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`
+                                    : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+                                  window.open(url, '_blank');
+                                }}
+                                className="px-3 py-1.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-[10px] font-extrabold flex items-center gap-1 hover:bg-emerald-100 transition-colors cursor-pointer"
+                              >
+                                ✓ Sent (Resend)
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  const message = generateHomeworkMessage(hwToShare);
+                                  const formattedPhone = formatPhoneNumber(parentPhone);
+                                  const url = formattedPhone 
+                                    ? `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`
+                                    : `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+                                  window.open(url, '_blank');
+                                  setSentStudents((prev) => ({ ...prev, [student.id]: true }));
+                                }}
+                                className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-650 text-white rounded-lg text-[10px] font-bold shadow-xs cursor-pointer"
+                              >
+                                Send via WhatsApp
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setShareStep('select_parents')}
+                      className="flex-1 py-3 border border-slate-200 text-slate-600 font-bold rounded-2xl text-xs hover:bg-slate-50 cursor-pointer"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowShareModal(false);
+                        setHwToShare(null);
+                      }}
+                      className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs cursor-pointer"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </>
+              )}
+
+            </div>
           </div>
         </div>
       )}

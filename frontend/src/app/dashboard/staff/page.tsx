@@ -98,6 +98,18 @@ export default function SchoolStaffPage() {
   const [staffCases, setStaffCases] = useState<any[]>([]);
   const [staffDetailLoading, setStaffDetailLoading] = useState(false);
 
+  useEffect(() => {
+    const isModalOpen = selectedStaff !== null || showAddModal || editingStaff !== null || deleteConfirm.show;
+    if (isModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedStaff, showAddModal, editingStaff, deleteConfirm.show]);
+
   const loadStaffDetail = async (staffId: string, isTeaching: boolean) => {
     setStaffDetailLoading(true);
     setStaffSalaryInvoices([]);
@@ -159,7 +171,12 @@ export default function SchoolStaffPage() {
   const loadStaff = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/teachers');
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (deptFilter) params.append('department', deptFilter);
+      if (statusFilter) params.append('status', statusFilter);
+
+      const res = await api.get(`/teachers?${params.toString()}`);
       setStaff(res.data.map((t: any, idx: number) => {
         const nameParts = t.user?.name ? t.user.name.split(' ') : ['Teacher'];
         const firstName = nameParts[0] || 'Teacher';
@@ -175,11 +192,13 @@ export default function SchoolStaffPage() {
           avatarUrl: t.user?.avatarUrl || null,
           employeeId: t.employeeId || `EMP-T-${t.id.substring(0, 4).toUpperCase()}`,
           designation: t.designation || 'Teacher',
-          department: t.designation?.toLowerCase().includes('teacher') ? 'Teaching' : 
+          department: (t.subjectsTaught && t.subjectsTaught.length > 0) ? t.subjectsTaught[0] : (
+                      t.designation?.toLowerCase().includes('teacher') ? 'Science' : 
                       t.designation?.toLowerCase().includes('driver') ? 'Transport' : 
                       t.designation?.toLowerCase().includes('librarian') ? 'Library' :
                       t.designation?.toLowerCase().includes('account') ? 'Finance' : 
-                      t.designation?.toLowerCase().includes('security') ? 'Security' : 'Administration',
+                      t.designation?.toLowerCase().includes('security') ? 'Security' : 'Administration'
+          ),
           staffType: (t.user?.role === 'STAFF' || t.user?.role === 'DRIVER') ? 'Non-Teaching' : 'Teaching',
           subject: t.subjectsTaught?.[0] || 'General',
           basicSalary: Number(t.basicSalary) || 25000,
@@ -214,7 +233,7 @@ export default function SchoolStaffPage() {
 
   useEffect(() => {
     loadStaff();
-  }, []);
+  }, [search, deptFilter, statusFilter]);
 
   const handlePaySalary = async (id: string) => {
     try {
@@ -260,7 +279,9 @@ export default function SchoolStaffPage() {
         pfDeduction: Number(formData.pf),
         joiningDate: formData.joiningDate || new Date().toISOString().slice(0, 10),
         qualification: formData.qualification,
-        subjectsTaught: formSkills.map(s => s.subject).filter(Boolean),
+        subjectsTaught: formType === 'Teaching'
+          ? formSkills.map(s => s.subject).filter(Boolean)
+          : [formData.department].filter(Boolean),
         staffType: formType,
         status: 'Active',
         avatarUrl: photoPreview || null
@@ -317,12 +338,16 @@ export default function SchoolStaffPage() {
         qualification: editingStaff.qualification,
         status: editingStaff.status,
         avatarUrl: editingStaff.avatarUrl || null,
-        subjectsTaught: editingStaff.skills ? editingStaff.skills.map((s: any) => s.subject).filter(Boolean) : [],
-        skills: editingStaff.skills ? editingStaff.skills.map((s: any) => ({
-          subject: s.subject,
-          level: s.level,
-          exp: s.exp
-        })).filter((s: any) => s.subject) : []
+        subjectsTaught: editingStaff.staffType === 'Teaching'
+          ? (editingStaff.skills ? editingStaff.skills.map((s: any) => s.subject).filter(Boolean) : [])
+          : [editingStaff.department].filter(Boolean),
+        skills: editingStaff.staffType === 'Teaching'
+          ? (editingStaff.skills ? editingStaff.skills.map((s: any) => ({
+              subject: s.subject,
+              level: s.level,
+              exp: s.exp
+            })).filter((s: any) => s.subject) : [])
+          : []
       });
       setEditingStaff(null);
       loadStaff();
@@ -348,7 +373,9 @@ export default function SchoolStaffPage() {
                           m.employeeId.toLowerCase().includes(search.toLowerCase()) ||
                           m.email.toLowerCase().includes(search.toLowerCase());
 
-    const matchesDept = deptFilter ? m.department === deptFilter : true;
+    const matchesDept = deptFilter 
+      ? (m.department === deptFilter || (m.staffType === 'Teaching' && m.skills?.some((sk: any) => sk.subject === deptFilter)))
+      : true;
     const matchesStatus = statusFilter ? m.status === statusFilter : true;
 
     return matchesSearch && matchesDept && matchesStatus;

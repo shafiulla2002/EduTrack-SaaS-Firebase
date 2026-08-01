@@ -15,6 +15,16 @@ export default function StudentProgressPage() {
   const [loadingStudentData, setLoadingStudentData] = useState(false);
   const [progress, setProgress] = useState<any | null>(null);
   const [hoveredBar, setHoveredBar] = useState<any | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     async function loadClasses() {
@@ -127,12 +137,12 @@ export default function StudentProgressPage() {
     }
 
     // Chart parameters
-    const width = 600;
-    const height = 280;
-    const paddingLeft = 45;
-    const paddingRight = 20;
-    const paddingTop = 30;
-    const paddingBottom = 75; // More room for rotated labels
+    const width = isMobile ? 380 : 600;
+    const height = isMobile ? 200 : 280;
+    const paddingLeft = isMobile ? 35 : 45;
+    const paddingRight = isMobile ? 12 : 20;
+    const paddingTop = isMobile ? 25 : 30;
+    const paddingBottom = isMobile ? 50 : 75; // More room for rotated labels
 
     const xMin = paddingLeft;
     const xMax = width - paddingRight;
@@ -209,8 +219,8 @@ export default function StudentProgressPage() {
         </div>
 
         {/* SVG Container with Custom Bar Chart */}
-        <div className="relative w-full overflow-hidden bg-slate-50 p-4 rounded-3xl border border-slate-100/80">
-          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto min-w-[500px]">
+        <div className="relative w-full overflow-hidden bg-slate-50 p-3 sm:p-4 rounded-3xl border border-slate-100/80">
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
             {/* Gridlines */}
             {[0, 25, 50, 75, 100].map((val) => (
               <g key={val}>
@@ -224,9 +234,9 @@ export default function StudentProgressPage() {
                   strokeDasharray="4 4"
                 />
                 <text
-                  x={xMin - 10}
-                  y={getY(val) + 4}
-                  className="text-[10px] font-bold fill-slate-400"
+                  x={xMin - (isMobile ? 6 : 10)}
+                  y={getY(val) + (isMobile ? 3 : 4)}
+                  className={`font-bold fill-slate-400 ${isMobile ? 'text-[9px]' : 'text-[10px]'}`}
                   textAnchor="end"
                 >
                   {val}%
@@ -279,8 +289,8 @@ export default function StudentProgressPage() {
                   {/* Percentage value text on top of the bar */}
                   <text
                     x={x + barW / 2}
-                    y={y - 8}
-                    className="text-[10px] font-extrabold fill-slate-700 transition-all group-hover/bar:fill-slate-900"
+                    y={y - (isMobile ? 6 : 8)}
+                    className={`font-extrabold fill-slate-700 transition-all group-hover/bar:fill-slate-900 ${isMobile ? 'text-[9px]' : 'text-[10px]'}`}
                     textAnchor="middle"
                   >
                     {m.score}%
@@ -289,11 +299,11 @@ export default function StudentProgressPage() {
                   <text
                     x={0}
                     y={0}
-                    transform={`translate(${x + barW / 2}, ${yMin + 16}) rotate(-25)`}
-                    className="text-[9px] font-bold fill-slate-500 transition-colors group-hover/bar:fill-slate-800"
+                    transform={`translate(${x + barW / 2}, ${yMin + (isMobile ? 10 : 16)}) rotate(-25)`}
+                    className={`font-bold fill-slate-500 transition-colors group-hover/bar:fill-slate-800 ${isMobile ? 'text-[8.5px]' : 'text-[9px]'}`}
                     textAnchor="end"
                   >
-                    {truncateText(m.examName, 12)}
+                    {truncateText(m.examName, isMobile ? 8 : 12)}
                   </text>
                 </g>
               );

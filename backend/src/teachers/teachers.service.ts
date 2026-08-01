@@ -103,16 +103,77 @@ export class TeachersService {
     });
   }
 
-  async getTeachers() {
+  async getTeachers(filters?: { department?: string; status?: string; search?: string }) {
     const tenantId = this.getTenantId();
-    return this.prisma.staffProfile.findMany({
-      where: {
-        user: {
-          tenantId,
-          role: { in: [Role.TEACHER, Role.STAFF, Role.DRIVER] },
-          isActive: true,
-        },
+    
+    const andConditions: any[] = [];
+
+    if (filters?.status) {
+      andConditions.push({ status: filters.status });
+    }
+
+    if (filters?.department) {
+      const dept = filters.department;
+      const deptConditions: any[] = [
+        { subjectsTaught: { has: dept } }
+      ];
+
+      // Fallbacks for legacy records
+      if (dept === 'Transport') {
+        deptConditions.push({ designation: { contains: 'driver', mode: 'insensitive' } });
+      } else if (dept === 'Library') {
+        deptConditions.push({ designation: { contains: 'librarian', mode: 'insensitive' } });
+      } else if (dept === 'Finance') {
+        deptConditions.push({ designation: { contains: 'account', mode: 'insensitive' } });
+      } else if (dept === 'Security') {
+        deptConditions.push({ designation: { contains: 'security', mode: 'insensitive' } });
+      } else if (dept === 'Administration') {
+        deptConditions.push({
+          AND: [
+            { designation: { not: { contains: 'driver', mode: 'insensitive' } } },
+            { designation: { not: { contains: 'librarian', mode: 'insensitive' } } },
+            { designation: { not: { contains: 'account', mode: 'insensitive' } } },
+            { designation: { not: { contains: 'security', mode: 'insensitive' } } },
+            { designation: { not: { contains: 'teacher', mode: 'insensitive' } } },
+          ]
+        });
+      } else if (dept === 'Science') {
+        deptConditions.push({
+          AND: [
+            { designation: { contains: 'teacher', mode: 'insensitive' } },
+            { subjectsTaught: { equals: [] } }
+          ]
+        });
+      }
+
+      andConditions.push({ OR: deptConditions });
+    }
+
+    if (filters?.search) {
+      const search = filters.search;
+      andConditions.push({
+        OR: [
+          { user: { name: { contains: search, mode: 'insensitive' } } },
+          { user: { email: { contains: search, mode: 'insensitive' } } },
+          { employeeId: { contains: search, mode: 'insensitive' } },
+        ]
+      });
+    }
+
+    const whereClause: any = {
+      user: {
+        tenantId,
+        role: { in: [Role.TEACHER, Role.STAFF, Role.DRIVER] },
+        isActive: true,
       },
+    };
+
+    if (andConditions.length > 0) {
+      whereClause.AND = andConditions;
+    }
+
+    return this.prisma.staffProfile.findMany({
+      where: whereClause,
       include: {
         user: {
           select: {

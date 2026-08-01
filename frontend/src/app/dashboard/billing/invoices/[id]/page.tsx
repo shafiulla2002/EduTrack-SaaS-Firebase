@@ -99,10 +99,10 @@ export default function InvoicePrintPage() {
       </div>
 
       {/* ── Invoice Sheet (A4-styled) ── */}
-      <div className="w-full max-w-[800px] bg-white border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans text-[#2d3748] print:m-0 flex flex-col print:block">
+      <div className="fee-receipt-sheet w-full max-w-[800px] bg-white border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans text-[#2d3748] print:m-0 flex flex-col print:block">
 
         {/* ── Header Block (responsive) ── */}
-        <div className="bg-[#1a365d] text-white border-b-[6px] border-[#ed8936] relative">
+        <div className="receipt-header bg-[#1a365d] text-white border-b-[6px] border-[#ed8936] relative">
           {/* Mobile header: stacked logo + text */}
           <div className="flex items-center gap-4 p-4 sm:hidden">
             <div className="w-[72px] h-[72px] shrink-0 bg-white rounded-full border-2 border-white shadow-md p-1 flex items-center justify-center overflow-hidden">
@@ -208,7 +208,7 @@ export default function InvoicePrintPage() {
           </div>
 
           {/* ── Student Details Card ── */}
-          <div className="bg-[#f7fafc] border border-[#e2e8f0] border-l-[5px] border-l-[#1a365d] p-3 sm:p-6 rounded-lg">
+          <div className="student-details-card bg-[#f7fafc] border border-[#e2e8f0] border-l-[5px] border-l-[#1a365d] p-3 sm:p-6 rounded-lg">
             {/* Mobile: vertical stacked layout */}
             <div className="sm:hidden space-y-3 text-[12px]">
               <div>
@@ -329,7 +329,7 @@ export default function InvoicePrintPage() {
             This is a computer generated fee receipt. No physical signature is required. For verification query, contact the accounting department.
           </div>
 
-          <div className="bg-[#1a365d] text-white rounded-lg px-5 sm:px-8 py-4 flex items-center justify-between gap-4 sm:gap-8 sm:shrink-0 sm:min-w-[280px]">
+          <div className="total-badge bg-[#1a365d] text-white rounded-lg px-5 sm:px-8 py-4 flex items-center justify-between gap-4 sm:gap-8 sm:shrink-0 sm:min-w-[280px]">
             <span className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Grand Total Paid</span>
             <span className="text-[18px] sm:text-[20px] font-black font-mono">
               ₹{invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}

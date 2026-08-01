@@ -1871,25 +1871,27 @@ export default function TeacherClassManagement() {
                                       ) : (
                                         <div className="divide-y divide-slate-100">
                                           {teacherDetail.subjects.map((sub: any) => (
-                                            <div key={sub.uniqueKey} className="flex items-center justify-between py-2.5 text-xs">
-                                              <div className="flex items-center gap-2">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                                                <span className="font-bold text-slate-700">{sub.subjectName}</span>
-                                                <span className="px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px]">{sub.className}</span>
+                                            <div key={sub.uniqueKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 text-xs border-b border-slate-100 dark:border-slate-800 last:border-0">
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0"></span>
+                                                <span className="font-bold text-slate-700 dark:text-slate-200">{sub.subjectName}</span>
+                                                <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-[10px] font-semibold whitespace-nowrap flex-shrink-0">
+                                                  {sub.className}
+                                                </span>
                                               </div>
-                                              <div className="flex items-center gap-3">
-                                                <span className="text-slate-400 font-semibold">{sub.periodsPerWeek} periods/wk</span>
+                                              <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto pl-3 sm:pl-0">
+                                                <span className="text-slate-400 dark:text-slate-400 font-semibold whitespace-nowrap">{sub.periodsPerWeek} periods/wk</span>
                                                 <div className="flex gap-1.5">
                                                   <button 
                                                     onClick={(e) => handleOpenReassign(e, sub.assignmentId, sub.subjectId, sub.subjectName, t.id, t.name, sub.periodsPerWeek)}
-                                                    className="p-1 rounded bg-slate-50 hover:bg-blue-50 text-slate-500 hover:text-blue-600"
+                                                    className="p-1.5 rounded bg-slate-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/50 text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors"
                                                     title="Reassign Teacher"
                                                   >
                                                     <Edit2 className="w-3.5 h-3.5" />
                                                   </button>
                                                   <button 
                                                     onClick={(e) => handleDeleteAssignment(e, sub.assignmentId)}
-                                                    className="p-1 rounded bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600"
+                                                    className="p-1.5 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/50 text-slate-500 dark:text-slate-400 hover:text-rose-600 transition-colors"
                                                     title="Remove Assignment"
                                                   >
                                                     <Trash2 className="w-3.5 h-3.5" />
@@ -2405,17 +2407,19 @@ export default function TeacherClassManagement() {
               {selectedSubjects.size > 0 && (
                 <div className="selected-subjects-container mb-4">
                   <div className="selected-header flex items-center gap-2 mb-2">
-                    <Check className="w-4 h-4 text-emerald-500" />
-                    <span className="selected-count text-xs font-bold text-slate-700">{selectedSubjects.size} Subject(s) Selected</span>
+                    <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-sm border border-emerald-400">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </div>
+                    <span className="selected-count text-xs font-bold text-slate-700 dark:text-slate-200">{selectedSubjects.size} Subject(s) Selected</span>
                   </div>
                   <div className="pill-container flex flex-wrap gap-2">
                     {Array.from(selectedSubjects).map(subId => {
                       const subject = allSubjects.find(s => s.id === subId);
                       return (
-                        <div key={subId} className="subject-pill flex items-center gap-1 bg-white border border-blue-200 text-blue-600 px-2.5 py-1 rounded-full text-xs font-semibold">
+                        <div key={subId} className="subject-pill flex items-center gap-1.5 bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-full text-xs font-bold shadow-sm">
                           <span>{subject?.name}</span>
-                          <button onClick={() => handleSubjectToggle(subId)} className="pill-remove text-rose-500 hover:bg-rose-50 rounded-full p-0.5">
-                            <X className="w-3 h-3" />
+                          <button onClick={() => handleSubjectToggle(subId)} className="pill-remove text-blue-400 hover:text-rose-600 rounded-full p-0.5 transition-colors">
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       );
@@ -2433,18 +2437,19 @@ export default function TeacherClassManagement() {
                       <div 
                         key={s.id} 
                         onClick={() => handleSubjectToggle(s.id)}
-                        className={`subject-card p-4 rounded-xl border border-slate-200 cursor-pointer transition-all ${isSelected ? 'bg-blue-50 border-blue-500 shadow-sm' : 'bg-white hover:border-blue-400'}`}
+                        className={`subject-card p-4 rounded-xl border cursor-pointer transition-all ${isSelected ? 'selected border-blue-500 shadow-md bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-400'}`}
                       >
                         <div className="subject-card-header flex justify-between items-center mb-2">
-                          <input 
-                            type="checkbox" 
-                            checked={isSelected}
-                            onChange={() => {}} // Controlled click via card onClick
-                            className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
-                          />
-                          <BookOpen className="w-4 h-4 text-slate-400" />
+                          {isSelected ? (
+                            <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-sm border border-emerald-400 transition-all scale-110">
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </div>
+                          ) : (
+                            <div className="w-5 h-5 rounded-full border-2 border-slate-300 dark:border-slate-600 transition-all" />
+                          )}
+                          <BookOpen className={`w-4 h-4 transition-colors ${isSelected ? 'text-blue-500' : 'text-slate-400 dark:text-slate-500'}`} />
                         </div>
-                        <h3 className="subject-name text-xs font-bold text-slate-800">{s.name}</h3>
+                        <h3 className={`subject-name text-xs font-bold transition-colors ${isSelected ? 'text-blue-900 dark:text-white' : 'text-slate-800 dark:text-slate-200'}`}>{s.name}</h3>
                       </div>
                     );
                   })}

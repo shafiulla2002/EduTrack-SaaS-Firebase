@@ -26,6 +26,18 @@ export default function MyClassesPage() {
     loadData();
   }, []);
 
+  // Lock body scroll when drawer/modal is open to prevent background scrolling
+  useEffect(() => {
+    if (selectedClass) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedClass]);
+
   const handleClassClick = async (cls: any) => {
     setSelectedClass(cls);
     setLoadingStudents(true);

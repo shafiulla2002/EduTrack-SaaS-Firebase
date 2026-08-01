@@ -174,6 +174,18 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
     fetchInitialData();
   }, []);
 
+  // Lock body scroll when any modal is open to prevent background scrolling
+  useEffect(() => {
+    if (selectedCase || selectedParentComplaint) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedCase, selectedParentComplaint]);
+
   const fetchInitialData = async () => {
     try {
       setIsLoading(true);
@@ -1455,7 +1467,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
             {/* Modal Body */}
             {isEditing ? (
-              <form onSubmit={handleSaveEdit} className="p-6 space-y-4">
+              <form onSubmit={handleSaveEdit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto overscroll-contain">
                 <div className="grid grid-cols-2 gap-4">
                   
                   {/* Edit Record Type */}
@@ -1566,7 +1578,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
               </form>
             ) : (
-              <div className="p-6 space-y-6">
+              <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto overscroll-contain">
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
                     <span className="text-slate-400 font-bold block text-[10px] uppercase tracking-wider font-sans">Student Name</span>
@@ -1700,7 +1712,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </button>
             </div>
 
-            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto overscroll-contain">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-150">
                 <div>
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Submitted By</span>

@@ -810,18 +810,21 @@ body {
 
 /* Student Cards Animations */
 .student-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
   width: 100%;
-  padding: 16px 20px;
+  padding: 14px 20px !important;
   background: #ffffff;
   border: 2px solid #e2e8f0;
-  border-radius: 14px;
+  border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
+  min-height: 68px;
+  box-sizing: border-box;
 }
 
 .student-card.present {
@@ -866,15 +869,44 @@ body {
 /* Stats Cards Filter */
 .stat-card {
   background: #ffffff;
-  padding: 16px;
+  padding: 12px 8px;
   border-radius: 14px;
   border: 2px solid #e2e8f0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  gap: 8px;
   cursor: pointer;
   transition: all 0.2s;
-  text-align: left;
+  text-align: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .stat-card {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 16px;
+    gap: 12px;
+    text-align: left;
+  }
+  .stat-info {
+    align-items: flex-start;
+    text-align: left;
+  }
 }
 
 .stat-card:hover {
@@ -1146,6 +1178,17 @@ body {
     --border-light:  #1E293B;
     --border-strong: #475569;
 }
+
+.dark .panel-row-active {
+    background: rgba(46, 91, 255, 0.2) !important;
+}
+.dark .detail-drawer {
+    background: linear-gradient(180deg, rgba(46, 91, 255, 0.15) 0%, var(--bg-primary) 80px) !important;
+}
+.dark .detail-drawer-green {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.15) 0%, var(--bg-primary) 80px) !important;
+}
+
 
 /* ==================== OUTER CARD ==================== */
 .premium-card {
@@ -1875,20 +1918,94 @@ body {
 .teacher-form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
 
 .search-container { margin-bottom: 18px; }
-.selected-subjects-container { background: var(--primary-light); border-radius: var(--r-md); padding: 14px 16px; margin-bottom: 18px; border: 1.5px solid var(--primary-mid); }
+.selected-subjects-container { 
+    background: var(--primary-light); 
+    border-radius: var(--r-md); 
+    padding: 14px 16px; 
+    margin-bottom: 18px; 
+    border: 1.5px solid var(--primary-mid); 
+    transition: all 0.2s ease;
+}
 .selected-header { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
 .selected-count  { font-size: 12px; font-weight: 700; color: var(--primary); }
 .pill-container  { display: flex; flex-wrap: wrap; gap: 7px; }
-.subject-pill    { display: inline-flex; align-items: center; gap: 5px; background: var(--bg-primary); border: 1.5px solid var(--primary-mid); padding: 4px 10px 4px 12px; border-radius: 100px; }
+.subject-pill    { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 6px; 
+    background: var(--primary-light); 
+    border: 1.5px solid var(--primary-mid); 
+    padding: 6px 12px; 
+    border-radius: 100px; 
+    transition: all 0.2s ease;
+}
 .pill-text  { font-size: 12px; font-weight: 700; color: var(--primary); }
-.pill-remove { --lwc-colorTextButtonDefault: var(--danger); }
+.pill-remove { 
+    color: var(--text-secondary);
+    background: transparent;
+    border-radius: 50%;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.pill-remove:hover {
+    background: var(--danger-light);
+    color: var(--danger);
+}
 
 .subject-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 24px; }
 .subject-card { background: var(--bg-primary); border: 1.5px solid var(--border-light); border-radius: var(--r-md); padding: 16px; cursor: pointer; transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease; position: relative; overflow: hidden; }
 .subject-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--primary), var(--purple)); transform: scaleX(0); transition: transform 0.2s ease; }
 .subject-card:hover { border-color: var(--primary-mid); box-shadow: var(--shadow-md); transform: translateY(-2px); }
 .subject-card:hover::before { transform: scaleX(1); }
-.subject-card.selected { border-color: var(--primary); background: var(--primary-light); box-shadow: 0 0 0 3px rgba(46,91,255,0.1); }
+.subject-card.selected { 
+    border-color: var(--primary); 
+    background: var(--primary-light); 
+    box-shadow: 0 0 0 3px rgba(46,91,255,0.1); 
+    border-width: 2px;
+}
+
+/* Dark mode overrides for selected subjects, chips, and subject card selection */
+.dark .selected-subjects-container {
+    background: #0f172a !important; /* slate-900 */
+    border-color: var(--primary) !important;
+}
+.dark .selected-count {
+    color: #60a5fa !important; /* light blue */
+}
+.dark .subject-pill {
+    background: var(--primary) !important;
+    border-color: var(--primary-dark) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 10px rgba(46, 91, 255, 0.25) !important;
+}
+.dark .subject-pill span {
+    color: #ffffff !important;
+}
+.dark .subject-pill .pill-remove {
+    color: rgba(255, 255, 255, 0.7) !important;
+}
+.dark .subject-pill .pill-remove:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+    color: #ffffff !important;
+}
+.dark .subject-card {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+}
+.dark .subject-card:hover {
+    border-color: #475569 !important;
+    background: #334155 !important;
+}
+.dark .subject-card.selected {
+    background: linear-gradient(135deg, rgba(46, 91, 255, 0.25) 0%, rgba(139, 92, 246, 0.15) 100%) !important;
+    border-color: var(--primary) !important;
+    border-width: 2px !important;
+    box-shadow: 0 0 16px rgba(46, 91, 255, 0.35) !important;
+}
 .subject-card.selected::before { transform: scaleX(1); }
 .subject-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .subject-name { font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px 0; }
@@ -4268,3 +4385,127 @@ body {
   background: rgba(239, 68, 68, 0.15) !important;
   border-color: #ef4444 !important;
 }
+
+/* ==================== FEE RECEIPT PRINT & DARK THEME COMPATIBILITY ==================== */
+/* Force light background and dark text for the fee receipt sheet even in dark mode */
+.fee-receipt-sheet,
+.dark .fee-receipt-sheet {
+  background-color: #ffffff !important;
+  color: #2d3748 !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* Header block: always dark blue header */
+.fee-receipt-sheet .receipt-header,
+.dark .fee-receipt-sheet .receipt-header {
+  background-color: #1a365d !important;
+  color: #ffffff !important;
+  border-color: #ed8936 !important;
+}
+
+/* Student details card: always light blue/gray background with dark text */
+.fee-receipt-sheet .student-details-card,
+.dark .fee-receipt-sheet .student-details-card {
+  background-color: #f7fafc !important;
+  border-color: #e2e8f0 !important;
+  border-left-color: #1a365d !important;
+}
+
+/* Specific text overrides to ignore global .dark rules */
+.fee-receipt-sheet .text-slate-800,
+.dark .fee-receipt-sheet .text-slate-800,
+.fee-receipt-sheet .text-slate-700,
+.dark .fee-receipt-sheet .text-slate-700,
+.fee-receipt-sheet .text-slate-850,
+.dark .fee-receipt-sheet .text-slate-850,
+.fee-receipt-sheet .text-slate-900,
+.dark .fee-receipt-sheet .text-slate-900,
+.fee-receipt-sheet .text-slate-650,
+.dark .fee-receipt-sheet .text-slate-650,
+.fee-receipt-sheet .text-slate-600,
+.dark .fee-receipt-sheet .text-slate-600,
+.fee-receipt-sheet .text-slate-500,
+.dark .fee-receipt-sheet .text-slate-500,
+.fee-receipt-sheet .text-slate-400,
+.dark .fee-receipt-sheet .text-slate-400,
+.fee-receipt-sheet .text-[#1a365d],
+.dark .fee-receipt-sheet .text-[#1a365d] {
+  color: #2d3748 !important; /* default dark text */
+}
+
+/* Force specific style values inside Student Details card to ignore global dark mode overrides */
+.fee-receipt-sheet .student-details-card *,
+.dark .fee-receipt-sheet .student-details-card * {
+  color: #2d3748 !important;
+}
+.fee-receipt-sheet .student-details-card .text-\[\#1a365d\],
+.dark .fee-receipt-sheet .student-details-card .text-\[\#1a365d\] {
+  color: #1a365d !important;
+}
+.fee-receipt-sheet .student-details-card .text-\[10px\],
+.dark .fee-receipt-sheet .student-details-card .text-\[10px\] {
+  color: #718096 !important;
+}
+
+/* Subheadings and labels inside sheet */
+.fee-receipt-sheet .text-\[10px\].text-slate-400,
+.dark .fee-receipt-sheet .text-\[10px\].text-slate-400,
+.fee-receipt-sheet .text-\[10px\].text-slate-500,
+.dark .fee-receipt-sheet .text-\[10px\].text-slate-500 {
+  color: #718096 !important; /* medium gray for labels */
+}
+
+/* Specific title and highlighting color */
+.fee-receipt-sheet .text-\[\#1a365d\],
+.dark .fee-receipt-sheet .text-\[\#1a365d\] {
+  color: #1a365d !important;
+}
+
+/* Table header color overrides */
+.fee-receipt-sheet .bg-\[\#ebf8ff\],
+.dark .fee-receipt-sheet .bg-\[\#ebf8ff\] {
+  background-color: #ebf8ff !important;
+}
+
+.fee-receipt-sheet .text-\[\#1a365d\],
+.dark .fee-receipt-sheet .text-\[\#1a365d\] {
+  color: #1a365d !important;
+}
+
+/* Table rows borders */
+.fee-receipt-sheet .divide-slate-100 > *,
+.dark .fee-receipt-sheet .divide-slate-100 > * {
+  border-color: #edf2f7 !important;
+}
+
+.fee-receipt-sheet .border-slate-200,
+.dark .fee-receipt-sheet .border-slate-200 {
+  border-color: #e2e8f0 !important;
+}
+
+/* Grand total section */
+.fee-receipt-sheet .total-badge,
+.dark .fee-receipt-sheet .total-badge {
+  background-color: #1a365d !important;
+  color: #ffffff !important;
+}
+.fee-receipt-sheet .total-badge *,
+.dark .fee-receipt-sheet .total-badge * {
+  color: #ffffff !important;
+}
+
+/* Print specific styles */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #2d3748 !important;
+  }
+  .fee-receipt-sheet {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+}
+

@@ -61,8 +61,8 @@ function AttendanceEntryContent() {
 
   // Selection state
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateString());
-  const [selectedClass, setSelectedClass] = useState('Class-1');
-  const [selectedSection, setSelectedSection] = useState('A');
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
 
   // Setup Options
@@ -127,11 +127,10 @@ function AttendanceEntryContent() {
   const loadOptions = async () => {
     try {
       setLoading(true);
-      const [recentRes, teachersRes, classesRes, sectionsRes] = await Promise.all([
+      const [recentRes, teachersRes, classesRes] = await Promise.all([
         api.get('/attendance/recent'),
         api.get('/attendance/teachers'),
         api.get('/attendance/classes'),
-        api.get('/attendance/sections'),
       ]);
 
       if (recentRes.data) {
@@ -142,15 +141,6 @@ function AttendanceEntryContent() {
       }
       if (classesRes.data) {
         setClassOptions(classesRes.data);
-        if (classesRes.data.length > 0 && !selectedClass) {
-          setSelectedClass(classesRes.data[0].value);
-        }
-      }
-      if (sectionsRes.data) {
-        setSectionOptions(sectionsRes.data);
-        if (sectionsRes.data.length > 0 && !selectedSection) {
-          setSelectedSection(sectionsRes.data[0].value);
-        }
       }
     } catch (err) {
       console.error('Error loading options:', err);
@@ -245,8 +235,40 @@ function AttendanceEntryContent() {
       } finally {
         setLoading(false);
       }
+    } else {
+      setStudents([]);
+      setSessionExists(false);
+      setIsSuccess(false);
     }
   };
+
+  // Dynamic section loader based on class selection
+  useEffect(() => {
+    const loadSectionsForClass = async () => {
+      if (!selectedClass) {
+        setSectionOptions([]);
+        setSelectedSection('');
+        return;
+      }
+      try {
+        setLoading(true);
+        const res = await api.get('/attendance/sections', { params: { classVal: selectedClass } });
+        if (res.data) {
+          setSectionOptions(res.data);
+          // If current selection is not in the loaded sections, reset section selection
+          const match = res.data.find((opt: any) => opt.value === selectedSection);
+          if (!match) {
+            setSelectedSection('');
+          }
+        }
+      } catch (err) {
+        console.error('Error loading sections for class:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSectionsForClass();
+  }, [selectedClass]);
 
   useEffect(() => {
     if (!showTeacherSelection) {
@@ -604,6 +626,7 @@ function AttendanceEntryContent() {
               onChange={(e) => setSelectedClass(e.target.value)}
               className="w-full bg-white border border-gray-300 rounded-xl min-h-[44px] px-3.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 transition-all shadow-xs"
             >
+              <option value="">Select Class</option>
               {classOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
@@ -617,6 +640,7 @@ function AttendanceEntryContent() {
               onChange={(e) => setSelectedSection(e.target.value)}
               className="w-full bg-white border border-gray-300 rounded-xl min-h-[44px] px-3.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 transition-all shadow-xs"
             >
+              <option value="">Select Section</option>
               {sectionOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
@@ -694,21 +718,21 @@ function AttendanceEntryContent() {
                     <div className="stat-icon text-blue-600 bg-blue-50/50 w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0">👥</div>
                     <div className="stat-info min-w-0">
                       <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider block truncate">Total</span>
-                      <span className="stat-value text-lg sm:text-xl font-extrabold text-slate-800 mt-0.5 block">{stats.total}</span>
+                      <span className="stat-value text-lg sm:text-xl font-extrabold text-slate-800 dark:text-slate-100 mt-0.5 block">{stats.total}</span>
                     </div>
                   </div>
                   <div className={`stat-card ${filter === 'Present' ? 'active-filter present' : ''}`} onClick={() => handleFilterClick('Present')}>
                     <div className="stat-icon text-emerald-600 bg-emerald-50/50 w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0">✅</div>
                     <div className="stat-info min-w-0">
                       <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider block truncate">Present</span>
-                      <span className="stat-value text-lg sm:text-xl font-extrabold text-slate-800 mt-0.5 block">{stats.present}</span>
+                      <span className="stat-value text-lg sm:text-xl font-extrabold text-slate-800 dark:text-slate-100 mt-0.5 block">{stats.present}</span>
                     </div>
                   </div>
                   <div className={`stat-card ${filter === 'Absent' ? 'active-filter absent' : ''}`} onClick={() => handleFilterClick('Absent')}>
                     <div className="stat-icon text-rose-600 bg-rose-50/50 w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0">❌</div>
                     <div className="stat-info min-w-0">
                       <span className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider block truncate">Absent</span>
-                      <span className="stat-value text-lg sm:text-xl font-extrabold text-slate-800 mt-0.5 block">{stats.absent}</span>
+                      <span className="stat-value text-lg sm:text-xl font-extrabold text-slate-800 dark:text-slate-100 mt-0.5 block">{stats.absent}</span>
                     </div>
                   </div>
                 </div>
@@ -733,51 +757,23 @@ function AttendanceEntryContent() {
                     {displayedStudents.map(s => (
                       <div 
                         key={s.id} 
-                        className={`${s.cardClass} flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 sm:p-4 w-full`}
-                        onClick={() => {
-                          if (window.innerWidth >= 768) {
-                            handleStudentClick(s.id);
-                          }
-                        }}
+                        className={`${s.cardClass} flex items-center justify-between gap-4 p-4 w-full rounded-2xl transition-all select-none`}
+                        onClick={() => handleStudentClick(s.id)}
                       >
-                        <div className="flex items-center gap-3.5 min-w-0 flex-1 w-full md:w-auto">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shadow-inner shrink-0 ${s.isAbsent ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'}`}>
+                        <div className="flex items-center gap-4 min-w-0 flex-1">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs shadow-inner shrink-0 ${s.isAbsent ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-200 border border-rose-200 dark:border-rose-800' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'}`}>
                             {getInitials(s.name)}
                           </div>
-                          <div className="student-info text-left min-w-0 flex-1 pr-2">
+                          <div className="student-info text-left min-w-0 flex-1">
                             <h3 className="student-name font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{s.name}</h3>
                             <p className="student-roll text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">Roll No: {s.rollNo || '—'}</p>
                           </div>
                         </div>
 
-                        <div className="hidden md:flex items-center ml-auto shrink-0">
-                          <div className={`status-badge text-[10px] font-bold px-3 py-1 rounded-full border transition-all ${s.isAbsent ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'}`}>
+                        <div className="flex items-center shrink-0">
+                          <div className={`status-badge text-[10px] font-bold px-3 py-1.5 rounded-full border transition-all ${s.isAbsent ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-200 border-rose-200 dark:border-rose-800' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'}`}>
                             {s.status}
                           </div>
-                        </div>
-
-                        {/* Mobile view Present/Absent buttons: full width, visible only below md breakpoint */}
-                        <div className="flex md:hidden w-full gap-2 mt-1">
-                          <button
-                            type="button"
-                            className={`flex-1 min-h-[42px] rounded-xl font-bold text-xs transition-all border ${!s.isAbsent ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setStudentAbsentState(s.id, false);
-                            }}
-                          >
-                            Present
-                          </button>
-                          <button
-                            type="button"
-                            className={`flex-1 min-h-[42px] rounded-xl font-bold text-xs transition-all border ${s.isAbsent ? 'bg-rose-600 text-white border-rose-600 shadow-xs' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setStudentAbsentState(s.id, true);
-                            }}
-                          >
-                            Absent
-                          </button>
                         </div>
                       </div>
                     ))}
