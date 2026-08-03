@@ -17,10 +17,11 @@ interface TenantContextType {
     plan: string;
     status: string;
     expiryDate: string;
-    studentLimit: number | null;
-    teacherLimit: number | null;
     features: string[];
   } | null;
+  isSubscriptionActive: boolean;
+  showLockPopup: boolean;
+  setShowLockPopup: (show: boolean) => void;
   refresh: () => Promise<void>;
 }
 
@@ -42,6 +43,30 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     return null;
   });
   const pathname = usePathname();
+  const [showLockPopup, setShowLockPopup] = useState(false);
+
+  const isSubscriptionActive = !token || loading || !subscription || (
+    subscription.status === 'ACTIVE' ||
+    subscription.status === 'PAST_DUE' ||
+    new Date(subscription.expiryDate).getTime() + (3 * 24 * 60 * 60 * 1000) >= Date.now()
+  );
+
+  // Register Axios response interceptor to handle 402 status codes globally
+  useEffect(() => {
+    const interceptor = api.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response && error.response.status === 402) {
+          console.warn('Axios Interceptor: 402 Payment Required detected. Triggering subscription renewal popup.');
+          setShowLockPopup(true);
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => {
+      api.interceptors.response.eject(interceptor);
+    };
+  }, []);
 
   const fetchTenantData = async () => {
     const currentToken = typeof window !== 'undefined' ? getStoredToken() : null;
@@ -203,6 +228,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setupStats,
       currentUser,
       subscription,
+      isSubscriptionActive,
+      showLockPopup,
+      setShowLockPopup,
       refresh: fetchTenantData
     }}>
       {children}

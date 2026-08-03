@@ -7,13 +7,14 @@ import { SuperAdminController } from './super-admin.controller';
 import { PrismaService } from '../prisma.service';
 import { AuthModule } from '../auth/auth.module';
 import { SubscriptionSchedulerService } from './subscription-scheduler.service';
+import { PaymentService } from '../common/services/payment.service';
 
 @Global()
 @Module({
   imports: [AuthModule],
-  providers: [TenantsService, PrismaService, SubscriptionSchedulerService],
+  providers: [TenantsService, PrismaService, SubscriptionSchedulerService, PaymentService],
   controllers: [TenantsController, TenantController, SchoolSetupController, SuperAdminController],
-  exports: [TenantsService],
+  exports: [TenantsService, PaymentService],
 })
 export class TenantsModule {}
 

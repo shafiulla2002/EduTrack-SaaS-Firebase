@@ -2,10 +2,14 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../prisma.service';
 import { Tenant, PlanType, SubscriptionStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { PaymentService } from '../common/services/payment.service';
 
 @Injectable()
 export class TenantsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private paymentService: PaymentService,
+  ) {}
 
   private subdomainCache = new Map<string, { tenant: Tenant; expiresAt: number }>();
 
@@ -260,11 +264,8 @@ export class TenantsService {
       expiryDate: subscription.expiryDate,
       remainingDays,
       studentUsage,
-      studentLimit: subscription.plan.studentLimit,
       teacherUsage,
-      teacherLimit: subscription.plan.teacherLimit,
       parentUsage,
-      parentLimit: subscription.plan.parentLimit,
       features: subscription.plan.features,
       invoices,
       payments
@@ -296,11 +297,30 @@ export class TenantsService {
     }
 
     const newExpiry = new Date(baseDate);
+    const isYearly = paymentDetails?.billingPeriod === 'YEARLY';
+    const monthsToExtend = isYearly ? 12 : 1;
+
     if (plan.name === PlanType.TRIAL) {
       newExpiry.setMonth(newExpiry.getMonth() + 6); // 6 Months
     } else {
-      newExpiry.setMonth(newExpiry.getMonth() + 1); // 1 Month
+      newExpiry.setMonth(newExpiry.getMonth() + monthsToExtend); // Dynamic monthly/yearly extension
     }
+
+    // Determine target checkout amount
+    let baseAmount = Number(plan.price);
+    if (isYearly && plan.name !== PlanType.TRIAL) {
+      // Annual pricing: 10 months price for 12 months (roughly 17% discount)
+      baseAmount = Number(plan.price) * 10;
+    }
+
+    // Call dynamic Payment Gateway Abstraction layer
+    const paymentGateway = paymentDetails?.gateway || 'STRIPE';
+    const paymentResponse = await this.paymentService.processCheckout(
+      paymentGateway,
+      tenantId,
+      baseAmount,
+      paymentDetails
+    );
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Update Subscription
@@ -320,9 +340,9 @@ export class TenantsService {
           tenantId,
           previousPlan: currentSub ? currentSub.plan.name : null,
           newPlan: plan.name,
-          amount: plan.price,
-          paymentMethod: paymentDetails.method || 'SIMULATED',
-          transactionReference: paymentDetails.txRef || 'TXN-' + Math.random().toString(36).substring(7).toUpperCase(),
+          amount: baseAmount,
+          paymentMethod: paymentResponse.gateway,
+          transactionReference: paymentResponse.transactionId,
           startDate: new Date(),
           expiryDate: newExpiry,
           status: SubscriptionStatus.ACTIVE,
@@ -336,8 +356,8 @@ export class TenantsService {
           invoiceNumber,
           tenantId,
           planId: plan.name,
-          amount: plan.price,
-          gst: Number(plan.price) * 0.18, // 18% GST
+          amount: baseAmount,
+          gst: Number(baseAmount) * 0.18, // 18% GST
           currency: 'INR',
           status: 'PAID',
           paymentDate: new Date(),
@@ -350,9 +370,9 @@ export class TenantsService {
         data: {
           tenantId,
           invoiceId: invoice.id,
-          amount: plan.price,
-          transactionId: paymentDetails.txRef || 'TXN-' + Date.now(),
-          gateway: paymentDetails.gateway || 'SIMULATED',
+          amount: baseAmount,
+          transactionId: paymentResponse.transactionId,
+          gateway: paymentResponse.gateway,
           status: 'SUCCESS',
           paidAt: new Date(),
         },

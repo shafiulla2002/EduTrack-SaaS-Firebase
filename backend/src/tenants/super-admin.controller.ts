@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   UseGuards,
@@ -183,5 +184,37 @@ export class SuperAdminController {
         transactionId: p.transactionId,
       })),
     };
+  }
+
+  @Get('plans')
+  async listPlans() {
+    return this.prisma.subscriptionPlan.findMany({
+      orderBy: { price: 'asc' },
+    });
+  }
+
+  @Post('plans')
+  async createPlan(@Body() body: any) {
+    return this.prisma.subscriptionPlan.create({
+      data: {
+        name: body.name,
+        price: body.price,
+        features: body.features || [],
+        isActive: body.isActive !== undefined ? body.isActive : true,
+      },
+    });
+  }
+
+  @Put('plans/:id')
+  async updatePlan(@Param('id') id: string, @Body() body: any) {
+    const updateData: any = {};
+    if (body.price !== undefined) updateData.price = body.price;
+    if (body.features !== undefined) updateData.features = body.features;
+    if (body.isActive !== undefined) updateData.isActive = body.isActive;
+
+    return this.prisma.subscriptionPlan.update({
+      where: { id },
+      data: updateData,
+    });
   }
 }

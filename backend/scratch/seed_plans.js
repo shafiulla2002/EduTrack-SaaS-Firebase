@@ -8,8 +8,8 @@ async function main() {
   const plans = [
     {
       name: PlanType.TRIAL,
-      studentLimit: 1000,
-      teacherLimit: 100,
+      studentLimit: null,
+      teacherLimit: null,
       parentLimit: null,
       storageLimit: 5120.0, // 5GB in MB
       features: ['admissions', 'attendance', 'timetable', 'exams', 'billing'],
@@ -17,8 +17,8 @@ async function main() {
     },
     {
       name: PlanType.BASIC,
-      studentLimit: 500,
-      teacherLimit: 30,
+      studentLimit: null,
+      teacherLimit: null,
       parentLimit: null,
       storageLimit: 10240.0, // 10GB in MB
       features: [
@@ -29,9 +29,9 @@ async function main() {
     },
     {
       name: PlanType.PREMIUM,
-      studentLimit: null, // Unlimited
-      teacherLimit: null, // Unlimited
-      parentLimit: null,  // Unlimited
+      studentLimit: null,
+      teacherLimit: null,
+      parentLimit: null,
       storageLimit: 51200.0, // 50GB in MB
       features: [
         'admissions', 'attendance', 'timetable', 'exams', 'billing',

@@ -65,23 +65,16 @@ async function runTests() {
     });
     console.log('Plan returned by API:', subDetailsRes.data.plan);
     console.log('Remaining Days:', subDetailsRes.data.remainingDays);
-    console.log('Student Limit:', subDetailsRes.data.studentLimit);
-    console.log('Teacher Limit:', subDetailsRes.data.teacherLimit);
-    if (subDetailsRes.data.plan === 'TRIAL' && subDetailsRes.data.studentLimit === 1000) {
-      console.log('✔ Verified: GET /tenant/subscription returned correct quotas.');
+    console.log('Student Count (Current Statistics):', subDetailsRes.data.studentUsage);
+    
+    if (subDetailsRes.data.plan === 'TRIAL') {
+      console.log('✔ Verified: GET /tenant/subscription returned plan info.');
     } else {
       throw new Error('Details API returned invalid details');
     }
 
-    // 3. SCENARIO 3: Quota Enforcements
-    console.log('\n--- Scenario 3: Quota Enforcements (Student Limit = 2) ---');
-    // Temporarily change studentLimit for TRIAL to 2 for this test
-    await prisma.subscriptionPlan.update({
-      where: { name: PlanType.TRIAL },
-      data: { studentLimit: 2 },
-    });
-    console.log('Temporarily set TRIAL studentLimit = 2 in the database.');
-
+    // 3. SCENARIO 3: Unlimited Record Support Verification
+    console.log('\n--- Scenario 3: Verify Unlimited Records (Quota Block Removed) ---');
     // Add Student 1 (Should succeed)
     console.log('Admitting Student 1...');
     const s1Res = await axios.post(`${BASE_URL}/billing/admissions`, {
@@ -103,7 +96,7 @@ async function runTests() {
       },
     });
     testStudent1Id = s1Res.data.accountId;
-    console.log('✔ Student 1 admitted. Account ID:', testStudent1Id);
+    console.log('✔ Student 1 admitted successfully. Account ID:', testStudent1Id);
 
     // Add Student 2 (Should succeed)
     console.log('Admitting Student 2...');
@@ -126,44 +119,7 @@ async function runTests() {
       },
     });
     testStudent2Id = s2Res.data.accountId;
-    console.log('✔ Student 2 admitted. Account ID:', testStudent2Id);
-
-    // Add Student 3 (Should fail with 429 Quota Exceeded)
-    console.log('Admitting Student 3 (expecting 429 Quota Exceeded)...');
-    try {
-      await axios.post(`${BASE_URL}/billing/admissions`, {
-        studentData: {
-          firstName: 'Charlie',
-          lastName: 'Brown',
-          email: `charlie_${randomSuffix}@testacademy.com`,
-          phone: '9888888883',
-          selectedClass: null,
-          selectedSection: null,
-          academicYear: null,
-        },
-        selectedPricebookEntryIds: [],
-        concessionAmount: 0,
-      }, {
-        headers: { 
-          Authorization: `Bearer ${testAdminToken}`,
-          'X-Tenant-ID': testTenantId
-        },
-      });
-      throw new Error('Succeeded in adding Student 3, quota limit was bypassed!');
-    } catch (err) {
-      if (err.response && err.response.status === 429) {
-        console.log('✔ Verified: Blocked Student 3 with Status 429 Quota Exceeded.');
-      } else {
-        throw new Error(`Expected 429, but received: ${err.response ? err.response.status : err.message}`);
-      }
-    }
-
-    // Restore TRIAL limit
-    await prisma.subscriptionPlan.update({
-      where: { name: PlanType.TRIAL },
-      data: { studentLimit: 1000 },
-    });
-    console.log('Restored TRIAL studentLimit to 1000.');
+    console.log('✔ Student 2 admitted successfully. Account ID:', testStudent2Id);
 
     // 4. SCENARIO 4: Grace Period Validation
     console.log('\n--- Scenario 4: Expiration Grace Period (Active 1 day ago) ---');
@@ -266,9 +222,9 @@ async function runTests() {
     const renewRes = await axios.post(`${BASE_URL}/tenant/subscription/renew`, {
       planName: 'BASIC',
       paymentDetails: {
-        method: 'UPI_SIMULATED',
-        gateway: 'MOCK_GATEWAY',
-        txRef: 'TXN-MOCK-TEST',
+        method: 'CARD',
+        gateway: 'STRIPE',
+        txRef: 'TXN-STRIPE-TEST',
       },
     }, {
       headers: { 

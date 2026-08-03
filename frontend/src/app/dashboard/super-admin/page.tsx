@@ -14,26 +14,41 @@ import {
   CheckCircle,
   AlertTriangle,
   FileText,
-  User,
+  Settings,
+  PieChart,
+  Layers,
+  Save,
+  Check
 } from 'lucide-react';
 
 export default function SuperAdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [tenants, setTenants] = useState<any[]>([]);
+  const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'tenants' | 'plans' | 'invoices'>('tenants');
+
+  // Selected entities for actions
   const [selectedTenant, setSelectedTenant] = useState<any>(null);
-  
-  // Modal State
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
+
+  // Overrides & Modals state
   const [showAdjustModal, setShowAdjustModal] = useState(false);
-  const [adjustPlan, setAdjustPlan] = useState<'TRIAL' | 'BASIC' | 'PREMIUM'>('TRIAL');
+  const [adjustPlan, setAdjustPlan] = useState<string>('TRIAL');
   const [adjustExpiry, setAdjustExpiry] = useState('');
-  const [adjustStatus, setAdjustStatus] = useState<'ACTIVE' | 'EXPIRED' | 'PAST_DUE' | 'CANCELLED'>('ACTIVE');
+  const [adjustStatus, setAdjustStatus] = useState<string>('ACTIVE');
   const [modalSubmitting, setModalSubmitting] = useState(false);
+
+  // Edit Plan state
+  const [editPlanPrice, setEditPlanPrice] = useState<string>('');
+  const [editPlanFeatures, setEditPlanFeatures] = useState<string[]>([]);
+  const [editPlanActive, setEditPlanActive] = useState<boolean>(true);
+  const [planSubmitting, setPlanSubmitting] = useState(false);
 
   // Manual Invoice State
   const [invoiceTenantId, setInvoiceTenantId] = useState('');
-  const [invoicePlan, setInvoicePlan] = useState<'BASIC' | 'PREMIUM'>('BASIC');
-  const [invoiceAmount, setInvoiceAmount] = useState('1999');
+  const [invoicePlan, setInvoicePlan] = useState<string>('BASIC');
+  const [invoiceAmount, setInvoiceAmount] = useState('5000');
   const [invoiceSubmitting, setInvoiceSubmitting] = useState(false);
 
   const [successMsg, setSuccessMsg] = useState('');
@@ -42,12 +57,14 @@ export default function SuperAdminDashboard() {
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [statsRes, tenantsRes] = await Promise.all([
+      const [statsRes, tenantsRes, plansRes] = await Promise.all([
         api.get('/super-admin/dashboard/stats'),
         api.get('/super-admin/tenants'),
+        api.get('/super-admin/plans'),
       ]);
       setStats(statsRes.data);
       setTenants(tenantsRes.data);
+      setPlans(plansRes.data || []);
     } catch (err) {
       console.error('Failed to load Super Admin dashboard data:', err);
     } finally {
@@ -95,6 +112,36 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const startEditPlan = (plan: any) => {
+    setSelectedPlan(plan);
+    setEditPlanPrice(String(plan.price));
+    setEditPlanFeatures(plan.features || []);
+    setEditPlanActive(plan.isActive);
+  };
+
+  const handleUpdatePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPlanSubmitting(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      await api.put(`/super-admin/plans/${selectedPlan.id}`, {
+        price: Number(editPlanPrice),
+        features: editPlanFeatures,
+        isActive: editPlanActive,
+      });
+
+      setSuccessMsg(`Plan "${selectedPlan.name}" updated successfully.`);
+      setSelectedPlan(null);
+      await fetchAllData();
+    } catch (err: any) {
+      console.error('Failed to update plan:', err);
+      setErrorMsg(err.response?.data?.message || 'Failed to update plan details.');
+    } finally {
+      setPlanSubmitting(false);
+    }
+  };
+
   const handleGenerateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invoiceTenantId) {
@@ -119,6 +166,30 @@ export default function SuperAdminDashboard() {
       setInvoiceSubmitting(false);
     }
   };
+
+  const toggleFeatureFlag = (feature: string) => {
+    if (editPlanFeatures.includes(feature)) {
+      setEditPlanFeatures(prev => prev.filter(f => f !== feature));
+    } else {
+      setEditPlanFeatures(prev => [...prev, feature]);
+    }
+  };
+
+  const availableModules = [
+    { key: 'admissions', label: 'Admissions & Promotions' },
+    { key: 'attendance', label: 'Attendance Management' },
+    { key: 'timetable', label: 'Timetable Scheduling' },
+    { key: 'exams', label: 'Exam & GPA Management' },
+    { key: 'billing', label: 'Fee Management & Invoices' },
+    { key: 'library', label: 'Library Management' },
+    { key: 'expenses', label: 'Expense Tracking' },
+    { key: 'academics', label: 'Grades & Academics' },
+    { key: 'transport', label: 'GPS Transport Tracker' },
+    { key: 'hostel', label: 'Hostel Allocation' },
+    { key: 'payroll', label: 'Staff Payroll Ledger' },
+    { key: 'teacher_portal', label: 'Teacher Portal Access' },
+    { key: 'parent_portal', label: 'Parent Portal Access' }
+  ];
 
   if (loading && !stats) {
     return (
@@ -210,185 +281,355 @@ export default function SuperAdminDashboard() {
         </div>
       </div>
 
-      {/* Schools Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="p-6 border-b border-slate-200">
-          <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Tenant Environments</h2>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
-                <th className="px-6 py-3.5">School Name</th>
-                <th className="px-6 py-3.5">Subdomain</th>
-                <th className="px-6 py-3.5">Plan Tier</th>
-                <th className="px-6 py-3.5">Expiry Date</th>
-                <th className="px-6 py-3.5">Status</th>
-                <th className="px-6 py-3.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-slate-700 text-xs">
-              {tenants.map((tenant: any) => (
-                <tr key={tenant.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <p className="font-bold text-slate-800">{tenant.name}</p>
-                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">{tenant.id}</p>
-                  </td>
-                  <td className="px-6 py-4 font-medium text-slate-500">{tenant.subDomain}.edutrack.com</td>
-                  <td className="px-6 py-4">
-                    <span className="font-semibold uppercase tracking-wide">
-                      {tenant.subscription?.plan?.name || 'NO_PLAN'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-500">
-                    {tenant.subscription?.expiryDate
-                      ? new Date(tenant.subscription.expiryDate).toLocaleDateString()
-                      : 'N/A'}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
-                      tenant.subscription?.status === 'ACTIVE' 
-                        ? 'bg-emerald-50 text-emerald-600' 
-                        : 'bg-red-50 text-red-600'
-                    }`}>
-                      {tenant.subscription?.status || 'UNKNOWN'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => openAdjustModal(tenant)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 border border-slate-200 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Sliders className="w-3 h-3" />
-                      Adjust
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* Tabs Selector Navigation */}
+      <div className="flex border-b border-slate-200 gap-6">
+        <button
+          onClick={() => setActiveTab('tenants')}
+          className={`pb-4 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            activeTab === 'tenants' ? 'border-indigo-600 text-indigo-900' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          Tenant Environments
+        </button>
+        <button
+          onClick={() => setActiveTab('plans')}
+          className={`pb-4 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            activeTab === 'plans' ? 'border-indigo-600 text-indigo-900' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          Subscription Plans Configuration
+        </button>
+        <button
+          onClick={() => setActiveTab('invoices')}
+          className={`pb-4 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            activeTab === 'invoices' ? 'border-indigo-600 text-indigo-900' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          Manual Invoicing
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Payment Feed logs */}
-        <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+      {/* Tab CONTENT: Tenants */}
+      {activeTab === 'tenants' && (
+        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="p-6 border-b border-slate-200">
-            <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Recent Platform Payments</h2>
+            <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Tenant Environments</h2>
           </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
-                  <th className="px-6 py-3">School</th>
-                  <th className="px-6 py-3">Tx Ref ID</th>
-                  <th className="px-6 py-3">Amount</th>
-                  <th className="px-6 py-3">Paid Date</th>
+                <tr className="bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
+                  <th className="px-6 py-3.5">School Name</th>
+                  <th className="px-6 py-3.5">Subdomain</th>
+                  <th className="px-6 py-3.5">Plan Tier</th>
+                  <th className="px-6 py-3.5">Expiry Date</th>
+                  <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600 text-xs">
-                {(stats?.recentPayments || []).length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-6 text-center text-slate-400 font-medium">
-                      No recent platform payments logged.
+              <tbody className="divide-y divide-slate-100 text-slate-700 text-xs">
+                {tenants.map((tenant: any) => (
+                  <tr key={tenant.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <p className="font-bold text-slate-800">{tenant.name}</p>
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">{tenant.id}</p>
+                    </td>
+                    <td className="px-6 py-4 font-medium text-slate-500">{tenant.subDomain}.edutrack.com</td>
+                    <td className="px-6 py-4">
+                      <span className="font-semibold uppercase tracking-wide">
+                        {tenant.subscription?.plan?.name || 'NO_PLAN'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-500">
+                      {tenant.subscription?.expiryDate
+                        ? new Date(tenant.subscription.expiryDate).toLocaleDateString()
+                        : 'N/A'}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
+                        tenant.subscription?.status === 'ACTIVE' 
+                          ? 'bg-emerald-50 text-emerald-600' 
+                          : 'bg-red-50 text-red-600'
+                      }`}>
+                        {tenant.subscription?.status || 'UNKNOWN'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => openAdjustModal(tenant)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 border border-slate-200 text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Sliders className="w-3 h-3" />
+                        Adjust
+                      </button>
                     </td>
                   </tr>
-                ) : (
-                  stats.recentPayments.map((pay: any) => (
-                    <tr key={pay.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-3 font-bold text-slate-800">{pay.schoolName}</td>
-                      <td className="px-6 py-3 font-mono">{pay.transactionId}</td>
-                      <td className="px-6 py-3 font-bold text-indigo-600">₹{pay.amount}</td>
-                      <td className="px-6 py-3 text-slate-400">
-                        {new Date(pay.paidAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
         </div>
+      )}
 
-        {/* Manual Invoice Builder Widget */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm flex flex-col justify-between">
-          <div>
-            <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <FileText className="w-4.5 h-4.5 text-indigo-600" />
-              Manual Invoice Builder
-            </h3>
-            <p className="text-slate-400 text-[11px] leading-relaxed mb-6 font-light">
-              Issue custom pricing subscription invoices directly to any school environment.
-            </p>
-
-            <form onSubmit={handleGenerateInvoice} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Target School
-                </label>
-                <select
-                  value={invoiceTenantId}
-                  onChange={(e) => setInvoiceTenantId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all cursor-pointer"
-                >
-                  <option value="">-- Choose School --</option>
-                  {tenants.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Plan Tier
-                </label>
-                <select
-                  value={invoicePlan}
-                  onChange={(e) => setInvoicePlan(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all cursor-pointer"
-                >
-                  <option value="BASIC">BASIC</option>
-                  <option value="PREMIUM">PREMIUM</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Custom Cost Amount (INR)
-                </label>
-                <input
-                  type="number"
-                  value={invoiceAmount}
-                  onChange={(e) => setInvoiceAmount(e.target.value)}
-                  placeholder="e.g. 1999"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={invoiceSubmitting}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+      {/* Tab CONTENT: Plans Configurator */}
+      {activeTab === 'plans' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* List of Plans */}
+          <div className="lg:col-span-2 space-y-4">
+            {plans.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => startEditPlan(p)}
+                className={`p-6 bg-white border rounded-3xl cursor-pointer transition-all shadow-xs ${
+                  selectedPlan?.id === p.id ? 'border-indigo-600 ring-2 ring-indigo-50' : 'border-slate-200 hover:border-slate-300'
+                }`}
               >
-                {invoiceSubmitting ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-3.5 h-3.5" />
-                    Generate Manual Invoice
-                  </>
-                )}
-              </button>
-            </form>
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-black text-slate-800 uppercase tracking-wide">{p.name} PLAN</h3>
+                  </div>
+                  <span className={`text-[9px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
+                    p.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'
+                  }`}>
+                    {p.isActive ? 'Active' : 'Disabled'}
+                  </span>
+                </div>
+                <p className="text-xl font-black text-slate-800">
+                  ₹{Number(p.price).toLocaleString()} <span className="text-xs font-normal text-slate-400">/mo</span>
+                </p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-3">Enabled Features ({p.features?.length || 0})</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {(p.features || []).map((f: string) => (
+                    <span key={f} className="text-[9px] font-bold bg-slate-50 border border-slate-150 text-slate-500 px-2 py-0.5 rounded-md">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Editor Sidebar */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm h-fit">
+            {selectedPlan ? (
+              <form onSubmit={handleUpdatePlan} className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                    <Settings className="w-4.5 h-4.5 text-indigo-600" />
+                    Edit Plan: {selectedPlan.name}
+                  </h3>
+                  <p className="text-slate-400 text-[10px] font-light mt-1">Configure pricing structure and enable specific platform feature modules.</p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Monthly Pricing (INR)</label>
+                  <input
+                    type="number"
+                    value={editPlanPrice}
+                    onChange={(e) => setEditPlanPrice(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all"
+                  />
+                </div>
+
+                <div className="space-y-2.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Feature Flags ACL</label>
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-2 border border-slate-100 p-2 rounded-xl">
+                    {availableModules.map((module) => {
+                      const isChecked = editPlanFeatures.includes(module.key);
+                      return (
+                        <div
+                          key={module.key}
+                          onClick={() => toggleFeatureFlag(module.key)}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer transition-colors border ${
+                            isChecked 
+                              ? 'bg-indigo-50/30 border-indigo-200 text-indigo-700 font-semibold' 
+                              : 'bg-white border-slate-150 hover:bg-slate-50 text-slate-500'
+                          }`}
+                        >
+                          <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center ${
+                            isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'
+                          }`}>
+                            {isChecked && <Check className="w-2.5 h-2.5" />}
+                          </div>
+                          <span className="text-[11px] select-none truncate">{module.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-xs font-semibold text-slate-500">Plan Enabled Status</span>
+                  <input
+                    type="checkbox"
+                    checked={editPlanActive}
+                    onChange={(e) => setEditPlanActive(e.target.checked)}
+                    className="accent-indigo-600 cursor-pointer h-4 w-4"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlan(null)}
+                    className="w-1/2 py-2.5 border border-slate-200 text-xs font-semibold text-slate-600 rounded-xl hover:bg-slate-50 cursor-pointer text-center"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={planSubmitting}
+                    className="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {planSubmitting ? (
+                      <>
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-3.5 h-3.5" />
+                        Save Config
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="text-center py-12 text-slate-400">
+                <Layers className="w-8 h-8 mx-auto mb-3 text-slate-300 animate-pulse" />
+                <p className="text-xs font-semibold">Select any plan to the left to modify pricing configurations and feature flags.</p>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Tab CONTENT: Manual Invoicing */}
+      {activeTab === 'invoices' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Payment Feed logs */}
+          <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="p-6 border-b border-slate-200">
+              <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Recent Platform Payments</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-200">
+                    <th className="px-6 py-3">School</th>
+                    <th className="px-6 py-3">Tx Ref ID</th>
+                    <th className="px-6 py-3">Gateway</th>
+                    <th className="px-6 py-3">Amount</th>
+                    <th className="px-6 py-3">Paid Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-600 text-xs">
+                  {(stats?.recentPayments || []).length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-6 text-center text-slate-400 font-medium">
+                        No recent platform payments logged.
+                      </td>
+                    </tr>
+                  ) : (
+                    stats.recentPayments.map((pay: any) => (
+                      <tr key={pay.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-3 font-bold text-slate-800">{pay.schoolName}</td>
+                        <td className="px-6 py-3 font-mono">{pay.transactionId}</td>
+                        <td className="px-6 py-3 font-bold text-indigo-700">{pay.gateway}</td>
+                        <td className="px-6 py-3 font-bold text-indigo-600">₹{Number(pay.amount).toLocaleString()}</td>
+                        <td className="px-6 py-3 text-slate-400">
+                          {new Date(pay.paidAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Manual Invoice Builder Widget */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm flex flex-col justify-between h-fit">
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <FileText className="w-4.5 h-4.5 text-indigo-600" />
+                Manual Invoice Builder
+              </h3>
+              <p className="text-slate-400 text-[11px] leading-relaxed mb-6 font-light">
+                Issue custom pricing subscription invoices directly to any school environment.
+              </p>
+
+              <form onSubmit={handleGenerateInvoice} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Target School
+                  </label>
+                  <select
+                    value={invoiceTenantId}
+                    onChange={(e) => setInvoiceTenantId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all cursor-pointer"
+                  >
+                    <option value="">-- Choose School --</option>
+                    {tenants.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Plan Tier
+                  </label>
+                  <select
+                    value={invoicePlan}
+                    onChange={(e) => setInvoicePlan(e.target.value as any)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all cursor-pointer"
+                  >
+                    <option value="BASIC">BASIC</option>
+                    <option value="PREMIUM">PREMIUM</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Custom Cost Amount (INR)
+                  </label>
+                  <input
+                    type="number"
+                    value={invoiceAmount}
+                    onChange={(e) => setInvoiceAmount(e.target.value)}
+                    placeholder="e.g. 1999"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={invoiceSubmitting}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {invoiceSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      Generate Manual Invoice
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Adjust Subscription Modal */}
       {showAdjustModal && selectedTenant && (

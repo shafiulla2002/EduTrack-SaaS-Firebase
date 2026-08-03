@@ -27,45 +27,18 @@ import {
 function ParentLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
-  const { logoUrl, schoolName, schoolType, subscription } = useTenant();
+  const { logoUrl, schoolName, schoolType, subscription, isSubscriptionActive, showLockPopup, setShowLockPopup } = useTenant();
   const { children: childrenList, selectedChild, setSelectedChildId } = useParent();
   const [showSwitcher, setShowSwitcher] = useState(false);
 
-  const isSubscriptionBlocked = subscription && (
-    subscription.status === 'EXPIRED' ||
-    subscription.status === 'CANCELLED' ||
-    new Date(subscription.expiryDate).getTime() + (3 * 24 * 60 * 60 * 1000) < Date.now()
-  );
-
-  const handleLogout = () => {
-    clearStoredAuth();
-    window.location.href = '/auth/login';
+  const isModuleLocked = (href: string) => {
+    if (isSubscriptionActive) return false;
+    const allowedPrefixes = [
+      '/parent/profile',
+    ];
+    if (href === '/parent') return false;
+    return allowedPrefixes.every(prefix => !href.startsWith(prefix));
   };
-
-  if (isSubscriptionBlocked) {
-    return (
-      <div className="fixed inset-0 bg-[#0F172A] flex flex-col items-center justify-center text-white z-[99999] px-6">
-        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl">
-          <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center justify-center mx-auto mb-6 text-red-500">
-            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide">Portal Suspended</h2>
-          <p className="text-sm text-slate-400 mt-3 leading-relaxed">
-            Your school's EduTrack subscription has expired. Access to the Parent Portal has been temporarily suspended. Please contact the school administration for support.
-          </p>
-          <button
-            onClick={handleLogout}
-            className="mt-8 w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-2xl transition-all shadow-lg cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const isPrintReceiptPage = pathname?.includes('/parent/fees/receipts/');
   if (isPrintReceiptPage) {
@@ -274,18 +247,31 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
                 {navigationItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = pathname === item.href;
+                  const isLocked = isModuleLocked(item.href);
                   return (
                     <Link
                       key={item.name}
-                      href={item.href}
+                      href={isLocked ? '#' : item.href}
+                      onClick={(e) => {
+                        if (isLocked) {
+                          e.preventDefault();
+                          setShowLockPopup(true);
+                        }
+                      }}
                       className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                        isActive
+                        isActive && !isLocked
                           ? 'bg-blue-50 border border-blue-100 text-[#2E5BFF] font-semibold'
                           : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50 border border-transparent'
-                      }`}
+                      } ${isLocked ? 'opacity-80' : ''}`}
                     >
                       <Icon className="w-4.5 h-4.5 shrink-0" />
                       <span className="truncate">{item.name}</span>
+                      {isLocked && (
+                        <svg className="w-3.5 h-3.5 text-slate-400 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                      )}
                     </Link>
                   );
                 })}
@@ -305,12 +291,19 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
         {navigationItems.filter(item => item.isBottom).map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href;
+          const isLocked = isModuleLocked(item.href);
           return (
             <Link
               key={item.name}
-              href={item.href}
+              href={isLocked ? '#' : item.href}
+              onClick={(e) => {
+                if (isLocked) {
+                  e.preventDefault();
+                  setShowLockPopup(true);
+                }
+              }}
               className={`flex flex-col items-center justify-center gap-1.5 text-[10px] font-bold transition-all px-2.5 py-1 ${
-                isActive ? 'text-[#2E5BFF]' : 'text-slate-500 hover:text-slate-700'
+                isActive && !isLocked ? 'text-[#2E5BFF]' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               <Icon className="w-5 h-5" />
@@ -326,6 +319,57 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
           <span>Exit</span>
         </button>
       </div>
+
+      {/* Subscription Lock Popup Modal for Parents */}
+      {showLockPopup && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[99999] px-6 select-none animate-fade-in">
+          <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-36 h-36 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10" />
+
+            {/* Close Button */}
+            <button
+              onClick={() => setShowLockPopup(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            
+            {/* Warning Visual Shield */}
+            <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-[#2E5BFF]">
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight font-sans">
+              Subscription Required
+            </h2>
+            <p className="text-sm text-slate-500 mt-3 leading-relaxed">
+              Your school's subscription has expired or there is no active subscription. Please notify your School Administrator to complete renewal payments and unlock your portal access.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3">
+              <button
+                onClick={() => setShowLockPopup(false)}
+                className="w-full flex items-center justify-center gap-2 px-5 py-3.5 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-2xl transition-all cursor-pointer"
+              >
+                Close Dialog
+              </button>
+
+              <a
+                href="mailto:support@edutrack.com"
+                className="w-full flex items-center justify-center gap-2 px-5 py-3.5 text-sm font-bold text-slate-500 hover:text-slate-600 transition-all cursor-pointer text-center"
+              >
+                Contact Support
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

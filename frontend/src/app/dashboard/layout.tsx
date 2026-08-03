@@ -18,32 +18,26 @@ export default function DashboardLayout({
   const { theme, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const { schoolName, schoolType, adminName, logoUrl, currentUser, loading, subscription } = useTenant();
+  const { schoolName, schoolType, adminName, logoUrl, currentUser, loading, subscription, isSubscriptionActive, showLockPopup, setShowLockPopup } = useTenant();
 
   // Subscription state helpers
-  const isSubscriptionBlocked = subscription && (
-    subscription.status === 'EXPIRED' ||
-    subscription.status === 'CANCELLED' ||
-    new Date(subscription.expiryDate).getTime() + (3 * 24 * 60 * 60 * 1000) < Date.now()
-  );
+  const isSubscriptionBlocked = !isSubscriptionActive;
 
   const isGracePeriod = subscription &&
     new Date(subscription.expiryDate).getTime() < Date.now() &&
     new Date(subscription.expiryDate).getTime() + (3 * 24 * 60 * 60 * 1000) >= Date.now();
 
-  // Client side redirect interceptor
-  useEffect(() => {
-    if (isSubscriptionBlocked && currentUser?.role === 'SCHOOL_ADMIN') {
-      const allowedPaths = [
-        '/dashboard/settings/subscription',
-        '/dashboard/profile',
-      ];
-      const isPathAllowed = allowedPaths.some(p => pathname === p || pathname.startsWith(p));
-      if (!isPathAllowed) {
-        router.push('/dashboard/settings/subscription');
-      }
-    }
-  }, [isSubscriptionBlocked, pathname, currentUser?.role, router]);
+  const isModuleLocked = (href: string) => {
+    if (currentUser?.role === 'SUPER_ADMIN') return false;
+    if (isSubscriptionActive) return false;
+
+    const allowedPrefixes = [
+      '/dashboard/settings/subscription',
+      '/dashboard/profile',
+    ];
+    if (href === '/dashboard') return false;
+    return allowedPrefixes.every(prefix => !href.startsWith(prefix));
+  };
 
   const [unreadAnnCount, setUnreadAnnCount] = useState(0);
 
@@ -553,17 +547,7 @@ export default function DashboardLayout({
         ? superAdminNavSections
         : (currentUser?.role === 'TEACHER' ? teacherNavSections : adminNavSections));
 
-  // Filter sidebar navigation items if subscription is expired/blocked
-  const navSections = baseNavSections.map(section => {
-    if (!isSubscriptionBlocked) return section;
-    const allowedItems = section.items.filter(item => {
-      return item.href === '/dashboard/settings/subscription' ||
-             item.href === '/dashboard/profile' ||
-             item.name === 'Subscription' ||
-             item.name === 'My Profile';
-    });
-    return { ...section, items: allowedItems };
-  }).filter(section => section.items.length > 0);
+  const navSections = baseNavSections;
 
   // If subscription is expired (after grace period) and user is a teacher/driver, show full screen block
   if (isSubscriptionBlocked && currentUser?.role !== 'SCHOOL_ADMIN' && currentUser?.role !== 'SUPER_ADMIN') {
@@ -608,24 +592,38 @@ export default function DashboardLayout({
               <div className="space-y-1">
                 {section.items.map((item) => {
                   const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                  const isLocked = isModuleLocked(item.href);
                   return (
                     <Link
                       key={item.name}
-                      href={item.href}
+                      href={isLocked ? '#' : item.href}
+                      onClick={(e) => {
+                        if (isLocked) {
+                          e.preventDefault();
+                          setShowLockPopup(true);
+                        }
+                      }}
                       className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[14px] font-medium transition-all min-h-[44px] ${
-                        isActive
+                        isActive && !isLocked
                           ? 'bg-blue-50 text-[#2E5BFF] font-semibold'
                           : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50'
-                      }`}
+                      } ${isLocked ? 'opacity-80' : ''}`}
                     >
                       <span className="shrink-0 w-5 h-5 flex items-center justify-center">
                         {item.svg}
                       </span>
                       <span className="truncate">{item.name}</span>
-                      {item.name === 'Announcements' && currentUser?.role === 'TEACHER' && unreadAnnCount > 0 && (
-                        <span className="ml-auto bg-rose-600 text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full">
-                          {unreadAnnCount}
-                        </span>
+                      {isLocked ? (
+                        <svg className="w-3.5 h-3.5 text-slate-400 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                      ) : (
+                        item.name === 'Announcements' && currentUser?.role === 'TEACHER' && unreadAnnCount > 0 && (
+                          <span className="ml-auto bg-rose-600 text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full">
+                            {unreadAnnCount}
+                          </span>
+                        )
                       )}
                     </Link>
                   );
@@ -863,25 +861,39 @@ export default function DashboardLayout({
                   <div className="space-y-1">
                     {section.items.map((item) => {
                       const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                      const isLocked = isModuleLocked(item.href);
                       return (
                         <Link
                           key={item.name}
-                          href={item.href}
-                          onClick={() => setMobileOpen(false)}
+                          href={isLocked ? '#' : item.href}
+                          onClick={(e) => {
+                            setMobileOpen(false);
+                            if (isLocked) {
+                              e.preventDefault();
+                              setShowLockPopup(true);
+                            }
+                          }}
                           className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[14px] font-medium transition-all min-h-[44px] ${
-                            isActive
+                            isActive && !isLocked
                               ? 'bg-blue-50 text-[#2E5BFF] font-semibold'
                               : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50'
-                          }`}
+                          } ${isLocked ? 'opacity-80' : ''}`}
                         >
                           <span className="shrink-0 w-5 h-5 flex items-center justify-center">
                             {item.svg}
                           </span>
                           <span className="truncate">{item.name}</span>
-                          {item.name === 'Announcements' && currentUser?.role === 'TEACHER' && unreadAnnCount > 0 && (
-                            <span className="ml-auto bg-rose-600 text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full">
-                              {unreadAnnCount}
-                            </span>
+                          {isLocked ? (
+                            <svg className="w-3.5 h-3.5 text-slate-400 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                          ) : (
+                            item.name === 'Announcements' && currentUser?.role === 'TEACHER' && unreadAnnCount > 0 && (
+                              <span className="ml-auto bg-rose-600 text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full">
+                                {unreadAnnCount}
+                              </span>
+                            )
                           )}
                         </Link>
                       );
@@ -923,7 +935,16 @@ export default function DashboardLayout({
             </svg>
             <span>Home</span>
           </Link>
-          <Link href="/dashboard/attendance-mgmt" className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/attendance-mgmt') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}>
+          <Link 
+            href={isModuleLocked('/dashboard/attendance-mgmt') ? '#' : '/dashboard/attendance-mgmt'}
+            onClick={(e) => {
+              if (isModuleLocked('/dashboard/attendance-mgmt')) {
+                e.preventDefault();
+                setShowLockPopup(true);
+              }
+            }}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/attendance-mgmt') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}
+          >
             <svg className="w-5 h-5 stroke-current fill-none" viewBox="0 0 24 24">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
               <line x1="16" y1="2" x2="16" y2="6"></line>
@@ -932,14 +953,32 @@ export default function DashboardLayout({
             </svg>
             <span>Attendance</span>
           </Link>
-          <Link href="/dashboard/marks-mgmt" className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/marks-mgmt') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}>
+          <Link 
+            href={isModuleLocked('/dashboard/marks-mgmt') ? '#' : '/dashboard/marks-mgmt'}
+            onClick={(e) => {
+              if (isModuleLocked('/dashboard/marks-mgmt')) {
+                e.preventDefault();
+                setShowLockPopup(true);
+              }
+            }}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/marks-mgmt') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}
+          >
             <svg className="w-5 h-5 stroke-current fill-none" viewBox="0 0 24 24">
               <path d="M12 20h9"></path>
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
             </svg>
             <span>Marks</span>
           </Link>
-          <Link href="/dashboard/my-timetable" className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/my-timetable') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}>
+          <Link 
+            href={isModuleLocked('/dashboard/my-timetable') ? '#' : '/dashboard/my-timetable'}
+            onClick={(e) => {
+              if (isModuleLocked('/dashboard/my-timetable')) {
+                e.preventDefault();
+                setShowLockPopup(true);
+              }
+            }}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/my-timetable') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}
+          >
             <svg className="w-5 h-5 stroke-current fill-none" viewBox="0 0 24 25">
               <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
               <path d="M9 22v-4h6v4"></path>
@@ -968,21 +1007,48 @@ export default function DashboardLayout({
             </svg>
             <span>Home</span>
           </Link>
-          <Link href="/dashboard/students" className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/students') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}>
+          <Link 
+            href={isModuleLocked('/dashboard/students') ? '#' : '/dashboard/students'}
+            onClick={(e) => {
+              if (isModuleLocked('/dashboard/students')) {
+                e.preventDefault();
+                setShowLockPopup(true);
+              }
+            }}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/students') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}
+          >
             <svg className="w-5 h-5 stroke-current fill-none" viewBox="0 0 24 24">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="2"></path>
               <circle cx="9" cy="7" r="4" strokeWidth="2"></circle>
             </svg>
             <span>Students</span>
           </Link>
-          <Link href="/dashboard/billing" className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/billing') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}>
+          <Link 
+            href={isModuleLocked('/dashboard/billing') ? '#' : '/dashboard/billing'}
+            onClick={(e) => {
+              if (isModuleLocked('/dashboard/billing')) {
+                e.preventDefault();
+                setShowLockPopup(true);
+              }
+            }}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/billing') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}
+          >
             <svg className="w-5 h-5 stroke-current fill-none" viewBox="0 0 24 24">
               <rect x="1" y="4" width="22" height="16" rx="2" ry="2" strokeWidth="2"></rect>
               <line x1="1" y1="10" x2="23" y2="10" strokeWidth="2"></line>
             </svg>
             <span>Fees</span>
           </Link>
-          <Link href="/dashboard/staff" className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/staff') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}>
+          <Link 
+            href={isModuleLocked('/dashboard/staff') ? '#' : '/dashboard/staff'}
+            onClick={(e) => {
+              if (isModuleLocked('/dashboard/staff')) {
+                e.preventDefault();
+                setShowLockPopup(true);
+              }
+            }}
+            className={`flex flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${pathname.startsWith('/dashboard/staff') ? 'text-[#2E5BFF] font-semibold' : 'text-slate-500'}`}
+          >
             <svg className="w-5 h-5 stroke-current fill-none" viewBox="0 0 24 24">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" strokeWidth="2"></path>
               <circle cx="8.5" cy="7" r="4" strokeWidth="2"></circle>
@@ -997,6 +1063,77 @@ export default function DashboardLayout({
             </svg>
             <span>Menu</span>
           </button>
+        </div>
+      )}
+      {/* Subscription Lock Popup Modal */}
+      {showLockPopup && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[99999] px-6 select-none animate-fade-in">
+          <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 text-center shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-36 h-36 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10" />
+
+            {/* Close Button */}
+            <button
+              onClick={() => setShowLockPopup(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            
+            {/* Warning Visual Shield */}
+            <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-[#2E5BFF]">
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight font-sans">
+              Subscription Required
+            </h2>
+            <p className="text-sm text-slate-500 mt-3 leading-relaxed">
+              Your school's subscription has expired or there is no active subscription. Please renew your subscription to continue using EduTrack.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3">
+              {currentUser?.role === 'SCHOOL_ADMIN' ? (
+                <button
+                  onClick={() => {
+                    setShowLockPopup(false);
+                    router.push('/dashboard/settings/subscription');
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-2xl transition-all shadow-lg shadow-blue-600/10 cursor-pointer"
+                >
+                  Renew Subscription
+                </button>
+              ) : (
+                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs text-slate-500 text-center font-medium leading-relaxed">
+                  Please notify your School Administrator to complete renewal payments and unlock operational modules.
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setShowLockPopup(false);
+                  if (currentUser?.role === 'SCHOOL_ADMIN') {
+                    router.push('/dashboard/settings/subscription');
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 px-5 py-3.5 text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-200/80 rounded-2xl transition-all cursor-pointer"
+              >
+                View Plans
+              </button>
+
+              <a
+                href="mailto:support@edutrack.com"
+                className="w-full flex items-center justify-center gap-2 px-5 py-3.5 text-sm font-bold text-slate-500 hover:text-slate-600 transition-all cursor-pointer text-center"
+              >
+                Contact Support
+              </a>
+            </div>
+          </div>
         </div>
       )}
     </div>

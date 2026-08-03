@@ -64,13 +64,16 @@ export class SubscriptionGuard implements CanActivate {
     const now = new Date();
     const expiryDate = new Date(sub.expiryDate);
 
-    // Exempt paths: Auth profiles, Logout, Setup/Branding views, and Subscription controllers
+    // Exempt paths: Auth profiles, Logout, Setup/Branding views, Subscription controller, Support requests, Super Admin
     const path = request.path;
     const isExemptPath =
       path.startsWith('/auth/') ||
       path.startsWith('/tenant/subscription') ||
       path.startsWith('/tenant/setup-status') ||
-      path.startsWith('/tenant/public-branding');
+      path.startsWith('/tenant/public-branding') ||
+      path.startsWith('/support') ||
+      path.startsWith('/super-admin') ||
+      path.includes('/profile'); // Allow profile endpoints
 
     // 3. Expiry and Grace Period validation
     if (now > expiryDate) {
@@ -92,7 +95,7 @@ export class SubscriptionGuard implements CanActivate {
           }).catch(() => {});
         }
       } else {
-        // Post Grace Period: Locked / Read-Only Mode
+        // Post Grace Period: Locked Mode
         if (sub.status !== SubscriptionStatus.EXPIRED) {
           await this.prisma.tenantSubscription.update({
             where: { id: sub.id },
@@ -104,40 +107,14 @@ export class SubscriptionGuard implements CanActivate {
           return true;
         }
 
-        // Role-based Lock Enforcement
-        if (user.role === 'SCHOOL_ADMIN') {
-          // Admins can only view Billing / Invoices / Profile / Logout
-          // Allow GET requests to billing invoices, but block admissions and other write requests
-          const isBillingRead =
-            request.method === 'GET' && path.startsWith('/billing/invoices');
-
-          if (!isBillingRead) {
-            throw new HttpException(
-              {
-                error: 'subscription_expired',
-                message: 'Your school subscription has expired. Read-only limits apply to Admin portals.',
-                role: 'SCHOOL_ADMIN',
-                redirectUrl: '/dashboard/settings/subscription',
-              },
-              HttpStatus.PAYMENT_REQUIRED,
-            );
-          }
-        } else {
-          // Teachers, Parents, Students are completely blocked from accessing non-exempt routes
-          const message =
-            user.role === 'TEACHER'
-              ? 'School subscription has expired. Please contact your School Administrator to renew the EduTrack subscription.'
-              : 'Your school\'s EduTrack subscription has expired. Please contact your School Administrator for assistance.';
-
-          throw new HttpException(
-            {
-              error: 'subscription_expired',
-              message,
-              role: user.role,
-            },
-            HttpStatus.PAYMENT_REQUIRED,
-          );
-        }
+        throw new HttpException(
+          {
+            error: 'subscription_expired',
+            message: "Your school's subscription has expired or there is no active subscription. Please renew your subscription to continue using EduTrack.",
+            role: user.role,
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
       }
     } else {
       // Expiry date is in the future: ensure status is ACTIVE if it was expired/past due
@@ -146,23 +123,6 @@ export class SubscriptionGuard implements CanActivate {
           where: { id: sub.id },
           data: { status: SubscriptionStatus.ACTIVE },
         }).catch(() => {});
-      }
-    }
-
-    // 4. Feature Gating Check
-    const requiredFeature = this.reflector.getAllAndOverride<string>(FEATURE_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-
-    if (requiredFeature) {
-      const allowedFeatures = PLAN_FEATURES[sub.plan.name];
-      if (!allowedFeatures || !allowedFeatures.includes(requiredFeature)) {
-        throw new ForbiddenException({
-          error: 'feature_locked',
-          message: 'Upgrade your subscription plan to access this feature.',
-          requiredFeature,
-        });
       }
     }
 
