@@ -40,6 +40,11 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
     return allowedPrefixes.every(prefix => !href.startsWith(prefix));
   };
 
+  const handleLogout = () => {
+    clearStoredAuth();
+    window.location.href = '/auth/login';
+  };
+
   const isPrintReceiptPage = pathname?.includes('/parent/fees/receipts/');
   if (isPrintReceiptPage) {
     return <div className="bg-white min-h-screen text-slate-800 font-sans">{children}</div>;
