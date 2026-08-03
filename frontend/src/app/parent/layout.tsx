@@ -86,10 +86,7 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
     { name: 'Transport Tracker', href: '/parent/transport', icon: Bus, isBottom: false },
   ];
 
-  const handleLogout = () => {
-    clearStoredAuth();
-    window.location.href = '/auth/login';
-  };
+
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans select-none overflow-x-hidden relative pb-16 lg:pb-0">

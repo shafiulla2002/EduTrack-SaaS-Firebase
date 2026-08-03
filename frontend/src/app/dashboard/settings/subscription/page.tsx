@@ -152,7 +152,7 @@ export default function SubscriptionPage() {
                 {currentStatus}
               </span>
               <span className="text-slate-400 text-xs font-mono">
-                Instance ID: {subscription?.tenantId?.substring(0, 8) || 'Tenant'}
+                Instance ID: {(subscription as any)?.tenantId?.substring(0, 8) || 'Tenant'}
               </span>
             </div>
             

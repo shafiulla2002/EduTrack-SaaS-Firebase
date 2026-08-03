@@ -213,7 +213,7 @@ if (isSchoolSubdomain) {
               }
             } as any;
           }
-        });
+        } as any);
         setSavedPhone(cleanedPhone);
 
         const tenant = searchParams.get('tenant') || '';
