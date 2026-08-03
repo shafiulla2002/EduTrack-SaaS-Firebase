@@ -449,16 +449,16 @@ Thank you.`;
                   {/* Homework Summary Card */}
                   <div className="bg-[#f7fafc] border border-[#e2e8f0] p-4 rounded-2xl space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Homework details</span>
+                      <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider">Homework details</span>
                       <span className="bg-blue-50 border border-blue-100 text-[#2E5BFF] px-2 py-0.5 rounded text-[10px] font-bold">
                         {hwToShare.classSection?.class?.name} - {hwToShare.classSection?.section?.name} • {hwToShare.subject?.name}
                       </span>
                     </div>
                     <div>
-                      <h4 className="font-extrabold text-slate-800 text-[14px]">{hwToShare.title}</h4>
-                      <p className="text-xs text-slate-500 font-light mt-1 whitespace-pre-wrap">{hwToShare.description}</p>
+                      <h4 className="font-extrabold text-[#1e293b] text-[14px]">{hwToShare.title}</h4>
+                      <p className="text-xs text-[#64748b] font-light mt-1 whitespace-pre-wrap">{hwToShare.description}</p>
                     </div>
-                    <div className="text-[11px] text-slate-400 font-semibold flex gap-3">
+                    <div className="text-[11px] text-[#94a3b8] font-semibold flex gap-3">
                       <span>Due Date: {hwToShare.dueDate.split('T')[0]}</span>
                       <span>•</span>
                       <span>
