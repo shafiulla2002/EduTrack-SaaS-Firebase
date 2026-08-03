@@ -202,7 +202,32 @@ if (isSchoolSubdomain) {
       sessionStorage.setItem('otp_schoolName', schoolName);
       sessionStorage.setItem('otp_logoUrl', logoUrl);
 
-      // Step 2: Trigger Firebase Phone Authentication
+      // Step 2: Trigger Firebase Phone Authentication / Local Bypass
+      if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        console.log('Local developer environment detected. Bypassing Firebase Recaptcha verification.');
+        setConfirmationResult({
+          confirm: async (code: string) => {
+            return {
+              user: {
+                getIdToken: async () => 'MOCK_FIREBASE_ID_TOKEN'
+              }
+            } as any;
+          }
+        });
+        setSavedPhone(cleanedPhone);
+
+        const tenant = searchParams.get('tenant') || '';
+        const returnUrl = searchParams.get('returnUrl') || '';
+        let otpUrl = `/auth/otp?phone=${encodeURIComponent(cleanedPhone)}&portal=${encodeURIComponent(portal)}`;
+        if (tenant) otpUrl += `&tenant=${encodeURIComponent(tenant)}`;
+        if (returnUrl) otpUrl += `&returnUrl=${encodeURIComponent(returnUrl)}`;
+        
+        setTimeout(() => {
+          router.push(otpUrl);
+        }, 500);
+        return;
+      }
+
       if (!recaptchaVerifierRef.current) {
         try {
           recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {

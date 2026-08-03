@@ -27,9 +27,45 @@ import {
 function ParentLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
-  const { logoUrl, schoolName, schoolType } = useTenant();
+  const { logoUrl, schoolName, schoolType, subscription } = useTenant();
   const { children: childrenList, selectedChild, setSelectedChildId } = useParent();
   const [showSwitcher, setShowSwitcher] = useState(false);
+
+  const isSubscriptionBlocked = subscription && (
+    subscription.status === 'EXPIRED' ||
+    subscription.status === 'CANCELLED' ||
+    new Date(subscription.expiryDate).getTime() + (3 * 24 * 60 * 60 * 1000) < Date.now()
+  );
+
+  const handleLogout = () => {
+    clearStoredAuth();
+    window.location.href = '/auth/login';
+  };
+
+  if (isSubscriptionBlocked) {
+    return (
+      <div className="fixed inset-0 bg-[#0F172A] flex flex-col items-center justify-center text-white z-[99999] px-6">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl">
+          <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center justify-center mx-auto mb-6 text-red-500">
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide">Portal Suspended</h2>
+          <p className="text-sm text-slate-400 mt-3 leading-relaxed">
+            Your school's EduTrack subscription has expired. Access to the Parent Portal has been temporarily suspended. Please contact the school administration for support.
+          </p>
+          <button
+            onClick={handleLogout}
+            className="mt-8 w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-2xl transition-all shadow-lg cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+            Logout
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const isPrintReceiptPage = pathname?.includes('/parent/fees/receipts/');
   if (isPrintReceiptPage) {

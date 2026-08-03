@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
 import { Role } from '@prisma/client';
@@ -18,6 +18,30 @@ export class TeachersService {
 
   async createTeacher(data: any) {
     const tenantId = this.getTenantId();
+
+    // Validate teacher subscription limits
+    const sub = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId },
+      include: { plan: true }
+    });
+    if (sub && sub.plan.teacherLimit !== null) {
+      const activeTeachersCount = await this.prisma.staffProfile.count({
+        where: {
+          tenantId,
+          user: { role: { in: ['TEACHER', 'STAFF'] } }
+        }
+      });
+      if (activeTeachersCount >= sub.plan.teacherLimit) {
+        throw new HttpException(
+          {
+            error: 'quota_exceeded',
+            message: `Teacher limit of ${sub.plan.teacherLimit} reached for your subscription plan. Please upgrade to add more teachers.`,
+          },
+          HttpStatus.TOO_MANY_REQUESTS
+        );
+      }
+    }
+
     const emailLower = data.email.toLowerCase().trim();
     const existing = await this.prisma.user.findUnique({
       where: { email: emailLower },

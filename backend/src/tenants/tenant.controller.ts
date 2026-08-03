@@ -202,6 +202,11 @@ export class TenantController {
       }
     }
 
+    const subscription = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId },
+      include: { plan: true },
+    });
+
     return {
       setupCompleted: setup.isCompleted,
       completionPercentage,
@@ -211,6 +216,14 @@ export class TenantController {
       missingFields,
       setup,
       currentUser,
+      subscription: subscription ? {
+        plan: subscription.plan.name,
+        status: subscription.status,
+        expiryDate: subscription.expiryDate,
+        studentLimit: subscription.plan.studentLimit,
+        teacherLimit: subscription.plan.teacherLimit,
+        features: subscription.plan.features,
+      } : null,
     };
   }
 
@@ -300,5 +313,24 @@ export class TenantController {
         upiQrId: body.upiQrId || null,
       },
     });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('subscription')
+  async getSubscription(@Req() req: any) {
+    const tenantId = req.user.tenantId;
+    return this.tenantsService.getSubscriptionStatus(tenantId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('subscription/renew')
+  async renewSubscription(
+    @Req() req: any,
+    @Body('planName') planName: string,
+    @Body('paymentDetails') paymentDetails: any
+  ) {
+    const tenantId = req.user.tenantId;
+    const userId = req.user.id;
+    return this.tenantsService.upgradeOrRenewSubscription(tenantId, planName as any, paymentDetails, userId);
   }
 }

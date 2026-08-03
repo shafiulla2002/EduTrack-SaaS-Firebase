@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { Tenant } from '@prisma/client';
+import { Tenant, PlanType, SubscriptionStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -97,7 +97,16 @@ export class TenantsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 1. Create Tenant
+      // 1. Resolve selected subscription plan details
+      const selectedPlanName = data.subscriptionPlan ? data.subscriptionPlan.toUpperCase() : 'TRIAL';
+      const plan = await tx.subscriptionPlan.findUnique({
+        where: { name: selectedPlanName as any }
+      });
+      if (!plan) {
+        throw new NotFoundException(`Subscription plan '${selectedPlanName}' not found`);
+      }
+
+      // 2. Create Tenant
       const tenant = await tx.tenant.create({
         data: {
           name: data.schoolName,
@@ -109,7 +118,7 @@ export class TenantsService {
         },
       });
 
-      // 2. Create SchoolSetup
+      // 3. Create SchoolSetup
       const schoolSetup = await tx.schoolSetup.create({
         data: {
           tenantId: tenant.id,
@@ -123,7 +132,7 @@ export class TenantsService {
         },
       });
 
-      // 3. Create default active AcademicYear
+      // 4. Create default active AcademicYear
       const currentYear = new Date().getFullYear();
       const startDate = new Date(`${currentYear}-06-01`);
       const endDate = new Date(`${currentYear + 1}-05-31`);
@@ -138,7 +147,7 @@ export class TenantsService {
         },
       });
 
-      // 4. Create default Tenant Admin User (SCHOOL_ADMIN)
+      // 5. Create default Tenant Admin User (SCHOOL_ADMIN)
       const randomPassword = Math.random().toString(36).slice(-10) + '!A1';
       const passwordHash = await bcrypt.hash(randomPassword, 10);
 
@@ -153,7 +162,7 @@ export class TenantsService {
         },
       });
 
-      // 5. Create default StaffProfile for the Admin user
+      // 6. Create default StaffProfile for the Admin user
       await tx.staffProfile.create({
         data: {
           userId: user.id,
@@ -163,6 +172,38 @@ export class TenantsService {
         },
       });
 
+      // 7. Initialize Tenant Subscription
+      const expiryDate = new Date();
+      if (plan.name === PlanType.TRIAL) {
+        expiryDate.setMonth(expiryDate.getMonth() + 6); // 6 Months Free Trial
+      } else {
+        expiryDate.setMonth(expiryDate.getMonth() + 1); // 1 Month Standard billing
+      }
+
+      await tx.tenantSubscription.create({
+        data: {
+          tenantId: tenant.id,
+          planId: plan.id,
+          expiryDate: expiryDate,
+          status: SubscriptionStatus.ACTIVE,
+        }
+      });
+
+      // 8. Create first SubscriptionHistory record
+      await tx.subscriptionHistory.create({
+        data: {
+          tenantId: tenant.id,
+          previousPlan: null,
+          newPlan: plan.name,
+          amount: plan.price,
+          paymentMethod: 'SYSTEM_ONBOARD',
+          transactionReference: 'ONBOARD_REGISTRATION',
+          startDate: new Date(),
+          expiryDate: expiryDate,
+          status: SubscriptionStatus.ACTIVE,
+        }
+      });
+
       return {
         tenant,
         schoolSetup,
@@ -170,6 +211,155 @@ export class TenantsService {
         user,
       };
     }, { timeout: 30000 });
+  }
+
+  async getSubscriptionStatus(tenantId: string) {
+    const subscription = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId },
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found for this tenant');
+    }
+
+    const now = new Date();
+    const expiry = new Date(subscription.expiryDate);
+    const diffTime = expiry.getTime() - now.getTime();
+    const remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // Get current usage counts
+    const studentUsage = await this.prisma.studentProfile.count({ where: { tenantId } });
+    const teacherUsage = await this.prisma.staffProfile.count({
+      where: {
+        tenantId,
+        user: { role: { in: ['TEACHER', 'STAFF'] } }
+      }
+    });
+    const parentUsage = await this.prisma.parentProfile.count({
+      where: {
+        user: { tenantId }
+      }
+    });
+
+    // Query Invoice and Payment History
+    const invoices = await this.prisma.subscriptionInvoice.findMany({
+      where: { tenantId },
+      orderBy: { createdDate: 'desc' }
+    });
+
+    const payments = await this.prisma.subscriptionPayment.findMany({
+      where: { tenantId },
+      include: { invoice: true },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return {
+      plan: subscription.plan.name,
+      status: subscription.status,
+      expiryDate: subscription.expiryDate,
+      remainingDays,
+      studentUsage,
+      studentLimit: subscription.plan.studentLimit,
+      teacherUsage,
+      teacherLimit: subscription.plan.teacherLimit,
+      parentUsage,
+      parentLimit: subscription.plan.parentLimit,
+      features: subscription.plan.features,
+      invoices,
+      payments
+    };
+  }
+
+  async upgradeOrRenewSubscription(
+    tenantId: string,
+    planName: PlanType,
+    paymentDetails: any,
+    userId?: string
+  ) {
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { name: planName },
+    });
+    if (!plan) {
+      throw new NotFoundException(`Plan ${planName} not found`);
+    }
+
+    const currentSub = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId },
+      include: { plan: true },
+    });
+
+    let baseDate = new Date();
+    // If current subscription is active and not expired, extend from existing expiry date
+    if (currentSub && new Date(currentSub.expiryDate) > new Date()) {
+      baseDate = new Date(currentSub.expiryDate);
+    }
+
+    const newExpiry = new Date(baseDate);
+    if (plan.name === PlanType.TRIAL) {
+      newExpiry.setMonth(newExpiry.getMonth() + 6); // 6 Months
+    } else {
+      newExpiry.setMonth(newExpiry.getMonth() + 1); // 1 Month
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Update Subscription
+      const updatedSub = await tx.tenantSubscription.update({
+        where: { tenantId },
+        data: {
+          planId: plan.id,
+          expiryDate: newExpiry,
+          status: SubscriptionStatus.ACTIVE,
+        },
+        include: { plan: true },
+      });
+
+      // 2. Log History
+      await tx.subscriptionHistory.create({
+        data: {
+          tenantId,
+          previousPlan: currentSub ? currentSub.plan.name : null,
+          newPlan: plan.name,
+          amount: plan.price,
+          paymentMethod: paymentDetails.method || 'SIMULATED',
+          transactionReference: paymentDetails.txRef || 'TXN-' + Math.random().toString(36).substring(7).toUpperCase(),
+          startDate: new Date(),
+          expiryDate: newExpiry,
+          status: SubscriptionStatus.ACTIVE,
+        },
+      });
+
+      // 3. Generate SubscriptionInvoice
+      const invoiceNumber = 'INV-SUB-' + Date.now().toString().slice(-6) + '-' + Math.floor(Math.random() * 1000);
+      const invoice = await tx.subscriptionInvoice.create({
+        data: {
+          invoiceNumber,
+          tenantId,
+          planId: plan.name,
+          amount: plan.price,
+          gst: Number(plan.price) * 0.18, // 18% GST
+          currency: 'INR',
+          status: 'PAID',
+          paymentDate: new Date(),
+          pdfUrl: `/billing/invoices/subscription/${invoiceNumber}.pdf`,
+        },
+      });
+
+      // 4. Record SubscriptionPayment
+      await tx.subscriptionPayment.create({
+        data: {
+          tenantId,
+          invoiceId: invoice.id,
+          amount: plan.price,
+          transactionId: paymentDetails.txRef || 'TXN-' + Date.now(),
+          gateway: paymentDetails.gateway || 'SIMULATED',
+          status: 'SUCCESS',
+          paidAt: new Date(),
+        },
+      });
+
+      return updatedSub;
+    });
   }
 }
 

@@ -21,6 +21,7 @@ function RegisterSchoolContent() {
     email: '',
     address: '',
     academicYear: '2026-2027',
+    subscriptionPlan: 'TRIAL',
   });
 
   const [loading, setLoading] = useState(false);
@@ -276,6 +277,90 @@ function RegisterSchoolContent() {
                     required
                     disabled={loading}
                   />
+                </div>
+              </div>
+
+              {/* Subscription Plan Selection */}
+              <div className="col-span-1 md:col-span-2 border-t border-slate-900/50 pt-5 mt-2">
+                <h3 className="text-sm font-semibold text-brand-400 uppercase tracking-wider mb-4">Select Subscription Plan</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Trial Card */}
+                  <div
+                    onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: 'TRIAL' }))}
+                    className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                      formData.subscriptionPlan === 'TRIAL'
+                        ? 'border-brand-500 bg-brand-500/5 text-white'
+                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-bold uppercase tracking-wider text-slate-200">Trial</span>
+                        {formData.subscriptionPlan === 'TRIAL' && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-brand-500" />
+                        )}
+                      </div>
+                      <p className="text-2xl font-black text-white mb-2">Free</p>
+                      <p className="text-[11px] leading-relaxed mb-4">6 Months Trial. Full access to evaluate platform capabilities.</p>
+                    </div>
+                    <ul className="text-[10px] space-y-1.5 border-t border-slate-900/50 pt-3">
+                      <li>• 1,000 Students Limit</li>
+                      <li>• 100 Teachers Limit</li>
+                      <li>• Standard Support</li>
+                    </ul>
+                  </div>
+
+                  {/* Basic Card */}
+                  <div
+                    onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: 'BASIC' }))}
+                    className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                      formData.subscriptionPlan === 'BASIC'
+                        ? 'border-indigo-500 bg-indigo-500/5 text-white'
+                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-bold uppercase tracking-wider text-slate-200">Basic</span>
+                        {formData.subscriptionPlan === 'BASIC' && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                        )}
+                      </div>
+                      <p className="text-2xl font-black text-white mb-2">₹1,999<span className="text-xs font-normal">/mo</span></p>
+                      <p className="text-[11px] leading-relaxed mb-4">Essential features for small to mid-sized schools.</p>
+                    </div>
+                    <ul className="text-[10px] space-y-1.5 border-t border-slate-900/50 pt-3">
+                      <li>• 5,000 Students Limit</li>
+                      <li>• 200 Teachers Limit</li>
+                      <li>• Priority Support</li>
+                    </ul>
+                  </div>
+
+                  {/* Premium Card */}
+                  <div
+                    onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: 'PREMIUM' }))}
+                    className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                      formData.subscriptionPlan === 'PREMIUM'
+                        ? 'border-pink-500 bg-pink-500/5 text-white'
+                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-bold uppercase tracking-wider text-slate-200">Premium</span>
+                        {formData.subscriptionPlan === 'PREMIUM' && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-pink-500" />
+                        )}
+                      </div>
+                      <p className="text-2xl font-black text-white mb-2">₹4,999<span className="text-xs font-normal">/mo</span></p>
+                      <p className="text-[11px] leading-relaxed mb-4">Unlimited operations and premium modules for large schools.</p>
+                    </div>
+                    <ul className="text-[10px] space-y-1.5 border-t border-slate-900/50 pt-3">
+                      <li>• Unlimited Students</li>
+                      <li>• Unlimited Teachers</li>
+                      <li>• 24/7 Dedicated Support</li>
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>

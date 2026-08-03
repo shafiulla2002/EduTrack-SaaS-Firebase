@@ -1,0 +1,187 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { PrismaService } from '../prisma.service';
+import { Role, PlanType, SubscriptionStatus } from '@prisma/client';
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(Role.SUPER_ADMIN)
+@Controller('super-admin')
+export class SuperAdminController {
+  constructor(private prisma: PrismaService) {}
+
+  @Get('tenants')
+  async listTenants() {
+    return this.prisma.tenant.findMany({
+      include: {
+        subscription: {
+          include: { plan: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  @Post('tenants/:id/subscription')
+  async updateSubscription(
+    @Param('id') id: string,
+    @Body('planName') planName: PlanType,
+    @Body('expiryDate') expiryDate?: string,
+    @Body('status') status?: SubscriptionStatus,
+  ) {
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { name: planName },
+    });
+    if (!plan) {
+      throw new NotFoundException(`Plan ${planName} not found`);
+    }
+
+    const currentSub = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId: id },
+      include: { plan: true },
+    });
+
+    if (!currentSub) {
+      throw new NotFoundException(`Subscription record not found for tenant ${id}`);
+    }
+
+    const updateData: any = {
+      planId: plan.id,
+    };
+    if (expiryDate) {
+      updateData.expiryDate = new Date(expiryDate);
+    }
+    if (status) {
+      updateData.status = status;
+    }
+
+    const updated = await this.prisma.tenantSubscription.update({
+      where: { tenantId: id },
+      data: updateData,
+      include: { plan: true },
+    });
+
+    // Create SubscriptionHistory entry for audit trail
+    await this.prisma.subscriptionHistory.create({
+      data: {
+        tenantId: id,
+        previousPlan: currentSub.plan.name,
+        newPlan: plan.name,
+        amount: 0.0, // Manual Super Admin adjustment
+        paymentMethod: 'SUPER_ADMIN_MANUAL',
+        transactionReference: 'ADJ-' + Date.now(),
+        startDate: currentSub.startDate,
+        expiryDate: updateData.expiryDate || currentSub.expiryDate,
+        status: status || SubscriptionStatus.ACTIVE,
+      },
+    });
+
+    return updated;
+  }
+
+  @Get('billing/payments')
+  async listPayments() {
+    return this.prisma.subscriptionPayment.findMany({
+      include: {
+        tenant: { select: { name: true, subDomain: true } },
+        invoice: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  @Post('billing/invoices/generate')
+  async generateInvoice(
+    @Body('tenantId') tenantId: string,
+    @Body('planName') planName: PlanType,
+    @Body('amount') amount: number,
+  ) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!tenant) {
+      throw new NotFoundException(`Tenant ${tenantId} not found`);
+    }
+
+    const invoiceNumber = 'INV-SUB-MAN-' + Date.now().toString().slice(-6);
+    return this.prisma.subscriptionInvoice.create({
+      data: {
+        invoiceNumber,
+        tenantId,
+        planId: planName,
+        amount,
+        gst: Number(amount) * 0.18,
+        currency: 'INR',
+        status: 'UNPAID',
+        pdfUrl: `/billing/invoices/subscription/${invoiceNumber}.pdf`,
+      },
+    });
+  }
+
+  @Get('dashboard/stats')
+  async getStats() {
+    const totalSchools = await this.prisma.tenant.count();
+
+    const subscriptions = await this.prisma.tenantSubscription.findMany({
+      include: { plan: true },
+    });
+
+    const activeTrials = subscriptions.filter(
+      s => s.status === SubscriptionStatus.ACTIVE && s.plan.name === PlanType.TRIAL,
+    ).length;
+    
+    const activePaid = subscriptions.filter(
+      s => s.status === SubscriptionStatus.ACTIVE && s.plan.name !== PlanType.TRIAL,
+    ).length;
+
+    const expired = subscriptions.filter(s => s.status === SubscriptionStatus.EXPIRED).length;
+    const grace = subscriptions.filter(
+      s => s.status === SubscriptionStatus.PAST_DUE || (s.status as string) === 'GRACE_PERIOD',
+    ).length;
+
+    const payments = await this.prisma.subscriptionPayment.findMany({
+      where: { status: 'SUCCESS' },
+      include: { tenant: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    // Calculate total revenue from all successful payments
+    const allSuccessfulPayments = await this.prisma.subscriptionPayment.findMany({
+      where: { status: 'SUCCESS' },
+      select: { amount: true },
+    });
+    const totalRevenue = allSuccessfulPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+
+    const planDistribution = subscriptions.reduce((acc, sub) => {
+      acc[sub.plan.name] = (acc[sub.plan.name] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      totalSchools,
+      activeTrials,
+      activePaid,
+      expired,
+      grace,
+      totalRevenue,
+      planDistribution,
+      recentPayments: payments.map(p => ({
+        id: p.id,
+        schoolName: p.tenant.name,
+        amount: p.amount,
+        gateway: p.gateway,
+        paidAt: p.paidAt,
+        transactionId: p.transactionId,
+      })),
+    };
+  }
+}

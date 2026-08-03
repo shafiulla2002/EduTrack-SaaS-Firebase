@@ -1,7 +1,10 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TenantsModule } from './tenants/tenants.module';
 import { TenantMiddleware } from './tenants/tenant.middleware';
+import { PrismaService } from './prisma.service';
+import { SubscriptionGuard } from './common/guards/subscription.guard';
 import { AuthModule } from './auth/auth.module';
 import { AcademicsModule } from './academics/academics.module';
 import { StudentsModule } from './students/students.module';
@@ -56,7 +59,13 @@ import { SupportModule } from './support/support.module';
     SupportModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [
+    PrismaService,
+    {
+      provide: APP_GUARD,
+      useClass: SubscriptionGuard,
+    },
+  ],
 })
 export class AppModule implements NestModule {
 

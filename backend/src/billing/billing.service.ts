@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
 import { PaymentStatus, PaymentMethod, Role } from '@prisma/client';
@@ -165,6 +165,26 @@ export class BillingService {
 
   async createAdmission(studentData: any, selectedPricebookEntryIds: string[], concessionAmount: number) {
     const tenantId = this.getTenantId();
+
+    // Validate student subscription limits
+    const sub = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId },
+      include: { plan: true }
+    });
+    if (sub && sub.plan.studentLimit !== null) {
+      const activeStudentsCount = await this.prisma.studentProfile.count({
+        where: { tenantId }
+      });
+      if (activeStudentsCount >= sub.plan.studentLimit) {
+        throw new HttpException(
+          {
+            error: 'quota_exceeded',
+            message: `Student limit of ${sub.plan.studentLimit} reached for your subscription plan. Please upgrade to add more students.`,
+          },
+          HttpStatus.TOO_MANY_REQUESTS
+        );
+      }
+    }
 
     // ── Email handling: generate a unique fallback if no email provided ──────
     let emailLower: string;

@@ -24,6 +24,6 @@ import { FirebaseAdminService } from './firebase-admin.service';
   ],
   providers: [AuthService, JwtStrategy, PrismaService, FirebaseAdminService],
   controllers: [AuthController],
-  exports: [AuthService, PassportModule, FirebaseAdminService],
+  exports: [AuthService, PassportModule, FirebaseAdminService, JwtModule],
 })
 export class AuthModule {}

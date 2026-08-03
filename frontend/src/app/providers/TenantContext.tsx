@@ -13,6 +13,14 @@ interface TenantContextType {
   loading: boolean;
   setupStats: any;
   currentUser: any;
+  subscription: {
+    plan: string;
+    status: string;
+    expiryDate: string;
+    studentLimit: number | null;
+    teacherLimit: number | null;
+    features: string[];
+  } | null;
   refresh: () => Promise<void>;
 }
 
@@ -26,6 +34,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [setupStats, setSetupStats] = useState<any>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [subscription, setSubscription] = useState<any>(null);
   const [token, setToken] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
       return getStoredToken();
@@ -65,6 +74,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       } finally {
         setSetupStats(null);
         setCurrentUser(null);
+        setSubscription(null);
         setLoading(false);
       }
       return;
@@ -75,6 +85,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       const data = response.data;
       setSetupStats(data);
       setCurrentUser(data.currentUser || null);
+      setSubscription(data.subscription || null);
       
       if (typeof window !== 'undefined' && data.currentUser?.role) {
         if (data.currentUser.role === 'TEACHER') {
@@ -115,6 +126,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       setAdminName("");
       setLogoUrl(null);
       setCurrentUser(null);
+      setSubscription(null);
     } finally {
       setLoading(false);
     }
@@ -153,17 +165,21 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
             data.classesCount !== previousStats.classesCount ||
             data.teachersCount !== previousStats.teachersCount ||
             data.studentsCount !== previousStats.studentsCount ||
-            data.completionPercentage !== previousStats.completionPercentage;
+            data.completionPercentage !== previousStats.completionPercentage ||
+            data.subscription?.status !== previousStats.subscription?.status ||
+            data.subscription?.plan !== previousStats.subscription?.plan;
             
           if (statsChanged) {
-            console.log('[TenantContext] Stats changed in DB, dispatching updates!');
+            console.log('[TenantContext] Stats or subscription changed in DB, dispatching updates!');
             setSetupStats(data);
+            setSubscription(data.subscription || null);
             const { dispatchSchoolSetupUpdated } = await import('@/lib/events');
             dispatchSchoolSetupUpdated();
           }
         } else {
           // Initialize first comparison baseline
           setSetupStats(data);
+          setSubscription(data.subscription || null);
         }
         previousStats = data;
       } catch (err) {
@@ -186,6 +202,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       loading,
       setupStats,
       currentUser,
+      subscription,
       refresh: fetchTenantData
     }}>
       {children}
