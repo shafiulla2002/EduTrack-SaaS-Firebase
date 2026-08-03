@@ -323,7 +323,7 @@ export default function MarksMgmtPage() {
           disabled={!selectedClass || !selectedSubject || !selectedExam || loadingStudents}
           className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50"
         >
-          {loadingStudents ? 'Loading Roster...' : '🔍 Load Roster'}
+          {loadingStudents ? 'Loading Students...' : '🔍 Load Students'}
         </button>
       </div>
 
@@ -395,10 +395,10 @@ export default function MarksMgmtPage() {
             <button
               onClick={handleManualSave}
               disabled={saving}
-              className="pointer-events-auto flex items-center gap-2 px-6 py-3.5 bg-slate-900 text-white hover:bg-slate-800 font-bold rounded-full text-xs shadow-2xl transition-all cursor-pointer transform hover:scale-105"
+              className="pointer-events-auto flex items-center gap-2 px-6 py-3.5 bg-[#2E5BFF] text-white hover:bg-blue-600 font-bold rounded-full text-xs shadow-2xl transition-all cursor-pointer transform hover:scale-105"
             >
               <Save className="w-4 h-4" />
-              {saving ? 'Saving...' : 'Force Sync Roster'}
+              {saving ? 'Saving...' : 'Save Marks'}
             </button>
           </div>
 
@@ -410,7 +410,7 @@ export default function MarksMgmtPage() {
           {!selectedClass || !selectedSubject || !selectedExam ? (
             <p className="text-slate-500">Please select a Class Section and Subject to continue.</p>
           ) : (
-            <p className="text-slate-500">Click &ldquo;Load Roster&rdquo; to fetch the student listing.</p>
+            <p className="text-slate-500">Click &ldquo;Load Students&rdquo; to fetch the student listing.</p>
           )}
         </div>
       )}
