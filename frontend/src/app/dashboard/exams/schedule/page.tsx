@@ -9,6 +9,7 @@ import {
 import { api } from '@/lib/api';
 import { useTenant } from '@/app/providers/TenantContext';
 import { useToast } from '@/components/Toast';
+import Drawer from '@/components/Drawer';
 
 interface ClassSectionOption {
   value: string; // classSectionId
@@ -796,208 +797,208 @@ export default function ExamSchedulePage() {
             })}
           </div>
         </div>
-      )}
+      )}      {/* CREATE & EDIT FORM MODAL (Admin Drawer style) */}
+      <Drawer
+        open={isFormOpen && isAdmin}
+        onClose={() => setIsFormOpen(false)}
+        size="2xl"
+      >
+        <div className="h-full w-full bg-white dark:bg-slate-800 flex flex-col justify-between p-0">
+          {/* Drawer Header */}
+          <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center shrink-0">
+            <div>
+              <h3 className="text-lg font-black">{editingId ? 'Edit Exam Schedule' : 'Schedule New Exams'}</h3>
+              <p className="text-[11px] text-white/80 font-medium">Orchestrates validation conflicts and timing overlaps.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsFormOpen(false)}
+              className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-      {/* CREATE & EDIT FORM MODAL (Admin Drawer style) */}
-      {isFormOpen && isAdmin && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-end z-[9999] animate-in fade-in duration-200">
-          <div className="bg-white border-l border-slate-200 h-full w-full max-w-2xl overflow-y-auto shadow-2xl flex flex-col justify-between p-0 animate-in slide-in-from-right duration-300">
+          {/* Drawer Body Form */}
+          <form onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
             
-            {/* Drawer Header */}
-            <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex justify-between items-center shrink-0">
-              <div>
-                <h3 className="text-lg font-black">{editingId ? 'Edit Exam Schedule' : 'Schedule New Exams'}</h3>
-                <p className="text-[11px] text-white/80 font-medium">Orchestrates validation conflicts and timing overlaps.</p>
+            {/* General details */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5 col-span-1 sm:col-span-2">
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Exam Name / Term *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Unit Test 1, Annual Examinations"
+                  value={formExamName}
+                  onChange={(e) => setFormExamName(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-800 dark:text-slate-200 font-semibold outline-none focus:border-blue-500 focus:bg-white"
+                />
               </div>
-              <button
-                onClick={() => setIsFormOpen(false)}
-                className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Class & Section *</label>
+                <select
+                  value={formClassSectionId}
+                  onChange={(e) => setFormClassSectionId(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white"
+                >
+                  {classes.map(cls => (
+                    <option key={cls.value} value={cls.value} className="dark:bg-slate-800">{cls.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Academic Year *</label>
+                <select
+                  value={formAcademicYearId}
+                  onChange={(e) => setFormAcademicYearId(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white"
+                >
+                  {academicYears.map(yr => (
+                    <option key={yr.id} value={yr.id} className="dark:bg-slate-800">{yr.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* Drawer Body Form */}
-            <form onSubmit={handleFormSubmit} className="flex-1 p-6 space-y-6">
-              
-              {/* General details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5 col-span-1 sm:col-span-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Exam Name / Term *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Unit Test 1, Annual Examinations"
-                    value={formExamName}
-                    onChange={(e) => setFormExamName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 font-semibold outline-none focus:border-blue-500 focus:bg-white"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Class & Section *</label>
-                  <select
-                    value={formClassSectionId}
-                    onChange={(e) => setFormClassSectionId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white"
+            {/* Schedules subrows (Bulk support) */}
+            <div className="border-t border-slate-100 dark:border-slate-750 pt-5 space-y-4">
+              <div className="flex justify-between items-center">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">Exam Details / Subjects</h4>
+                {!editingId && (
+                  <button
+                    type="button"
+                    onClick={handleAddFormRow}
+                    className="text-blue-650 hover:text-blue-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
                   >
-                    {classes.map(cls => (
-                      <option key={cls.value} value={cls.value}>{cls.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Academic Year *</label>
-                  <select
-                    value={formAcademicYearId}
-                    onChange={(e) => setFormAcademicYearId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white"
-                  >
-                    {academicYears.map(yr => (
-                      <option key={yr.id} value={yr.id}>{yr.name}</option>
-                    ))}
-                  </select>
-                </div>
+                    <PlusCircle className="w-4 h-4" /> Add Subject
+                  </button>
+                )}
               </div>
 
-              {/* Schedules subrows (Bulk support) */}
-              <div className="border-t border-slate-100 pt-5 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Exam Details / Subjects</h4>
-                  {!editingId && (
+              {formRows.map((row, idx) => (
+                <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4 relative animate-in fade-in duration-150">
+                  
+                  {/* Delete row trigger */}
+                  {!editingId && formRows.length > 1 && (
                     <button
                       type="button"
-                      onClick={handleAddFormRow}
-                      className="text-blue-650 hover:text-blue-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                      onClick={() => handleRemoveFormRow(idx)}
+                      className="absolute top-2 right-2 text-slate-400 hover:text-rose-600 p-1 hover:bg-slate-200 rounded-lg cursor-pointer"
                     >
-                      <PlusCircle className="w-4 h-4" /> Add Subject
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   )}
-                </div>
 
-                {formRows.map((row, idx) => (
-                  <div key={idx} className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4 relative animate-in fade-in duration-150">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     
-                    {/* Delete row trigger */}
-                    {!editingId && formRows.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFormRow(idx)}
-                        className="absolute top-2 right-2 text-slate-400 hover:text-rose-600 p-1 hover:bg-slate-200 rounded-lg cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      
-                      {/* Subject Selection */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Subject *</label>
-                        <select
-                          value={row.subjectId}
-                          required
-                          onChange={(e) => handleRowChange(idx, 'subjectId', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
-                        >
-                          <option value="">-- Select Subject --</option>
-                          {subjects.map(sub => (
-                            <option key={sub.id} value={sub.id}>{sub.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Exam Date */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Exam Date *</label>
-                        <input
-                          type="date"
-                          required
-                          value={row.examDate}
-                          onChange={(e) => handleRowChange(idx, 'examDate', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                      
-                      {/* Start Time */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Start Time *</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 10:00"
-                          required
-                          value={row.startTime}
-                          onChange={(e) => handleRowChange(idx, 'startTime', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* End Time */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">End Time *</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 13:00"
-                          required
-                          value={row.endTime}
-                          onChange={(e) => handleRowChange(idx, 'endTime', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* Exam Hall */}
-                      <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Hall / Room</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Hall A-2"
-                          value={row.examHall}
-                          onChange={(e) => handleRowChange(idx, 'examHall', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Instructions */}
+                    {/* Subject Selection */}
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Special Instructions</label>
-                      <textarea
-                        rows={2}
-                        placeholder="e.g. Bring own calculator, reach 15 mins early..."
-                        value={row.instructions}
-                        onChange={(e) => handleRowChange(idx, 'instructions', e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-800 outline-none focus:border-blue-500 resize-none"
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Subject *</label>
+                      <select
+                        value={row.subjectId}
+                        required
+                        onChange={(e) => handleRowChange(idx, 'subjectId', e.target.value)}
+                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500"
+                      >
+                        <option value="" className="dark:bg-slate-800">-- Select Subject --</option>
+                        {subjects.map(sub => (
+                          <option key={sub.id} value={sub.id} className="dark:bg-slate-800">{sub.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Exam Date */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Exam Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={row.examDate}
+                        onChange={(e) => handleRowChange(idx, 'examDate', e.target.value)}
+                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500"
                       />
                     </div>
                   </div>
-                ))}
-              </div>
-            </form>
 
-            {/* Drawer Footer */}
-            <div className="p-6 bg-slate-55 border-t border-slate-200 flex justify-end gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsFormOpen(false)}
-                className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-650 hover:bg-slate-100 font-bold text-xs cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleFormSubmit}
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-md shadow-blue-500/15 transition-all"
-              >
-                {editingId ? 'Save Changes' : 'Schedule Exam(s)'}
-              </button>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    
+                    {/* Start Time */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Start Time *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 10:00"
+                        required
+                        value={row.startTime}
+                        onChange={(e) => handleRowChange(idx, 'startTime', e.target.value)}
+                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    {/* End Time */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">End Time *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 13:00"
+                        required
+                        value={row.endTime}
+                        onChange={(e) => handleRowChange(idx, 'endTime', e.target.value)}
+                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                      />
+                    </div>
+
+                    {/* Exam Hall */}
+                    <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Hall / Room</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Hall A-2"
+                        value={row.examHall}
+                        onChange={(e) => handleRowChange(idx, 'examHall', e.target.value)}
+                        className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Instructions */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Special Instructions</label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Bring own calculator, reach 15 mins early..."
+                      value={row.instructions}
+                      onChange={(e) => handleRowChange(idx, 'instructions', e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-xs text-slate-800 dark:text-slate-200 outline-none focus:border-blue-500 resize-none"
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
+          </form>
+
+          {/* Drawer Footer */}
+          <div className="p-6 bg-slate-55 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsFormOpen(false)}
+              className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-750 text-slate-650 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs cursor-pointer transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleFormSubmit}
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer shadow-md shadow-blue-500/15 transition-all"
+            >
+              {editingId ? 'Save Changes' : 'Schedule Exam(s)'}
+            </button>
           </div>
         </div>
-      )}
+      </Drawer>
 
       {/* VIEW DETAILS DRAWER */}
       {isDetailsOpen && selectedExam && (

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Users, Search, BookOpen, GraduationCap, X, ChevronRight } from 'lucide-react';
+import Drawer from '@/components/Drawer';
 
 export default function MyClassesPage() {
   const [classes, setClasses] = useState<any[]>([]);
@@ -26,17 +27,7 @@ export default function MyClassesPage() {
     loadData();
   }, []);
 
-  // Lock body scroll when drawer/modal is open to prevent background scrolling
-  useEffect(() => {
-    if (selectedClass) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [selectedClass]);
+
 
   const handleClassClick = async (cls: any) => {
     setSelectedClass(cls);
@@ -118,67 +109,55 @@ export default function MyClassesPage() {
       )}
 
       {/* Roster slide-over drawer / modal */}
-      {selectedClass && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex justify-end z-[100] transition-opacity animate-in">
-          <div className="w-full max-w-md bg-white h-full flex flex-col shadow-2xl relative overflow-hidden animate-slide-in">
-            {/* Header */}
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <div>
-                <h3 className="font-black text-slate-900 text-lg leading-none">{selectedClass.className}</h3>
-                <p className="text-xs font-semibold text-[#2E5BFF] mt-1.5">{selectedClass.subjectName} Student Roster</p>
-              </div>
-              <button
-                onClick={() => setSelectedClass(null)}
-                className="p-2 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5 text-slate-500" />
-              </button>
-            </div>
-
-            {/* Search */}
-            <div className="p-4 border-b border-slate-100 bg-white">
-              <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus-within:border-[#2E5BFF] transition-all">
-                <Search className="w-4 h-4 text-slate-400 mr-2" />
-                <input
-                  type="text"
-                  placeholder="Search students..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="bg-transparent border-none text-[13px] font-medium text-slate-800 outline-none w-full placeholder-slate-400"
-                />
-              </div>
-            </div>
-
-            {/* Student List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
-              {loadingStudents ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-3">
-                  <div className="w-8 h-8 border-3 border-t-[#2E5BFF] border-slate-200 rounded-full animate-spin"></div>
-                  <p className="text-xs text-slate-400 font-semibold">Loading student list...</p>
-                </div>
-              ) : filteredStudents.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs italic">No students match your query.</div>
-              ) : (
-                filteredStudents.map((s, idx) => (
-                  <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
-                    {s.user.avatarUrl ? (
-                      <img src={s.user.avatarUrl} alt={s.user.name} className="w-10 h-10 rounded-xl object-cover" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-sm">
-                        {s.user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-sm">{s.user.name}</h4>
-                      <p className="text-xs text-slate-500 font-medium mt-0.5">Roll No: {s.rollNo || 'N/A'}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+      <Drawer
+        open={!!selectedClass}
+        onClose={() => setSelectedClass(null)}
+        title={selectedClass?.className}
+        subtitle={`${selectedClass?.subjectName} Student Roster`}
+        size="md"
+      >
+        {/* Search */}
+        <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 shrink-0">
+          <div className="relative flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 focus-within:border-[#2E5BFF] transition-all">
+            <Search className="w-4 h-4 text-slate-400 mr-2" />
+            <input
+              type="text"
+              placeholder="Search students..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="bg-transparent border-none text-[13px] font-medium text-slate-800 dark:text-slate-200 outline-none w-full placeholder-slate-400"
+            />
           </div>
         </div>
-      )}
+
+        {/* Student List */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-slate-900/50">
+          {loadingStudents ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <div className="w-8 h-8 border-3 border-t-[#2E5BFF] border-slate-200 rounded-full animate-spin"></div>
+              <p className="text-xs text-slate-400 font-semibold">Loading student list...</p>
+            </div>
+          ) : filteredStudents.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-xs italic">No students match your query.</div>
+          ) : (
+            filteredStudents.map((s, idx) => (
+              <div key={idx} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs flex items-center gap-3">
+                {s.user.avatarUrl ? (
+                  <img src={s.user.avatarUrl} alt={s.user.name} className="w-10 h-10 rounded-xl object-cover" />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-sm">
+                    {s.user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{s.user.name}</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-450 font-medium mt-0.5">Roll No: {s.rollNo || 'N/A'}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </Drawer>
     </div>
   );
 }

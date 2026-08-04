@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronUp, Download, ArrowUpDown
 } from 'lucide-react';
 import { useTenant } from '@/app/providers/TenantContext';
+import Drawer from '@/components/Drawer';
 
 function LeaveMgmtContent() {
   const { currentUser } = useTenant();
@@ -1214,80 +1215,71 @@ function LeaveMgmtContent() {
       )}
 
       {/* Apply Leave Modal for Staff (teacher view) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex justify-end z-[100] transition-opacity duration-300 animate-in">
-          <div className="w-full max-w-md bg-white h-full flex flex-col shadow-2xl relative overflow-hidden animate-slide-in">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-black text-slate-900 text-lg leading-none">Apply Staff Leave Request</h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5 text-slate-500" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Leave Type</label>
-                <select
-                  value={leaveType}
-                  onChange={(e) => setLeaveType(e.target.value)}
-                  className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
-                >
-                  <option value="Casual">Casual Leave</option>
-                  <option value="Medical">Medical Leave</option>
-                  <option value="Emergency">Emergency Leave</option>
-                  <option value="HalfDay">Half-Day Leave</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">From Date</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-850 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">To Date</label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-850 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reason for Leave</label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="Explain reason details clearly for administrator approval..."
-                  rows={5}
-                  className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold leading-relaxed"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full py-3.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 mt-4 transition-all"
-              >
-                {submitting ? 'Submitting...' : 'Submit Leave Request'}
-              </button>
-            </form>
+      <Drawer
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Apply Staff Leave Request"
+        size="md"
+      >
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 bg-white dark:bg-slate-800">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Leave Type</label>
+            <select
+              value={leaveType}
+              onChange={(e) => setLeaveType(e.target.value)}
+              className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+            >
+              <option value="Casual" className="dark:bg-slate-800">Casual Leave</option>
+              <option value="Medical" className="dark:bg-slate-800">Medical Leave</option>
+              <option value="Emergency" className="dark:bg-slate-800">Emergency Leave</option>
+              <option value="HalfDay" className="dark:bg-slate-800">Half-Day Leave</option>
+            </select>
           </div>
-        </div>
-      )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">From Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-850 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">To Date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-850 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Reason for Leave</label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Explain reason details clearly for administrator approval..."
+              rows={5}
+              className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-205 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold leading-relaxed"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-3.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 mt-4 transition-all"
+          >
+            {submitting ? 'Submitting...' : 'Submit Leave Request'}
+          </button>
+        </form>
+      </Drawer>
     </div>
   );
 }

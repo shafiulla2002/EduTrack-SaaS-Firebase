@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Megaphone, Plus, Trash2, X, AlertTriangle, Pin, Calendar, Users, Eye, Check, BookOpen, Clock } from 'lucide-react';
 import { useTenant } from '@/app/providers/TenantContext';
+import Drawer from '@/components/Drawer';
 
 function parseExamScheduleContent(content: string) {
   const mainText = content.split('<!--')[0].trim();
@@ -300,121 +301,112 @@ export default function AnnouncementsMgmtPage() {
       )}
 
       {/* Create notice modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex justify-end z-[100] transition-opacity duration-300 animate-in">
-          <div className="w-full max-w-md bg-white h-full flex flex-col shadow-2xl relative overflow-hidden animate-slide-in">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-black text-slate-900 text-lg leading-none">Draft Notice Announcement</h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5 text-slate-500" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Headline Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Science Fair registrations closed"
-                  className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Content Details</label>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write clear instructions for parents / students..."
-                  rows={6}
-                  className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Audience Scope</label>
-                  <select
-                    value={audienceType}
-                    onChange={(e) => setAudienceType(e.target.value)}
-                    className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-                  >
-                    <option value="CLASS">Specific Class Section</option>
-                    <option value="INSTITUTION">Entire Institution</option>
-                    <option value="TEACHERS">Teaching Staff (Teachers)</option>
-                    <option value="STAFF">Non-Teaching Staff (Staff)</option>
-                    <option value="PARENTS">Parents</option>
-                    <option value="STUDENTS">Students</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Notice Priority</label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-                  >
-                    <option value="High">🔴 High</option>
-                    <option value="Medium">🟡 Medium</option>
-                    <option value="Low">⚪ Low</option>
-                  </select>
-                </div>
-              </div>
-
-              {audienceType === 'CLASS' && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Target Class Section</label>
-                  <select
-                    value={classSectionId}
-                    onChange={(e) => setClassSectionId(e.target.value)}
-                    className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-                    required
-                  >
-                    <option value="">Select Class Section...</option>
-                    {classes.map(c => <option key={c.classSectionId} value={c.classSectionId}>{c.className}</option>)}
-                  </select>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Expiry Date (Optional)</label>
-                <input
-                  type="date"
-                  value={expiryDate}
-                  onChange={(e) => setExpiryDate(e.target.value)}
-                  className="block w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="pinned"
-                  checked={pinned}
-                  onChange={(e) => setPinned(e.target.checked)}
-                  className="rounded border-slate-350 text-[#2E5BFF] focus:ring-[#2E5BFF] w-4.5 h-4.5"
-                />
-                <label htmlFor="pinned" className="text-xs font-bold text-slate-600">Pin to top of Notice Board</label>
-              </div>
-
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 mt-4"
-              >
-                {submitting ? 'Publishing...' : 'Broadcast Notice'}
-              </button>
-            </form>
+      <Drawer
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Draft Notice Announcement"
+        size="md"
+      >
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 bg-white dark:bg-slate-800">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Headline Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Science Fair registrations closed"
+              className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
+              required
+            />
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Content Details</label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Write clear instructions for parents / students..."
+              rows={6}
+              className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Audience Scope</label>
+              <select
+                value={audienceType}
+                onChange={(e) => setAudienceType(e.target.value)}
+                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+              >
+                <option value="CLASS" className="dark:bg-slate-800">Specific Class Section</option>
+                <option value="INSTITUTION" className="dark:bg-slate-800">Entire School</option>
+                <option value="TEACHERS" className="dark:bg-slate-800">Teaching Staff (Teachers)</option>
+                <option value="STAFF" className="dark:bg-slate-800">Non-Teaching Staff (Staff)</option>
+                <option value="PARENTS" className="dark:bg-slate-800">Parents</option>
+                <option value="STUDENTS" className="dark:bg-slate-800">Students</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Notice Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+              >
+                <option value="High" className="dark:bg-slate-800">🔴 High</option>
+                <option value="Medium" className="dark:bg-slate-800">🟡 Medium</option>
+                <option value="Low" className="dark:bg-slate-800">⚪ Low</option>
+              </select>
+            </div>
+          </div>
+
+          {audienceType === 'CLASS' && (
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Target Class Section</label>
+              <select
+                value={classSectionId}
+                onChange={(e) => setClassSectionId(e.target.value)}
+                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                required
+              >
+                <option value="" className="dark:bg-slate-800">Select Class Section...</option>
+                {classes.map(c => <option key={c.classSectionId} value={c.classSectionId} className="dark:bg-slate-800">{c.className}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Expiry Date (Optional)</label>
+            <input
+              type="date"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+              className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <input
+              type="checkbox"
+              id="pinned"
+              checked={pinned}
+              onChange={(e) => setPinned(e.target.checked)}
+              className="rounded border-slate-350 text-[#2E5BFF] focus:ring-[#2E5BFF] w-4.5 h-4.5"
+            />
+            <label htmlFor="pinned" className="text-xs font-bold text-slate-600 dark:text-slate-400">Pin to top of Notice Board</label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 mt-4 transition-all"
+          >
+            {submitting ? 'Publishing...' : 'Broadcast Notice'}
+          </button>
+        </form>
+      </Drawer>
     </div>
   );
 }
