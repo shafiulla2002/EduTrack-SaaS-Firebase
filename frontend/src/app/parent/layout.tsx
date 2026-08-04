@@ -64,6 +64,8 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
     { name: 'Transport Tracker', href: '/parent/transport', icon: Bus, isBottom: false },
   ];
 
+  const allParentHrefs = navigationItems.map(item => item.href);
+
 
 
   return (
@@ -251,7 +253,15 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
               <div className="space-y-1.5">
                 {navigationItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = pathname === item.href;
+                  const isActive = pathname === item.href || (
+                    item.href !== '/parent' &&
+                    (pathname === item.href || pathname.startsWith(item.href + '/')) &&
+                    !allParentHrefs.some(otherHref =>
+                      otherHref !== item.href &&
+                      otherHref.length > item.href.length &&
+                      (pathname === otherHref || pathname.startsWith(otherHref + '/'))
+                    )
+                  );
                   const isLocked = isModuleLocked(item.href);
                   return (
                     <Link
@@ -295,7 +305,15 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 h-16 flex items-center justify-around z-50 px-2 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] shrink-0">
         {navigationItems.filter(item => item.isBottom).map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive = pathname === item.href || (
+            item.href !== '/parent' &&
+            (pathname === item.href || pathname.startsWith(item.href + '/')) &&
+            !allParentHrefs.some(otherHref =>
+              otherHref !== item.href &&
+              otherHref.length > item.href.length &&
+              (pathname === otherHref || pathname.startsWith(otherHref + '/'))
+            )
+          );
           const isLocked = isModuleLocked(item.href);
           return (
             <Link
