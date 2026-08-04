@@ -34,6 +34,17 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
   const [showSwitcher, setShowSwitcher] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [mobileOpen]);
+
   const isModuleLocked = (href: string) => {
     if (isSubscriptionActive) return false;
     const allowedPrefixes = [
@@ -148,7 +159,7 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Mobile Drawer Sidebar */}
-      <div className={`fixed top-0 bottom-0 left-0 w-[260px] bg-white z-50 lg:hidden transition-transform duration-300 transform flex flex-col border-r border-slate-200 ${
+      <div className={`fixed top-0 bottom-0 left-0 w-[260px] bg-white z-50 lg:hidden transition-transform duration-300 transform flex flex-col border-r border-slate-200 pb-20 ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         {/* Sidebar Brand Logo and Name */}
@@ -343,7 +354,7 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center border border-slate-200 dark:border-slate-700"
+              className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer"
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
               {theme === 'dark' ? (
@@ -524,7 +535,7 @@ function ParentNotificationBell() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center border border-slate-200"
+        className="relative w-9 h-9 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
         title="View Notifications"
       >
         <Bell className="w-4 h-4 text-slate-600" />
