@@ -549,6 +549,9 @@ export default function DashboardLayout({
 
   const navSections = baseNavSections;
 
+  // Collect all sidebar hrefs to check for more specific nested matches
+  const allSidebarHrefs = navSections.flatMap(section => section.items.map(item => item.href));
+
   // If subscription is expired (after grace period) and user is a teacher/driver, show full screen block
   if (isSubscriptionBlocked && currentUser?.role !== 'SCHOOL_ADMIN' && currentUser?.role !== 'SUPER_ADMIN') {
     return (
@@ -591,7 +594,15 @@ export default function DashboardLayout({
               </div>
               <div className="space-y-1">
                 {section.items.map((item) => {
-                  const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                  const isActive = pathname === item.href || (
+                    item.href !== '/dashboard' &&
+                    (pathname === item.href || pathname.startsWith(item.href + '/')) &&
+                    !allSidebarHrefs.some(otherHref =>
+                      otherHref !== item.href &&
+                      otherHref.length > item.href.length &&
+                      (pathname === otherHref || pathname.startsWith(otherHref + '/'))
+                    )
+                  );
                   const isLocked = isModuleLocked(item.href);
                   return (
                     <Link
@@ -860,7 +871,15 @@ export default function DashboardLayout({
                   </div>
                   <div className="space-y-1">
                     {section.items.map((item) => {
-                      const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+                      const isActive = pathname === item.href || (
+                        item.href !== '/dashboard' &&
+                        (pathname === item.href || pathname.startsWith(item.href + '/')) &&
+                        !allSidebarHrefs.some(otherHref =>
+                          otherHref !== item.href &&
+                          otherHref.length > item.href.length &&
+                          (pathname === otherHref || pathname.startsWith(otherHref + '/'))
+                        )
+                      );
                       const isLocked = isModuleLocked(item.href);
                       return (
                         <Link
