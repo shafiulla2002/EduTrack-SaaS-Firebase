@@ -524,7 +524,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
       )}
 
       {/* Premium Card Panel */}
-      <div className="bg-white border border-slate-200 rounded-[20px] shadow-xl overflow-hidden w-full max-w-full">
+      <div className="bg-slate-900 border border-slate-700/60 rounded-[20px] shadow-xl overflow-hidden w-full max-w-full">
         
         {/* LWC Header Gradient */}
         <div className="bg-gradient-to-r from-[#2E5BFF] to-[#8B5CF6] p-6 sm:p-8 text-white">
@@ -544,13 +544,13 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
         </div>
 
         {/* Salesforce SLDS Style Navigation Tabs */}
-        <div className="flex border-b border-slate-200 bg-slate-50/50 px-6 overflow-x-auto scrollbar-none">
+        <div className="flex border-b border-slate-700 bg-slate-800/50 px-6 overflow-x-auto scrollbar-none">
           <button
             onClick={() => { setActiveTab('parent-complaints'); fetchParentComplaints(); }}
             className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'parent-complaints'
-                ? 'border-blue-600 text-blue-600 bg-white font-extrabold'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
+                ? 'border-blue-500 text-blue-400 bg-slate-900 font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             Parent Complaints &amp; Tickets
@@ -559,8 +559,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             onClick={() => setActiveTab('submit')}
             className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'submit'
-                ? 'border-blue-600 text-blue-600 bg-white font-extrabold'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
+                ? 'border-blue-500 text-blue-400 bg-slate-900 font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             Log Behavior
@@ -569,8 +569,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             onClick={() => { setActiveTab('pending'); refreshPendingCases(); }}
             className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'pending'
-                ? 'border-blue-600 text-blue-600 bg-white font-extrabold'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
+                ? 'border-blue-500 text-blue-400 bg-slate-900 font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             Pending Behavior Cases
@@ -579,8 +579,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             onClick={() => setActiveTab('history')}
             className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'history'
-                ? 'border-blue-600 text-blue-600 bg-white font-extrabold'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
+                ? 'border-blue-500 text-blue-400 bg-slate-900 font-extrabold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             Student Ledger &amp; Stats
@@ -588,7 +588,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
         </div>
 
         {/* Card Body Container */}
-        <div className="p-4 sm:p-8">
+        <div className="p-4 sm:p-8 bg-slate-900">
 
           {/* Loading Spinner overlay */}
           {isLoading && !isSubmitting && (
@@ -602,10 +602,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
           {!isLoading && activeTab === 'parent-complaints' && (
             <div className="space-y-6">
               {/* Filter Bar */}
-              <div className="bg-slate-50 p-4 sm:p-6 rounded-2xl border border-slate-200 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between shadow-xs">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Filter className="w-4 h-4 text-blue-600" />
-                  <span className="font-bold text-xs uppercase tracking-wider text-slate-700">Parent Grievance Tickets</span>
+              <div className="bg-slate-800 p-4 sm:p-6 rounded-2xl border border-slate-700 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between shadow-xs">
+                <div className="flex items-center gap-2 text-slate-300">
+                  <Filter className="w-4 h-4 text-blue-400" />
+                  <span className="font-bold text-xs uppercase tracking-wider text-slate-300">Parent Grievance Tickets</span>
                 </div>
 
                 <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto justify-start sm:justify-end">
@@ -616,7 +616,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                       className={`flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         parentFilterStatus === st
                           ? 'bg-blue-600 text-white shadow-xs border-blue-600'
-                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                          : 'bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600'
                       }`}
                     >
                       {st === 'All' ? 'All Tickets' : st.replace('_', ' ')}
@@ -629,16 +629,16 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               {parentComplaints.length === 0 ? (
                 <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-16 text-center text-slate-400">
                   <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                  <h3 className="text-base font-bold text-slate-700">No Parent Complaints Registered</h3>
+                  <h3 className="text-base font-bold text-slate-200">No Parent Complaints Registered</h3>
                   <p className="text-xs text-slate-400 mt-1">Complaints submitted via Parent Portal will appear here in real time.</p>
                 </div>
               ) : (
                 <>
                   {/* Desktop Table View */}
-                  <div className="hidden md:block overflow-x-auto border border-slate-200 rounded-2xl shadow-sm bg-white">
+                  <div className="hidden md:block overflow-x-auto border border-slate-700 rounded-2xl shadow-sm bg-slate-900">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      <tr className="border-b border-slate-700 bg-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                         <th className="px-6 py-4">Ticket Ref</th>
                         <th className="px-6 py-4">Submitted By</th>
                         <th className="px-6 py-4">Category &amp; Title</th>
@@ -647,26 +647,26 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                         <th className="px-6 py-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-150">
+                    <tbody className="divide-y divide-slate-700/50">
                       {parentComplaints.map(c => {
                         const st = (c.status || 'OPEN').toUpperCase();
                         return (
-                          <tr key={c.id} className="hover:bg-slate-50/50 text-[13px] text-slate-700 transition-all">
-                            <td className="px-6 py-4 font-mono text-xs font-bold text-blue-600">
+                          <tr key={c.id} className="hover:bg-slate-800/60 text-[13px] text-slate-300 transition-all">
+                            <td className="px-6 py-4 font-mono text-xs font-bold text-blue-400">
                               #{c.id.substring(0, 8).toUpperCase()}
                             </td>
                             <td className="px-6 py-4">
-                              <div className="font-bold text-slate-900">{c.submittedBy?.name || 'Parent'}</div>
-                              <div className="text-[11px] text-slate-450 mt-0.5 font-medium">
+                              <div className="font-bold text-slate-100">{c.submittedBy?.name || 'Parent'}</div>
+                              <div className="text-[11px] text-slate-400 mt-0.5 font-medium">
                                 {c.submittedBy?.email || c.submittedBy?.phone || ''}
                               </div>
                             </td>
                             <td className="px-6 py-4 max-w-xs">
-                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-wider mb-1">
+                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-900/50 text-blue-300 border border-blue-700/50 uppercase tracking-wider mb-1">
                                 {c.category}
                               </span>
-                              <p className="font-bold text-slate-800 text-xs truncate" title={c.title}>{c.title}</p>
-                              <p className="text-slate-500 text-[11px] truncate mt-0.5" title={c.description}>{c.description}</p>
+                              <p className="font-bold text-slate-200 text-xs truncate" title={c.title}>{c.title}</p>
+                              <p className="text-slate-400 text-[11px] truncate mt-0.5" title={c.description}>{c.description}</p>
                             </td>
                             <td className="px-6 py-4">
                               <span className={`inline-block text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider border ${
@@ -706,13 +706,13 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                   {parentComplaints.map(c => {
                     const st = (c.status || 'OPEN').toUpperCase();
                     return (
-                      <div key={c.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+                      <div key={c.id} className="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-sm space-y-3">
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="font-mono text-xs font-bold text-blue-600">
+                            <span className="font-mono text-xs font-bold text-blue-400">
                               #{c.id.substring(0, 8).toUpperCase()}
                             </span>
-                            <h4 className="font-bold text-slate-800 text-sm mt-1">{c.submittedBy?.name || 'Parent'}</h4>
+                            <h4 className="font-bold text-slate-100 text-sm mt-1">{c.submittedBy?.name || 'Parent'}</h4>
                             <p className="text-[11px] text-slate-400 font-medium">
                               {c.submittedBy?.email || c.submittedBy?.phone || ''}
                             </p>
@@ -727,14 +727,14 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                           </span>
                         </div>
 
-                        <div className="space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
+                        <div className="space-y-1 bg-slate-700/50 p-3 rounded-xl border border-slate-600 text-xs">
                           <div>
-                            <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-wider mb-1">
+                            <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold bg-blue-900/50 text-blue-300 border border-blue-700/50 uppercase tracking-wider mb-1">
                               {c.category}
                             </span>
                           </div>
-                          <p className="font-bold text-slate-800 text-xs truncate" title={c.title}>{c.title}</p>
-                          <p className="text-slate-500 text-[11px] line-clamp-2" title={c.description}>{c.description}</p>
+                          <p className="font-bold text-slate-200 text-xs truncate" title={c.title}>{c.title}</p>
+                          <p className="text-slate-400 text-[11px] line-clamp-2" title={c.description}>{c.description}</p>
                         </div>
 
                         <div className="flex justify-between items-center pt-1">
@@ -766,15 +766,15 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             <div className="space-y-6">
               
               {/* 1. Class Selection Gated Box */}
-              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                <div className="flex items-center gap-2 mb-3 text-slate-700">
+              <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                <div className="flex items-center gap-2 mb-3 text-slate-300">
                   <Filter className="w-4 h-4 text-blue-600" />
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">Filter by Class *</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-300">Filter by Class *</label>
                 </div>
                 <select
                   value={selectedClass}
                   onChange={(e) => setSelectedClass(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100"
+                  className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none focus:border-blue-500"
                 >
                   <option value="">-- Select a Class to view student roster --</option>
                   {classOptions.map(opt => (
@@ -792,17 +792,17 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                   {/* 2. Student Lookup and Cards list - only show when no student is active */}
                   {!selectedStudent && (
                     <div className="space-y-4">
-                      <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                        <div className="flex items-center gap-2 mb-3 text-slate-700">
+                      <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                        <div className="flex items-center gap-2 mb-3 text-slate-300">
                           <Search className="w-4 h-4 text-blue-600" />
-                          <label className="text-xs font-bold uppercase tracking-wider text-slate-700">Search Class Student</label>
+                          <label className="text-xs font-bold uppercase tracking-wider text-slate-300">Search Class Student</label>
                         </div>
                         <input
                           type="text"
                           placeholder="Type student name or roll number..."
                           value={searchKey}
                           onChange={(e) => setSearchKey(e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500"
+                          className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none focus:border-blue-500"
                         />
                       </div>
 
@@ -814,7 +814,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                         </div>
 
                         {filteredStudents.length === 0 ? (
-                          <div className="p-8 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400 font-semibold">
+                          <div className="p-8 border border-dashed border-slate-600 rounded-xl text-center text-xs text-slate-400 font-semibold">
                             No students in this class match your search query.
                           </div>
                         ) : (
@@ -823,14 +823,14 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                               <div
                                 key={student.id}
                                 onClick={() => setSelectedStudent(student)}
-                                className="flex items-center justify-between p-4 bg-white border border-slate-200 hover:border-blue-500 rounded-xl shadow-xs hover:shadow-md cursor-pointer transition-all hover:-translate-y-0.5 group"
+                                className="flex items-center justify-between p-4 bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl shadow-xs hover:shadow-md cursor-pointer transition-all hover:-translate-y-0.5 group"
                               >
                                 <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center font-bold text-xs">
                                     {student.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                                   </div>
                                   <div className="space-y-0.5">
-                                    <h4 className="font-bold text-xs text-slate-800 group-hover:text-blue-600">{student.user.name}</h4>
+                                    <h4 className="font-bold text-xs text-slate-200 group-hover:text-blue-400">{student.user.name}</h4>
                                     <div className="flex items-center gap-2 text-[10px] text-slate-400 font-semibold">
                                       <span className="flex items-center gap-0.5"><GraduationCap className="w-3 h-3" /> Roll: {student.rollNo || 'N/A'}</span>
                                       {student.user.phone && <span className="flex items-center gap-0.5"><Phone className="w-3 h-3" /> {student.user.phone}</span>}
@@ -870,16 +870,16 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                       </div>
 
                       {/* Behavior submission form */}
-                      <form onSubmit={handleSubmitBehavior} className="space-y-5 border-t border-slate-200 pt-6">
+                      <form onSubmit={handleSubmitBehavior} className="space-y-5 border-t border-slate-700 pt-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                           
                           {/* Behavior Type */}
                           <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Behavior Record Type *</label>
+                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Behavior Record Type *</label>
                             <select
                               value={behaviorType}
                               onChange={(e) => setBehaviorType(e.target.value as any)}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500"
+                              className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none focus:border-blue-500"
                             >
                               <option value="Complaint">Infraction / Complaint (High Priority)</option>
                               <option value="Praise">Praise / Merit (Medium Priority)</option>
@@ -888,11 +888,11 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
                           {/* Category Dropdown */}
                           <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Behavior Category *</label>
+                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Behavior Category *</label>
                             <select
                               value={category}
                               onChange={(e) => setCategory(e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500"
+                              className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none focus:border-blue-500"
                             >
                               <option value="Academic">Academic Performance</option>
                               <option value="Discipline">Discipline</option>
@@ -907,11 +907,11 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                           
                           {/* Academic Year */}
                           <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Academic Year *</label>
+                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Academic Year *</label>
                             <select
                               value={selectedAcademicYear}
                               onChange={(e) => setSelectedAcademicYear(e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500"
+                              className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none focus:border-blue-500"
                             >
                               {academicYears.map(year => (
                                   <option key={year.id} value={year.name}>{year.name}</option>
@@ -921,12 +921,12 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
                           {/* Submitting Teacher (Disabled/Locked for Teachers) */}
                           <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Submitting Teacher *</label>
+                            <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Submitting Teacher *</label>
                             <select
                               value={submittingTeacherId}
                               disabled={currentUser?.role === 'TEACHER'}
                               onChange={(e) => setSubmittingTeacherId(e.target.value)}
-                              className="w-full bg-slate-50 disabled:bg-slate-100 disabled:cursor-not-allowed border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500"
+                              className="w-full bg-slate-700 disabled:bg-slate-800 disabled:cursor-not-allowed border border-slate-600 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none focus:border-blue-500"
                             >
                               {currentUser?.role === 'TEACHER' ? (
                                 <option value={currentTeacher?.id || ''}>{currentTeacher?.user?.name || 'Loading...'}</option>
@@ -946,14 +946,14 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
                         {/* Description details */}
                         <div className="space-y-1.5">
-                          <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block">Detailed Incident Description *</label>
+                          <label className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Detailed Incident Description *</label>
                           <textarea
                             required
                             rows={4}
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="Provide description of the behavior (minimum 10 characters required)..."
-                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 focus:bg-white resize-none"
+                            className="w-full bg-slate-700 border border-slate-600 rounded-xl px-4 py-2.5 text-xs text-slate-100 outline-none focus:border-blue-500 resize-none"
                           />
                           {description && description.length < 10 && (
                             <p className="text-[11px] font-bold text-rose-600">
@@ -963,11 +963,11 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                         </div>
 
                         {/* Form action triggers */}
-                        <div className="flex gap-4 pt-4 border-t border-slate-100 justify-end">
+                        <div className="flex gap-4 pt-4 border-t border-slate-700 justify-end">
                           <button
                             type="button"
                             onClick={handleResetForm}
-                            className="px-6 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs transition-colors cursor-pointer"
+                            className="px-6 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-700 font-bold text-xs transition-colors cursor-pointer"
                           >
                             Reset Form
                           </button>
@@ -985,9 +985,9 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
               ) : (
                 /* Form Empty State when no class selected */
-                <div className="p-16 border border-dashed border-slate-200 rounded-2xl text-center text-slate-400">
+                <div className="p-16 border border-dashed border-slate-600 rounded-2xl text-center text-slate-400">
                   <Filter className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                  <h3 className="text-base font-bold text-slate-700">No Class Selected</h3>
+                  <h3 className="text-base font-bold text-slate-200">No Class Selected</h3>
                   <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
                     Please select a class section from the dropdown list to load and view student profiles.
                   </p>
