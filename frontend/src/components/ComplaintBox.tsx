@@ -647,11 +647,11 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                         <th className="px-6 py-4 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-700/50">
+                    <tbody className="divide-y divide-slate-700/50 bg-slate-900">
                       {parentComplaints.map(c => {
                         const st = (c.status || 'OPEN').toUpperCase();
                         return (
-                          <tr key={c.id} className="hover:bg-slate-800/60 text-[13px] text-slate-300 transition-all">
+                          <tr key={c.id} className="bg-slate-900 hover:bg-slate-800 text-[13px] text-slate-300 transition-all">
                             <td className="px-6 py-4 font-mono text-xs font-bold text-blue-400">
                               #{c.id.substring(0, 8).toUpperCase()}
                             </td>
@@ -718,10 +718,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                             </p>
                           </div>
                           <span className={`inline-block text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider border ${
-                            st === 'OPEN' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                            st === 'IN_PROGRESS' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                            st === 'RESOLVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                            'bg-slate-100 text-slate-600 border-slate-200'
+                            st === 'OPEN' ? 'bg-blue-900/50 text-blue-300 border-blue-700/50' :
+                            st === 'IN_PROGRESS' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
+                            st === 'RESOLVED' ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' :
+                            'bg-slate-700 text-slate-400 border-slate-600'
                           }`}>
                             {c.status}
                           </span>
@@ -1190,7 +1190,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                             </span>
                           </div>
 
-                          <div className="flex gap-2 justify-end pt-1 border-t border-slate-100">
+                          <div className="flex gap-2 justify-end pt-1 border-t border-slate-700">
                             <button
                               onClick={() => setSelectedCase(c)}
                               className="flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold min-h-[44px] cursor-pointer"
@@ -1238,7 +1238,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             <div className="space-y-6">
               
               {/* Student Selector card */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 shadow-xs w-full sm:max-w-xl mx-auto space-y-4">
+              <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 shadow-xs w-full sm:max-w-xl mx-auto space-y-4">
                 <div>
                   <h3 className="font-bold text-sm text-slate-800 leading-none font-sans">Select Student to view history</h3>
                   <p className="text-slate-450 text-[11px] font-semibold mt-1">Queries student stats metrics and full logs registry.</p>
@@ -1542,7 +1542,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
 
                 {/* Edit Description */}
-                <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                <div className="space-y-1.5 border-t border-slate-700 pt-3">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Detailed Incident Description *</label>
                   <textarea
                     required
@@ -1611,15 +1611,15 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
 
                 {/* Description Details */}
-                <div className="border-t border-slate-100 pt-4">
+                <div className="border-t border-slate-700 pt-4">
                   <span className="text-slate-400 font-bold block text-[10px] uppercase tracking-wider mb-2 font-sans">Description details</span>
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-700 text-xs leading-relaxed max-h-48 overflow-y-auto">
+                  <div className="p-4 bg-slate-800 rounded-xl border border-slate-200 text-slate-700 text-xs leading-relaxed max-h-48 overflow-y-auto">
                     {selectedCase.description}
                   </div>
                 </div>
 
                 {/* Current Status Update controls */}
-                <div className="border-t border-slate-100 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="border-t border-slate-700 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <span className="text-slate-400 font-bold block text-[10px] uppercase tracking-wider font-sans">Current Status</span>
                     <span className={`inline-block mt-1 px-3 py-0.5 border text-[10px] font-bold rounded-full ${
@@ -1664,7 +1664,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
                 {/* Edit/Delete controls inside Modal (Creator/Admin only) */}
                 {canModify(selectedCase) && (
-                  <div className="border-t border-slate-100 pt-4 flex gap-3 justify-end">
+                  <div className="border-t border-slate-700 pt-4 flex gap-3 justify-end">
                     <button
                       onClick={() => handleStartEdit(selectedCase)}
                       className="px-4 py-2 border border-blue-200 text-blue-700 hover:bg-blue-50 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition-all"
@@ -1683,7 +1683,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             )}
 
             {/* Modal Footer block */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end">
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-700 flex justify-end">
               <button
                 onClick={() => { setSelectedCase(null); setIsEditing(false); }}
                 className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold cursor-pointer transition-colors"
@@ -1764,13 +1764,13 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                     value={parentReplyText}
                     onChange={(e) => setParentReplyText(e.target.value)}
                     placeholder="Enter official reply to the parent..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-blue-500"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-blue-500"
                   />
                 </div>
 
                 {/* Audit Trail Timeline */}
                 {selectedParentComplaint.statusHistories && selectedParentComplaint.statusHistories.length > 0 && (
-                  <div className="border-t border-slate-100 pt-3 space-y-2">
+                  <div className="border-t border-slate-700 pt-3 space-y-2">
                     <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Audit Trail History</span>
                     <div className="space-y-2 max-h-36 overflow-y-auto">
                       {selectedParentComplaint.statusHistories.map((h: any, i: number) => (
