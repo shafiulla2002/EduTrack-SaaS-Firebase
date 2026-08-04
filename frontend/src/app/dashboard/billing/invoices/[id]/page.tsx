@@ -143,7 +143,7 @@ export default function InvoicePrintPage() {
       </div>
 
       {/* ── Invoice Sheet (A4-styled) ── */}
-      <div id="invoice-pdf-element" className="fee-receipt-sheet w-full max-w-[800px] bg-white border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans text-[#2d3748] print:m-0 flex flex-col print:block">
+      <div id="invoice-pdf-element" className="fee-receipt-sheet w-full max-w-[800px] border print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans print:m-0 flex flex-col print:block" style={{ backgroundColor: '#ffffff', color: '#2d3748', borderColor: '#e2e8f0', colorScheme: 'light' }}>
         <PDFLayout
           schoolLogo={invoiceData.schoolLogo}
           schoolName={invoiceData.schoolName}
@@ -186,7 +186,7 @@ export default function InvoicePrintPage() {
                 width: '30%',
                 align: 'right',
                 render: (item) => (
-                  <span className={`font-bold ${item.amount < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                  <span style={{ fontWeight: 700, color: item.amount < 0 ? '#16a34a' : '#0f172a' }}>
                     {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </span>
                 ),
@@ -196,10 +196,10 @@ export default function InvoicePrintPage() {
         </div>
 
           {/* ── Grand Total ── */}
-          <div className="flex justify-end mt-4 break-inside-avoid">
-            <div className="total-badge bg-[#1a365d] text-white rounded-lg px-8 py-4 flex items-center justify-between gap-8 min-w-[280px]">
-              <span className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Grand Total Paid</span>
-              <span className="text-[18px] sm:text-[20px] font-black font-mono text-white">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', breakInside: 'avoid' }}>
+            <div style={{ backgroundColor: '#1a365d', color: '#ffffff', borderRadius: '0.5rem', padding: '1rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '2rem', minWidth: '280px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#cbd5e1' }}>Grand Total Paid</span>
+              <span style={{ fontSize: '20px', fontWeight: 900, fontFamily: 'monospace', color: '#ffffff' }}>
                 ₹{invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
             </div>

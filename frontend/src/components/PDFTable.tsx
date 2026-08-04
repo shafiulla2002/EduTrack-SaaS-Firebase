@@ -15,17 +15,22 @@ export interface PDFTableProps<T> {
 
 export function PDFTable<T>({ items, columns, footer }: PDFTableProps<T>) {
   return (
-    <div className="pdf-table-container w-full border border-slate-200 rounded-xl overflow-hidden break-inside-avoid">
-      <table className="w-full text-xs border-collapse">
+    <div style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: '0.75rem', overflow: 'hidden', breakInside: 'avoid' }}>
+      <table style={{ width: '100%', fontSize: '0.75rem', borderCollapse: 'collapse' }}>
         <thead>
-          <tr className="bg-[#ebf8ff] text-[#1a365d] text-[10px] font-bold uppercase tracking-wider border-b border-slate-200 print:bg-[#ebf8ff] print:text-[#1a365d]">
+          <tr style={{ backgroundColor: '#ebf8ff', color: '#1a365d', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #e2e8f0' }}>
             {columns.map((col, idx) => (
               <th
                 key={idx}
-                className="px-4 py-2.5 font-bold uppercase tracking-wider"
                 style={{
+                  padding: '0.625rem 1rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase' as const,
+                  letterSpacing: '0.05em',
                   width: col.width,
-                  textAlign: col.align || 'left',
+                  textAlign: (col.align || 'left') as 'left' | 'center' | 'right',
+                  color: '#1a365d',
+                  backgroundColor: '#ebf8ff',
                 }}
               >
                 {col.header}
@@ -33,15 +38,19 @@ export function PDFTable<T>({ items, columns, footer }: PDFTableProps<T>) {
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 bg-white">
+        <tbody style={{ backgroundColor: '#ffffff' }}>
           {items.map((item, rowIdx) => (
-            <tr key={rowIdx} className="hover:bg-slate-50/50 break-inside-avoid">
+            <tr key={rowIdx} style={{ borderTop: '1px solid #f1f5f9', breakInside: 'avoid' }}>
               {columns.map((col, colIdx) => (
                 <td
                   key={colIdx}
-                  className="px-4 py-3 text-slate-700 font-medium align-middle"
                   style={{
-                    textAlign: col.align || 'left',
+                    padding: '0.75rem 1rem',
+                    color: '#334155',
+                    fontWeight: 500,
+                    verticalAlign: 'middle',
+                    textAlign: (col.align || 'left') as 'left' | 'center' | 'right',
+                    backgroundColor: '#ffffff',
                   }}
                 >
                   {col.render(item, rowIdx)}

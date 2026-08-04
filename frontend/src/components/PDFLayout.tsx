@@ -50,54 +50,55 @@ export const PDFLayout: React.FC<PDFLayoutProps> = ({
   return (
     <div
       id={id}
-      className="pdf-layout-document w-full bg-white text-slate-800 p-8 shadow-sm font-sans flex flex-col gap-6"
+      className="pdf-layout-document w-full p-8 shadow-sm font-sans flex flex-col gap-6"
       style={{
         minHeight: `${minHeightMm}mm`,
         boxSizing: 'border-box',
         width: '100%',
         backgroundColor: '#ffffff',
         color: '#1e293b',
+        colorScheme: 'light',
       }}
     >
       {/* ── Document Header Block ── */}
-      <div className="flex items-center justify-between border-b-4 border-blue-600 pb-4">
-        <div className="flex items-center gap-4 text-left">
-          <div className="w-16 h-16 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
+      <div style={{ borderBottom: '4px solid #2563eb', paddingBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', textAlign: 'left' }}>
+          <div style={{ width: '4rem', height: '4rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
             {schoolLogo ? (
-              <img src={schoolLogo} alt={schoolName} className="w-full h-full object-contain" />
+              <img src={schoolLogo} alt={schoolName} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             ) : (
-              <GraduationCap className="w-8 h-8 text-blue-600" />
+              <GraduationCap style={{ width: '2rem', height: '2rem', color: '#2563eb' }} />
             )}
           </div>
-          <div className="text-left">
-            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight leading-tight">
+          <div style={{ textAlign: 'left' }}>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.025em', lineHeight: 1.2, margin: 0 }}>
               {schoolName}
             </h1>
             {schoolSubtitle && (
-              <p className="text-[11px] text-slate-500 font-semibold italic mt-1.5 leading-tight">
+              <p style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, fontStyle: 'italic', marginTop: '0.375rem', lineHeight: 1.3, marginBottom: 0 }}>
                 {schoolSubtitle}
               </p>
             )}
-            <h2 className="text-xs font-bold text-blue-600 uppercase tracking-wider mt-2.5 leading-tight">
+            <h2 style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.075em', marginTop: '0.625rem', lineHeight: 1.2, marginBottom: 0 }}>
               {reportTitle}
             </h2>
           </div>
         </div>
-        <div className="text-right text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+        <div style={{ textAlign: 'right', fontSize: '10px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.075em' }}>
           <div>Academic Year: 2026–2027</div>
-          <div className="mt-1 font-mono font-medium">Date: {new Date().toLocaleDateString('en-IN')}</div>
+          <div style={{ marginTop: '0.25rem', fontFamily: 'monospace', fontWeight: 500 }}>Date: {new Date().toLocaleDateString('en-IN')}</div>
         </div>
       </div>
 
       {/* ── Metadata Grid Roster Details ── */}
       {metadata.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-left">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', padding: '1rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '1rem', fontSize: '0.75rem', textAlign: 'left' }}>
           {metadata.map((item, idx) => (
-            <div key={idx} className="min-w-0">
-              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block leading-normal">
+            <div key={idx} style={{ minWidth: 0 }}>
+              <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', lineHeight: 1.4 }}>
                 {item.label}
               </span>
-              <strong className="text-slate-800 font-extrabold block mt-1 leading-normal">
+              <strong style={{ color: '#1e293b', fontWeight: 800, display: 'block', marginTop: '0.25rem', lineHeight: 1.4 }}>
                 {item.value}
               </strong>
             </div>
@@ -106,16 +107,16 @@ export const PDFLayout: React.FC<PDFLayoutProps> = ({
       )}
 
       {/* ── Main Content Area ── */}
-      <div className="flex-1 flex flex-col gap-4 text-left">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'left' }}>
         {children}
       </div>
 
       {/* ── Document Footer Block ── */}
-      <div className="border-t border-slate-200 pt-4 flex justify-between items-center text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-auto">
-        <div className="leading-normal max-w-lg text-left">
+      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.075em', marginTop: 'auto' }}>
+        <div style={{ lineHeight: 1.5, maxWidth: '32rem', textAlign: 'left' }}>
           {footerText || `Official document of ${schoolName}. Secure digital payroll and records integration statement.`}
         </div>
-        <div className="font-mono text-right shrink-0">
+        <div style={{ fontFamily: 'monospace', textAlign: 'right', flexShrink: 0 }}>
           Page 1 of 1
         </div>
       </div>
