@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useTenant } from '../../providers/TenantContext';
+import { PDFService } from '@/lib/pdf';
+import { PDFLayout } from '@/components/PDFLayout';
 
 interface GradeRecord {
   studentId: string;
@@ -45,9 +47,40 @@ export default function GradesMarksPage() {
   const [records, setRecords] = useState<GradeRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   // Modal Student Details
   const [activeReportStudent, setActiveReportStudent] = useState<GradeRecord | null>(null);
+
+  const handleExportPDF = async (student: GradeRecord) => {
+    const element = document.getElementById(`report-card-print-${student.studentId}`);
+    if (!element) return;
+
+    setIsGeneratingPDF(true);
+    try {
+      const dateStr = new Date().toISOString().split('T')[0];
+      const safeStudentName = student.name.replace(/[^a-zA-Z0-9]/g, '_');
+      const safeClassName = classLabel.replace(/[^a-zA-Z0-9]/g, '_');
+      const safeExamName = selectedExamName.replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `ReportCard_${safeStudentName}_${safeClassName}_${safeExamName}_${dateStr}`;
+
+      await PDFService.export({
+        element,
+        filename,
+        metadata: {
+          title: `Report Card for ${student.name}`,
+          author: schoolName,
+          subject: `${selectedExamName} Evaluation`,
+          keywords: 'Report Card, Student Performance, Grades',
+        },
+      });
+    } catch (err: any) {
+      console.error('Failed to generate PDF:', err);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
 
   // Lock body scroll when report card modal is open
   useEffect(() => {
@@ -400,14 +433,14 @@ export default function GradesMarksPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {/* Print button directly in header for instant mobile access */}
                 <button
-                  onClick={() => window.print()}
-                  className="px-3.5 py-1.5 rounded-lg bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                  onClick={() => handleExportPDF(activeReportStudent)}
+                  disabled={isGeneratingPDF}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span className="hidden xs:inline">Print PDF</span>
-                  <span className="xs:hidden">Print</span>
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline">{isGeneratingPDF ? 'Generating...' : 'Download PDF'}</span>
+                  <span className="xs:hidden">PDF</span>
                 </button>
                 <button
                   onClick={() => setActiveReportStudent(null)}
@@ -418,108 +451,98 @@ export default function GradesMarksPage() {
               </div>
             </div>
 
-            {/* Scrollable Body */}
-            <div className="flex-1 overflow-y-auto p-6 print:overflow-visible">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* Left Column: Student Details & Overall Results */}
-                <div className="space-y-4">
-                  {/* Student Info Banner */}
-                  <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl shadow-xs">
-                    <div className="text-center font-extrabold text-slate-700 text-xs mb-3.5 pb-2 border-b border-slate-200 uppercase tracking-wider">{schoolName}</div>
-                    <div className="space-y-3.5 text-xs">
-                      <div>
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Student Name</span>
-                        <span className="text-slate-800 font-extrabold text-sm block mt-0.5">{activeReportStudent.name}</span>
+            {/* Scrollable Body wrapped in PDFLayout */}
+            <div className="flex-1 overflow-y-auto print:overflow-visible">
+              <PDFLayout
+                id={`report-card-print-${activeReportStudent.studentId}`}
+                schoolLogo={null}
+                schoolName={schoolName}
+                schoolSubtitle={`${selectedExamName} Term Roster Evaluation`}
+                reportTitle="Official Progress Report Card"
+                metadata={[
+                  { label: 'Student Name', value: activeReportStudent.name },
+                  { label: 'Roll Number', value: activeReportStudent.rollNo },
+                  { label: 'Class & Section', value: classLabel },
+                  { label: 'Class Rank', value: `Rank ${activeReportStudent.rank}` }
+                ]}
+                footerText={`Official report card statement generated by ${schoolName}. Powered by Covenant Synergy.`}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Left Column: Overall Results */}
+                  <div className="space-y-4">
+                    {/* GPA Summary */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
+                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Total Marks</span>
+                        <span className="text-sm font-extrabold text-slate-800 block mt-1">
+                          {activeReportStudent.subjectsList.reduce((sum, s) => sum + s.score, 0)} / {activeReportStudent.subjectsList.length * 100}
+                        </span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Roll Number</span>
-                        <span className="text-slate-800 font-extrabold font-mono text-sm block mt-0.5">{activeReportStudent.rollNo}</span>
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
+                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Overall Avg</span>
+                        <span className="text-sm font-extrabold text-slate-800 block mt-1">{activeReportStudent.score}%</span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Class Section</span>
-                        <span className="text-slate-800 font-extrabold text-sm block mt-0.5">{classLabel}</span>
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
+                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">GPA Grade</span>
+                        <span className="text-sm font-extrabold text-purple-600 block mt-1">{activeReportStudent.grade}</span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Class Rank</span>
-                        <span className="text-purple-600 font-extrabold text-sm block mt-0.5">Rank {activeReportStudent.rank}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* GPA Summary */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
-                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Total Marks</span>
-                      <span className="text-sm font-extrabold text-slate-800 block mt-1">
-                        {activeReportStudent.subjectsList.reduce((sum, s) => sum + s.score, 0)} / {activeReportStudent.subjectsList.length * 100}
-                      </span>
-                    </div>
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
-                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Overall Avg</span>
-                      <span className="text-sm font-extrabold text-slate-800 block mt-1">{activeReportStudent.score}%</span>
-                    </div>
-                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
-                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">GPA Grade</span>
-                      <span className="text-sm font-extrabold text-purple-600 block mt-1">{activeReportStudent.grade}</span>
-                    </div>
-                    <div className={`border rounded-2xl p-4 text-center shadow-xs ${
-                      activeReportStudent.score >= 45
-                        ? 'bg-emerald-50 border-emerald-100'
-                        : 'bg-rose-50 border-rose-100'
-                    }`}>
-                      <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Final Result</span>
-                      <span className={`text-sm font-extrabold block mt-1 ${
-                        activeReportStudent.score >= 45 ? 'text-emerald-600' : 'text-rose-600'
+                      <div className={`border rounded-2xl p-4 text-center shadow-xs ${
+                        activeReportStudent.score >= 45
+                          ? 'bg-emerald-50 border-emerald-100'
+                          : 'bg-rose-50 border-rose-100'
                       }`}>
-                        {activeReportStudent.score >= 45 ? 'PASSED' : 'FAILED'}
-                      </span>
+                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Final Result</span>
+                        <span className={`text-sm font-extrabold block mt-1 ${
+                          activeReportStudent.score >= 45 ? 'text-emerald-600' : 'text-rose-600'
+                        }`}>
+                          {activeReportStudent.score >= 45 ? 'PASSED' : 'FAILED'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Right Column: Subject-wise details */}
-                <div className="md:col-span-2 space-y-3">
-                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Subject Wise Marks</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {activeReportStudent.subjectsList.map((subj, idx) => {
-                      const isPass = subj.score >= 45;
-                      const letter = getSubjectGrade(subj.score);
-                      const pct = Math.round((subj.score / subj.max) * 100);
-                      return (
-                        <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between min-h-[96px]">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-extrabold text-slate-855 text-sm truncate pr-2" title={subj.name}>{subj.name}</span>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="font-black text-blue-600 text-sm">{letter}</span>
-                              <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black tracking-wider border ${
-                                isPass ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'
-                              }`}>
-                                {isPass ? 'PASS' : 'FAIL'}
+                  {/* Right Column: Subject-wise details */}
+                  <div className="md:col-span-2 space-y-3">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Subject Wise Marks</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {activeReportStudent.subjectsList.map((subj, idx) => {
+                        const isPass = subj.score >= 45;
+                        const letter = getSubjectGrade(subj.score);
+                        const pct = Math.round((subj.score / subj.max) * 100);
+                        return (
+                          <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between min-h-[96px] break-inside-avoid">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-extrabold text-slate-855 text-sm truncate pr-2" title={subj.name}>{subj.name}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="font-black text-blue-600 text-sm">{letter}</span>
+                                <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black tracking-wider border ${
+                                  isPass ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'
+                                }`}>
+                                  {isPass ? 'PASS' : 'FAIL'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{
+                                    width: `${pct}%`,
+                                    background: pct >= 75 ? '#10b981' : pct >= 45 ? '#2E5BFF' : '#ef4444'
+                                  }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold text-slate-500 font-mono shrink-0">
+                                {subj.score} / {subj.max}
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${pct}%`,
-                                  background: pct >= 75 ? '#10b981' : pct >= 45 ? '#2E5BFF' : '#ef4444'
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs font-bold text-slate-500 font-mono shrink-0">
-                              {subj.score} / {subj.max}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-
-              </div>
+              </PDFLayout>
             </div>
 
             {/* Sticky Footer – always visible */}
@@ -531,10 +554,17 @@ export default function GradesMarksPage() {
                 Close
               </button>
               <button
-                onClick={() => window.print()}
-                className="px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-sm shadow-md shadow-blue-500/20 flex items-center gap-2 transition-colors cursor-pointer"
+                onClick={() => PDFService.print()}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm transition-colors cursor-pointer flex items-center gap-2"
               >
-                <Printer className="w-4 h-4" /> Print PDF
+                <Printer className="w-4 h-4" /> Print (Browser)
+              </button>
+              <button
+                onClick={() => handleExportPDF(activeReportStudent)}
+                disabled={isGeneratingPDF}
+                className="px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 disabled:opacity-50 text-white font-bold text-sm shadow-md shadow-blue-500/20 flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <Download className="w-4 h-4" /> {isGeneratingPDF ? 'Generating PDF...' : 'Download PDF'}
               </button>
             </div>
           </div>

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { FileBarChart, Printer, Users, TrendingUp, AlertTriangle, Star, CheckCircle } from 'lucide-react';
+import { PDFService } from '@/lib/pdf';
 
 export default function ReportsMgmtPage() {
   const [classes, setClasses] = useState<any[]>([]);
@@ -64,7 +65,7 @@ export default function ReportsMgmtPage() {
   };
 
   const handlePrint = () => {
-    window.print();
+    PDFService.print();
   };
 
   const getMetricsSummary = () => {

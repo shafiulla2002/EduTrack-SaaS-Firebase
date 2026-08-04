@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { useTenant } from '@/app/providers/TenantContext';
 import { useToast } from '@/components/Toast';
 import Drawer from '@/components/Drawer';
+import { PDFService } from '@/lib/pdf';
 
 interface ClassSectionOption {
   value: string; // classSectionId
@@ -392,7 +393,7 @@ export default function ExamSchedulePage() {
   };
 
   const handlePrint = () => {
-    window.print();
+    PDFService.print();
   };
 
   // Calendar calculation functions

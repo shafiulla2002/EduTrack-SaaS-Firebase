@@ -4,6 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Printer, ArrowLeft } from 'lucide-react';
 import { api } from '@/lib/api';
+import { PDFService } from '@/lib/pdf';
+import { PDFLayout } from '@/components/PDFLayout';
+import { Download } from 'lucide-react';
 
 interface PayslipData {
   schoolLogo: string;
@@ -53,18 +56,48 @@ export default function PayslipPrintPage() {
     fetchPayslip();
   }, [expenseId]);
 
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
   // Trigger print once data is loaded if ?print=true was set
   useEffect(() => {
     if (payslip && shouldPrint) {
       const timer = setTimeout(() => {
-        window.print();
+        PDFService.print();
       }, 500);
       return () => clearTimeout(timer);
     }
   }, [payslip, shouldPrint]);
 
   const handlePrint = () => {
-    window.print();
+    PDFService.print();
+  };
+
+  const handleExportPDF = async () => {
+    const element = document.getElementById('payslip-pdf-element');
+    if (!element || !payslip) return;
+
+    setIsGeneratingPDF(true);
+    try {
+      const safeTeacherName = payslip.teacherName.replace(/[^a-zA-Z0-9]/g, '_');
+      const safeMonth = payslip.salaryMonth.replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `Payslip_${safeMonth}_${safeTeacherName}`;
+
+      await PDFService.export({
+        element,
+        filename,
+        metadata: {
+          title: `Salary Payslip - ${payslip.teacherName} - ${payslip.salaryMonth}`,
+          author: payslip.schoolName,
+          subject: 'Employee Salary Disbursement Statement',
+          keywords: 'Payslip, Salary, Teacher, Payroll',
+        },
+      });
+    } catch (err) {
+      console.error('Failed to export payslip:', err);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
   if (isLoading) {
@@ -96,12 +129,15 @@ export default function PayslipPrintPage() {
         @media print {
           @page {
             size: A4 portrait;
-            margin: 8mm 12mm !important;
+            margin: 0mm !important;
           }
           html, body {
             height: auto !important;
             overflow: visible !important;
             background: white !important;
+          }
+          body {
+            padding: 8mm 12mm !important;
           }
           .print-card {
             border: none !important;
@@ -112,9 +148,6 @@ export default function PayslipPrintPage() {
             padding: 0 !important;
             transform: scale(0.92);
             transform-origin: top center;
-            page-break-inside: avoid !important;
-            page-break-after: avoid !important;
-            page-break-before: avoid !important;
           }
         }
       `}} />
@@ -128,75 +161,46 @@ export default function PayslipPrintPage() {
           <ArrowLeft className="w-4 h-4" />
           Back to Salary List
         </button>
-        <button
-          onClick={handlePrint}
-          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[13px] flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
-        >
-          <Printer className="w-4 h-4" />
-          Print / Save PDF
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={handlePrint}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 font-semibold text-[13px] flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <Printer className="w-4 h-4 text-slate-500" />
+            Print (Browser)
+          </button>
+          <button
+            onClick={handleExportPDF}
+            disabled={isGeneratingPDF}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-[13px] flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            {isGeneratingPDF ? 'Generating...' : 'Download PDF'}
+          </button>
+        </div>
       </div>
 
       {/* ── Payslip Sheet (A4-styled printable card) ── */}
-      <div className="print-card w-full max-w-[800px] bg-white text-slate-800 border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans print:m-0 flex flex-col print:block">
-        {/* Header Block with Navy blue bar */}
-        <div className="bg-[#1e3a8a] text-white border-b-[6px] border-amber-500 relative p-6 sm:p-8 flex items-center justify-between">
-          <div className="space-y-1">
-            <h1 className="text-[20px] sm:text-[24px] font-black uppercase tracking-tight leading-tight">
-              {payslip.schoolName}
-            </h1>
-            <p className="text-[11px] sm:text-[12px] text-slate-350 font-semibold italic">
-              Powered by Covenant Synergy
-            </p>
-          </div>
-          <div className="w-[80px] h-[80px] bg-white rounded-full border-2 border-white shadow-md p-1.5 flex items-center justify-center overflow-hidden shrink-0">
-            {payslip.schoolLogo ? (
-              <img src={payslip.schoolLogo} alt="Logo" className="w-full h-full object-contain" />
-            ) : (
-              <svg className="w-[50px] h-[50px] stroke-[#1e3a8a] stroke-[2] fill-none" viewBox="0 0 24 24">
-                <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
-                <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
-              </svg>
-            )}
-          </div>
-        </div>
-
-        {/* Payslip Details Body */}
-        <div className="p-5 sm:p-8 space-y-6 sm:space-y-8 flex-1">
-          {/* Title */}
-          <div className="text-center border-b border-slate-200 pb-4">
-            <h2 className="text-[16px] sm:text-[18px] font-black uppercase tracking-widest text-[#1e3a8a]">
-              PAYSLIP / SALARY RECEIPT
-            </h2>
-            <p className="text-xs text-slate-500 font-semibold mt-1">
-              Salary Statement for the Month of <span className="font-extrabold text-slate-800">{payslip.salaryMonth}</span>
-            </p>
-          </div>
-
-          {/* Teacher employee info metadata section */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs border-b border-slate-200 pb-5">
-            <div>
-              <span className="font-bold text-slate-400 uppercase tracking-wide text-[9px] block">Teacher Name</span>
-              <span className="font-bold text-slate-800">{payslip.teacherName}</span>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase tracking-wide text-[9px] block">Employee ID</span>
-              <span className="font-bold text-slate-800 font-mono">{payslip.employeeId}</span>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase tracking-wide text-[9px] block">Designation</span>
-              <span className="font-medium text-slate-800">{payslip.designation}</span>
-            </div>
-            <div>
-              <span className="font-bold text-slate-400 uppercase tracking-wide text-[9px] block">Department</span>
-              <span className="font-medium text-slate-800">{payslip.department}</span>
-            </div>
-          </div>
-
+      <div id="payslip-pdf-element" className="print-card w-full max-w-[800px] bg-white text-slate-800 border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans print:m-0 flex flex-col print:block">
+        <PDFLayout
+          schoolLogo={payslip.schoolLogo}
+          schoolName={payslip.schoolName}
+          schoolSubtitle="Official Employee Remuneration Slip"
+          reportTitle="Salary Payslip / Statement"
+          metadata={[
+            { label: 'Teacher Name', value: payslip.teacherName },
+            { label: 'Employee ID', value: payslip.employeeId },
+            { label: 'Designation', value: payslip.designation },
+            { label: 'Department', value: payslip.department },
+            { label: 'Salary Month', value: payslip.salaryMonth },
+            { label: 'Payment Date', value: payslip.paymentDate }
+          ]}
+          footerText="Secure digital payroll statement. Fully integrated with covenant school management protocols."
+        >
           {/* Earnings & Deductions Tables */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start mt-4">
             {/* Earnings */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-200 rounded-xl overflow-hidden break-inside-avoid">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 text-[#1e3a8a] text-[10px] font-black uppercase tracking-wider">
                 Earnings / Allowances
               </div>
@@ -221,7 +225,7 @@ export default function PayslipPrintPage() {
             </div>
 
             {/* Deductions */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-200 rounded-xl overflow-hidden break-inside-avoid">
               <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 text-[#1e3a8a] text-[10px] font-black uppercase tracking-wider">
                 Deductions
               </div>
@@ -243,7 +247,7 @@ export default function PayslipPrintPage() {
           </div>
 
           {/* Payment metadata summary */}
-          <div className="bg-[#f8fafc] border border-slate-200 p-4 rounded-xl text-xs space-y-2">
+          <div className="bg-[#f8fafc] border border-slate-200 p-4 rounded-xl text-xs space-y-2 break-inside-avoid">
             <h3 className="font-bold text-[#1e3a8a] text-[10px] uppercase tracking-wider">Disbursement transaction details</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-6 text-slate-700">
               <div>
@@ -256,33 +260,30 @@ export default function PayslipPrintPage() {
               </div>
               <div className="col-span-2 sm:col-span-1">
                 <span className="font-semibold text-slate-400 mr-2">Reference No:</span>
-                <span className="font-mono text-slate-850 break-all">{payslip.payrollReference}</span>
+                <span className="font-mono text-slate-855 break-all">{payslip.payrollReference}</span>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Footer Net Salary Take Home & Signature Block */}
-        <div className="p-5 sm:p-8 border-t border-slate-150 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-6 sm:gap-0 bg-slate-50/50">
-          <div>
-            <div className="bg-[#1e3a8a] text-white rounded-lg px-6 py-4 flex items-center justify-between gap-6 sm:gap-8 min-w-[280px]">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-350">Net Take Home Salary</span>
-              <span className="text-[20px] font-black font-mono">
-                ₹{payslip.netSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-              </span>
+          {/* TotalsTake Home & Signature Block */}
+          <div className="border border-slate-200 p-5 rounded-2xl flex flex-col sm:flex-row sm:justify-between sm:items-end gap-6 sm:gap-0 bg-slate-50/50 mt-4 break-inside-avoid">
+            <div>
+              <div className="bg-[#1e3a8a] text-white rounded-lg px-6 py-4 flex items-center justify-between gap-6 sm:gap-8 min-w-[280px]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-350">Net Take Home Salary</span>
+                <span className="text-[20px] font-black font-mono">
+                  ₹{payslip.netSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
             </div>
-            <div className="text-[10px] text-slate-400 font-semibold leading-relaxed mt-2 text-center sm:text-left max-w-xs">
-              Secure digital payroll statement. Fully integrated with covenant school management protocols.
+
+            <div className="flex flex-col items-center sm:items-end text-center sm:text-right shrink-0 pr-2">
+              <div className="h-10"></div> {/* Signature placeholder */}
+              <div className="w-[160px] border-b-2 border-slate-400 mb-1.5"></div>
+              <span className="text-[11px] font-black text-slate-800">{payslip.authorizedSignature}</span>
+              <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wide">Authorized Signatory</span>
             </div>
           </div>
-
-          <div className="flex flex-col items-center sm:items-end text-center sm:text-right shrink-0 pr-2">
-            <div className="h-10"></div> {/* Signature placeholder */}
-            <div className="w-[160px] border-b-2 border-slate-400 mb-1.5"></div>
-            <span className="text-[11px] font-black text-slate-800">{payslip.authorizedSignature}</span>
-            <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wide">Authorized Signatory</span>
-          </div>
-        </div>
+        </PDFLayout>
       </div>
     </div>
   );

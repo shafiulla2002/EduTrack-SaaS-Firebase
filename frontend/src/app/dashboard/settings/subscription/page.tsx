@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTenant } from '../../../providers/TenantContext';
 import { api } from '@/lib/api';
+import { PDFService } from '@/lib/pdf';
 import {
   CreditCard,
   CheckCircle,
@@ -449,7 +450,7 @@ export default function SubscriptionPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
-                        onClick={() => window.print()}
+                        onClick={() => PDFService.print()}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-[11px] font-semibold text-blue-600 hover:bg-blue-50/50 rounded-lg transition-colors cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />

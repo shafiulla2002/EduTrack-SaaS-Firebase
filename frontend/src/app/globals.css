@@ -4496,10 +4496,84 @@ body {
 
 /* Print specific styles */
 @media print {
-  body {
-    background-color: #ffffff !important;
-    color: #2d3748 !important;
+  @page {
+    size: auto;
+    margin: 0mm; /* Strips browser header and footer (date, title, url, page number) */
   }
+
+  body {
+    margin: 1.6cm !important; /* Re-applies printable area margin to content */
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Force light mode background/color scheme on print to save ink */
+  html,
+  body,
+  .dark,
+  html.dark,
+  html.dark body {
+    background-color: white !important;
+    background: white !important;
+    color: #1e293b !important;
+  }
+
+  /* Reset layout components for light mode print */
+  .dark .bg-slate-900,
+  .dark .bg-slate-950,
+  .dark .bg-slate-800,
+  .dark .bg-slate-900\/40,
+  .dark .bg-slate-950\/80,
+  .dark .bg-white,
+  .dark .bg-slate-50,
+  .dark .bg-slate-100 {
+    background-color: white !important;
+    background: white !important;
+    color: #1e293b !important;
+  }
+  
+  .dark .border-slate-700,
+  .dark .border-slate-800 {
+    border-color: #e2e8f0 !important;
+  }
+
+  .dark .text-white,
+  .dark .text-slate-100,
+  .dark .text-slate-200,
+  .dark .text-slate-300 {
+    color: #0f172a !important;
+  }
+
+  /* Table rules for multi-page print */
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tfoot {
+    display: table-footer-group;
+  }
+
+  /* Hide print-excluded elements globally */
+  .print-hidden,
+  .print\:hidden,
+  header,
+  nav,
+  aside,
+  footer,
+  button,
+  a[href^="javascript:"],
+  #print-instructions-modal {
+    display: none !important;
+  }
+
   .fee-receipt-sheet {
     border: none !important;
     box-shadow: none !important;

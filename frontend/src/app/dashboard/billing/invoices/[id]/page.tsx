@@ -4,6 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Printer, ArrowLeft } from 'lucide-react';
 import { api } from '@/lib/api';
+import { PDFService } from '@/lib/pdf';
+import { PDFLayout } from '@/components/PDFLayout';
+import { Download } from 'lucide-react';
 
 interface InvoicePDFData {
   schoolName: string;
@@ -51,8 +54,37 @@ export default function InvoicePrintPage() {
     fetchInvoicePDF();
   }, [id]);
 
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
   const handlePrint = () => {
-    window.print();
+    PDFService.print();
+  };
+
+  const handleExportPDF = async () => {
+    const element = document.getElementById('invoice-pdf-element');
+    if (!element || !invoiceData) return;
+
+    setIsGeneratingPDF(true);
+    try {
+      const safeInvoiceNo = invoiceData.invoiceNo.replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `Invoice_${safeInvoiceNo}`;
+
+      await PDFService.export({
+        element,
+        filename,
+        metadata: {
+          title: `Fee Receipt - ${invoiceData.invoiceNo}`,
+          author: invoiceData.schoolName,
+          subject: 'Student Fee Payment Invoice Receipt',
+          keywords: 'Invoice, Fee Receipt, Student, Billing',
+        },
+      });
+    } catch (err) {
+      console.error('Failed to export invoice PDF:', err);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
   if (isLoading) {
@@ -89,197 +121,46 @@ export default function InvoicePrintPage() {
           <ArrowLeft className="w-4 h-4" />
           Back to Billing
         </button>
-        <button
-          onClick={handlePrint}
-          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#1a365d] hover:bg-[#2a4365] text-white font-semibold text-[13px] flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
-        >
-          <Printer className="w-4 h-4" />
-          Print / Save PDF
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={handlePrint}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-[13px] flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <Printer className="w-4 h-4 text-slate-500" />
+            Print (Browser)
+          </button>
+          <button
+            onClick={handleExportPDF}
+            disabled={isGeneratingPDF}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-[13px] flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            {isGeneratingPDF ? 'Generating...' : 'Download PDF'}
+          </button>
+        </div>
       </div>
 
       {/* ── Invoice Sheet (A4-styled) ── */}
-      <div className="fee-receipt-sheet w-full max-w-[800px] bg-white border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans text-[#2d3748] print:m-0 flex flex-col print:block">
-
-        {/* ── Header Block (responsive) ── */}
-        <div className="receipt-header bg-[#1a365d] text-white border-b-[6px] border-[#ed8936] relative">
-          {/* Mobile header: stacked logo + text */}
-          <div className="flex items-center gap-4 p-4 sm:hidden">
-            <div className="w-[72px] h-[72px] shrink-0 bg-white rounded-full border-2 border-white shadow-md p-1 flex items-center justify-center overflow-hidden">
-              {invoiceData.schoolLogo ? (
-                <img src={invoiceData.schoolLogo} alt="Logo" className="w-full h-full object-contain" />
-              ) : (
-                <svg className="w-[40px] h-[40px] stroke-[#1a365d] stroke-[2] fill-none" viewBox="0 0 24 24">
-                  <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
-                  <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
-                </svg>
-              )}
-            </div>
-            <div>
-              <h1 className="text-[16px] font-black uppercase tracking-tight leading-tight">
-                {invoiceData.schoolName}
-              </h1>
-              <p className="text-[11px] text-slate-300 font-semibold italic mt-0.5">
-                {invoiceData.schoolSubtitle}
-              </p>
-            </div>
-          </div>
-
-          {/* Desktop header: original fixed layout */}
-          <div className="hidden sm:flex items-center justify-between h-[140px] p-8 relative">
-            <div className="pl-[120px] space-y-1">
-              <h1 className="text-[24px] font-black uppercase tracking-tight leading-tight">
-                {invoiceData.schoolName}
-              </h1>
-              <p className="text-[12px] text-slate-300 font-semibold italic">
-                {invoiceData.schoolSubtitle}
-              </p>
-            </div>
-            <div className="absolute top-[20px] left-[24px] w-[100px] h-[100px] bg-white rounded-full border-2 border-white shadow-md p-1.5 flex items-center justify-center overflow-hidden">
-              {invoiceData.schoolLogo ? (
-                <img src={invoiceData.schoolLogo} alt="Logo" className="w-full h-full object-contain" />
-              ) : (
-                <svg className="w-[60px] h-[60px] stroke-[#1a365d] stroke-[2] fill-none" viewBox="0 0 24 24">
-                  <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
-                  <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
-                </svg>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Receipt Body ── */}
-        <div className="p-4 sm:p-10 space-y-5 sm:space-y-8 flex-1">
-
-          {/* Title */}
-          <div className="text-center">
-            <h2 className="text-[16px] sm:text-[20px] font-black uppercase tracking-widest text-[#1a365d]">
-              Fee Receipt
-            </h2>
-          </div>
-
-          {/* ── Metadata: Responsive Grid ── */}
-          <div className="border-b border-slate-200 pb-4">
-            {/* Mobile: stacked grid 2-col */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:hidden text-[12px]">
-              <div>
-                <span className="font-bold text-slate-500 block text-[10px] uppercase tracking-wide">Receipt No</span>
-                <span className="font-bold text-slate-800 font-mono">{invoiceData.invoiceNo}</span>
-              </div>
-              <div>
-                <span className="font-bold text-slate-500 block text-[10px] uppercase tracking-wide">Academic Year</span>
-                <span className="font-bold text-slate-800">{invoiceData.academicYear}</span>
-              </div>
-              <div>
-                <span className="font-bold text-slate-500 block text-[10px] uppercase tracking-wide">Receipt Date</span>
-                <span className="font-medium text-slate-800">{invoiceData.invoiceDate}</span>
-              </div>
-              <div>
-                <span className="font-bold text-slate-500 block text-[10px] uppercase tracking-wide">Admission Ref</span>
-                <span className="font-mono text-slate-800 text-[11px] break-words">{invoiceData.admissionRef}</span>
-              </div>
-            </div>
-
-            {/* Desktop: original 2-column table */}
-            <table className="hidden sm:table w-full text-[13px]">
-              <tbody>
-                <tr>
-                  <td className="py-1">
-                    <span className="font-bold text-slate-500">Receipt No:</span>
-                    <span className="ml-2 font-bold text-slate-800 font-mono">{invoiceData.invoiceNo}</span>
-                  </td>
-                  <td className="py-1 text-right">
-                    <span className="font-bold text-slate-500">Academic Year:</span>
-                    <span className="ml-2 font-bold text-slate-800">{invoiceData.academicYear}</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-1">
-                    <span className="font-bold text-slate-500">Receipt Date:</span>
-                    <span className="ml-2 font-medium text-slate-800">{invoiceData.invoiceDate}</span>
-                  </td>
-                  <td className="py-1 text-right">
-                    <span className="font-bold text-slate-500">Admission Ref:</span>
-                    <span className="ml-2 font-mono text-slate-800">{invoiceData.admissionRef}</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* ── Student Details Card ── */}
-          <div className="student-details-card bg-[#f7fafc] border border-[#e2e8f0] border-l-[5px] border-l-[#1a365d] p-3 sm:p-6 rounded-lg">
-            {/* Mobile: vertical stacked layout */}
-            <div className="sm:hidden space-y-3 text-[12px]">
-              <div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Student Name</div>
-                <div className="text-[15px] text-[#1a365d] font-bold mt-0.5">{invoiceData.studentName}</div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Class & Section</div>
-                  <div className="text-[13px] text-[#1a365d] font-bold mt-0.5">{invoiceData.className} - {invoiceData.sectionName}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Date of Birth</div>
-                  <div className="text-[12px] text-slate-800 font-medium mt-0.5">{invoiceData.studentDob || '15 May 2012'}</div>
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Parent Details</div>
-                <div className="text-slate-700 mt-1 leading-relaxed">
-                  Father: <span className="font-semibold text-slate-800">{invoiceData.fatherName}</span><br />
-                  Mother: <span className="font-semibold text-slate-800">{invoiceData.motherName}</span>
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mailing Address</div>
-                <div className="text-slate-800 font-semibold leading-relaxed mt-1 text-[11px]">
-                  {invoiceData.addressVillage || 'Plot No. 12, Vikas Nagar,'}<br />
-                  New Delhi - 110009, Delhi, India.
-                </div>
-              </div>
-            </div>
-
-            {/* Desktop: original 3-column table */}
-            <table className="hidden sm:table w-full text-[13px] border-collapse">
-              <tbody>
-                <tr>
-                  <td className="w-[35%] valign-top space-y-4">
-                    <div>
-                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Student Name</div>
-                      <div className="text-[15px] text-[#1a365d] font-bold mt-0.5">{invoiceData.studentName}</div>
-                    </div>
-                    <div className="pt-2">
-                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Parent Details</div>
-                      <div className="text-slate-700 mt-1 leading-relaxed">
-                        Father's Name: <span className="font-semibold text-slate-800">{invoiceData.fatherName}</span><br />
-                        Mother's Name: <span className="font-semibold text-slate-800">{invoiceData.motherName}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="w-[30%] valign-top space-y-4 px-4">
-                    <div>
-                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Class &amp; Section</div>
-                      <div className="text-[14px] text-[#1a365d] font-bold mt-0.5">{invoiceData.className} - {invoiceData.sectionName}</div>
-                    </div>
-                    <div className="pt-2">
-                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Date of Birth</div>
-                      <div className="text-[13px] text-slate-800 font-medium mt-0.5">{invoiceData.studentDob || '15 May 2012'}</div>
-                    </div>
-                  </td>
-                  <td className="w-[35%] valign-top space-y-2">
-                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mailing Address</div>
-                    <div className="text-slate-850 font-semibold leading-relaxed mt-1 text-[12px]">
-                      {invoiceData.addressVillage || 'Plot No. 12, Vikas Nagar,'}<br />
-                      New Delhi - 110009,<br />
-                      Delhi, India.
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+      <div id="invoice-pdf-element" className="fee-receipt-sheet w-full max-w-[800px] bg-white border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans text-[#2d3748] print:m-0 flex flex-col print:block">
+        <PDFLayout
+          schoolLogo={invoiceData.schoolLogo}
+          schoolName={invoiceData.schoolName}
+          schoolSubtitle={invoiceData.schoolSubtitle}
+          reportTitle="Official Student Fee Receipt"
+          metadata={[
+            { label: 'Receipt No', value: invoiceData.invoiceNo },
+            { label: 'Academic Year', value: invoiceData.academicYear },
+            { label: 'Receipt Date', value: invoiceData.invoiceDate },
+            { label: 'Admission Ref', value: invoiceData.admissionRef },
+            { label: 'Student Name', value: invoiceData.studentName },
+            { label: 'Class & Section', value: `${invoiceData.className} - ${invoiceData.sectionName}` },
+            { label: 'Date of Birth', value: invoiceData.studentDob || '15 May 2012' },
+            { label: 'Father Name', value: invoiceData.fatherName }
+          ]}
+          footerText="This is a computer generated fee receipt. No physical signature is required. For verification query, contact the accounting department."
+        >
+          {/* Main Content Area */}
+          <div className="mt-4">
 
           {/* ── Fee Particulars Table ── */}
           {/* Mobile: card list */}
@@ -323,20 +204,16 @@ export default function InvoicePrintPage() {
           </table>
         </div>
 
-        {/* ── Footer: Grand Total ── */}
-        <div className="p-4 sm:p-10 border-t border-slate-100 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
-          <div className="text-[11px] text-slate-400 font-semibold leading-relaxed text-center sm:text-left max-w-sm">
-            This is a computer generated fee receipt. No physical signature is required. For verification query, contact the accounting department.
+          {/* ── Grand Total ── */}
+          <div className="flex justify-end mt-4 break-inside-avoid">
+            <div className="total-badge bg-[#1a365d] text-white rounded-lg px-8 py-4 flex items-center justify-between gap-8 min-w-[280px]">
+              <span className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Grand Total Paid</span>
+              <span className="text-[18px] sm:text-[20px] font-black font-mono text-white">
+                ₹{invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
-
-          <div className="total-badge bg-[#1a365d] text-white rounded-lg px-5 sm:px-8 py-4 flex items-center justify-between gap-4 sm:gap-8 sm:shrink-0 sm:min-w-[280px]">
-            <span className="text-[12px] font-medium uppercase tracking-wider text-slate-300">Grand Total Paid</span>
-            <span className="text-[18px] sm:text-[20px] font-black font-mono">
-              ₹{invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-        </div>
-
+        </PDFLayout>
       </div>
     </div>
   );
