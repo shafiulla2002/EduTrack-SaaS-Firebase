@@ -69,234 +69,234 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
 
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans select-none overflow-x-hidden relative pb-16 lg:pb-0">
-      {/* Header */}
-      <header className="h-[72px] bg-white border-b border-slate-200 sticky top-0 z-40 flex items-center justify-between px-4 lg:px-8 shrink-0 shadow-sm">
-        {/* Left End: Static Parent branding on desktop, School branding on mobile */}
-        <div className="flex items-center gap-2.5">
-          {/* Desktop static Parent Portal Brand */}
-          <div className="hidden md:flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/10">
-              <span className="font-extrabold text-white text-base tracking-tight">ET</span>
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans select-none overflow-x-hidden relative pb-16 lg:pb-0">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:block w-[260px] bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-50 py-6 px-4 select-none shadow-sm print:hidden">
+        <nav className="space-y-6">
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-3">
+              Core Modules
             </div>
-            <div className="text-left">
-              <h1 className="font-extrabold text-xs text-indigo-900 uppercase tracking-wider leading-none">EduTrack</h1>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Parent Portal</p>
+            <div className="space-y-1.5">
+              {navigationItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href || (
+                  item.href !== '/parent' &&
+                  (pathname === item.href || pathname.startsWith(item.href + '/')) &&
+                  !allParentHrefs.some(otherHref =>
+                    otherHref !== item.href &&
+                    otherHref.length > item.href.length &&
+                    (pathname === otherHref || pathname.startsWith(otherHref + '/'))
+                  )
+                );
+                const isLocked = isModuleLocked(item.href);
+                return (
+                  <Link
+                    key={item.name}
+                    href={isLocked ? '#' : item.href}
+                    onClick={(e) => {
+                      if (isLocked) {
+                        e.preventDefault();
+                        setShowLockPopup(true);
+                      }
+                    }}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                      isActive && !isLocked
+                        ? 'bg-blue-50 border border-blue-100 text-[#2E5BFF] font-semibold'
+                        : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50 border border-transparent'
+                    } ${isLocked ? 'opacity-80' : ''}`}
+                  >
+                    <Icon className="w-4.5 h-4.5 shrink-0" />
+                    <span className="truncate">{item.name}</span>
+                    {isLocked && (
+                      <svg className="w-3.5 h-3.5 text-slate-400 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+      {/* Main Viewport Container */}
+      <div className="flex-1 flex flex-col min-h-screen lg:pl-[260px] w-full min-w-0">
+        {/* Header */}
+        <header className="h-[72px] bg-white border-b border-slate-200 sticky top-0 z-40 flex items-center justify-between px-4 lg:px-8 shrink-0 shadow-sm print:hidden">
+          {/* Left End: Static Parent branding on desktop, School branding on mobile */}
+          <div className="flex items-center gap-2.5">
+            {/* Desktop static Parent Portal Brand */}
+            <div className="hidden md:flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/10">
+                <span className="font-extrabold text-white text-base tracking-tight">ET</span>
+              </div>
+              <div className="text-left">
+                <h1 className="font-extrabold text-xs text-indigo-900 uppercase tracking-wider leading-none">EduTrack</h1>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Parent Portal</p>
+              </div>
+            </div>
+
+            {/* Mobile dynamic School Brand */}
+            <div className="flex md:hidden items-center gap-2">
+              <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xs">
+                    <svg className="w-4 h-4 stroke-white fill-none" viewBox="0 0 24 24">
+                      <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2"></path>
+                      <path d="M6 12v5c3 3 9 3 12 0v-5" strokeWidth="2"></path>
+                    </svg>
+                  </div>
+                )}
+              </div>
+              <div className="text-left max-w-[130px] xs:max-w-[170px] sm:max-w-[240px]">
+                <h1 className="font-extrabold text-[11px] sm:text-[13px] text-indigo-900 leading-none uppercase tracking-wide truncate">
+                  {schoolName || 'EduTrack'}
+                </h1>
+                <p className="text-[8px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
+                  Parent Portal
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Mobile dynamic School Brand */}
-          <div className="flex md:hidden items-center gap-2">
-            <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden">
+          {/* Center: Dynamic School branding (Desktop/Tablet only) */}
+          <div className="hidden md:flex items-center gap-2.5 px-4 text-center">
+            <div className="w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden">
               {logoUrl ? (
                 <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xs">
-                  <svg className="w-4 h-4 stroke-white fill-none" viewBox="0 0 24 24">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/10">
+                  <svg className="w-5 h-5 stroke-white fill-none" viewBox="0 0 24 24">
                     <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2"></path>
                     <path d="M6 12v5c3 3 9 3 12 0v-5" strokeWidth="2"></path>
                   </svg>
                 </div>
               )}
             </div>
-            <div className="text-left max-w-[130px] xs:max-w-[170px] sm:max-w-[240px]">
-              <h1 className="font-extrabold text-[11px] sm:text-[13px] text-indigo-900 leading-none uppercase tracking-wide truncate">
+            <div className="text-left max-w-[200px] lg:max-w-[350px] xl:max-w-[450px]">
+              <h1 className="font-extrabold text-[12px] sm:text-[14px] text-indigo-900 leading-none uppercase tracking-wide truncate">
                 {schoolName || 'EduTrack'}
               </h1>
-              <p className="text-[8px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
-                Parent Portal
+              <p className="text-[9px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
+                Parent Portal {schoolName ? '• ' + (schoolType || 'Powered by Covenant Synergy') : ''}
               </p>
             </div>
           </div>
-        </div>
 
-        {/* Center: Dynamic School branding (Desktop/Tablet only) */}
-        <div className="hidden md:flex items-center gap-2.5 px-4 text-center">
-          <div className="w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden">
-            {logoUrl ? (
-              <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/10">
-                <svg className="w-5 h-5 stroke-white fill-none" viewBox="0 0 24 24">
-                  <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2"></path>
-                  <path d="M6 12v5c3 3 9 3 12 0v-5" strokeWidth="2"></path>
-                </svg>
-              </div>
-            )}
-          </div>
-          <div className="text-left max-w-[200px] lg:max-w-[350px] xl:max-w-[450px]">
-            <h1 className="font-extrabold text-[12px] sm:text-[14px] text-indigo-900 leading-none uppercase tracking-wide truncate">
-              {schoolName || 'EduTrack'}
-            </h1>
-            <p className="text-[9px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
-              Parent Portal {schoolName ? '• ' + (schoolType || 'Powered by Covenant Synergy') : ''}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Child Switcher Dropdown */}
-          {selectedChild && (
-            <div className="relative">
-              <button
-                onClick={() => setShowSwitcher(!showSwitcher)}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 hover:text-[#2E5BFF] hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer min-h-[36px]"
-              >
-                {selectedChild.avatarUrl ? (
-                  <img
-                    src={selectedChild.avatarUrl}
-                    alt={selectedChild.name}
-                    className="w-5 h-5 rounded-full object-cover border border-slate-200"
-                  />
-                ) : (
-                  <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-[10px]">
-                    {selectedChild.name[0]}
-                  </div>
-                )}
-                <span className="max-w-[80px] sm:max-w-[120px] truncate">{selectedChild.name}</span>
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${showSwitcher ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showSwitcher && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowSwitcher(false)} />
-                  <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-50 animate-fade-in space-y-1">
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-3 py-1.5">
-                      Switch Student
+          <div className="flex items-center gap-3">
+            {/* Child Switcher Dropdown */}
+            {selectedChild && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowSwitcher(!showSwitcher)}
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 hover:text-[#2E5BFF] hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer min-h-[36px]"
+                >
+                  {selectedChild.avatarUrl ? (
+                    <img
+                      src={selectedChild.avatarUrl}
+                      alt={selectedChild.name}
+                      className="w-5 h-5 rounded-full object-cover border border-slate-200"
+                    />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-[10px]">
+                      {selectedChild.name[0]}
                     </div>
-                    {childrenList.map((child) => (
-                      <button
-                        key={child.id}
-                        onClick={() => {
-                          setSelectedChildId(child.id);
-                          setShowSwitcher(false);
-                        }}
-                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all ${
-                          child.id === selectedChild.id
-                            ? 'bg-blue-50 border border-blue-100 text-[#2E5BFF]'
-                            : 'border border-transparent hover:bg-slate-50 text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        {child.avatarUrl ? (
-                          <img
-                            src={child.avatarUrl}
-                            alt={child.name}
-                            className="w-8 h-8 rounded-full object-cover border border-slate-200"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">
-                            {child.name[0]}
+                  )}
+                  <span className="max-w-[80px] sm:max-w-[120px] truncate">{selectedChild.name}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${showSwitcher ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showSwitcher && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowSwitcher(false)} />
+                    <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 z-50 animate-fade-in space-y-1">
+                      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest px-3 py-1.5">
+                        Switch Student
+                      </div>
+                      {childrenList.map((child) => (
+                        <button
+                          key={child.id}
+                          onClick={() => {
+                            setSelectedChildId(child.id);
+                            setShowSwitcher(false);
+                          }}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-all ${
+                            child.id === selectedChild.id
+                              ? 'bg-blue-50 border border-blue-100 text-[#2E5BFF]'
+                              : 'border border-transparent hover:bg-slate-50 text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {child.avatarUrl ? (
+                            <img
+                              src={child.avatarUrl}
+                              alt={child.name}
+                              className="w-8 h-8 rounded-full object-cover border border-slate-200"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs">
+                              {child.name[0]}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold truncate">{child.name}</p>
+                            <p className="text-[10px] text-slate-500 font-light truncate">
+                              {child.class} - {child.section}
+                            </p>
                           </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold truncate">{child.name}</p>
-                          <p className="text-[10px] text-slate-500 font-light truncate">
-                            {child.class} - {child.section}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Parent Notification Bell */}
-          <ParentNotificationBell />
-
-          {/* Theme Toggle Button */}
-          <button
-            onClick={toggleTheme}
-            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center border border-slate-200 dark:border-slate-700"
-            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          >
-
-            {theme === 'dark' ? (
-              <svg className="w-4 h-4 stroke-current fill-none" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="5" strokeWidth="2"></circle>
-                <line x1="12" y1="1" x2="12" y2="3" strokeWidth="2" strokeLinecap="round"></line>
-                <line x1="12" y1="21" x2="12" y2="23" strokeWidth="2" strokeLinecap="round"></line>
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" strokeWidth="2" strokeLinecap="round"></line>
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" strokeWidth="2" strokeLinecap="round"></line>
-                <line x1="1" y1="12" x2="3" y2="12" strokeWidth="2" strokeLinecap="round"></line>
-                <line x1="21" y1="12" x2="23" y2="12" strokeWidth="2" strokeLinecap="round"></line>
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" strokeWidth="2" strokeLinecap="round"></line>
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" strokeWidth="2" strokeLinecap="round"></line>
-              </svg>
-            ) : (
-              <svg className="w-4 h-4 stroke-current fill-none" viewBox="0 0 24 24">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
-              </svg>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
-          </button>
 
-          <button
-            onClick={handleLogout}
-            className="hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-100 transition-all cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
-        </div>
-      </header>
+            {/* Parent Notification Bell */}
+            <ParentNotificationBell />
 
-      {/* Main Layout Container */}
-      <div className="flex-1 flex w-full relative min-w-0">
-        {/* Desktop Sidebar */}
-        <aside className="hidden lg:block w-[260px] bg-white border-r border-slate-200 h-[calc(100vh-72px)] fixed top-[72px] left-0 overflow-y-auto py-6 px-4 select-none shadow-sm z-30">
-          <nav className="space-y-6">
-            <div>
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-3">
-                Core Modules
-              </div>
-              <div className="space-y-1.5">
-                {navigationItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href || (
-                    item.href !== '/parent' &&
-                    (pathname === item.href || pathname.startsWith(item.href + '/')) &&
-                    !allParentHrefs.some(otherHref =>
-                      otherHref !== item.href &&
-                      otherHref.length > item.href.length &&
-                      (pathname === otherHref || pathname.startsWith(otherHref + '/'))
-                    )
-                  );
-                  const isLocked = isModuleLocked(item.href);
-                  return (
-                    <Link
-                      key={item.name}
-                      href={isLocked ? '#' : item.href}
-                      onClick={(e) => {
-                        if (isLocked) {
-                          e.preventDefault();
-                          setShowLockPopup(true);
-                        }
-                      }}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                        isActive && !isLocked
-                          ? 'bg-blue-50 border border-blue-100 text-[#2E5BFF] font-semibold'
-                          : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50 border border-transparent'
-                      } ${isLocked ? 'opacity-80' : ''}`}
-                    >
-                      <Icon className="w-4.5 h-4.5 shrink-0" />
-                      <span className="truncate">{item.name}</span>
-                      {isLocked && (
-                        <svg className="w-3.5 h-3.5 text-slate-400 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                        </svg>
-                      )}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          </nav>
-        </aside>
+            {/* Theme Toggle Button */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center border border-slate-200 dark:border-slate-700"
+              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+
+              {theme === 'dark' ? (
+                <svg className="w-4 h-4 stroke-current fill-none" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="5" strokeWidth="2"></circle>
+                  <line x1="12" y1="1" x2="12" y2="3" strokeWidth="2" strokeLinecap="round"></line>
+                  <line x1="12" y1="21" x2="12" y2="23" strokeWidth="2" strokeLinecap="round"></line>
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" strokeWidth="2" strokeLinecap="round"></line>
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" strokeWidth="2" strokeLinecap="round"></line>
+                  <line x1="1" y1="12" x2="3" y2="12" strokeWidth="2" strokeLinecap="round"></line>
+                  <line x1="21" y1="12" x2="23" y2="12" strokeWidth="2" strokeLinecap="round"></line>
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" strokeWidth="2" strokeLinecap="round"></line>
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" strokeWidth="2" strokeLinecap="round"></line>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 stroke-current fill-none" viewBox="0 0 24 24">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
+                </svg>
+              )}
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-100 transition-all cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
+        </header>
 
         {/* Content Panel */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 bg-slate-50 lg:pl-[260px]">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 bg-slate-50">
           {children}
         </main>
       </div>
