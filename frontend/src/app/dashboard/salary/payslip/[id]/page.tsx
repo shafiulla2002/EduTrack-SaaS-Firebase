@@ -85,6 +85,7 @@ export default function PayslipPrintPage() {
       await PDFService.export({
         element,
         filename,
+        documentType: 'payslip',
         metadata: {
           title: `Salary Payslip - ${payslip.teacherName} - ${payslip.salaryMonth}`,
           author: payslip.schoolName,
@@ -187,6 +188,7 @@ export default function PayslipPrintPage() {
           schoolName={payslip.schoolName}
           schoolSubtitle="Official Employee Remuneration Slip"
           reportTitle="Salary Payslip / Statement"
+          documentType="payslip"
           metadata={[
             { label: 'Teacher Name', value: payslip.teacherName },
             { label: 'Employee ID', value: payslip.employeeId },

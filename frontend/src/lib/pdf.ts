@@ -1,9 +1,41 @@
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
+export type DocumentType =
+  | 'report-card'
+  | 'invoice'
+  | 'receipt'
+  | 'marksheet'
+  | 'certificate'
+  | 'payslip'
+  | 'custom';
+
+export interface DocumentPreset {
+  paperSize: 'a3' | 'a4' | 'letter';
+  orientation: 'portrait' | 'landscape';
+  margin: number;
+}
+
+export const PAPER_DIMENSIONS = {
+  a4: { width: 210, height: 297 },
+  a3: { width: 297, height: 420 },
+  letter: { width: 215.9, height: 279.4 }
+};
+
+export const DOCUMENT_PRESETS: Record<DocumentType, DocumentPreset> = {
+  'report-card': { paperSize: 'a4', orientation: 'portrait', margin: 12 },
+  'invoice': { paperSize: 'a4', orientation: 'portrait', margin: 12 },
+  'receipt': { paperSize: 'a4', orientation: 'portrait', margin: 12 },
+  'marksheet': { paperSize: 'a4', orientation: 'portrait', margin: 12 },
+  'certificate': { paperSize: 'a4', orientation: 'landscape', margin: 16 },
+  'payslip': { paperSize: 'a4', orientation: 'portrait', margin: 12 },
+  'custom': { paperSize: 'a4', orientation: 'portrait', margin: 12 },
+};
+
 export interface ExportPDFOptions {
   element: HTMLElement;
   filename: string;
+  documentType?: DocumentType;
   paperSize?: 'a3' | 'a4' | 'letter';
   orientation?: 'portrait' | 'landscape';
   margin?: number;
@@ -53,9 +85,10 @@ export class PDFService {
     const {
       element,
       filename,
-      paperSize = 'a4',
-      orientation = 'portrait',
-      margin = 12,
+      documentType = 'custom',
+      paperSize: overridePaperSize,
+      orientation: overrideOrientation,
+      margin: overrideMargin,
       scale = 2,
       metadata = {},
     } = options;
@@ -64,10 +97,24 @@ export class PDFService {
       throw new Error('PDF Export Error: Element is required.');
     }
 
+    // Resolve document presets
+    const preset = DOCUMENT_PRESETS[documentType] || DOCUMENT_PRESETS.custom;
+    const paperSize = overridePaperSize || preset.paperSize;
+    const orientation = overrideOrientation || preset.orientation;
+    const margin = overrideMargin !== undefined ? overrideMargin : preset.margin;
+
     // Preload image and font assets
     await this.preloadResources(element);
 
     try {
+      // Calculate dynamic dimensions based on paper config
+      const dimensions = PAPER_DIMENSIONS[paperSize] || PAPER_DIMENSIONS.a4;
+      const paperWidthMm = orientation === 'portrait' ? dimensions.width : dimensions.height;
+      const paperHeightMm = orientation === 'portrait' ? dimensions.height : dimensions.width;
+
+      // Rendering width based on standard 96 DPI
+      const renderingWidthPx = Math.round(paperWidthMm * 3.7795);
+
       // Capture canvas
       const canvas = await html2canvas(element, {
         scale: scale,
@@ -76,7 +123,59 @@ export class PDFService {
         backgroundColor: '#ffffff',
         imageTimeout: 15000,
         onclone: (clonedDoc) => {
-          // Hide printing-excluded components in cloned DOM before rasterizing
+          // 1. Force light mode at the document root level of the cloned DOM
+          const htmlEl = clonedDoc.documentElement;
+          if (htmlEl) {
+            htmlEl.classList.remove('dark', 'theme-dark');
+            htmlEl.removeAttribute('data-theme');
+            htmlEl.style.colorScheme = 'light';
+            htmlEl.style.backgroundColor = '#ffffff';
+          }
+          const bodyEl = clonedDoc.body;
+          if (bodyEl) {
+            bodyEl.classList.remove('dark', 'theme-dark');
+            bodyEl.removeAttribute('data-theme');
+            bodyEl.style.backgroundColor = '#ffffff';
+          }
+
+          // 2. Clear dark mode class from the cloned target element and all its ancestors
+          const clonedElement = clonedDoc.getElementById(element.id) || 
+                                (element.id ? clonedDoc.querySelector(`#${element.id}`) : null) ||
+                                clonedDoc.querySelector('.pdf-layout-document') ||
+                                clonedDoc.querySelector('[id*="-pdf-element"]');
+
+          if (clonedElement) {
+            let parentNode: HTMLElement | null = clonedElement as HTMLElement;
+            while (parentNode) {
+              parentNode.classList.remove('dark', 'theme-dark');
+              parentNode.removeAttribute('data-theme');
+              parentNode.classList.add('pdf-theme');
+              if (parentNode.classList.contains('print-card') || parentNode.classList.contains('fee-receipt-sheet') || parentNode.id === 'invoice-pdf-element' || parentNode.id === 'payslip-pdf-element') {
+                parentNode.style.backgroundColor = '#ffffff';
+                parentNode.style.color = '#1e293b';
+              }
+              parentNode = parentNode.parentElement;
+            }
+
+            // 3. Strip dark mode and theme-dark classes from all descendants of the target element
+            const descendants = clonedElement.querySelectorAll('.dark, .theme-dark, [data-theme="dark"], [class*="dark:"]');
+            descendants.forEach((desc) => {
+              desc.classList.remove('dark', 'theme-dark');
+              desc.removeAttribute('data-theme');
+              desc.classList.add('pdf-theme');
+            });
+          }
+
+          // 4. Force a clean rendering width dynamically based on paper size to ensure consistent DPI ratio
+          if (clonedElement) {
+            const el = clonedElement as HTMLElement;
+            el.style.width = `${renderingWidthPx}px`;
+            el.style.maxWidth = 'none';
+            el.style.minWidth = `${renderingWidthPx}px`;
+            el.style.minHeight = '0px'; // Allow natural layout expansion
+          }
+
+          // 5. Hide printing-excluded components in cloned DOM before rasterizing
           const hiddenElements = clonedDoc.querySelectorAll('.print-hidden, .print\\:hidden, button');
           hiddenElements.forEach((el) => {
             (el as HTMLElement).style.display = 'none';
@@ -105,16 +204,44 @@ export class PDFService {
       const pdfHeight = pdf.internal.pageSize.getHeight();
       
       const contentWidth = pdfWidth - (margin * 2);
-      const contentHeight = (canvas.height * contentWidth) / canvas.width;
+      let contentHeight = (canvas.height * contentWidth) / canvas.width;
       
       const pageHeightLimit = pdfHeight - (margin * 2);
+      
+      // Calculate total overflow
+      const overflowMm = contentHeight - pageHeightLimit;
+
+      // Smart Scaling Policy: scale down if overflow is <= 10% of the printable page height
+      let scaleRatio = 1.0;
+      const overflowThreshold = pageHeightLimit * 0.10; // 10% overflow limit
+
+      if (overflowMm > 0 && overflowMm <= overflowThreshold) {
+        scaleRatio = pageHeightLimit / contentHeight;
+        contentHeight = pageHeightLimit;
+      }
+
+      // Development Diagnostics Logging
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[PDF Diagnostics] ---------------------------------`);
+        console.log(`[PDF Diagnostics] Document Type: ${documentType}`);
+        console.log(`[PDF Diagnostics] Paper Sizing: ${paperSize} (${orientation})`);
+        console.log(`[PDF Diagnostics] Page Dimensions: ${paperWidthMm}mm x ${paperHeightMm}mm`);
+        console.log(`[PDF Diagnostics] Margin Size: ${margin}mm`);
+        console.log(`[PDF Diagnostics] Printable Limit Height: ${pageHeightLimit.toFixed(2)}mm`);
+        console.log(`[PDF Diagnostics] Canvas Dimensions: ${canvas.width}px x ${canvas.height}px`);
+        console.log(`[PDF Diagnostics] Raw Content Height: ${((canvas.height * contentWidth) / canvas.width).toFixed(2)}mm`);
+        console.log(`[PDF Diagnostics] Scaling Ratio Applied: ${scaleRatio.toFixed(3)}`);
+        console.log(`[PDF Diagnostics] Adjusted Content Height: ${contentHeight.toFixed(2)}mm`);
+        console.log(`[PDF Diagnostics] Page Overflow: ${overflowMm.toFixed(2)}mm (Threshold: ${overflowThreshold.toFixed(2)}mm)`);
+        console.log(`[PDF Diagnostics] ---------------------------------`);
+      }
 
       let heightLeft = contentHeight;
       let position = margin;
       let pageCount = 0;
 
       // Slice the canvas across multiple pages if it exceeds pageHeightLimit
-      while (heightLeft > 0) {
+      while (heightLeft > 0.5) { // 0.5mm fudge margin to avoid empty trailing page splits
         if (pageCount > 0) {
           pdf.addPage(paperSize, orientation);
           position = margin - (pageCount * pageHeightLimit);
@@ -125,8 +252,8 @@ export class PDFService {
           'JPEG',
           margin,
           position,
-          contentWidth,
-          contentHeight,
+          contentWidth * scaleRatio,
+          ((canvas.height * contentWidth) / canvas.width) * scaleRatio,
           undefined,
           'FAST'
         );
@@ -145,7 +272,7 @@ export class PDFService {
   /**
    * Prompts the user with a beautiful, state-remembering instructions dialog before triggering window.print().
    */
-  static async print(element?: HTMLElement): Promise<void> {
+  static async print(): Promise<void> {
     const isDismissed = typeof window !== 'undefined' && localStorage.getItem('print_instructions_dismissed') === 'true';
 
     if (isDismissed) {
@@ -154,7 +281,7 @@ export class PDFService {
     }
 
     return new Promise<void>((resolve) => {
-      // Create a quick, beautiful, styled modal overlay dynamically in document.body
+      // Create print warning modal dynamically in document.body
       const modal = document.createElement('div');
       modal.id = 'print-instructions-modal';
       modal.style.position = 'fixed';

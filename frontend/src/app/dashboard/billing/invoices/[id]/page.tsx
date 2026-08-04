@@ -6,6 +6,7 @@ import { Printer, ArrowLeft } from 'lucide-react';
 import { api } from '@/lib/api';
 import { PDFService } from '@/lib/pdf';
 import { PDFLayout } from '@/components/PDFLayout';
+import { PDFTable } from '@/components/PDFTable';
 import { Download } from 'lucide-react';
 
 interface InvoicePDFData {
@@ -72,6 +73,7 @@ export default function InvoicePrintPage() {
       await PDFService.export({
         element,
         filename,
+        documentType: 'receipt',
         metadata: {
           title: `Fee Receipt - ${invoiceData.invoiceNo}`,
           author: invoiceData.schoolName,
@@ -147,6 +149,7 @@ export default function InvoicePrintPage() {
           schoolName={invoiceData.schoolName}
           schoolSubtitle={invoiceData.schoolSubtitle}
           reportTitle="Official Student Fee Receipt"
+          documentType="receipt"
           metadata={[
             { label: 'Receipt No', value: invoiceData.invoiceNo },
             { label: 'Academic Year', value: invoiceData.academicYear },
@@ -162,46 +165,34 @@ export default function InvoicePrintPage() {
           {/* Main Content Area */}
           <div className="mt-4">
 
-          {/* ── Fee Particulars Table ── */}
-          {/* Mobile: card list */}
-          <div className="sm:hidden space-y-1.5">
-            <div className="grid grid-cols-[auto_1fr_auto] gap-x-3 bg-[#ebf8ff] text-[#1a365d] text-[10px] font-bold uppercase tracking-wider border-b-2 border-slate-300 px-3 py-2">
-              <span>#</span>
-              <span>Particulars</span>
-              <span className="text-right">Amount</span>
-            </div>
-            {invoiceData.items.map((item, index) => (
-              <div key={index} className="grid grid-cols-[auto_1fr_auto] gap-x-3 items-baseline px-3 py-2.5 border-b border-slate-100 text-[12px]">
-                <span className="text-slate-400 font-medium w-5">{index + 1}</span>
-                <span className="font-semibold text-slate-800">{item.particulars}</span>
-                <span className={`font-bold text-right whitespace-nowrap ${item.amount < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
-                  {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop: original table */}
-          <table className="hidden sm:table w-full border-collapse">
-            <thead>
-              <tr className="bg-[#ebf8ff] text-[#1a365d] text-[11px] font-bold uppercase tracking-wider border-b-2 border-slate-350">
-                <th className="px-5 py-3 text-left w-[12%]">Sl. No</th>
-                <th className="px-5 py-3 text-left w-[58%]">Particulars Description</th>
-                <th className="px-5 py-3 text-right w-[30%]">Amount Paid</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-[13px]">
-              {invoiceData.items.map((item, index) => (
-                <tr key={index} className="hover:bg-slate-50/50">
-                  <td className="px-5 py-4 text-slate-500 font-medium">{index + 1}</td>
-                  <td className="px-5 py-4 font-semibold text-slate-800">{item.particulars}</td>
-                  <td className={`px-5 py-4 text-right font-bold ${item.amount < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+          {/* ── Fee Parti          {/* ── Fee Particulars Table ── */}
+          <PDFTable
+            items={invoiceData.items}
+            columns={[
+              {
+                header: 'Sl. No',
+                width: '12%',
+                align: 'left',
+                render: (_, idx) => <span>{idx + 1}</span>,
+              },
+              {
+                header: 'Particulars Description',
+                width: '58%',
+                align: 'left',
+                render: (item) => <span className="font-semibold">{item.particulars}</span>,
+              },
+              {
+                header: 'Amount Paid',
+                width: '30%',
+                align: 'right',
+                render: (item) => (
+                  <span className={`font-bold ${item.amount < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
                     {item.amount < 0 ? '-' : ''}₹{Math.abs(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </span>
+                ),
+              },
+            ]}
+          />
         </div>
 
           {/* ── Grand Total ── */}

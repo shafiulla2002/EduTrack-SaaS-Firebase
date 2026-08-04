@@ -4574,12 +4574,117 @@ body {
     display: none !important;
   }
 
-  .fee-receipt-sheet {
+  .fee-receipt-sheet,
+  .print-card,
+  .pdf-layout-document {
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+}
+
+/* ── Centralized PDF Theme (Theme Independence) ── */
+.pdf-theme {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+.pdf-theme * {
+  border-color: #e2e8f0 !important;
+}
+
+.pdf-theme .text-slate-400,
+.pdf-theme .text-slate-350,
+.pdf-theme .text-slate-500 {
+  color: #64748b !important;
+}
+
+.pdf-theme .text-white {
+  color: #ffffff !important;
+}
+
+.pdf-theme .bg-slate-50,
+.pdf-theme .bg-[#f8fafc] {
+  background-color: #f8fafc !important;
+}
+
+/* Enforce pass / fail alert badge contrast */
+.pdf-theme .bg-emerald-50 {
+  background-color: #f0fdf4 !important;
+  color: #16a34a !important;
+  border-color: #bbf7d0 !important;
+}
+
+.pdf-theme .bg-rose-50 {
+  background-color: #fef2f2 !important;
+  color: #dc2626 !important;
+  border-color: #fecaca !important;
+}
+
+/* Preserve branding color bars and total badges */
+.pdf-theme .bg-[#1a365d],
+.pdf-theme .bg-[#1e3a8a] {
+  background-color: #1a365d !important;
+  color: #ffffff !important;
+}
+
+.pdf-theme .bg-[#1a365d] *,
+.pdf-theme .bg-[#1e3a8a] * {
+  color: #ffffff !important;
+}
+
+/* Force light mode in dark context browser prints */
+@media print {
+  .dark .pdf-theme,
+  .dark .pdf-layout-document,
+  .dark .print-card,
+  .dark .fee-receipt-sheet,
+  .dark #invoice-pdf-element,
+  .dark #payslip-pdf-element {
+    background-color: #ffffff !important;
+    color: #1e293b !important;
+    border-color: #e2e8f0 !important;
+  }
+
+  .dark .pdf-theme *,
+  .dark .pdf-layout-document *,
+  .dark .print-card *,
+  .dark .fee-receipt-sheet *,
+  .dark #invoice-pdf-element *,
+  .dark #payslip-pdf-element * {
+    background-color: transparent !important;
+    color: #1e293b !important;
+    border-color: #e2e8f0 !important;
+  }
+
+  .dark .pdf-theme .bg-[#1a365d],
+  .dark .pdf-theme .bg-[#1e3a8a],
+  .dark .pdf-layout-document .bg-[#1e3a8a],
+  .dark .pdf-layout-document .bg-[#1a365d],
+  .dark .print-card .bg-[#1e3a8a],
+  .dark .print-card .bg-[#1a365d],
+  .dark .fee-receipt-sheet .bg-[#1a365d],
+  .dark #invoice-pdf-element .bg-[#1a365d],
+  .dark #payslip-pdf-element .bg-[#1e3a8a] {
+    background-color: #1a365d !important;
+    color: #ffffff !important;
+  }
+
+  .dark .pdf-theme .bg-[#1a365d] *,
+  .dark .pdf-theme .bg-[#1e3a8a] *,
+  .dark .pdf-layout-document .bg-[#1e3a8a] *,
+  .dark .pdf-layout-document .bg-[#1a365d] *,
+  .dark .print-card .bg-[#1e3a8a] *,
+  .dark .print-card .bg-[#1a365d] *,
+  .dark .fee-receipt-sheet .bg-[#1a365d] *,
+  .dark #invoice-pdf-element .bg-[#1a365d] *,
+  .dark #payslip-pdf-element .bg-[#1e3a8a] * {
+    color: #ffffff !important;
   }
 }
 

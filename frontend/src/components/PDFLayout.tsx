@@ -1,5 +1,6 @@
 import React from 'react';
 import { GraduationCap } from 'lucide-react';
+import { DocumentType, DOCUMENT_PRESETS, PAPER_DIMENSIONS } from '@/lib/pdf';
 
 export interface PDFLayoutMetadataItem {
   label: string;
@@ -15,6 +16,10 @@ export interface PDFLayoutProps {
   children: React.ReactNode;
   footerText?: string;
   id?: string;
+  documentType?: DocumentType;
+  paperSize?: 'a3' | 'a4' | 'letter';
+  orientation?: 'portrait' | 'landscape';
+  margin?: number;
 }
 
 export const PDFLayout: React.FC<PDFLayoutProps> = ({
@@ -26,13 +31,28 @@ export const PDFLayout: React.FC<PDFLayoutProps> = ({
   children,
   footerText,
   id,
+  documentType = 'custom',
+  paperSize: overridePaperSize,
+  orientation: overrideOrientation,
+  margin: overrideMargin,
 }) => {
+  // Resolve configuration from presets or overrides
+  const preset = DOCUMENT_PRESETS[documentType] || DOCUMENT_PRESETS.custom;
+  const paperSize = overridePaperSize || preset.paperSize;
+  const orientation = overrideOrientation || preset.orientation;
+  const margin = overrideMargin !== undefined ? overrideMargin : preset.margin;
+
+  // Compute dimensions dynamically
+  const dimensions = PAPER_DIMENSIONS[paperSize] || PAPER_DIMENSIONS.a4;
+  const paperHeightMm = orientation === 'portrait' ? dimensions.height : dimensions.width;
+  const minHeightMm = paperHeightMm - (margin * 2);
+
   return (
     <div
       id={id}
       className="pdf-layout-document w-full bg-white text-slate-800 p-8 shadow-sm font-sans flex flex-col gap-6"
       style={{
-        minHeight: '297mm',
+        minHeight: `${minHeightMm}mm`,
         boxSizing: 'border-box',
         width: '100%',
         backgroundColor: '#ffffff',

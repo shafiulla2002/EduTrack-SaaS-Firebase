@@ -67,6 +67,7 @@ export default function GradesMarksPage() {
       await PDFService.export({
         element,
         filename,
+        documentType: 'report-card',
         metadata: {
           title: `Report Card for ${student.name}`,
           author: schoolName,
@@ -459,6 +460,7 @@ export default function GradesMarksPage() {
                 schoolName={schoolName}
                 schoolSubtitle={`${selectedExamName} Term Roster Evaluation`}
                 reportTitle="Official Progress Report Card"
+                documentType="report-card"
                 metadata={[
                   { label: 'Student Name', value: activeReportStudent.name },
                   { label: 'Roll Number', value: activeReportStudent.rollNo },

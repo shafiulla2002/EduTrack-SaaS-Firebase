@@ -86,6 +86,7 @@ function PrintableCard({
         schoolName={schoolName}
         schoolSubtitle="Student Progress Timetable Evaluation"
         reportTitle={`Examination Report Card - ${card.examName}`}
+        documentType="report-card"
         metadata={[
           { label: 'Student Name', value: child.name },
           { label: 'Roll Number', value: child.rollNo },
@@ -218,6 +219,7 @@ function ExamAccordionCard({
       await PDFService.export({
         element: content,
         filename,
+        documentType: 'report-card',
         metadata: {
           title: `Report Card - ${child.name} - ${card.examName}`,
           author: schoolName,
