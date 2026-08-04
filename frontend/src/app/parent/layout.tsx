@@ -73,7 +73,7 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden lg:block w-[260px] bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-50 py-6 px-4 select-none shadow-sm print:hidden">
         {/* Sidebar Brand Logo and Name */}
-        <div className="flex items-center gap-2.5 px-3 mb-6 pb-6 border-b border-slate-100">
+        <div className="flex items-center gap-2.5 px-3 mb-5">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/10">
             <span className="font-extrabold text-white text-base tracking-tight">ET</span>
           </div>
@@ -82,6 +82,9 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Parent Portal</p>
           </div>
         </div>
+
+        {/* Aligned Divider Line */}
+        <hr className="border-t border-slate-100 mx-3 mb-6" />
 
         <nav className="space-y-6">
           <div>
