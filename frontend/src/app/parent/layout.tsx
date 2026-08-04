@@ -21,7 +21,9 @@ import {
   Bus,
   LogOut,
   ChevronDown,
-  GraduationCap
+  GraduationCap,
+  Menu,
+  X
 } from 'lucide-react';
 
 function ParentLayoutContent({ children }: { children: React.ReactNode }) {
@@ -30,6 +32,7 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
   const { logoUrl, schoolName, schoolType, subscription, isSubscriptionActive, showLockPopup, setShowLockPopup } = useTenant();
   const { children: childrenList, selectedChild, setSelectedChildId } = useParent();
   const [showSwitcher, setShowSwitcher] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const isModuleLocked = (href: string) => {
     if (isSubscriptionActive) return false;
@@ -136,41 +139,143 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
         </nav>
       </aside>
 
+      {/* Mobile Drawer Backdrop */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile Drawer Sidebar */}
+      <div className={`fixed top-0 bottom-0 left-0 w-[260px] bg-white z-50 lg:hidden transition-transform duration-300 transform flex flex-col border-r border-slate-200 ${
+        mobileOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}>
+        {/* Sidebar Brand Logo and Name */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/10">
+              <span className="font-extrabold text-white text-base tracking-tight">ET</span>
+            </div>
+            <div className="text-left">
+              <h1 className="font-extrabold text-[13px] text-indigo-900 uppercase tracking-wider leading-none">EduTrack</h1>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Parent Portal</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-6">
+          <div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-3">
+              Core Modules
+            </div>
+            <div className="space-y-1.5">
+              {navigationItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href || (
+                  item.href !== '/parent' &&
+                  (pathname === item.href || pathname.startsWith(item.href + '/')) &&
+                  !allParentHrefs.some(otherHref =>
+                    otherHref !== item.href &&
+                    otherHref.length > item.href.length &&
+                    (pathname === otherHref || pathname.startsWith(otherHref + '/'))
+                  )
+                );
+                const isLocked = isModuleLocked(item.href);
+                return (
+                  <Link
+                    key={item.name}
+                    href={isLocked ? '#' : item.href}
+                    onClick={(e) => {
+                      setMobileOpen(false);
+                      if (isLocked) {
+                        e.preventDefault();
+                        setShowLockPopup(true);
+                      }
+                    }}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                      isActive && !isLocked
+                        ? 'bg-blue-50 border border-blue-100 text-[#2E5BFF] font-semibold'
+                        : 'text-slate-500 hover:text-blue-600 hover:bg-slate-50 border border-transparent'
+                    } ${isLocked ? 'opacity-80' : ''}`}
+                  >
+                    <Icon className="w-4.5 h-4.5 shrink-0" />
+                    <span className="truncate">{item.name}</span>
+                    {isLocked && (
+                      <svg className="w-3.5 h-3.5 text-slate-400 ml-auto shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </nav>
+
+        {/* Mobile Sidebar Logout */}
+        <div className="p-4 border-t border-slate-100 pb-8">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all cursor-pointer"
+          >
+            <LogOut className="w-4.5 h-4.5" />
+            Logout
+          </button>
+        </div>
+      </div>
+
       {/* Main Viewport Container */}
       <div className="flex-1 flex flex-col min-h-screen lg:pl-[260px] w-full min-w-0">
         {/* Header */}
-        <header className="h-[72px] bg-white border-b border-slate-200 sticky top-0 z-40 flex items-center justify-between px-4 lg:px-8 shrink-0 shadow-sm print:hidden">
-          {/* Left End: School dynamic branding */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden">
+        <header className="h-[72px] bg-white border-b border-slate-200 sticky top-0 z-40 flex items-center justify-between px-3 sm:px-6 lg:px-8 shrink-0 shadow-sm print:hidden">
+          {/* Left End: Hamburger (Mobile) + School branding */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Hamburger Menu Icon (Mobile only) */}
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="lg:hidden p-1.5 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center border border-slate-200"
+              aria-label="Open Navigation Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <div className="w-8 h-8 sm:w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden">
               {logoUrl ? (
                 <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xs">
-                  <svg className="w-5 h-5 stroke-white fill-none" viewBox="0 0 24 24">
+                <div className="w-8 h-8 sm:w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xs">
+                  <svg className="w-4 h-4 sm:w-5 h-5 stroke-white fill-none" viewBox="0 0 24 24">
                     <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2"></path>
                     <path d="M6 12v5c3 3 9 3 12 0v-5" strokeWidth="2"></path>
                   </svg>
                 </div>
               )}
             </div>
-            <div className="text-left max-w-[130px] xs:max-w-[170px] sm:max-w-[240px] md:max-w-[320px] lg:max-w-[450px]">
-              <h1 className="font-extrabold text-[12px] sm:text-[14px] text-indigo-900 leading-none uppercase tracking-wide truncate">
+            <div className="text-left max-w-[100px] xs:max-w-[160px] sm:max-w-[240px] md:max-w-[320px] lg:max-w-[450px]">
+              <h1 className="font-extrabold text-[11px] sm:text-[14px] text-indigo-900 leading-none uppercase tracking-wide truncate">
                 {schoolName || 'EduTrack'}
               </h1>
-              <p className="text-[8px] sm:text-[9px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
-                Parent Portal {schoolName ? '• ' + (schoolType || 'Powered by Covenant Synergy') : ''}
+              <p className="text-[7.5px] sm:text-[9px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
+                Parent Portal <span className="hidden xs:inline">{schoolName ? '• ' + (schoolType || 'Powered by Covenant Synergy') : ''}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 xs:gap-3">
             {/* Child Switcher Dropdown */}
             {selectedChild && (
               <div className="relative">
                 <button
                   onClick={() => setShowSwitcher(!showSwitcher)}
-                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 hover:text-[#2E5BFF] hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer min-h-[36px]"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 hover:text-[#2E5BFF] hover:border-blue-300 hover:bg-blue-50/20 transition-all cursor-pointer min-h-[36px]"
                 >
                   {selectedChild.avatarUrl ? (
                     <img
@@ -183,8 +288,8 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
                       {selectedChild.name[0]}
                     </div>
                   )}
-                  <span className="max-w-[80px] sm:max-w-[120px] truncate">{selectedChild.name}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${showSwitcher ? 'rotate-180' : ''}`} />
+                  <span className="max-w-[45px] xs:max-w-[80px] sm:max-w-[120px] truncate">{selectedChild.name}</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
                 </button>
 
                 {showSwitcher && (
@@ -241,7 +346,6 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
               className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center border border-slate-200 dark:border-slate-700"
               title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
-
               {theme === 'dark' ? (
                 <svg className="w-4 h-4 stroke-current fill-none" viewBox="0 0 24 24">
                   <circle cx="12" cy="12" r="5" strokeWidth="2"></circle>
