@@ -72,6 +72,17 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans select-none overflow-x-hidden relative pb-16 lg:pb-0">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:block w-[260px] bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-50 py-6 px-4 select-none shadow-sm print:hidden">
+        {/* Sidebar Brand Logo and Name */}
+        <div className="flex items-center gap-2.5 px-3 mb-6 pb-6 border-b border-slate-100">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/10">
+            <span className="font-extrabold text-white text-base tracking-tight">ET</span>
+          </div>
+          <div className="text-left">
+            <h1 className="font-extrabold text-[13px] text-indigo-900 uppercase tracking-wider leading-none">EduTrack</h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Parent Portal</p>
+          </div>
+        </div>
+
         <nav className="space-y-6">
           <div>
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-3">
@@ -126,51 +137,13 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-h-screen lg:pl-[260px] w-full min-w-0">
         {/* Header */}
         <header className="h-[72px] bg-white border-b border-slate-200 sticky top-0 z-40 flex items-center justify-between px-4 lg:px-8 shrink-0 shadow-sm print:hidden">
-          {/* Left End: Static Parent branding on desktop, School branding on mobile */}
+          {/* Left End: School dynamic branding */}
           <div className="flex items-center gap-2.5">
-            {/* Desktop static Parent Portal Brand */}
-            <div className="hidden md:flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/10">
-                <span className="font-extrabold text-white text-base tracking-tight">ET</span>
-              </div>
-              <div className="text-left">
-                <h1 className="font-extrabold text-xs text-indigo-900 uppercase tracking-wider leading-none">EduTrack</h1>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Parent Portal</p>
-              </div>
-            </div>
-
-            {/* Mobile dynamic School Brand */}
-            <div className="flex md:hidden items-center gap-2">
-              <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden">
-                {logoUrl ? (
-                  <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xs">
-                    <svg className="w-4 h-4 stroke-white fill-none" viewBox="0 0 24 24">
-                      <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2"></path>
-                      <path d="M6 12v5c3 3 9 3 12 0v-5" strokeWidth="2"></path>
-                    </svg>
-                  </div>
-                )}
-              </div>
-              <div className="text-left max-w-[130px] xs:max-w-[170px] sm:max-w-[240px]">
-                <h1 className="font-extrabold text-[11px] sm:text-[13px] text-indigo-900 leading-none uppercase tracking-wide truncate">
-                  {schoolName || 'EduTrack'}
-                </h1>
-                <p className="text-[8px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
-                  Parent Portal
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Center: Dynamic School branding (Desktop/Tablet only) */}
-          <div className="hidden md:flex items-center gap-2.5 px-4 text-center">
             <div className="w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shrink-0 overflow-hidden">
               {logoUrl ? (
                 <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-md shadow-blue-500/10">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xs">
                   <svg className="w-5 h-5 stroke-white fill-none" viewBox="0 0 24 24">
                     <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2"></path>
                     <path d="M6 12v5c3 3 9 3 12 0v-5" strokeWidth="2"></path>
@@ -178,11 +151,11 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
                 </div>
               )}
             </div>
-            <div className="text-left max-w-[200px] lg:max-w-[350px] xl:max-w-[450px]">
+            <div className="text-left max-w-[130px] xs:max-w-[170px] sm:max-w-[240px] md:max-w-[320px] lg:max-w-[450px]">
               <h1 className="font-extrabold text-[12px] sm:text-[14px] text-indigo-900 leading-none uppercase tracking-wide truncate">
                 {schoolName || 'EduTrack'}
               </h1>
-              <p className="text-[9px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
+              <p className="text-[8px] sm:text-[9px] text-slate-500 font-bold tracking-wider uppercase mt-0.5 truncate">
                 Parent Portal {schoolName ? '• ' + (schoolType || 'Powered by Covenant Synergy') : ''}
               </p>
             </div>
