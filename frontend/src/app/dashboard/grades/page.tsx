@@ -506,35 +506,44 @@ export default function GradesMarksPage() {
                   {/* Right Column: Subject-wise details */}
                   <div className="md:col-span-2 space-y-3">
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Subject Wise Marks</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
                       {activeReportStudent.subjectsList.map((subj, idx) => {
                         const isPass = subj.score >= 45;
                         const letter = getSubjectGrade(subj.score);
                         const pct = Math.round((subj.score / subj.max) * 100);
                         return (
-                          <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between min-h-[96px] break-inside-avoid">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-extrabold text-slate-855 text-sm truncate pr-2" title={subj.name}>{subj.name}</span>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="font-black text-blue-600 text-sm">{letter}</span>
-                                <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black tracking-wider border ${
-                                  isPass ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'
-                                }`}>
+                          <div key={idx} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '80px', breakInside: 'avoid' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.5rem', gap: '0.5rem' }}>
+                              <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.8125rem', lineHeight: 1.3, wordBreak: 'break-word', overflowWrap: 'break-word', minWidth: 0, flex: 1 }}>{subj.name}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0 }}>
+                                <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.875rem' }}>{letter}</span>
+                                <span style={{
+                                  padding: '0.125rem 0.5rem',
+                                  borderRadius: '0.5rem',
+                                  fontSize: '9px',
+                                  fontWeight: 900,
+                                  letterSpacing: '0.05em',
+                                  border: '1px solid',
+                                  ...(isPass
+                                    ? { backgroundColor: '#f0fdf4', color: '#15803d', borderColor: '#bbf7d0' }
+                                    : { backgroundColor: '#fef2f2', color: '#b91c1c', borderColor: '#fecaca' })
+                                }}>
                                   {isPass ? 'PASS' : 'FAIL'}
                                 </span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <div style={{ flex: 1, backgroundColor: '#f1f5f9', height: '6px', borderRadius: '9999px', overflow: 'hidden' }}>
                                 <div
-                                  className="h-full rounded-full transition-all duration-500"
                                   style={{
+                                    height: '100%',
+                                    borderRadius: '9999px',
                                     width: `${pct}%`,
                                     background: pct >= 75 ? '#10b981' : pct >= 45 ? '#2E5BFF' : '#ef4444'
                                   }}
                                 />
                               </div>
-                              <span className="text-xs font-bold text-slate-500 font-mono shrink-0">
+                              <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', fontFamily: 'monospace', flexShrink: 0 }}>
                                 {subj.score} / {subj.max}
                               </span>
                             </div>
