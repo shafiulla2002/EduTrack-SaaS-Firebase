@@ -13,6 +13,7 @@ import { useSchoolSetupUpdate } from '@/lib/events';
 import { useToast } from '@/components/Toast';
 import StudentAvatar from '@/components/StudentAvatar';
 import axios from 'axios';
+import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
 
 interface Student {
   id: string;
@@ -492,6 +493,17 @@ export default function StudentsDirectory() {
 
   const recFees = getRecalculatedFees();
 
+  // ── Floating bar padding: keep last row always visible ──────────────────
+  const isBarVisible =
+    (selectedIds.length > 0 ||
+      selectedClass !== 'All' ||
+      selectedSection !== 'All' ||
+      selectedYear !== 'All' ||
+      search !== '') &&
+    students.length > 0;
+  const { barRef, contentPaddingBottom } = useFloatingBarPadding({ visible: isBarVisible });
+  // ────────────────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6 animate-in">
       {!activeStudent ? (
@@ -559,7 +571,10 @@ export default function StudentsDirectory() {
           </div>
 
           {/* Directory Table / Cards Container */}
-          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+          <div
+            className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm"
+            style={{ paddingBottom: contentPaddingBottom }}
+          >
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -871,7 +886,7 @@ export default function StudentsDirectory() {
 
           {/* Floating Bulk Actions Bar */}
           {(selectedIds.length > 0 || selectedClass !== 'All' || selectedSection !== 'All' || selectedYear !== 'All' || search !== '') && filteredStudents.length > 0 && (
-            <div className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-3 sm:gap-4 z-40 border border-slate-800 animate-slide-up max-w-[90%] sm:max-w-max">
+            <div ref={barRef} className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-3 sm:gap-4 z-40 border border-slate-800 animate-slide-up max-w-[90%] sm:max-w-max">
               <div className="flex items-center gap-3">
                 <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
                 <span className="text-xs font-semibold text-slate-300">

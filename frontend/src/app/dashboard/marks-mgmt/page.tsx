@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Award, FileText, CheckCircle2, AlertTriangle, RefreshCcw, Save } from 'lucide-react';
+import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
 
 export default function MarksMgmtPage() {
   const [classes, setClasses] = useState<any[]>([]);
@@ -26,6 +27,8 @@ export default function MarksMgmtPage() {
   // Auto save state
   const [saving, setSaving] = useState(false);
   const [autosaveStatus, setAutosaveStatus] = useState('All changes saved');
+
+  const { barRef, contentPaddingBottom } = useFloatingBarPadding({ visible: students.length > 0 });
   
   // Local marks state
   const [marksSheet, setMarksSheet] = useState<{ [studentId: string]: { score: string; remarks: string } }>({});
@@ -347,7 +350,7 @@ export default function MarksMgmtPage() {
           </div>
 
           {/* Cards */}
-          <div className="space-y-3">
+          <div className="space-y-3" style={{ paddingBottom: contentPaddingBottom }}>
             {students.map((s) => (
               <div key={s.studentId} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3">
                 <div className="flex justify-between items-start">
@@ -391,7 +394,7 @@ export default function MarksMgmtPage() {
           </div>
 
           {/* Sticky Manual Save trigger */}
-          <div className="fixed bottom-16 lg:bottom-4 left-0 right-0 p-4 bg-transparent z-40 max-w-md mx-auto sm:max-w-7xl flex justify-end pointer-events-none">
+          <div ref={barRef} className="fixed bottom-16 lg:bottom-4 left-0 right-0 p-4 bg-transparent z-40 max-w-md mx-auto sm:max-w-7xl flex justify-end pointer-events-none">
             <button
               onClick={handleManualSave}
               disabled={saving}

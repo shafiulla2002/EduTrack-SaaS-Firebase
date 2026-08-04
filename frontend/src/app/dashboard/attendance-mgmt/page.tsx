@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Calendar, Search, Users, Check, X, ShieldAlert, Sparkles, RefreshCw, Save } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
 
 const formatLocalTime = (isoString: string) => {
   try {
@@ -106,6 +107,10 @@ export default function AttendanceMgmtPage() {
   // Offline Sync States
   const [isOffline, setIsOffline] = useState(false);
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
+
+  const { barRef, contentPaddingBottom } = useFloatingBarPadding({
+    visible: students.length > 0 && !isReadOnly,
+  });
 
   // Sync offline queue to backend
   const syncOfflineQueue = async () => {
@@ -611,7 +616,7 @@ export default function AttendanceMgmtPage() {
           </div>
 
           {/* Student Cards Roster List */}
-          <div className="space-y-3">
+          <div className="space-y-3" style={{ paddingBottom: contentPaddingBottom }}>
             {filteredStudents.length === 0 ? (
               <div className="bg-white py-12 text-center text-slate-400 text-xs italic rounded-3xl border border-slate-200 shadow-sm">
                 No students match your criteria.
@@ -634,7 +639,7 @@ export default function AttendanceMgmtPage() {
 
           {/* Sticky Bottom Save / Cancel Button bar */}
           {!isReadOnly && (
-            <div className="fixed bottom-16 lg:bottom-4 left-0 right-0 p-4 bg-transparent z-40 max-w-md mx-auto sm:max-w-7xl flex justify-end pointer-events-none gap-3">
+            <div ref={barRef} className="fixed bottom-16 lg:bottom-4 left-0 right-0 p-4 bg-transparent z-40 max-w-md mx-auto sm:max-w-7xl flex justify-end pointer-events-none gap-3">
               <button
                 type="button"
                 onClick={handleCancelEdit}
