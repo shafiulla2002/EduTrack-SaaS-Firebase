@@ -70,15 +70,15 @@ export const PDFLayout: React.FC<PDFLayoutProps> = ({
             )}
           </div>
           <div className="text-left">
-            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight leading-none">
+            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight leading-tight">
               {schoolName}
             </h1>
             {schoolSubtitle && (
-              <p className="text-[11px] text-slate-500 font-semibold italic mt-1.5 leading-none">
+              <p className="text-[11px] text-slate-500 font-semibold italic mt-1.5 leading-tight">
                 {schoolSubtitle}
               </p>
             )}
-            <h2 className="text-xs font-bold text-blue-600 uppercase tracking-wider mt-2.5 leading-none">
+            <h2 className="text-xs font-bold text-blue-600 uppercase tracking-wider mt-2.5 leading-tight">
               {reportTitle}
             </h2>
           </div>
@@ -94,10 +94,10 @@ export const PDFLayout: React.FC<PDFLayoutProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-left">
           {metadata.map((item, idx) => (
             <div key={idx} className="min-w-0">
-              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block leading-none">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest block leading-normal">
                 {item.label}
               </span>
-              <strong className="text-slate-800 font-extrabold block mt-1 truncate">
+              <strong className="text-slate-800 font-extrabold block mt-1 leading-normal">
                 {item.value}
               </strong>
             </div>
