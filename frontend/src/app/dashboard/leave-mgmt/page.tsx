@@ -379,10 +379,10 @@ function LeaveMgmtContent() {
     );
   }
 
-  // --- SCHOOL ADMIN RENDER ---
-  if (isAdmin) {
-    return (
-      <div className="space-y-6 max-w-7xl mx-auto pb-20 font-sans text-slate-800">
+  return (
+    <>
+      {isAdmin ? (
+        <div className="space-y-6 max-w-7xl mx-auto pb-20 font-sans text-slate-800">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-5 border-b border-slate-200">
           <div>
@@ -681,11 +681,12 @@ function LeaveMgmtContent() {
                         <span className="text-slate-500 font-bold text-[11px]">{startDateStr} to {endDateStr}</span>
                       </div>
                       <p className="text-slate-600 font-normal leading-relaxed whitespace-pre-wrap">{l.reason}</p>
-                      {l.attachment && (
+                      {(l.attachment || l.attachmentUrl || l.certificateUrl) && (
                         <button
                           type="button"
                           onClick={() => {
-                            setPreviewFileUrl(l.attachment);
+                            const url = l.attachment || l.attachmentUrl || l.certificateUrl || 'mock_attachment.pdf';
+                            setPreviewFileUrl(url);
                             setPreviewFileName(`${l.leaveType} Leave Certificate - ${isStudent ? studentName : teacherName}`);
                             setFileLoadError(false);
                             setImageZoom(1);
@@ -844,13 +845,14 @@ function LeaveMgmtContent() {
                   </p>
                 </div>
 
-                {selectedLeave.attachment && (
+                {(selectedLeave.attachment || selectedLeave.attachmentUrl || selectedLeave.certificateUrl) && (
                   <div>
                     <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block mb-1">Attached Document</span>
                     <button
                       type="button"
                       onClick={() => {
-                        setPreviewFileUrl(selectedLeave.attachment);
+                        const url = selectedLeave.attachment || selectedLeave.attachmentUrl || selectedLeave.certificateUrl || 'mock_attachment.pdf';
+                        setPreviewFileUrl(url);
                         setPreviewFileName(`${selectedLeave.leaveType} Leave Certificate`);
                         setFileLoadError(false);
                         setImageZoom(1);
@@ -1005,12 +1007,8 @@ function LeaveMgmtContent() {
           </div>
         )}
       </div>
-    );
-  }
-
-  // --- TEACHER / STAFF RENDER ---
-  return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-20 font-sans text-slate-800">
+    ) : (
+      <div className="space-y-6 max-w-7xl mx-auto pb-20 font-sans text-slate-800">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-200">
         <div>
@@ -1328,6 +1326,9 @@ function LeaveMgmtContent() {
           </button>
         </form>
       </Drawer>
+        </div>
+      )}
+
       {/* In-App Leave Attachment Preview Modal */}
       {previewFileUrl && (
         <div
@@ -1464,7 +1465,7 @@ function LeaveMgmtContent() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
