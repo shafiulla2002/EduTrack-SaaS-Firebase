@@ -5,6 +5,14 @@ import { useParent } from '../ParentContext';
 import { api } from '@/lib/api';
 import { Bell, Info, AlertTriangle, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
+function sanitizeAnnouncementContent(content: string): string {
+  if (!content) return '';
+  return content
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/(?:examScheduleId|debugId|internalId):\s*[0-9a-fA-F-]{36}/gi, '')
+    .trim();
+}
+
 export default function AnnouncementsPage() {
   const { selectedChild } = useParent();
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -139,7 +147,7 @@ export default function AnnouncementsPage() {
                       {isHigh ? <AlertTriangle className="w-4.5 h-4.5 text-rose-500 shrink-0" /> : <Info className="w-4.5 h-4.5 text-indigo-500 shrink-0" />}
                       {ann.title}
                     </h3>
-                    <p className="text-slate-500 text-xs font-normal leading-relaxed whitespace-pre-line">{ann.content}</p>
+                    <p className="text-slate-500 text-xs font-normal leading-relaxed whitespace-pre-line">{sanitizeAnnouncementContent(ann.content)}</p>
                   </div>
                 </div>
 

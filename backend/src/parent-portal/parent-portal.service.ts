@@ -188,7 +188,7 @@ export class ParentPortalService {
     });
 
     // 4. Combined announcements
-    const announcements = await this.prisma.announcement.findMany({
+    const rawAnnouncements = await this.prisma.announcement.findMany({
       where: {
         tenantId,
         OR: [
@@ -199,6 +199,10 @@ export class ParentPortalService {
       orderBy: { createdAt: 'desc' },
       take: 5,
     });
+    const announcements = rawAnnouncements.map(ann => ({
+      ...ann,
+      content: this.sanitizeAnnouncementContent(ann.content),
+    }));
 
     // 5. Combined notifications
     const parent = await this.getParentProfile(userId);
@@ -1295,10 +1299,18 @@ export class ParentPortalService {
     }));
   }
 
+  private sanitizeAnnouncementContent(content?: string): string {
+    if (!content) return '';
+    return content
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/(?:examScheduleId|debugId|internalId):\s*[0-9a-fA-F-]{36}/gi, '')
+      .trim();
+  }
+
   async getAnnouncements(userId: string, studentId: string) {
     const student = await this.verifyOwnership(userId, studentId);
 
-    return this.prisma.announcement.findMany({
+    const announcements = await this.prisma.announcement.findMany({
       where: {
         tenantId: student.tenantId,
         OR: [
@@ -1309,6 +1321,11 @@ export class ParentPortalService {
       include: { teacher: { include: { user: true } } },
       orderBy: { createdAt: 'desc' },
     });
+
+    return announcements.map(ann => ({
+      ...ann,
+      content: this.sanitizeAnnouncementContent(ann.content),
+    }));
   }
 
   async getTeacherComplaints(userId: string, studentId: string) {
