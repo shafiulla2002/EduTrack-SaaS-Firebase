@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search } from 'lucide-react';
 import Drawer from '@/components/Drawer';
 
 export default function HomeworkPage() {
+  const [isMounted, setIsMounted] = useState(false);
   const [homeworks, setHomeworks] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,7 @@ export default function HomeworkPage() {
 
   useEffect(() => {
     loadData();
+    setIsMounted(true);
   }, []);
 
   // Lock body scroll when WhatsApp Share Modal is open
@@ -429,7 +432,7 @@ Thank you.`;
       </Drawer>
 
       {/* WhatsApp Share Dialog / Modal */}
-      {showShareModal && hwToShare && (
+      {isMounted && showShareModal && hwToShare && createPortal(
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-in">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
             
@@ -755,7 +758,8 @@ Thank you.`;
 
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
