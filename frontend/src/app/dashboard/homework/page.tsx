@@ -60,6 +60,50 @@ export default function HomeworkPage() {
     setIsMounted(true);
   }, []);
 
+  // Auto pre-fill from Quick Action link parameters (Assign Homework)
+  useEffect(() => {
+    if (!loading && classes.length > 0 && typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const createParam = searchParams.get('create');
+      const paramClassSectionId = searchParams.get('classSectionId');
+      const paramSubjectId = searchParams.get('subjectId');
+      const paramSubjectName = searchParams.get('subjectName');
+      const paramClassName = searchParams.get('className');
+      const paramPeriodNumber = searchParams.get('periodNumber');
+
+      if (createParam === 'true' || paramClassSectionId) {
+        let matchedClass = classes.find((c: any) =>
+          (paramClassSectionId && c.classSectionId === paramClassSectionId) ||
+          (paramClassName && c.className?.toLowerCase().trim() === paramClassName.toLowerCase().trim())
+        );
+
+        if (!matchedClass && classes.length > 0) {
+          matchedClass = classes[0];
+        }
+
+        if (matchedClass) {
+          setClassSectionId(matchedClass.classSectionId);
+          setSubjectId(paramSubjectId || matchedClass.subjectId);
+        }
+
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        setDueDate(tomorrow.toISOString().split('T')[0]);
+
+        const subjName = paramSubjectName || (matchedClass ? matchedClass.subjectName : '');
+        const pNum = paramPeriodNumber ? ` (Period ${paramPeriodNumber})` : '';
+        if (subjName) {
+          setTitle(`${subjName} Assignment${pNum}`);
+        } else {
+          setTitle('Class Assignment');
+        }
+
+        setEditingHomework(null);
+        setIsModalOpen(true);
+      }
+    }
+  }, [loading, classes]);
+
   // Lock body scroll when WhatsApp Share Modal is open
   useEffect(() => {
     if (showShareModal) {

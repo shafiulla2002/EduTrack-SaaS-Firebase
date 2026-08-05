@@ -6,6 +6,7 @@ import BulkImportModal from '@/components/BulkImportModal';
 import { api } from '@/lib/api';
 import { useSchoolSetupUpdate, dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '../providers/TenantContext';
+import { BookOpen } from 'lucide-react';
 
 function AdminDashboardOverview() {
   const [admissionsLimit, setAdmissionsLimit] = useState(5);
@@ -771,8 +772,12 @@ function TeacherDashboardView() {
                   <p className="text-xs text-slate-500 font-medium mt-0.5">{cls.subjectName} • Period {cls.periodNumber}</p>
                   <p className="text-[11px] text-slate-400 font-mono mt-1">{cls.time}</p>
                 </div>
-                <Link href={`/dashboard/attendance-mgmt?classVal=${encodeURIComponent(cls.className.split(' - ')[0])}&sectionVal=${encodeURIComponent(cls.className.split(' - ')[1])}`} className="px-3 py-1.5 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold shadow-xs">
-                  Mark Roll
+                <Link
+                  href={`/dashboard/homework?classSectionId=${encodeURIComponent(cls.classSectionId)}&subjectId=${encodeURIComponent(cls.subjectId || '')}&subjectName=${encodeURIComponent(cls.subjectName)}&className=${encodeURIComponent(cls.className)}&periodNumber=${encodeURIComponent(cls.periodNumber || '')}&create=true`}
+                  className="px-3.5 py-1.5 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  Assign Homework
                 </Link>
               </div>
             ))}

@@ -242,6 +242,7 @@ export class TeacherPortalService {
         classes: todayClasses.map(p => ({
           id: p.id,
           classSectionId: p.classSectionId,
+          subjectId: p.subjectId,
           className: `${p.classSection.class.name} - ${p.classSection.section.name}`,
           subjectName: p.subject.name,
           time: `${p.periodTiming.startTime} - ${p.periodTiming.endTime}`,
