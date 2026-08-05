@@ -198,7 +198,12 @@ export default function ExamsAndMarksPage() {
       }
     } catch (err: any) {
       console.error('Error fetching marks entry list:', err);
-      setErrorMsg(err.response?.data?.message || 'Failed to load students roster for mark entry.');
+      const backendMsg = err.response?.data?.message;
+      if (backendMsg === 'Exam not found' || err.response?.status === 404) {
+        setErrorMsg('No exam has been configured for the selected Class, Subject, and Exam Term. Please create or configure the exam before entering marks.');
+      } else {
+        setErrorMsg(backendMsg || 'Failed to load students roster for mark entry.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -264,7 +269,12 @@ export default function ExamsAndMarksPage() {
       }, 5000);
     } catch (err: any) {
       console.error('Error saving marks:', err);
-      setErrorMsg(err.response?.data?.message || 'Failed to save scoresheet.');
+      const backendMsg = err.response?.data?.message;
+      if (backendMsg === 'Exam not found' || err.response?.status === 404) {
+        setErrorMsg('No exam has been configured for the selected Class, Subject, and Exam Term. Please create or configure the exam before entering marks.');
+      } else {
+        setErrorMsg(backendMsg || 'Failed to save scoresheet.');
+      }
     }
   };
 
@@ -324,7 +334,7 @@ export default function ExamsAndMarksPage() {
           </button>
           <button
             onClick={handleSaveMarks}
-            disabled={roster.length === 0 || isLoading}
+            disabled={roster.length === 0 || isLoading || !!errorMsg}
             className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white font-semibold text-[13px] flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
           >
             <Save className="w-4 h-4" />

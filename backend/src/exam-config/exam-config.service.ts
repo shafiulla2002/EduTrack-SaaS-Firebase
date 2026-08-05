@@ -47,12 +47,13 @@ export class ExamConfigService {
   }
 
   // ── Core: resolve config for a specific exam type ──────────────────────────
-  async resolveConfig(examTypeName: string, classId?: string, academicYearId?: string, tenantId?: string): Promise<ResolvedExamConfig> {
+  async resolveConfig(examTypeName: string, classId?: string, academicYearId?: string, tenantId?: string, db?: any): Promise<ResolvedExamConfig> {
+    const prisma = db ?? this.prisma;
     const tid = tenantId ?? this.getTenantId();
 
     // 0. Try class-specific config
     if (classId && academicYearId) {
-      const classCfg = await this.prisma.examConfig.findFirst({
+      const classCfg = await prisma.examConfig.findFirst({
         where: { tenantId: tid, examTypeName, classId, academicYearId },
         include: { subjectConfigs: true }
       });
@@ -68,7 +69,7 @@ export class ExamConfigService {
     }
 
     // 1. Try exam-specific config (global template for the Exam Type, classId/academicYearId = null)
-    const specific = await this.prisma.examConfig.findFirst({
+    const specific = await prisma.examConfig.findFirst({
       where: { tenantId: tid, examTypeName, classId: null, academicYearId: null },
     });
     if (specific) {
@@ -81,7 +82,7 @@ export class ExamConfigService {
     }
 
     // 2. Try global config (stored under key '__global__')
-    const globalCfg = await this.prisma.examConfig.findFirst({
+    const globalCfg = await prisma.examConfig.findFirst({
       where: { tenantId: tid, examTypeName: '__global__', classId: null, academicYearId: null },
     });
     if (globalCfg) {
@@ -275,15 +276,16 @@ export class ExamConfigService {
   }
 
   // ── ExamSubject Runtime Architecture ──────────────────────────────────────
-  async getOrInitializeExamSubject(examId: string, subjectId: string, subjectType: string = 'Theory', tenantId?: string) {
+  async getOrInitializeExamSubject(examId: string, subjectId: string, subjectType: string = 'Theory', tenantId?: string, db?: any) {
+    const prisma = db ?? this.prisma;
     const tid = tenantId ?? this.getTenantId();
     
-    let examSubject = await this.prisma.examSubject.findUnique({
+    let examSubject = await prisma.examSubject.findUnique({
       where: { examId_subjectId_subjectType: { examId, subjectId, subjectType } },
     });
 
     if (!examSubject) {
-      const exam = await this.prisma.exam.findUnique({
+      const exam = await prisma.exam.findUnique({
         where: { id: examId },
         include: { classSection: { include: { class: true } } }
       });
@@ -292,7 +294,7 @@ export class ExamConfigService {
       const classId = exam.classSection?.classId;
       const academicYearId = exam.classSection?.class?.academicYearId;
 
-      const cfg = await this.resolveConfig(exam.type, classId, academicYearId, tid);
+      const cfg = await this.resolveConfig(exam.type, classId, academicYearId, tid, db);
 
       // Check if this specific subject/component has an override
       let maxMarks = cfg.maxMarks;
@@ -308,7 +310,7 @@ export class ExamConfigService {
         }
       }
 
-      examSubject = await this.prisma.examSubject.create({
+      examSubject = await prisma.examSubject.create({
         data: {
           tenantId: tid,
           examId,
@@ -365,13 +367,14 @@ export class ExamConfigService {
     });
   }
 
-  async createExamSubjectsForExam(examId: string, classSectionId: string, tenantId?: string) {
+  async createExamSubjectsForExam(examId: string, classSectionId: string, tenantId?: string, db?: any) {
+    const prisma = db ?? this.prisma;
     const tid = tenantId ?? this.getTenantId();
-    const exam = await this.prisma.exam.findUnique({ where: { id: examId } });
+    const exam = await prisma.exam.findUnique({ where: { id: examId } });
     if (!exam) return;
 
     // Get all subjects assigned to the class section, and get class details
-    const classSection = await this.prisma.classSection.findUnique({
+    const classSection = await prisma.classSection.findUnique({
       where: { id: classSectionId },
       include: {
         class: true,
@@ -380,12 +383,12 @@ export class ExamConfigService {
 
     if (!classSection) return;
 
-    const classSubjects = await this.prisma.classSubject.findMany({
+    const classSubjects = await prisma.classSubject.findMany({
       where: { classSectionId },
     });
 
     // Resolve template config for this exam type + class
-    const cfg = await this.resolveConfig(exam.type, classSection.classId, classSection.class.academicYearId, tid);
+    const cfg = await this.resolveConfig(exam.type, classSection.classId, classSection.class.academicYearId, tid, db);
 
     if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
       // Create specific components defined in the class template
@@ -395,7 +398,7 @@ export class ExamConfigService {
         
         if (subConfigs.length > 0) {
           for (const sc of subConfigs) {
-            await this.prisma.examSubject.upsert({
+            await prisma.examSubject.upsert({
               where: { examId_subjectId_subjectType: { examId, subjectId: cs.subjectId, subjectType: sc.subjectType } },
               create: {
                 tenantId: tid,
@@ -412,7 +415,7 @@ export class ExamConfigService {
           }
         } else {
           // Fallback to default Theory for this subject using global config marks
-          await this.prisma.examSubject.upsert({
+          await prisma.examSubject.upsert({
             where: { examId_subjectId_subjectType: { examId, subjectId: cs.subjectId, subjectType: 'Theory' } },
             create: {
               tenantId: tid,
@@ -430,7 +433,7 @@ export class ExamConfigService {
     } else {
       // Eagerly create default 'Theory' component for all subjects using global template
       for (const cs of classSubjects) {
-        await this.prisma.examSubject.upsert({
+        await prisma.examSubject.upsert({
           where: { examId_subjectId_subjectType: { examId, subjectId: cs.subjectId, subjectType: 'Theory' } },
           create: {
             tenantId: tid,

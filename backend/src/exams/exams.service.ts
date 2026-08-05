@@ -382,10 +382,10 @@ export class ExamsService {
               tenantId,
             },
           });
-          await this.examConfigService.createExamSubjectsForExam(exam.id, classSectionId, tenantId);
+          await this.examConfigService.createExamSubjectsForExam(exam.id, classSectionId, tenantId, tx);
         }
         
-        const examSub = await this.examConfigService.getOrInitializeExamSubject(exam.id, subjectId, subjectType, tenantId);
+        const examSub = await this.examConfigService.getOrInitializeExamSubject(exam.id, subjectId, subjectType, tenantId, tx);
 
 
         // Run upsert operations concurrently to speed up marks saving and avoid timeouts
