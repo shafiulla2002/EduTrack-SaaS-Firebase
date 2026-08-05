@@ -458,81 +458,156 @@ Thank you.`;
               
               {shareStep === 'details' && (
                 <>
-                  {/* Homework Summary Card */}
-                  <div className="bg-[#f7fafc] border border-[#e2e8f0] p-4 rounded-2xl space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider">Homework details</span>
-                      <span className="bg-blue-50 border border-blue-100 text-[#2E5BFF] px-2 py-0.5 rounded text-[10px] font-bold">
-                        {hwToShare.classSection?.class?.name} - {hwToShare.classSection?.section?.name} • {hwToShare.subject?.name}
-                      </span>
+                  {sendingState === 'sending' ? (
+                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                      <Loader2 className="w-10 h-10 text-[#2E5BFF] animate-spin" />
+                      <p className="text-sm font-bold text-slate-700">Sending automatic broadcast...</p>
+                      <p className="text-xs text-slate-400">Please wait while we notify all parents via WhatsApp API</p>
                     </div>
-                    <div>
-                      <h4 className="font-extrabold text-[#1e293b] text-[14px]">{hwToShare.title}</h4>
-                      <p className="text-xs text-[#64748b] font-light mt-1 whitespace-pre-wrap">{hwToShare.description}</p>
-                    </div>
-                    <div className="text-[11px] text-[#94a3b8] font-semibold flex gap-3">
-                      <span>Due Date: {hwToShare.dueDate.split('T')[0]}</span>
-                      <span>•</span>
-                      <span>
-                        Recipients:{' '}
-                        {loadingStudentsForShare ? (
-                          <span className="animate-pulse">Loading...</span>
-                        ) : (
-                          `${studentsForShare.length} parents`
-                        )}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Mode Selector */}
-                  <div className="space-y-3">
-                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">WhatsApp Sharing Mode</div>
-                    
-                    {/* Auto Broadcast Option */}
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between opacity-80">
-                      <div>
-                        <div className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
-                          <span>Automatic WhatsApp Broadcast</span>
-                          <span className="text-[9px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-sans">Future</span>
+                  ) : sendingState === 'completed' && sendResult ? (
+                    <div className="flex flex-col items-center justify-center py-6 space-y-4 text-center">
+                      <div className="w-16 h-16 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-center text-emerald-500 mb-2">
+                        <CheckCircle2 className="w-10 h-10" />
+                      </div>
+                      <h3 className="text-lg font-black text-slate-800">Broadcast Sent!</h3>
+                      <p className="text-xs text-slate-500 max-w-sm">
+                        Successfully dispatched automated homework details to all parents in the class.
+                      </p>
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 w-full grid grid-cols-3 gap-2 mt-4">
+                        <div>
+                          <div className="text-base font-bold text-slate-800">{sendResult.totalStudents || 0}</div>
+                          <div className="text-[9px] text-slate-400 font-bold uppercase">Total Parents</div>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Sends automated message to all parents via API</div>
+                        <div>
+                          <div className="text-base font-bold text-emerald-600">{sendResult.successfullySent || 0}</div>
+                          <div className="text-[9px] text-slate-400 font-bold uppercase">Sent</div>
+                        </div>
+                        <div>
+                          <div className="text-base font-bold text-red-500">{sendResult.failed || 0}</div>
+                          <div className="text-[9px] text-slate-400 font-bold uppercase">Failed</div>
+                        </div>
                       </div>
-                      <input
-                        type="checkbox"
-                        checked={isAutoBroadcast}
-                        disabled={true}
-                        readOnly
-                        className="w-9 h-5 rounded-full appearance-none bg-slate-200 checked:bg-[#2E5BFF] transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-4 after:h-4 after:bg-white after:rounded-full after:transition-transform checked:after:translate-x-4 cursor-not-allowed opacity-60"
-                      />
+                      <button
+                        onClick={() => {
+                          setShowShareModal(false);
+                          setHwToShare(null);
+                        }}
+                        className="mt-6 w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs cursor-pointer transition-all"
+                      >
+                        Done
+                      </button>
                     </div>
-
-                    {/* Manual Option Indicator */}
-                    <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-2xl flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-extrabold text-[#2E5BFF]">Manual WhatsApp Sharing</div>
-                        <div className="text-[10px] text-blue-500 font-semibold mt-0.5">Choose recipients and share using WhatsApp Web/App deep link</div>
+                  ) : (
+                    <>
+                      {/* Homework Summary Card */}
+                      <div className="bg-[#f7fafc] border border-[#e2e8f0] p-4 rounded-2xl space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-[#94a3b8] uppercase tracking-wider">Homework details</span>
+                          <span className="bg-blue-50 border border-blue-100 text-[#2E5BFF] px-2 py-0.5 rounded text-[10px] font-bold">
+                            {hwToShare.classSection?.class?.name} - {hwToShare.classSection?.section?.name} • {hwToShare.subject?.name}
+                          </span>
+                        </div>
+                        <div>
+                          <h4 className="font-extrabold text-[#1e293b] text-[14px]">{hwToShare.title}</h4>
+                          <p className="text-xs text-[#64748b] font-light mt-1 whitespace-pre-wrap">{hwToShare.description}</p>
+                        </div>
+                        <div className="text-[11px] text-[#94a3b8] font-semibold flex gap-3">
+                          <span>Due Date: {hwToShare.dueDate.split('T')[0]}</span>
+                          <span>•</span>
+                          <span>
+                            Recipients:{' '}
+                            {loadingStudentsForShare ? (
+                              <span className="animate-pulse">Loading...</span>
+                            ) : (
+                              `${studentsForShare.length} parents`
+                            )}
+                          </span>
+                        </div>
                       </div>
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                    </div>
-                  </div>
 
-                  {/* Integration Configured Note */}
-                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-800 flex gap-2">
-                    <span className="text-sm shrink-0">⚠️</span>
-                    <div>
-                      <span className="font-bold">Notice:</span> Automatic WhatsApp broadcasting is not configured yet. Please use Manual WhatsApp Sharing.
-                    </div>
-                  </div>
+                      {/* Mode Selector */}
+                      <div className="space-y-3">
+                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">WhatsApp Sharing Mode</div>
+                        
+                        {/* Auto Broadcast Option */}
+                        <div 
+                          onClick={() => setIsAutoBroadcast(true)}
+                          className={`p-4 border rounded-2xl flex items-center justify-between cursor-pointer transition-all ${
+                            isAutoBroadcast 
+                              ? 'bg-blue-50/50 border-[#2E5BFF]' 
+                              : 'bg-slate-50 border-slate-200 hover:border-slate-300 opacity-80'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
+                              <span>Automatic WhatsApp Broadcast</span>
+                              <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-sans">Active</span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Sends automated message to all parents via API</div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={isAutoBroadcast}
+                            onChange={(e) => setIsAutoBroadcast(e.target.checked)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-9 h-5 rounded-full appearance-none bg-slate-200 checked:bg-[#2E5BFF] transition-colors relative after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:w-4 after:h-4 after:bg-white after:rounded-full after:transition-transform checked:after:translate-x-4 cursor-pointer"
+                          />
+                        </div>
 
-                  {/* Action Button */}
-                  <div className="pt-2">
-                    <button
-                      onClick={() => setShareStep('select_parents')}
-                      className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/10"
-                    >
-                      Share via WhatsApp
-                    </button>
-                  </div>
+                        {/* Manual Option Indicator */}
+                        <div 
+                          onClick={() => setIsAutoBroadcast(false)}
+                          className={`p-4 border rounded-2xl flex items-center justify-between cursor-pointer transition-all ${
+                            !isAutoBroadcast 
+                              ? 'bg-blue-50/50 border-[#2E5BFF]' 
+                              : 'bg-slate-50 border-slate-200 hover:border-slate-300 opacity-80'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-extrabold text-slate-700">Manual WhatsApp Sharing</div>
+                            <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Choose recipients and share using WhatsApp Web/App deep link</div>
+                          </div>
+                          <span className={`w-2.5 h-2.5 rounded-full ${!isAutoBroadcast ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
+                        </div>
+                      </div>
+
+                      {/* Integration Configured Note */}
+                      {isAutoBroadcast ? (
+                        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-xs text-blue-800 flex gap-2">
+                          <span className="text-sm shrink-0">ℹ️</span>
+                          <div>
+                            <span className="font-bold">Notice:</span> Automatic WhatsApp broadcasting will dispatch automated notifications to all parents via backend API logs.
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-800 flex gap-2">
+                          <span className="text-sm shrink-0">⚠️</span>
+                          <div>
+                            <span className="font-bold">Notice:</span> Manual WhatsApp sharing requires sending deep links to each parent individually.
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Button */}
+                      <div className="pt-2">
+                        {isAutoBroadcast ? (
+                          <button
+                            onClick={handleSendHomeworkBulk}
+                            className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/10"
+                          >
+                            Send Automatic Broadcast
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setShareStep('select_parents')}
+                            className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/10"
+                          >
+                            Share via WhatsApp
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 
