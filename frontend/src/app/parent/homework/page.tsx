@@ -93,6 +93,34 @@ export default function HomeworkPage() {
     return `${day}/${month}/${year}`;
   };
 
+  const handleOpenAttachment = (att: string) => {
+    if (!att || att === '#') return;
+    if (att.startsWith('data:')) {
+      try {
+        const parts = att.split(';base64,');
+        const contentType = parts[0].split(':')[1] || 'application/octet-stream';
+        const raw = window.atob(parts[1]);
+        const rawLength = raw.length;
+        const uInt8Array = new Uint8Array(rawLength);
+        for (let i = 0; i < rawLength; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        const blob = new Blob([uInt8Array], { type: contentType });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+      } catch (e) {
+        console.error('Error opening base64 attachment:', e);
+        const win = window.open();
+        if (win) {
+          win.document.write(`<iframe src="${att}" style="width:100%;height:100%;border:none;"></iframe>`);
+        }
+      }
+    } else {
+      const url = att.startsWith('http') || att.startsWith('/uploads') ? att : `http://${att}`;
+      window.open(url, '_blank');
+    }
+  };
+
   if (!selectedChild) {
     return (
       <div className="text-slate-500 text-sm text-center py-12">
@@ -161,16 +189,15 @@ export default function HomeworkPage() {
                 {hw.attachments && hw.attachments.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-1.5">
                     {hw.attachments.map((att: string, idx: number) => (
-                      <a
+                      <button
                         key={idx}
-                        href={att.startsWith('http') || att.startsWith('/uploads') ? att : '#'}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer font-semibold"
+                        type="button"
+                        onClick={() => handleOpenAttachment(att)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-600 hover:text-[#2E5BFF] hover:border-[#2E5BFF]/40 hover:bg-blue-50/40 transition-all cursor-pointer font-semibold"
                       >
-                        <Paperclip className="w-3 h-3" />
+                        <Paperclip className="w-3 h-3 text-[#2E5BFF]" />
                         Attachment File {idx + 1}
-                      </a>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -178,7 +205,15 @@ export default function HomeworkPage() {
 
               <div className="border-t border-slate-100 pt-4 flex justify-between items-center text-[10px] text-slate-400">
                 <span>Due Date: <strong className="text-slate-700 font-bold">{formatDateDDMMYYYY(hw.dueDate)}</strong></span>
-                {!hw.submitted && (
+                {hw.submitted ? (
+                  <button
+                    onClick={() => setSubmittingHomework(hw)}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 font-bold tracking-wide hover:bg-slate-200 hover:text-slate-900 transition-all flex items-center gap-1.5 cursor-pointer text-[10px]"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-slate-500" />
+                    Edit / Update Submission
+                  </button>
+                ) : (
                   <button
                     onClick={() => setSubmittingHomework(hw)}
                     className="px-3.5 py-1.5 rounded-xl bg-[#2E5BFF] text-white font-bold tracking-wide hover:bg-blue-600 transition-all flex items-center gap-1.5 cursor-pointer text-[10px]"
@@ -209,9 +244,18 @@ export default function HomeworkPage() {
             </button>
 
             <div>
-              <h3 className="text-base font-bold text-slate-800">Submit Assignment</h3>
+              <h3 className="text-base font-bold text-slate-800">
+                {submittingHomework.submitted ? 'Edit / Update Submission' : 'Submit Assignment'}
+              </h3>
               <p className="text-xs text-slate-400 font-light mt-0.5">{submittingHomework.title}</p>
             </div>
+
+            {submittingHomework.submitted && !message && (
+              <div className="p-3 bg-blue-50 border border-blue-100 text-blue-800 rounded-2xl text-xs font-semibold leading-relaxed flex items-center gap-2">
+                <Clock className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Uploading a new file will replace your previously submitted work.</span>
+              </div>
+            )}
 
             {message && (
               <div className={`p-3 border rounded-2xl text-xs font-semibold leading-relaxed flex items-center gap-2 ${
@@ -226,10 +270,13 @@ export default function HomeworkPage() {
 
             <form onSubmit={handleSubmitAssignment} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Attachment File (PDF, PNG, JPG)</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Attachment File (PDF, PNG, JPG, DOC, DOCX)
+                </label>
                 <div className="border border-dashed border-slate-200 hover:border-slate-350 bg-slate-50 rounded-2xl p-6 text-center transition-all relative cursor-pointer flex flex-col items-center justify-center">
                   <input
                     type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
                     className="absolute inset-0 opacity-0 cursor-pointer"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -241,7 +288,7 @@ export default function HomeworkPage() {
                   <span className="text-xs text-slate-500 font-semibold block truncate max-w-[250px]">
                     {uploadFile ? uploadFile.name : 'Select or drag file to upload'}
                   </span>
-                  <span className="text-[9px] text-slate-400 block mt-1">Maximum upload size: 2MB (Base64)</span>
+                  <span className="text-[9px] text-slate-400 block mt-1">Maximum upload size: 5MB</span>
                 </div>
               </div>
 
@@ -253,10 +300,10 @@ export default function HomeworkPage() {
                 {submitLoading ? (
                   <>
                     <Loader2 className="w-4.5 h-4.5 animate-spin" />
-                    Uploading Assignment...
+                    {submittingHomework.submitted ? 'Updating Assignment...' : 'Uploading Assignment...'}
                   </>
                 ) : (
-                  'Confirm & Submit'
+                  submittingHomework.submitted ? 'Confirm & Update Work' : 'Confirm & Submit'
                 )}
               </button>
             </form>

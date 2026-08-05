@@ -566,6 +566,7 @@ export class ParentPortalService {
         action: 'SUBMIT_ASSIGNMENT',
         entityName: 'Homework',
       },
+      orderBy: { createdAt: 'desc' },
     });
 
     return homeworkList.map(h => {

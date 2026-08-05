@@ -32,27 +32,26 @@ export class StorageService {
 
   async uploadImage(base64Data: string, tenantId: string, studentId: string, filenamePrefix: string): Promise<string> {
     // Determine type, validate size
-    const match = base64Data.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+    const match = base64Data.match(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-+.]+);base64,(.+)$/);
     if (!match) {
-      throw new BadRequestException('Invalid image format. Expected a base64 Data URL.');
+      if (base64Data.startsWith('http') || base64Data.startsWith('/uploads')) {
+        return base64Data;
+      }
+      throw new BadRequestException('Invalid file format. Expected a base64 Data URL.');
     }
 
-    const mimeExtension = match[1].toLowerCase();
+    const mimeType = match[1].toLowerCase();
     const base64Content = match[2];
     const buffer = Buffer.from(base64Content, 'base64');
 
-    // 2 MB validation (2 * 1024 * 1024 bytes)
-    if (buffer.length > 2 * 1024 * 1024) {
-      throw new BadRequestException('Image size exceeds the maximum 2 MB limit.');
+    // 5 MB validation (5 * 1024 * 1024 bytes)
+    if (buffer.length > 5 * 1024 * 1024) {
+      throw new BadRequestException('File size exceeds the maximum 5 MB limit.');
     }
 
-    // Supported formats check
-    const supportedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
-    if (!supportedExtensions.includes(mimeExtension)) {
-      throw new BadRequestException(
-        `Unsupported image format: ${mimeExtension}. Allowed formats: ${supportedExtensions.join(', ')}`
-      );
-    }
+    let mimeExtension = mimeType.split('/')[1] || 'bin';
+    if (mimeExtension.includes('vnd.openxmlformats-officedocument')) mimeExtension = 'docx';
+    if (mimeExtension.includes('msword')) mimeExtension = 'doc';
 
     const uniqueFilename = `${filenamePrefix}-${randomBytes(8).toString('hex')}.${mimeExtension}`;
     const storageKey = `students/${tenantId}/${studentId}/${uniqueFilename}`;
