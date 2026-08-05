@@ -1309,40 +1309,60 @@ export class ParentPortalService {
     daysOfWeek.forEach(day => {
       const dayPeriods = periods.filter(p => p.dayOfWeek.toLowerCase() === day.toLowerCase());
 
+      let teachingPeriodIndex = 1;
+
       timings.forEach(timing => {
         const assigned = dayPeriods.find(p => p.periodTimingId === timing.id || p.periodTiming?.periodNumber === timing.periodNumber);
 
-        if (assigned) {
-          result.push({
-            id: assigned.id,
-            day,
-            subject: assigned.subject.name,
-            teacher: assigned.teacher?.user?.name || 'Teacher',
-            startTime: assigned.periodTiming?.startTime || timing.startTime,
-            endTime: assigned.periodTiming?.endTime || timing.endTime,
-            periodNumber: timing.periodNumber,
-            isBreak: false,
-          });
-        } else {
-          const isBreakTiming = timing.isBreak ||
-            (timing.name && /break|lunch|recess|tea/i.test(timing.name)) ||
-            (timing.periodNumber === 5 && dayPeriods.length > 0);
+        const isBreak = timing.isBreak ||
+          (timing.name && /break|lunch|recess|tea/i.test(timing.name)) ||
+          (!assigned && timing.periodNumber === 5);
 
-          let breakName = timing.name;
-          if (!breakName || /^P\d+$/i.test(breakName) || breakName === `Period ${timing.periodNumber}`) {
-            breakName = isBreakTiming ? 'Lunch Break' : `Period ${timing.periodNumber}`;
+        if (isBreak) {
+          let cleanBreakTitle = timing.name || 'Lunch Break';
+          if (/^P\d+$/i.test(cleanBreakTitle) || cleanBreakTitle === `Period ${timing.periodNumber}`) {
+            cleanBreakTitle = 'Lunch Break';
           }
 
           result.push({
             id: `SLOT-${day}-${timing.periodNumber}`,
             day,
-            subject: isBreakTiming ? (breakName.includes('Break') || breakName.includes('Recess') ? breakName : `${breakName} (Break)`) : 'Recess / Free Slot',
+            subject: cleanBreakTitle,
             teacher: 'N/A',
             startTime: timing.startTime,
             endTime: timing.endTime,
-            periodNumber: timing.periodNumber,
+            periodNumber: null,
+            timingOrder: timing.periodNumber,
             isBreak: true,
           });
+        } else {
+          const currentLecNum = teachingPeriodIndex++;
+
+          if (assigned) {
+            result.push({
+              id: assigned.id,
+              day,
+              subject: assigned.subject.name,
+              teacher: assigned.teacher?.user?.name || 'Teacher',
+              startTime: assigned.periodTiming?.startTime || timing.startTime,
+              endTime: assigned.periodTiming?.endTime || timing.endTime,
+              periodNumber: currentLecNum,
+              timingOrder: timing.periodNumber,
+              isBreak: false,
+            });
+          } else {
+            result.push({
+              id: `SLOT-${day}-${timing.periodNumber}`,
+              day,
+              subject: 'Free Period / Recess',
+              teacher: 'N/A',
+              startTime: timing.startTime,
+              endTime: timing.endTime,
+              periodNumber: currentLecNum,
+              timingOrder: timing.periodNumber,
+              isBreak: false,
+            });
+          }
         }
       });
     });

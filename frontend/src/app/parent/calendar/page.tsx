@@ -57,7 +57,7 @@ export default function CalendarPage() {
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const filteredPeriods = timetable
     .filter(p => p.day.toLowerCase() === activeDay.toLowerCase())
-    .sort((a, b) => (a.periodNumber || 0) - (b.periodNumber || 0));
+    .sort((a, b) => (a.timingOrder || a.periodNumber || 0) - (b.timingOrder || b.periodNumber || 0));
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-fade-in relative">
@@ -104,26 +104,26 @@ export default function CalendarPage() {
                 return (
                   <div
                     key={period.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl transition-all gap-4"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl transition-all gap-4 shadow-xs"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-amber-100/80 flex flex-col items-center justify-center text-amber-700 border border-amber-200 shrink-0">
-                        <Utensils className="w-4 h-4 text-amber-600" />
+                      <div className="w-10 h-10 rounded-xl bg-amber-100/90 flex flex-col items-center justify-center text-amber-700 border border-amber-200/80 shrink-0">
+                        <Utensils className="w-4.5 h-4.5 text-amber-600" />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-amber-900">{period.subject}</h4>
+                          <h4 className="text-sm font-bold text-amber-950">{period.subject}</h4>
                           <span className="px-2 py-0.5 rounded-md bg-amber-200/60 text-amber-800 text-[10px] font-bold uppercase tracking-wider">
                             Break
                           </span>
                         </div>
-                        <span className="text-[10px] text-amber-700/80 flex items-center gap-1.5 mt-0.5 font-medium">
-                          School Break / Recess Period {period.periodNumber ? `(Period ${period.periodNumber})` : ''}
+                        <span className="text-[10px] text-amber-700 flex items-center gap-1.5 mt-0.5 font-medium">
+                          School Break / Recess Period
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-800 bg-white/90 border border-amber-200 px-3.5 py-2 rounded-xl self-start sm:self-center">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-800 bg-white/90 border border-amber-200 px-3.5 py-2 rounded-xl self-start sm:self-center shadow-2xs">
                       <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                       <span>{period.startTime} - {period.endTime}</span>
                     </div>
