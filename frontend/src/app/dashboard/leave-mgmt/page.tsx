@@ -11,6 +11,8 @@ import {
 import { useTenant } from '@/app/providers/TenantContext';
 import Drawer from '@/components/Drawer';
 import Modal from '@/components/Modal';
+import DatePickerInput from '@/components/DatePickerInput';
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '@/lib/date';
 
 function LeaveMgmtContent() {
   const { currentUser } = useTenant();
@@ -857,16 +859,16 @@ function LeaveMgmtContent() {
                 <div>
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Applied Date &amp; Time</span>
                   <p className="font-bold text-slate-850 dark:text-slate-200 mt-0.5">
-                    {selectedLeave.createdAt ? new Date(selectedLeave.createdAt).toLocaleString() : 'N/A'}
+                    {selectedLeave.createdAt ? formatDateTimeDDMMYYYY(selectedLeave.createdAt) : 'N/A'}
                   </p>
                 </div>
                 <div>
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">From Date</span>
-                  <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.startDate ? selectedLeave.startDate.split('T')[0] : 'N/A'}</p>
+                  <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.startDate ? formatDateDDMMYYYY(selectedLeave.startDate) : 'N/A'}</p>
                 </div>
                 <div>
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">To Date</span>
-                  <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.endDate ? selectedLeave.endDate.split('T')[0] : 'N/A'}</p>
+                  <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.endDate ? formatDateDDMMYYYY(selectedLeave.endDate) : 'N/A'}</p>
                 </div>
               </div>
 
@@ -1302,21 +1304,17 @@ function LeaveMgmtContent() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">From Date</label>
-              <input
-                type="date"
+              <DatePickerInput
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-850 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                onChange={setStartDate}
                 required
               />
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">To Date</label>
-              <input
-                type="date"
+              <DatePickerInput
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-850 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                onChange={setEndDate}
                 required
               />
             </div>

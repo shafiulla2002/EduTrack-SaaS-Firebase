@@ -5,6 +5,7 @@ import {
   Users, Plus, X, Search, Phone, Mail, Calendar,
   ChevronRight, Edit2, Trash2, Clock, BookOpen, Check
 } from 'lucide-react';
+import { formatDateDDMMYYYY } from '@/lib/date';
 
 const AVATAR_GRADIENTS = [
   'linear-gradient(135deg,#667eea,#764ba2)',
@@ -921,7 +922,7 @@ export default function SchoolStaffPage() {
                                   {inv.status}
                                 </span>
                               </td>
-                              <td className="px-4 py-2.5 text-slate-400">{new Date(inv.date).toLocaleDateString('en-IN')}</td>
+                              <td className="px-4 py-2.5 text-slate-400">{formatDateDDMMYYYY(inv.date)}</td>
                             </tr>
                           );
                         })}
@@ -1026,7 +1027,7 @@ export default function SchoolStaffPage() {
                                 {c.status}
                               </span>
                             </td>
-                            <td className="px-4 py-2.5 text-slate-400">{new Date(c.createdAt).toLocaleDateString('en-IN')}</td>
+                            <td className="px-4 py-2.5 text-slate-400">{formatDateDDMMYYYY(c.createdAt)}</td>
                           </tr>
                         ))}
                       </tbody>

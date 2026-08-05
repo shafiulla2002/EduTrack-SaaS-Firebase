@@ -1,6 +1,7 @@
 import React from 'react';
 import { GraduationCap } from 'lucide-react';
 import { DocumentType, DOCUMENT_PRESETS, PAPER_DIMENSIONS } from '@/lib/pdf';
+import { formatDateDDMMYYYY } from '@/lib/date';
 
 export interface PDFLayoutMetadataItem {
   label: string;
@@ -86,7 +87,7 @@ export const PDFLayout: React.FC<PDFLayoutProps> = ({
         </div>
         <div style={{ textAlign: 'right', fontSize: '10px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.075em' }}>
           <div>Academic Year: 2026–2027</div>
-          <div style={{ marginTop: '0.25rem', fontFamily: 'monospace', fontWeight: 500 }}>Date: {new Date().toLocaleDateString('en-IN')}</div>
+          <div style={{ marginTop: '0.25rem', fontFamily: 'monospace', fontWeight: 500 }}>Date: {formatDateDDMMYYYY(new Date())}</div>
         </div>
       </div>
 

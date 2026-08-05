@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '@/app/providers/TenantContext';
+import { formatDateDDMMYYYY } from '@/lib/date';
 import { 
   Receipt, Search, CreditCard, Sparkles, X, CheckCircle2, 
   QrCode, User, ArrowRight, CornerDownRight, RotateCcw,
@@ -1239,7 +1240,7 @@ export default function FeesBillingPage() {
               </div>
               <div>
                 <span className="text-slate-400 block mb-0.5">Payment Date</span>
-                <span className="text-slate-850 font-bold block">{new Date().toLocaleDateString('en-IN')}</span>
+                <span className="text-slate-850 font-bold block">{formatDateDDMMYYYY(new Date())}</span>
               </div>
             </div>
 

@@ -5,6 +5,8 @@ import { api } from '@/lib/api';
 import { Calendar, Search, Users, Check, X, ShieldAlert, Sparkles, RefreshCw, Save } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
+import DatePickerInput from '@/components/DatePickerInput';
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '@/lib/date';
 
 const formatLocalTime = (isoString: string) => {
   try {
@@ -265,30 +267,11 @@ export default function AttendanceMgmtPage() {
   };
 
   const formatDateLong = (dateStr: string) => {
-    try {
-      const parts = dateStr.split('-');
-      const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-      return date.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-    } catch (e) {
-      return dateStr;
-    }
+    return formatDateDDMMYYYY(dateStr);
   };
 
   const formatLocalDateTime = (isoString: string) => {
-    try {
-      const date = new Date(isoString);
-      const formattedDate = date.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
-      let hours = date.getHours();
-      const minutes = date.getMinutes();
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12;
-      hours = hours ? hours : 12;
-      const minutesStr = minutes < 10 ? '0' + minutes : minutes;
-      const hoursStr = hours < 10 ? '0' + hours : hours;
-      return `${formattedDate}, ${hoursStr}:${minutesStr} ${ampm}`;
-    } catch (e) {
-      return '';
-    }
+    return formatDateTimeDDMMYYYY(isoString);
   };
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -482,14 +465,12 @@ export default function AttendanceMgmtPage() {
 
         <div>
           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Date</label>
-          <input
-            type="date"
+          <DatePickerInput
             value={selectedDate}
-            onChange={(e) => {
-              setSelectedDate(e.target.value);
+            onChange={(val) => {
+              setSelectedDate(val);
               setStudents([]);
             }}
-            className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
           />
         </div>
 

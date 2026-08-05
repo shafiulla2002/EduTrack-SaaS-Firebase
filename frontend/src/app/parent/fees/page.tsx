@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParent } from '../ParentContext';
 import { api } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
+import { formatDateDDMMYYYY } from '@/lib/date';
 import {
   CreditCard,
   CheckCircle,
@@ -367,7 +368,7 @@ export default function FeesPage() {
                         </span>
                         <h4 className="text-sm font-bold text-slate-700 mt-2 truncate">{inv.description}</h4>
                         <p className="text-[10px] text-slate-400 font-light mt-0.5">
-                          Due date: {new Date(inv.dueDate).toLocaleDateString()}
+                          Due date: {formatDateDDMMYYYY(inv.dueDate)}
                         </p>
                       </div>
                       <div className="text-right">
@@ -554,7 +555,7 @@ export default function FeesPage() {
                         </div>
                         <h4 className="text-xs font-bold text-slate-700 mt-2">{inv.description}</h4>
                         <p className="text-[10px] text-slate-400 font-light mt-0.5">
-                          Paid on {new Date(inv.invoiceDate).toLocaleDateString()} • Txn:{' '}
+                          Paid on {formatDateDDMMYYYY(inv.invoiceDate)} • Txn:{' '}
                           <code className="font-mono text-slate-600">{inv.transactionId}</code>
                         </p>
                       </div>
@@ -842,7 +843,7 @@ export default function FeesPage() {
               </div>
               <div className="flex justify-between text-slate-600">
                 <span className="text-slate-400">Payment Date:</span>
-                <strong className="text-slate-800">{new Date(viewingReceipt.invoiceDate).toLocaleDateString()}</strong>
+                <strong className="text-slate-800">{formatDateDDMMYYYY(viewingReceipt.invoiceDate)}</strong>
               </div>
             </div>
 

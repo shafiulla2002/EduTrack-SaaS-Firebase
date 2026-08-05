@@ -6,6 +6,7 @@ import { useTenant } from '../../providers/TenantContext';
 import { api } from '@/lib/api';
 import { PDFService } from '@/lib/pdf';
 import { PDFLayout } from '@/components/PDFLayout';
+import { formatDateDDMMYYYY } from '@/lib/date';
 import {
   GraduationCap, Calendar, Download, Printer,
   Award, BarChart3, CheckCircle, XCircle, ChevronDown,
@@ -469,7 +470,7 @@ export default function ExamsPage() {
                         <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold bg-blue-50 border border-blue-100 text-blue-700">{s.subject}</span>
                       </td>
                       <td className="px-4 py-3 font-semibold text-slate-600">
-                        {new Date(s.examDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {formatDateDDMMYYYY(s.examDate)}
                       </td>
                       <td className="px-4 py-3 text-slate-600 flex items-center gap-1">
                         <Clock className="w-3 h-3 text-slate-400 shrink-0" />{s.startTime} – {s.endTime}

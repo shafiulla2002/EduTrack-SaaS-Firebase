@@ -8,7 +8,8 @@ import {
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
-import { toLocalDateString, isBefore } from '@/lib/date';
+import { toLocalDateString, isBefore, formatDateDDMMYYYY } from '@/lib/date';
+import DatePickerInput from '@/components/DatePickerInput';
 
 interface Teacher {
   id: string;
@@ -228,11 +229,9 @@ export default function AttendancePage() {
 
             <div>
               <label className="block text-xs text-slate-400 font-semibold mb-1">Attendance Date</label>
-              <input
-                type="date"
+              <DatePickerInput
                 value={attendanceDate}
-                onChange={(e) => setAttendanceDate(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-850 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none"
+                onChange={setAttendanceDate}
               />
             </div>
 
@@ -286,7 +285,7 @@ export default function AttendancePage() {
         </div>
         <div>
           <span className="text-xs font-bold text-slate-200">Advisor: {activeTeacher?.user.name}</span>
-          <span className="text-[10px] text-slate-500 ml-3">Date: {new Date(attendanceDate).toLocaleDateString()}</span>
+          <span className="text-[10px] text-slate-500 ml-3">Date: {formatDateDDMMYYYY(attendanceDate)}</span>
           {sessionExists && (
             <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded ml-3">
               Loaded from database
@@ -325,7 +324,7 @@ export default function AttendancePage() {
           </div>
           <h3 className="text-xl font-extrabold text-white">Attendance Saved!</h3>
           <p className="text-sm text-slate-400">
-            {activeClassSection?.class.name} — {activeClassSection?.section.name} · {attendanceDate}
+            {activeClassSection?.class.name} — {activeClassSection?.section.name} · {formatDateDDMMYYYY(attendanceDate)}
           </p>
           <div className="grid grid-cols-3 gap-3 pt-2">
             <div className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-850">

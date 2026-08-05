@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
 import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search } from 'lucide-react';
 import Drawer from '@/components/Drawer';
+import DatePickerInput from '@/components/DatePickerInput';
+import { formatDateDDMMYYYY } from '@/lib/date';
 
 export default function HomeworkPage() {
   const [isMounted, setIsMounted] = useState(false);
@@ -359,7 +361,7 @@ Thank you.`;
               <div className="border-t border-slate-100 pt-3 flex flex-wrap gap-y-2 justify-between items-center text-[11px] text-slate-400 font-semibold">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  Due: {hw.dueDate.split('T')[0]}
+                  Due: {formatDateDDMMYYYY(hw.dueDate)}
                 </span>
                 <span className="bg-slate-50 border border-slate-200/50 px-2 py-0.5 rounded text-slate-500 font-mono">
                   {hw.classSection.class.name} - {hw.classSection.section.name} • {hw.subject.name}
@@ -444,11 +446,9 @@ Thank you.`;
           <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Due Date</label>
-              <input
-                type="date"
+              <DatePickerInput
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                onChange={setDueDate}
                 required
               />
             </div>
@@ -556,7 +556,7 @@ Thank you.`;
                           <p className="text-xs text-[#64748b] font-light mt-1 whitespace-pre-wrap">{hwToShare.description}</p>
                         </div>
                         <div className="text-[11px] text-[#94a3b8] font-semibold flex gap-3">
-                          <span>Due Date: {hwToShare.dueDate.split('T')[0]}</span>
+                          <span>Due Date: {formatDateDDMMYYYY(hwToShare.dueDate)}</span>
                           <span>•</span>
                           <span>
                             Recipients:{' '}

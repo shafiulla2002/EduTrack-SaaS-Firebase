@@ -7,6 +7,8 @@ import {
   FileText, CheckCircle, Clock, Upload, X, ShieldAlert, Loader2,
   Paperclip, Eye, User, Calendar
 } from 'lucide-react';
+import DatePickerInput from '@/components/DatePickerInput';
+import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '@/lib/date';
 
 export default function LeavePage() {
   const { selectedChild } = useParent();
@@ -161,22 +163,18 @@ export default function LeavePage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Start Date *</label>
-                <input
-                  type="date"
+                <DatePickerInput
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 font-semibold focus:outline-none focus:border-[#2E5BFF]"
+                  onChange={setStartDate}
                   required
                 />
               </div>
 
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">End Date *</label>
-                <input
-                  type="date"
+                <DatePickerInput
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 font-semibold focus:outline-none focus:border-[#2E5BFF]"
+                  onChange={setEndDate}
                   required
                 />
               </div>
@@ -263,7 +261,7 @@ export default function LeavePage() {
                       <div className="flex justify-between items-start">
                         <div>
                           <span className="font-bold text-[#2E5BFF] text-xs block">{leave.leaveType} Leave</span>
-                          <span className="text-[11px] text-slate-500 font-semibold">{leave.startDate} to {leave.endDate}</span>
+                          <span className="text-[11px] text-slate-500 font-semibold">{formatDateDDMMYYYY(leave.startDate)} to {formatDateDDMMYYYY(leave.endDate)}</span>
                         </div>
                         <span className={`px-2.5 py-1 rounded-lg border font-extrabold uppercase tracking-wider text-[9px] ${
                           isApproved ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
