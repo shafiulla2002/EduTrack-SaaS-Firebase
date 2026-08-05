@@ -3,14 +3,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParent } from '../ParentContext';
 import { api } from '@/lib/api';
-import { Send, User, MessageSquare, ShieldAlert, CheckCheck, Loader2 } from 'lucide-react';
+import { Send, User, MessageSquare, ShieldAlert, CheckCheck, Loader2, Sparkles, Clock, Lock } from 'lucide-react';
+
+// Set to true when Messages & Chat feature is fully launched
+const SHOW_CHAT_UI = false;
 
 export default function ChatPage() {
   const { selectedChild } = useParent();
   const [activeChannel, setActiveChannel] = useState<'TEACHER' | 'ADMIN'>('TEACHER');
   const [inputText, setInputText] = useState('');
   
-  // Simulated thread messages
+  // Simulated thread messages (Preserved for full chat rollout)
   const [messages, setMessages] = useState<any>({
     TEACHER: [
       { sender: 'TEACHER', text: 'Hello, I wanted to discuss Ahmed\'s progress in Algebra. He did excellent on his quiz today!', timestamp: '10:30 AM' },
@@ -27,7 +30,9 @@ export default function ChatPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (SHOW_CHAT_UI) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, activeChannel]);
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -47,7 +52,6 @@ export default function ChatPage() {
 
     setInputText('');
 
-    // Simulated reply trigger
     setTimeout(() => {
       let replyText = 'Understood. We will look into this and get back to you shortly.';
       if (activeChannel === 'TEACHER') {
@@ -75,6 +79,59 @@ export default function ChatPage() {
     );
   }
 
+  // Render "Coming Soon" placeholder UI until feature is fully completed
+  if (!SHOW_CHAT_UI) {
+    return (
+      <div className="max-w-2xl mx-auto py-8 sm:py-16 px-4 animate-fade-in relative">
+        <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-12 shadow-sm text-center relative overflow-hidden space-y-6">
+          {/* Subtle background glow */}
+          <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          {/* Module Tag Header */}
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-100 text-[#2E5BFF] text-xs font-bold uppercase tracking-wider">
+            <span>🚧 Messages & Chat</span>
+          </div>
+
+          {/* Animated Hero Icon */}
+          <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+            <div className="absolute inset-0 bg-[#2E5BFF]/10 rounded-3xl animate-pulse" />
+            <div className="w-16 h-16 rounded-2xl bg-[#2E5BFF] text-white flex items-center justify-center shadow-lg shadow-blue-500/20 relative z-10">
+              <MessageSquare className="w-8 h-8" />
+            </div>
+          </div>
+
+          {/* Title & Description */}
+          <div className="space-y-2 max-w-md mx-auto">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              Coming Soon
+            </h2>
+            <p className="text-slate-500 text-xs sm:text-sm leading-relaxed font-normal">
+              This feature is currently under development and will be available in a future update.
+            </p>
+          </div>
+
+          {/* Feature Capabilities Teaser */}
+          <div className="pt-4 border-t border-slate-100 max-w-md mx-auto space-y-2.5">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">What to expect</p>
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
+              <span className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-medium">
+                💬 Direct Teacher Messaging
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-medium">
+                ⚡ Real-Time Office Helpdesk
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-medium">
+                🔒 Secure Encrypted Chat
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Preserved original Chat UI (activates automatically when SHOW_CHAT_UI is set to true)
   const currentThread = messages[activeChannel] || [];
 
   return (
