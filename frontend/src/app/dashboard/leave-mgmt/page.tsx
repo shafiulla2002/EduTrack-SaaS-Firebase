@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useTenant } from '@/app/providers/TenantContext';
 import Drawer from '@/components/Drawer';
+import Modal from '@/components/Modal';
 
 function LeaveMgmtContent() {
   const { currentUser } = useTenant();
@@ -788,253 +789,251 @@ function LeaveMgmtContent() {
         </div>
 
         {/* Leave Details Modal with Applicant History and Audit Trail */}
-        {selectedLeave && (
-          <div
-            className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[9990] p-4 sm:p-6 animate-in fade-in"
-            onClick={() => { setSelectedLeave(null); setActionStatus(null); }}
-          >
-            <div
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-xl max-h-[88vh] flex flex-col overflow-hidden shadow-2xl relative my-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-4 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
-                <div>
-                  <h3 className="font-extrabold text-sm sm:text-base leading-none">
-                    Leave Application Details
-                  </h3>
-                  <p className="text-slate-400 text-[10px] sm:text-xs mt-1 font-mono truncate max-w-[220px] sm:max-w-xs">Reference ID: {selectedLeave.id}</p>
-                </div>
+        <Modal
+          isOpen={!!selectedLeave}
+          onClose={() => { setSelectedLeave(null); setActionStatus(null); }}
+          title="Leave Application Details"
+          subtitle={selectedLeave ? `Reference ID: ${selectedLeave.id}` : undefined}
+          size="xl"
+          footer={
+            selectedLeave && selectedLeave.status === 'PENDING' && !actionStatus ? (
+              <div className="flex gap-3 w-full justify-end">
                 <button
                   type="button"
-                  onClick={() => { setSelectedLeave(null); setActionStatus(null); }}
-                  className="p-1.5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-white"
-                  title="Close (ESC)"
+                  onClick={() => setActionStatus('REJECTED')}
+                  className="px-4 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-600 dark:text-rose-400 text-xs font-bold rounded-xl border border-rose-200 dark:border-rose-800 cursor-pointer"
                 >
-                  <X className="w-5 h-5" />
+                  Reject Application
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActionStatus('APPROVED')}
+                  className="px-4 py-2 bg-[#2E5BFF] hover:bg-blue-600 text-white text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Approve Application
                 </button>
               </div>
-
-              <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 animate-in zoom-in-95 text-slate-800 dark:text-slate-200">
-                {/* Applicant Info */}
-                <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-150">
-                  <div>
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Applicant</span>
-                    <p className="font-extrabold text-slate-900 mt-0.5">
-                      {selectedLeave.student?.user?.name || selectedLeave.teacher?.user?.name || 'Applicant'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Role / Type</span>
-                    <p className="font-extrabold text-slate-800 mt-0.5">
-                      {selectedLeave.student ? 'Parent/Student' : 'Teacher/Staff'}
-                    </p>
-                  </div>
-                  {selectedLeave.student && (
-                    <div className="col-span-2 border-t border-slate-200 pt-2 grid grid-cols-2 gap-2">
-                      <div>
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Class &amp; Section</span>
-                        <p className="font-bold text-slate-800 mt-0.5">
-                          {selectedLeave.student.classSection ? `${selectedLeave.student.classSection.class?.name} - ${selectedLeave.student.classSection.section?.name}` : 'N/A'}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Student ID (Roll No)</span>
-                        <p className="font-bold text-slate-800 mt-0.5">{selectedLeave.student.rollNo || 'N/A'}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Leave Info */}
-                <div className="grid grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Leave Type</span>
-                    <p className="font-extrabold text-blue-600 mt-0.5">{selectedLeave.leaveType} Leave</p>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Applied Date &amp; Time</span>
-                    <p className="font-bold text-slate-850 mt-0.5">
-                      {selectedLeave.createdAt ? new Date(selectedLeave.createdAt).toLocaleString() : 'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">From Date</span>
-                    <p className="font-bold text-slate-800 mt-0.5">{selectedLeave.startDate ? selectedLeave.startDate.split('T')[0] : 'N/A'}</p>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">To Date</span>
-                    <p className="font-bold text-slate-800 mt-0.5">{selectedLeave.endDate ? selectedLeave.endDate.split('T')[0] : 'N/A'}</p>
-                  </div>
-                </div>
-
+            ) : undefined
+          }
+        >
+          {selectedLeave && (
+            <div className="space-y-5">
+              {/* Applicant Info */}
+              <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-150 dark:border-slate-800">
                 <div>
-                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block mb-1">Reason Description</span>
-                  <p className="text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200 leading-relaxed whitespace-pre-wrap">
-                    {selectedLeave.reason}
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Applicant</span>
+                  <p className="font-extrabold text-slate-900 dark:text-white mt-0.5">
+                    {selectedLeave.student?.user?.name || selectedLeave.teacher?.user?.name || 'Applicant'}
                   </p>
                 </div>
-
-                {(selectedLeave.attachment || selectedLeave.attachmentUrl || selectedLeave.certificateUrl) && (
-                  <div>
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block mb-1">Attached Document</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const url = selectedLeave.attachment || selectedLeave.attachmentUrl || selectedLeave.certificateUrl || 'mock_attachment.pdf';
-                        setPreviewFileUrl(url);
-                        setPreviewFileName(`${selectedLeave.leaveType} Leave Certificate`);
-                        setFileLoadError(false);
-                        setImageZoom(1);
-                      }}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:underline bg-blue-50 px-3.5 py-2 rounded-xl border border-blue-100 cursor-pointer"
-                    >
-                      <Paperclip className="w-4 h-4" /> View Medical Certificate / Document
-                    </button>
-                  </div>
-                )}
-
-                {/* Audit Trail Timeline */}
-                {selectedLeave.statusHistories && selectedLeave.statusHistories.length > 0 && (
-                  <div className="border-t border-slate-100 pt-4 space-y-2">
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Audit Trail Logs</span>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {selectedLeave.statusHistories.map((h: any, i: number) => (
-                        <div key={i} className="flex items-start gap-2.5 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-150">
-                          <Clock className="w-3.5 h-3.5 text-[#2E5BFF] shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-slate-800 text-[11px]">
-                              Status changed to <strong className="text-blue-600">{h.currentStatus}</strong> by {h.updatedBy?.name || 'User'} ({h.updatedBy?.role || 'Staff'})
-                            </p>
-                            {h.remarks && <p className="text-slate-500 text-[10px] italic mt-0.5">"{h.remarks}"</p>}
-                            <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{new Date(h.createdAt).toLocaleString()}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Previous Leave Requests */}
-                <div className="border-t border-slate-100 pt-4 space-y-2">
-                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Applicant Leave History</span>
-                  {loadingHistory ? (
-                    <div className="text-xs text-slate-400 italic">Loading previous request logs...</div>
-                  ) : applicantHistory.length <= 1 ? (
-                    <div className="text-xs text-slate-400 italic">No previous leave requests on record.</div>
-                  ) : (
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {applicantHistory.filter(h => h.id !== selectedLeave.id).map((prevLeave, i) => (
-                        <div key={i} className="flex justify-between items-center text-xs bg-slate-50/50 p-2.5 rounded-xl border border-slate-150">
-                          <div>
-                            <span className="font-bold text-slate-700">{prevLeave.leaveType} Leave</span>
-                            <span className="text-[10px] text-slate-400 ml-2 font-mono">
-                              ({prevLeave.startDate?.split('T')[0]} to {prevLeave.endDate?.split('T')[0]})
-                            </span>
-                          </div>
-                          <span className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase ${
-                            prevLeave.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                            prevLeave.status === 'REJECTED' ? 'bg-rose-50 text-rose-600 border-rose-100' :
-                            'bg-amber-50 text-amber-600 border-amber-100'
-                          }`}>
-                            {prevLeave.status}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div>
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Role / Type</span>
+                  <p className="font-extrabold text-slate-800 dark:text-slate-200 mt-0.5">
+                    {selectedLeave.student ? 'Parent/Student' : 'Teacher/Staff'}
+                  </p>
                 </div>
-
-                {/* Action Form */}
-                {actionStatus && (
-                  <form onSubmit={handleProcessAction} className="border-t border-slate-200 pt-4 space-y-3">
-                    <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
-                      {actionStatus === 'APPROVED' ? <CheckCircle className="w-4 h-4 text-[#00875A]" /> : <AlertCircle className="w-4 h-4 text-[#DE350B]" />}
-                      Confirm {actionStatus === 'APPROVED' ? 'Approval' : 'Rejection'}
-                    </h4>
-
+                {selectedLeave.student && (
+                  <div className="col-span-2 border-t border-slate-200 dark:border-slate-800 pt-2 grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                        Remarks / Comments (Optional)
-                      </label>
-                      <textarea
-                        value={remarks}
-                        onChange={(e) => setRemarks(e.target.value)}
-                        placeholder="Enter remarks for applicant..."
-                        rows={3}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-[#2E5BFF]"
-                      />
+                      <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Class &amp; Section</span>
+                      <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                        {selectedLeave.student.classSection ? `${selectedLeave.student.classSection.class?.name} - ${selectedLeave.student.classSection.section?.name}` : 'N/A'}
+                      </p>
                     </div>
-
-                    <div className="flex gap-2 justify-end pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setActionStatus(null)}
-                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isProcessingAction}
-                        className={`px-5 py-2 text-white rounded-xl text-xs font-bold cursor-pointer transition-all shadow-sm ${
-                          actionStatus === 'APPROVED' ? 'bg-[#00875A] hover:bg-green-700' : 'bg-[#DE350B] hover:bg-red-750'
-                        }`}
-                      >
-                        {isProcessingAction ? 'Processing...' : `Confirm ${actionStatus === 'APPROVED' ? 'Approval' : 'Rejection'}`}
-                      </button>
+                    <div>
+                      <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Student ID (Roll No)</span>
+                      <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.student.rollNo || 'N/A'}</p>
                     </div>
-                  </form>
+                  </div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Bulk Action Remarks Modal */}
-        {bulkActionType && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[110] p-4 animate-in fade-in">
-            <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-6">
-              <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5 mb-3">
-                {bulkActionType === 'APPROVED' ? <CheckCircle className="w-4 h-4 text-[#00875A]" /> : <AlertCircle className="w-4 h-4 text-[#DE350B]" />}
-                Bulk Process {selectedIds.length} Leave Request(s)
-              </h4>
-
-              <form onSubmit={handleBulkAction} className="space-y-4">
+              {/* Leave Info */}
+              <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                    Remarks / Comments (Optional)
-                  </label>
-                  <textarea
-                    value={bulkRemarks}
-                    onChange={(e) => setBulkRemarks(e.target.value)}
-                    placeholder="Enter remarks for all selected applicants..."
-                    rows={3}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-[#2E5BFF]"
-                  />
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Leave Type</span>
+                  <p className="font-extrabold text-blue-600 dark:text-blue-400 mt-0.5">{selectedLeave.leaveType} Leave</p>
                 </div>
+                <div>
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Applied Date &amp; Time</span>
+                  <p className="font-bold text-slate-850 dark:text-slate-200 mt-0.5">
+                    {selectedLeave.createdAt ? new Date(selectedLeave.createdAt).toLocaleString() : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">From Date</span>
+                  <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.startDate ? selectedLeave.startDate.split('T')[0] : 'N/A'}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">To Date</span>
+                  <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.endDate ? selectedLeave.endDate.split('T')[0] : 'N/A'}</p>
+                </div>
+              </div>
 
-                <div className="flex gap-2 justify-end">
+              <div>
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block mb-1">Reason Description</span>
+                <p className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-800 leading-relaxed whitespace-pre-wrap">
+                  {selectedLeave.reason}
+                </p>
+              </div>
+
+              {(selectedLeave.attachment || selectedLeave.attachmentUrl || selectedLeave.certificateUrl) && (
+                <div>
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block mb-1">Attached Document</span>
                   <button
                     type="button"
-                    onClick={() => setBulkActionType(null)}
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+                    onClick={() => {
+                      const url = selectedLeave.attachment || selectedLeave.attachmentUrl || selectedLeave.certificateUrl || 'mock_attachment.pdf';
+                      setPreviewFileUrl(url);
+                      setPreviewFileName(`${selectedLeave.leaveType} Leave Certificate`);
+                      setFileLoadError(false);
+                      setImageZoom(1);
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline bg-blue-50 dark:bg-blue-950/40 px-3.5 py-2 rounded-xl border border-blue-100 dark:border-blue-900/40 cursor-pointer"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isProcessingBulk}
-                    className={`px-5 py-2 text-white rounded-xl text-xs font-bold cursor-pointer transition-all shadow-sm ${
-                      bulkActionType === 'APPROVED' ? 'bg-[#00875A] hover:bg-green-700' : 'bg-[#DE350B] hover:bg-red-750'
-                    }`}
-                  >
-                    {isProcessingBulk ? 'Processing...' : `Confirm Bulk ${bulkActionType === 'APPROVED' ? 'Approval' : 'Rejection'}`}
+                    <Paperclip className="w-4 h-4" /> View Medical Certificate / Document
                   </button>
                 </div>
-              </form>
+              )}
+
+              {/* Audit Trail Timeline */}
+              {selectedLeave.statusHistories && selectedLeave.statusHistories.length > 0 && (
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-2">
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Audit Trail Logs</span>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {selectedLeave.statusHistories.map((h: any, i: number) => (
+                      <div key={i} className="flex items-start gap-2.5 text-xs bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800">
+                        <Clock className="w-3.5 h-3.5 text-[#2E5BFF] shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">
+                            Status changed to <strong className="text-blue-600 dark:text-blue-400">{h.currentStatus}</strong> by {h.updatedBy?.name || 'User'} ({h.updatedBy?.role || 'Staff'})
+                          </p>
+                          {h.remarks && <p className="text-slate-500 dark:text-slate-400 text-[10px] italic mt-0.5">"{h.remarks}"</p>}
+                          <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{new Date(h.createdAt).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Previous Leave Requests */}
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-2">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Applicant Leave History</span>
+                {loadingHistory ? (
+                  <div className="text-xs text-slate-400 italic">Loading previous request logs...</div>
+                ) : applicantHistory.length <= 1 ? (
+                  <div className="text-xs text-slate-400 italic">No previous leave requests on record.</div>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {applicantHistory.filter(h => h.id !== selectedLeave.id).map((prevLeave, i) => (
+                      <div key={i} className="flex justify-between items-center text-xs bg-slate-50/50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800">
+                        <div>
+                          <span className="font-bold text-slate-700 dark:text-slate-300">{prevLeave.leaveType} Leave</span>
+                          <span className="text-[10px] text-slate-400 ml-2 font-mono">
+                            ({prevLeave.startDate?.split('T')[0]} to {prevLeave.endDate?.split('T')[0]})
+                          </span>
+                        </div>
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase ${
+                          prevLeave.status === 'APPROVED' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/40' :
+                          prevLeave.status === 'REJECTED' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-100 dark:border-rose-900/40' :
+                          'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/40'
+                        }`}>
+                          {prevLeave.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Form */}
+              {actionStatus && (
+                <form onSubmit={handleProcessAction} className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-3">
+                  <h4 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                    {actionStatus === 'APPROVED' ? <CheckCircle className="w-4 h-4 text-[#00875A]" /> : <AlertCircle className="w-4 h-4 text-[#DE350B]" />}
+                    Confirm {actionStatus === 'APPROVED' ? 'Approval' : 'Rejection'}
+                  </h4>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                      Remarks / Comments (Optional)
+                    </label>
+                    <textarea
+                      value={remarks}
+                      onChange={(e) => setRemarks(e.target.value)}
+                      placeholder="Enter remarks for applicant..."
+                      rows={3}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-[#2E5BFF]"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setActionStatus(null)}
+                      className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isProcessingAction}
+                      className={`px-5 py-2 text-white rounded-xl text-xs font-bold cursor-pointer transition-all shadow-sm ${
+                        actionStatus === 'APPROVED' ? 'bg-[#00875A] hover:bg-green-700' : 'bg-[#DE350B] hover:bg-red-750'
+                      }`}
+                    >
+                      {isProcessingAction ? 'Processing...' : `Confirm ${actionStatus === 'APPROVED' ? 'Approval' : 'Rejection'}`}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        </Modal>
+
+        {/* Bulk Action Remarks Modal */}
+        <Modal
+          isOpen={!!bulkActionType}
+          onClose={() => setBulkActionType(null)}
+          title={`Bulk Process ${selectedIds.length} Leave Request(s)`}
+          subtitle={bulkActionType === 'APPROVED' ? 'Approve Selected Applications' : 'Reject Selected Applications'}
+          size="md"
+        >
+          <form onSubmit={handleBulkAction} className="space-y-4">
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Remarks / Comments (Optional)
+              </label>
+              <textarea
+                value={bulkRemarks}
+                onChange={(e) => setBulkRemarks(e.target.value)}
+                placeholder="Enter remarks for all selected applicants..."
+                rows={3}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-[#2E5BFF]"
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setBulkActionType(null)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isProcessingBulk}
+                className={`px-5 py-2 text-white rounded-xl text-xs font-bold cursor-pointer transition-all shadow-sm ${
+                  bulkActionType === 'APPROVED' ? 'bg-[#00875A] hover:bg-green-700' : 'bg-[#DE350B] hover:bg-red-750'
+                }`}
+              >
+                {isProcessingBulk ? 'Processing...' : `Confirm Bulk ${bulkActionType === 'APPROVED' ? 'Approval' : 'Rejection'}`}
+              </button>
+            </div>
+          </form>
+        </Modal>
       </div>
     ) : (
       <div className="space-y-6 max-w-7xl mx-auto pb-20 font-sans text-slate-800">
@@ -1218,84 +1217,65 @@ function LeaveMgmtContent() {
       )}
 
       {/* Details & Action Modal for Staff view */}
-      {selectedLeave && (
-        <div
-          className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[9990] p-4 sm:p-6 animate-in fade-in"
-          onClick={() => { setSelectedLeave(null); }}
-        >
-          <div
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden shadow-2xl relative my-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
+      <Modal
+        isOpen={!!selectedLeave}
+        onClose={() => setSelectedLeave(null)}
+        title="Leave Application Details"
+        subtitle={selectedLeave ? `Reference ID: ${selectedLeave.id}` : undefined}
+        size="lg"
+      >
+        {selectedLeave && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-4 text-xs">
               <div>
-                <h3 className="font-extrabold text-sm sm:text-base leading-none">
-                  Leave Application Details
-                </h3>
-                <p className="text-slate-400 text-[10px] sm:text-xs mt-1 font-mono truncate max-w-[220px] sm:max-w-xs">Reference ID: {selectedLeave.id}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setSelectedLeave(null); }}
-                className="p-1.5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-white"
-                title="Close (ESC)"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 animate-in zoom-in-95 text-slate-800 dark:text-slate-200">
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div>
-                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Applicant</span>
-                  <p className="font-extrabold text-slate-900 mt-0.5">
-                    {selectedLeave.student?.user?.name || selectedLeave.teacher?.user?.name || 'Applicant'}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Type</span>
-                  <p className="font-extrabold text-blue-600 mt-0.5">{selectedLeave.leaveType} Leave</p>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">From Date</span>
-                  <p className="font-bold text-slate-800 mt-0.5">{selectedLeave.startDate ? selectedLeave.startDate.split('T')[0] : 'N/A'}</p>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">To Date</span>
-                  <p className="font-bold text-slate-800 mt-0.5">{selectedLeave.endDate ? selectedLeave.endDate.split('T')[0] : 'N/A'}</p>
-                </div>
-              </div>
-
-              <div>
-                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block mb-1">Reason Description</span>
-                <p className="text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200 leading-relaxed whitespace-pre-wrap">
-                  {selectedLeave.reason}
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Applicant</span>
+                <p className="font-extrabold text-slate-900 dark:text-white mt-0.5">
+                  {selectedLeave.student?.user?.name || selectedLeave.teacher?.user?.name || 'Applicant'}
                 </p>
               </div>
-
-              {selectedLeave.statusHistories && selectedLeave.statusHistories.length > 0 && (
-                <div className="border-t border-slate-100 pt-4 space-y-2">
-                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Audit Trail History</span>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {selectedLeave.statusHistories.map((h: any, i: number) => (
-                      <div key={i} className="flex items-start gap-2.5 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-150">
-                        <Clock className="w-3.5 h-3.5 text-[#2E5BFF] shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-slate-800 text-[11px]">
-                            Status changed to <strong className="text-blue-600">{h.currentStatus}</strong> by {h.updatedBy?.name || 'User'} ({h.updatedBy?.role || 'Staff'})
-                          </p>
-                          {h.remarks && <p className="text-slate-500 text-[10px] italic mt-0.5">"{h.remarks}"</p>}
-                          <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{new Date(h.createdAt).toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div>
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Type</span>
+                <p className="font-extrabold text-blue-600 dark:text-blue-400 mt-0.5">{selectedLeave.leaveType} Leave</p>
+              </div>
+              <div>
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">From Date</span>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.startDate ? selectedLeave.startDate.split('T')[0] : 'N/A'}</p>
+              </div>
+              <div>
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">To Date</span>
+                <p className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">{selectedLeave.endDate ? selectedLeave.endDate.split('T')[0] : 'N/A'}</p>
+              </div>
             </div>
+
+            <div>
+              <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block mb-1">Reason Description</span>
+              <p className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-800 leading-relaxed whitespace-pre-wrap">
+                {selectedLeave.reason}
+              </p>
+            </div>
+
+            {selectedLeave.statusHistories && selectedLeave.statusHistories.length > 0 && (
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-4 space-y-2">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Audit Trail History</span>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {selectedLeave.statusHistories.map((h: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2.5 text-xs bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-slate-150 dark:border-slate-800">
+                      <Clock className="w-3.5 h-3.5 text-[#2E5BFF] shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-800 dark:text-slate-200 text-[11px]">
+                          Status changed to <strong className="text-blue-600 dark:text-blue-400">{h.currentStatus}</strong> by {h.updatedBy?.name || 'User'} ({h.updatedBy?.role || 'Staff'})
+                        </p>
+                        {h.remarks && <p className="text-slate-500 dark:text-slate-400 text-[10px] italic mt-0.5">"{h.remarks}"</p>}
+                        <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{new Date(h.createdAt).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Apply Leave Modal for Staff (teacher view) */}
       <Drawer
@@ -1367,141 +1347,113 @@ function LeaveMgmtContent() {
       )}
 
       {/* In-App Leave Attachment Preview Modal */}
-      {previewFileUrl && (
-        <div
-          className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 sm:p-6 animate-in fade-in"
-          onClick={() => setPreviewFileUrl(null)}
-        >
-          <div
-            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl relative"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="p-4 sm:p-5 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
-                  <Paperclip className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm sm:text-base leading-tight">
-                    Leave Attachment Preview
-                  </h3>
-                  <p className="text-[11px] text-slate-400 font-medium truncate max-w-xs sm:max-w-md mt-0.5">
-                    {previewFileName}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewFileUrl}
-                  download
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Download className="w-4 h-4" /> Download
-                </a>
+      <Modal
+        isOpen={!!previewFileUrl}
+        onClose={() => setPreviewFileUrl(null)}
+        title="Leave Attachment Preview"
+        subtitle={previewFileName}
+        size="4xl"
+        footer={
+          previewFileUrl ? (
+            <a
+              href={previewFileUrl}
+              download
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Download className="w-4 h-4" /> Download File
+            </a>
+          ) : undefined
+        }
+      >
+        <div className="flex items-center justify-center min-h-[400px]">
+          {fileLoadError ? (
+            <div className="text-center p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-md space-y-3">
+              <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
+              <h4 className="font-bold text-slate-800 dark:text-white text-sm">Attachment Unavailable</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                The attached file could not be loaded or is missing from storage.
+              </p>
+              <a
+                href={previewFileUrl || '#'}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#2E5BFF] text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors"
+              >
+                <Download className="w-4 h-4" /> Try Direct Download
+              </a>
+            </div>
+          ) : getFileType(previewFileUrl || '') === 'pdf' ? (
+            <iframe
+              src={previewFileUrl === 'mock_attachment.pdf' ? 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' : previewFileUrl || undefined}
+              className="w-full h-[65vh] rounded-xl border border-slate-200 dark:border-slate-800 bg-white"
+              onError={() => setFileLoadError(true)}
+            />
+          ) : getFileType(previewFileUrl || '') === 'image' ? (
+            <div className="flex flex-col items-center justify-center w-full space-y-4">
+              {/* Zoom Toolbar */}
+              <div className="flex items-center gap-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <button
-                  onClick={() => setPreviewFileUrl(null)}
-                  className="p-2 hover:bg-white/10 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-white"
-                  title="Close Preview (ESC)"
+                  type="button"
+                  onClick={() => setImageZoom(z => Math.max(0.5, z - 0.2))}
+                  className="px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
                 >
-                  <X className="w-5 h-5" />
+                  - Zoom Out
+                </button>
+                <span className="text-xs font-mono font-bold text-slate-500">{Math.round(imageZoom * 100)}%</span>
+                <button
+                  type="button"
+                  onClick={() => setImageZoom(z => Math.min(3, z + 0.2))}
+                  className="px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
+                >
+                  + Zoom In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImageZoom(1)}
+                  className="px-2.5 py-1 text-xs text-blue-600 font-bold hover:bg-blue-50 dark:hover:bg-blue-950 rounded-lg cursor-pointer"
+                >
+                  Reset
                 </button>
               </div>
-            </div>
 
-            {/* Modal Content Body */}
-            <div className="flex-1 overflow-auto p-4 bg-slate-100 dark:bg-slate-950 flex items-center justify-center min-h-[400px]">
-              {fileLoadError ? (
-                <div className="text-center p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-md space-y-3">
-                  <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
-                  <h4 className="font-bold text-slate-800 dark:text-white text-sm">Attachment Unavailable</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    The attached file could not be loaded or is missing from storage.
-                  </p>
-                  <a
-                    href={previewFileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#2E5BFF] text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors"
-                  >
-                    <Download className="w-4 h-4" /> Try Direct Download
-                  </a>
-                </div>
-              ) : getFileType(previewFileUrl) === 'pdf' ? (
-                <iframe
-                  src={previewFileUrl === 'mock_attachment.pdf' ? 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf' : previewFileUrl}
-                  className="w-full h-[65vh] rounded-xl border border-slate-200 dark:border-slate-800 bg-white"
+              <div className="max-h-[60vh] overflow-auto flex items-center justify-center">
+                <img
+                  src={previewFileUrl || undefined}
+                  alt="Leave Attachment Certificate"
+                  style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center' }}
+                  className="max-h-[55vh] w-auto rounded-xl shadow-md transition-transform duration-200 object-contain"
                   onError={() => setFileLoadError(true)}
                 />
-              ) : getFileType(previewFileUrl) === 'image' ? (
-                <div className="flex flex-col items-center justify-center w-full space-y-4">
-                  {/* Zoom Toolbar */}
-                  <div className="flex items-center gap-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => setImageZoom(z => Math.max(0.5, z - 0.2))}
-                      className="px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
-                    >
-                      - Zoom Out
-                    </button>
-                    <span className="text-xs font-mono font-bold text-slate-500">{Math.round(imageZoom * 100)}%</span>
-                    <button
-                      type="button"
-                      onClick={() => setImageZoom(z => Math.min(3, z + 0.2))}
-                      className="px-2.5 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
-                    >
-                      + Zoom In
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setImageZoom(1)}
-                      className="px-2.5 py-1 text-xs text-blue-600 font-bold hover:bg-blue-50 dark:hover:bg-blue-950 rounded-lg cursor-pointer"
-                    >
-                      Reset
-                    </button>
-                  </div>
-
-                  <div className="max-h-[60vh] overflow-auto flex items-center justify-center">
-                    <img
-                      src={previewFileUrl}
-                      alt="Leave Attachment Certificate"
-                      style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center' }}
-                      className="max-h-[55vh] w-auto rounded-xl shadow-md transition-transform duration-200 object-contain"
-                      onError={() => setFileLoadError(true)}
-                    />
-                  </div>
-                </div>
-              ) : getFileType(previewFileUrl) === 'text' ? (
-                <div className="w-full h-[60vh] p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-auto font-mono text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
-                  Attached Document Content
-                </div>
-              ) : (
-                <div className="text-center p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-md space-y-3">
-                  <Paperclip className="w-10 h-10 text-slate-400 mx-auto" />
-                  <h4 className="font-bold text-slate-800 dark:text-white text-sm">
-                    Preview is not available for this file type.
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Please download the file to view its content on your device.
-                  </p>
-                  <a
-                    href={previewFileUrl}
-                    download
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#2E5BFF] text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors shadow-sm"
-                  >
-                    <Download className="w-4 h-4" /> Download File
-                  </a>
-                </div>
-              )}
+              </div>
             </div>
-          </div>
+          ) : getFileType(previewFileUrl || '') === 'text' ? (
+            <div className="w-full h-[60vh] p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-auto font-mono text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
+              Attached Document Content
+            </div>
+          ) : (
+            <div className="text-center p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 max-w-md space-y-3">
+              <Paperclip className="w-10 h-10 text-slate-400 mx-auto" />
+              <h4 className="font-bold text-slate-800 dark:text-white text-sm">
+                Preview is not available for this file type.
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Please download the file to view its content on your device.
+              </p>
+              <a
+                href={previewFileUrl || '#'}
+                download
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#2E5BFF] text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors shadow-sm"
+              >
+                <Download className="w-4 h-4" /> Download File
+              </a>
+            </div>
+          )}
         </div>
-      )}
+      </Modal>
     </>
   );
 }
