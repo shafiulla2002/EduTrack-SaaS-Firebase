@@ -105,6 +105,27 @@ function LeaveMgmtContent() {
     }
   }, [previewFileUrl]);
 
+  // Lock body scroll & listen for Escape key when selectedLeave details modal is open
+  useEffect(() => {
+    if (selectedLeave) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          setSelectedLeave(null);
+          setActionStatus(null);
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [selectedLeave]);
+
   const getFileType = (url: string | null) => {
     if (!url) return 'unsupported';
     const lower = url.toLowerCase();
@@ -768,24 +789,32 @@ function LeaveMgmtContent() {
 
         {/* Leave Details Modal with Applicant History and Audit Trail */}
         {selectedLeave && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4 animate-in fade-in">
-            <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl space-y-0">
-              <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+          <div
+            className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[9990] p-4 sm:p-6 animate-in fade-in"
+            onClick={() => { setSelectedLeave(null); setActionStatus(null); }}
+          >
+            <div
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-xl max-h-[88vh] flex flex-col overflow-hidden shadow-2xl relative my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
                 <div>
-                  <h3 className="font-extrabold text-base leading-none">
+                  <h3 className="font-extrabold text-sm sm:text-base leading-none">
                     Leave Application Details
                   </h3>
-                  <p className="text-slate-400 text-xs mt-1">Reference ID: {selectedLeave.id}</p>
+                  <p className="text-slate-400 text-[10px] sm:text-xs mt-1 font-mono truncate max-w-[220px] sm:max-w-xs">Reference ID: {selectedLeave.id}</p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => { setSelectedLeave(null); setActionStatus(null); }}
                   className="p-1.5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-white"
+                  title="Close (ESC)"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto animate-in zoom-in-95">
+              <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 animate-in zoom-in-95 text-slate-800 dark:text-slate-200">
                 {/* Applicant Info */}
                 <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-150">
                   <div>
@@ -1190,24 +1219,32 @@ function LeaveMgmtContent() {
 
       {/* Details & Action Modal for Staff view */}
       {selectedLeave && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4 animate-in fade-in">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl space-y-0">
-            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+        <div
+          className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[9990] p-4 sm:p-6 animate-in fade-in"
+          onClick={() => { setSelectedLeave(null); }}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden shadow-2xl relative my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 sm:p-6 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
               <div>
-                <h3 className="font-extrabold text-base leading-none">
+                <h3 className="font-extrabold text-sm sm:text-base leading-none">
                   Leave Application Details
                 </h3>
-                <p className="text-slate-400 text-xs mt-1">Reference ID: {selectedLeave.id}</p>
+                <p className="text-slate-400 text-[10px] sm:text-xs mt-1 font-mono truncate max-w-[220px] sm:max-w-xs">Reference ID: {selectedLeave.id}</p>
               </div>
               <button
+                type="button"
                 onClick={() => { setSelectedLeave(null); }}
                 className="p-1.5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-white"
+                title="Close (ESC)"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto animate-in zoom-in-95">
+            <div className="p-4 sm:p-6 space-y-5 overflow-y-auto flex-1 animate-in zoom-in-95 text-slate-800 dark:text-slate-200">
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Applicant</span>
