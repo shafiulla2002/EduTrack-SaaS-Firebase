@@ -3,7 +3,34 @@
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
 import { api } from '@/lib/api';
-import { BookOpen, Calendar, Paperclip, CheckCircle, Clock, Upload, X, ShieldAlert, Loader2 } from 'lucide-react';
+import {
+  BookOpen,
+  Calendar,
+  Paperclip,
+  CheckCircle,
+  Clock,
+  Upload,
+  X,
+  ShieldAlert,
+  Loader2,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Download,
+  Eye,
+  FileText,
+  File,
+  AlertCircle,
+} from 'lucide-react';
+
+interface PreviewState {
+  url: string;
+  blobUrl?: string;
+  fileName: string;
+  category: 'pdf' | 'image' | 'text' | 'unsupported';
+  extension: string;
+  rawText?: string;
+}
 
 export default function HomeworkPage() {
   const { selectedChild } = useParent();
@@ -15,6 +42,36 @@ export default function HomeworkPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [message, setMessage] = useState('');
+
+  // Preview Modal States
+  const [previewAttachment, setPreviewAttachment] = useState<PreviewState | null>(null);
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
+
+  // Lock body scroll and ESC key listener when preview modal is active
+  useEffect(() => {
+    if (previewAttachment) {
+      document.body.style.overflow = 'hidden';
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          closePreview();
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [previewAttachment]);
+
+  const closePreview = () => {
+    if (previewAttachment?.blobUrl) {
+      URL.revokeObjectURL(previewAttachment.blobUrl);
+    }
+    setPreviewAttachment(null);
+    setZoomLevel(100);
+    document.body.style.overflow = '';
+  };
 
   const fetchHomework = async (childId: string) => {
     try {
@@ -93,32 +150,79 @@ export default function HomeworkPage() {
     return `${day}/${month}/${year}`;
   };
 
-  const handleOpenAttachment = (att: string) => {
+  const handleOpenPreview = (att: string, index: number) => {
     if (!att || att === '#') return;
+
+    let category: 'pdf' | 'image' | 'text' | 'unsupported' = 'unsupported';
+    let extension = 'file';
+    let blobUrl: string | undefined = undefined;
+    let rawText: string | undefined = undefined;
+
     if (att.startsWith('data:')) {
+      const mimeMatch = att.match(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-+.]+);base64,/);
+      const mime = mimeMatch ? mimeMatch[1].toLowerCase() : '';
+      extension = mime.split('/')[1] || 'file';
+
       try {
         const parts = att.split(';base64,');
         const contentType = parts[0].split(':')[1] || 'application/octet-stream';
         const raw = window.atob(parts[1]);
-        const rawLength = raw.length;
-        const uInt8Array = new Uint8Array(rawLength);
-        for (let i = 0; i < rawLength; ++i) {
+        const uInt8Array = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; ++i) {
           uInt8Array[i] = raw.charCodeAt(i);
         }
         const blob = new Blob([uInt8Array], { type: contentType });
-        const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
-      } catch (e) {
-        console.error('Error opening base64 attachment:', e);
-        const win = window.open();
-        if (win) {
-          win.document.write(`<iframe src="${att}" style="width:100%;height:100%;border:none;"></iframe>`);
+        blobUrl = URL.createObjectURL(blob);
+
+        if (mime.includes('pdf')) {
+          category = 'pdf';
+        } else if (mime.includes('image')) {
+          category = 'image';
+        } else if (mime.includes('text') || mime.includes('json') || mime.includes('xml')) {
+          category = 'text';
+          rawText = raw;
+        } else {
+          category = 'unsupported';
         }
+      } catch (err) {
+        console.error('Failed to parse base64 file:', err);
       }
     } else {
-      const url = att.startsWith('http') || att.startsWith('/uploads') ? att : `http://${att}`;
-      window.open(url, '_blank');
+      const cleanUrl = att.split('?')[0].toLowerCase();
+      if (cleanUrl.endsWith('.pdf')) {
+        category = 'pdf';
+        extension = 'pdf';
+      } else if (/\.(jpg|jpeg|png|webp|gif|svg)$/i.test(cleanUrl)) {
+        category = 'image';
+        extension = cleanUrl.split('.').pop() || 'image';
+      } else if (/\.(txt|csv|json|log|md)$/i.test(cleanUrl)) {
+        category = 'text';
+        extension = cleanUrl.split('.').pop() || 'txt';
+      } else {
+        category = 'unsupported';
+        extension = cleanUrl.split('.').pop() || 'file';
+      }
     }
+
+    setZoomLevel(100);
+    setPreviewAttachment({
+      url: att,
+      blobUrl,
+      fileName: `Attachment File ${index + 1}`,
+      category,
+      extension,
+      rawText,
+    });
+  };
+
+  const handleDownloadAttachment = (preview: PreviewState) => {
+    const targetUrl = preview.blobUrl || (preview.url.startsWith('http') || preview.url.startsWith('/uploads') ? preview.url : `http://${preview.url}`);
+    const a = document.createElement('a');
+    a.href = targetUrl;
+    a.download = `${preview.fileName.replace(/\s+/g, '_')}.${preview.extension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   if (!selectedChild) {
@@ -192,7 +296,7 @@ export default function HomeworkPage() {
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => handleOpenAttachment(att)}
+                        onClick={() => handleOpenPreview(att, idx)}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-600 hover:text-[#2E5BFF] hover:border-[#2E5BFF]/40 hover:bg-blue-50/40 transition-all cursor-pointer font-semibold"
                       >
                         <Paperclip className="w-3 h-3 text-[#2E5BFF]" />
@@ -307,6 +411,139 @@ export default function HomeworkPage() {
                 )}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Homework Attachment Preview Modal */}
+      {previewAttachment && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-6 animate-fade-in"
+          onClick={closePreview}
+        >
+          <div
+            className="relative w-full max-w-5xl h-[88vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-scale-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header Bar */}
+            <div className="flex flex-wrap justify-between items-center px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 gap-3 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 bg-blue-50 dark:bg-blue-950/60 border border-blue-100 dark:border-blue-900/40 rounded-xl flex items-center justify-center text-[#2E5BFF] shrink-0">
+                  {previewAttachment.category === 'pdf' ? (
+                    <FileText className="w-5 h-5" />
+                  ) : previewAttachment.category === 'image' ? (
+                    <Eye className="w-5 h-5" />
+                  ) : previewAttachment.category === 'text' ? (
+                    <File className="w-5 h-5" />
+                  ) : (
+                    <Paperclip className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                    {previewAttachment.fileName}
+                  </h3>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider block">
+                    Type: {previewAttachment.category.toUpperCase()} ({previewAttachment.extension})
+                  </span>
+                </div>
+              </div>
+
+              {/* Image Controls */}
+              {previewAttachment.category === 'image' && (
+                <div className="flex items-center gap-1.5 bg-slate-200/60 dark:bg-slate-800/80 px-3 py-1.5 rounded-2xl border border-slate-300/40 dark:border-slate-700/40 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <button
+                    onClick={() => setZoomLevel((z) => Math.max(50, z - 25))}
+                    className="p-1 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-700 transition-all cursor-pointer"
+                    title="Zoom Out"
+                  >
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="min-w-[40px] text-center text-[11px]">{zoomLevel}%</span>
+                  <button
+                    onClick={() => setZoomLevel((z) => Math.min(300, z + 25))}
+                    className="p-1 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-700 transition-all cursor-pointer"
+                    title="Zoom In"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setZoomLevel(100)}
+                    className="p-1 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-700 transition-all cursor-pointer ml-1 text-slate-500 dark:text-slate-400"
+                    title="Reset Zoom"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleDownloadAttachment(previewAttachment)}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#2E5BFF] text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download
+                </button>
+
+                <button
+                  onClick={closePreview}
+                  className="p-1.5 rounded-xl bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all cursor-pointer"
+                  title="Close Preview (ESC)"
+                >
+                  <X className="w-4.5 h-4.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body Container */}
+            <div className="flex-1 bg-slate-900/90 dark:bg-slate-950 flex items-center justify-center p-4 overflow-auto relative">
+              {previewAttachment.category === 'pdf' ? (
+                <iframe
+                  src={previewAttachment.blobUrl || (previewAttachment.url.startsWith('http') || previewAttachment.url.startsWith('/uploads') ? previewAttachment.url : `http://${previewAttachment.url}`)}
+                  className="w-full h-full border-0 rounded-2xl bg-white shadow-md"
+                  title={previewAttachment.fileName}
+                />
+              ) : previewAttachment.category === 'image' ? (
+                <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
+                  <img
+                    src={previewAttachment.blobUrl || previewAttachment.url}
+                    alt={previewAttachment.fileName}
+                    style={{
+                      transform: `scale(${zoomLevel / 100})`,
+                      transition: 'transform 0.15s ease-out',
+                    }}
+                    className="max-w-full max-h-full object-contain rounded-2xl shadow-xl border border-slate-700/50"
+                  />
+                </div>
+              ) : previewAttachment.category === 'text' ? (
+                <pre className="w-full h-full p-6 bg-slate-950 text-slate-100 rounded-2xl overflow-auto text-xs font-mono whitespace-pre-wrap border border-slate-800">
+                  {previewAttachment.rawText || 'Text file content unavailable for inline display.'}
+                </pre>
+              ) : (
+                /* Unsupported File Preview Card */
+                <div className="text-center p-8 max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl space-y-4">
+                  <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/40 text-amber-600 rounded-2xl flex items-center justify-center mx-auto">
+                    <AlertCircle className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-slate-100 text-base">Preview Not Available</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-light leading-relaxed">
+                      Inline preview is not supported for <strong className="font-semibold text-slate-700 dark:text-slate-200">.{previewAttachment.extension.toUpperCase()}</strong> files.
+                      Please download the attachment to view it on your device.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDownloadAttachment(previewAttachment)}
+                    className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl font-semibold text-xs transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download File
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
