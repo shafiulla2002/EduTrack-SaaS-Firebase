@@ -57,6 +57,25 @@ export default function HomeworkPage() {
     loadData();
   }, []);
 
+  // Lock body scroll when WhatsApp Share Modal is open
+  useEffect(() => {
+    if (showShareModal) {
+      const originalOverflow = document.body.style.overflow;
+      const originalPaddingRight = document.body.style.paddingRight;
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      
+      document.body.style.overflow = 'hidden';
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+      
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.paddingRight = originalPaddingRight;
+      };
+    }
+  }, [showShareModal]);
+
   const openCreateModal = () => {
     setEditingHomework(null);
     setTitle('');
@@ -411,7 +430,7 @@ Thank you.`;
 
       {/* WhatsApp Share Dialog / Modal */}
       {showShareModal && hwToShare && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4 animate-in">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-in">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
             
             {/* Header */}
