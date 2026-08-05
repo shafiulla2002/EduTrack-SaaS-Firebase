@@ -1,0 +1,29 @@
+# Ignore heavy archive files
+*.zip
+*.7z
+*.rar
+*.tar.gz
+*.pdf
+*.pptx
+*.xlsx
+
+# Ignore local dependency folders
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+.next/
+frontend/.next/
+backend/dist/
+dist/
+
+# Ignore script and temp files
+.temp/
+*.log
+generate_report.py
+generate_styled_teacher_portal_qa.js
+generate_teacher_portal_test_cases.js
+EduTrack_PPT_Generator.py
+
+# Ignore local env files
+.env*.local
+.env

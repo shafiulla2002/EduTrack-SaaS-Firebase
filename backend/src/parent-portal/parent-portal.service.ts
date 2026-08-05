@@ -339,6 +339,105 @@ export class ParentPortalService {
       take: 5,
     });
 
+    // Fetch all parent links for this student to get all details
+    const parentLinks = await this.prisma.parentStudent.findMany({
+      where: { studentId },
+      include: {
+        parent: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    const currentParentLink = parentLinks.find(pl => pl.parent.userId === userId);
+    const relationship = currentParentLink?.relationship || 'Guardian';
+
+    const guardianLink = parentLinks.find(pl => pl.relationship.toLowerCase() === 'guardian');
+    const guardianName = guardianLink?.parent?.user?.name || null;
+    const guardianPhone = student.guardianPhone || guardianLink?.parent?.user?.phone || null;
+
+    const primaryLink = parentLinks.find(pl => pl.isPrimary) || currentParentLink || parentLinks[0];
+    const primaryContactRole = primaryLink?.relationship || 'Guardian';
+    const primaryContactPhone = primaryLink?.parent?.user?.phone || null;
+
+    let classAdvisor = null;
+    let subjectTeachers = [];
+
+    if (student.classSectionId) {
+      const classSection = await this.prisma.classSection.findUnique({
+        where: { id: student.classSectionId },
+        include: {
+          teacher: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      });
+
+      if (classSection?.teacher) {
+        classAdvisor = {
+          name: classSection.teacher.user.name,
+          employeeId: classSection.teacher.employeeId || 'N/A',
+          email: classSection.teacher.user.email || '',
+          phone: classSection.teacher.user.phone || classSection.teacher.whatsappNumber || '',
+          avatarUrl: classSection.teacher.user.avatarUrl || null,
+          designation: classSection.teacher.designation || 'Class Advisor',
+          department: classSection.teacher.designation ? (classSection.teacher.designation.includes('Department') ? classSection.teacher.designation : `${classSection.teacher.designation} Department`) : 'Academics',
+        };
+      }
+
+      const assignments = await this.prisma.teacherAssignment.findMany({
+        where: { classSectionId: student.classSectionId },
+        include: {
+          subject: true,
+          teacher: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      });
+
+      const teacherMap = new Map<string, {
+        name: string;
+        employeeId: string;
+        email: string;
+        phone: string;
+        avatarUrl: string | null;
+        designation: string;
+        department: string;
+        subjects: string[];
+      }>();
+
+      for (const a of assignments) {
+        const tId = a.teacher.id;
+        const subjectName = a.subject.name;
+
+        if (teacherMap.has(tId)) {
+          const tData = teacherMap.get(tId)!;
+          if (!tData.subjects.includes(subjectName)) {
+            tData.subjects.push(subjectName);
+          }
+        } else {
+          teacherMap.set(tId, {
+            name: a.teacher.user.name,
+            employeeId: a.teacher.employeeId || 'N/A',
+            email: a.teacher.user.email || '',
+            phone: a.teacher.user.phone || a.teacher.whatsappNumber || '',
+            avatarUrl: a.teacher.user.avatarUrl || null,
+            designation: a.teacher.designation || 'Subject Teacher',
+            department: a.teacher.designation ? (a.teacher.designation.includes('Department') ? a.teacher.designation : `${a.teacher.designation} Department`) : 'Academics',
+            subjects: [subjectName],
+          });
+        }
+      }
+
+      subjectTeachers = Array.from(teacherMap.values());
+    }
+
     return {
       student: {
         id: student.id,
@@ -348,6 +447,15 @@ export class ParentPortalService {
         section: student.classSection?.section.name || 'N/A',
         avatarUrl: student.user.avatarUrl || student.profilePhotoUrl,
         classSectionId: student.classSectionId,
+        fatherName: student.fatherName || 'N/A',
+        motherName: student.motherName || 'N/A',
+        fatherPhone: student.fatherPhone || 'N/A',
+        motherPhone: student.motherPhone || 'N/A',
+        guardianName: guardianName || 'N/A',
+        guardianPhone: guardianPhone || 'N/A',
+        emergencyPhone: currentParentLink?.parent?.emergencyContact || 'N/A',
+        primaryContactPhone: primaryContactPhone || 'N/A',
+        primaryContactRole: primaryContactRole,
       },
       metrics: {
         attendancePercentage,
@@ -360,6 +468,8 @@ export class ParentPortalService {
       },
       upcomingExams,
       recentMarks,
+      classAdvisor,
+      subjectTeachers,
     };
   }
 

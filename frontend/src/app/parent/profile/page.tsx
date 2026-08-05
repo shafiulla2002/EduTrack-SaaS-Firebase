@@ -113,62 +113,196 @@ export default function StudentProfilePage() {
 
         {/* Parent Details */}
         <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
-          <h3 className="font-bold text-sm text-slate-800 border-b border-slate-105 border-slate-100 pb-2 flex items-center gap-2">
+          <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
             <Heart className="w-4 h-4 text-rose-500" />
             Guardian Details
           </h3>
           <div className="space-y-3.5 text-xs text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Father's Name</span>
-              <strong className="text-slate-700">{selectedChild.fatherName}</strong>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Mother's Name</span>
-              <strong className="text-slate-700">{selectedChild.motherName}</strong>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Emergency Phone</span>
-              <strong className="text-slate-700">+91 98867 54321</strong>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Primary Contact Role</span>
-              <strong className="text-indigo-600 uppercase tracking-wider text-[10px] font-bold">Primary Guardian</strong>
-            </div>
+            {profileData?.student?.fatherName && profileData.student.fatherName !== 'N/A' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Father's Name</span>
+                <strong className="text-slate-700">{profileData.student.fatherName}</strong>
+              </div>
+            )}
+            {profileData?.student?.fatherPhone && profileData.student.fatherPhone !== 'N/A' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Father's Phone</span>
+                <strong className="text-slate-700">{profileData.student.fatherPhone}</strong>
+              </div>
+            )}
+            {profileData?.student?.motherName && profileData.student.motherName !== 'N/A' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Mother's Name</span>
+                <strong className="text-slate-700">{profileData.student.motherName}</strong>
+              </div>
+            )}
+            {profileData?.student?.motherPhone && profileData.student.motherPhone !== 'N/A' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Mother's Phone</span>
+                <strong className="text-slate-700">{profileData.student.motherPhone}</strong>
+              </div>
+            )}
+            {profileData?.student?.guardianName && profileData.student.guardianName !== 'N/A' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Guardian Name</span>
+                <strong className="text-slate-700">{profileData.student.guardianName}</strong>
+              </div>
+            )}
+            {profileData?.student?.guardianPhone && profileData.student.guardianPhone !== 'N/A' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Guardian's Phone</span>
+                <strong className="text-slate-700">{profileData.student.guardianPhone}</strong>
+              </div>
+            )}
+            {profileData?.student?.primaryContactRole && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Primary Contact Role</span>
+                <strong className="text-indigo-600 uppercase tracking-wider text-[10px] font-bold">
+                  {profileData.student.primaryContactRole}
+                </strong>
+              </div>
+            )}
+            {profileData?.student?.primaryContactPhone && profileData.student.primaryContactPhone !== 'N/A' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Primary Contact Number</span>
+                <strong className="text-slate-700">{profileData.student.primaryContactPhone}</strong>
+              </div>
+            )}
+            {profileData?.student?.emergencyPhone && profileData.student.emergencyPhone !== 'N/A' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Emergency Phone</span>
+                <strong className="text-slate-700">{profileData.student.emergencyPhone}</strong>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Advisor Teacher Info */}
-        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4 md:col-span-2">
-          <h3 className="font-bold text-sm text-slate-800 border-b border-slate-105 border-slate-100 pb-2 flex items-center gap-2">
+        {/* Class Advisor & Subject Teachers */}
+        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-6 md:col-span-2">
+          <h3 className="font-bold text-sm text-slate-800 border-b border-slate-100 pb-2 flex items-center gap-2">
             <Briefcase className="w-4 h-4 text-indigo-500" />
-            Class Advisor Information
+            Class Advisor & Subject Teachers
           </h3>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400">
-                <User className="w-5 h-5" />
+
+          {/* Section: Class Advisor */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Class Advisor</h4>
+            {profileData?.classAdvisor ? (
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  {profileData.classAdvisor.avatarUrl ? (
+                    <img
+                      src={profileData.classAdvisor.avatarUrl}
+                      alt={profileData.classAdvisor.name}
+                      className="w-14 h-14 rounded-2xl object-cover border border-slate-200"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xl">
+                      {profileData.classAdvisor.name[0]}
+                    </div>
+                  )}
+                  <div>
+                    <h5 className="text-sm font-bold text-slate-800">{profileData.classAdvisor.name}</h5>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {profileData.classAdvisor.designation || 'Class Advisor'} • {profileData.classAdvisor.department}
+                    </p>
+                    {profileData.classAdvisor.employeeId && profileData.classAdvisor.employeeId !== 'N/A' && (
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">Emp ID: {profileData.classAdvisor.employeeId}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {profileData.classAdvisor.email && (
+                    <a
+                      href={`mailto:${profileData.classAdvisor.email}`}
+                      className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-[#2E5BFF] hover:border-[#2E5BFF]/30 transition-all cursor-pointer"
+                      title="Send Email"
+                    >
+                      <Mail className="w-4 h-4" />
+                    </a>
+                  )}
+                  {profileData.classAdvisor.phone && (
+                    <a
+                      href={`tel:${profileData.classAdvisor.phone}`}
+                      className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
+                      title="Call"
+                    >
+                      <Phone className="w-4 h-4" />
+                    </a>
+                  )}
+                </div>
               </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-700">Mrs. Ananya Sharma</h4>
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">Advisor / English Department</p>
+            ) : (
+              <div className="bg-slate-50/50 rounded-2xl p-6 border border-dashed border-slate-200 text-center text-xs text-slate-400 font-medium italic">
+                No Class Advisor Assigned
               </div>
-            </div>
-            <div className="flex gap-2">
-              <a
-                href="mailto:ananya.sharma@school.edu"
-                className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
-                title="Send Email"
-              >
-                <Mail className="w-4 h-4" />
-              </a>
-              <a
-                href="tel:+919876543210"
-                className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
-                title="Call Advisor"
-              >
-                <Phone className="w-4 h-4" />
-              </a>
-            </div>
+            )}
+          </div>
+
+          {/* Section: Subject Teachers */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Subject Teachers</h4>
+            {profileData?.subjectTeachers && profileData.subjectTeachers.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {profileData.subjectTeachers.map((teacher: any, idx: number) => (
+                  <div key={idx} className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col justify-between h-full gap-4">
+                    <div className="flex items-start gap-4">
+                      {teacher.avatarUrl ? (
+                        <img
+                          src={teacher.avatarUrl}
+                          alt={teacher.name}
+                          className="w-12 h-12 rounded-2xl object-cover border border-slate-200 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center font-black text-lg shrink-0">
+                          {teacher.name[0]}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <h5 className="text-sm font-bold text-slate-800 truncate">{teacher.name}</h5>
+                        <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                          {teacher.designation || 'Teacher'} • {teacher.department}
+                        </p>
+                        {teacher.employeeId && teacher.employeeId !== 'N/A' && (
+                          <p className="text-[10px] text-slate-400 font-mono">Emp ID: {teacher.employeeId}</p>
+                        )}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {teacher.subjects?.map((sub: string, subIdx: number) => (
+                            <span key={subIdx} className="bg-emerald-50 text-emerald-700 border border-emerald-150 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider">
+                              {sub}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end border-t border-slate-200/50 pt-3">
+                      {teacher.email && (
+                        <a
+                          href={`mailto:${teacher.email}`}
+                          className="p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-[#2E5BFF] hover:border-[#2E5BFF]/30 transition-all cursor-pointer"
+                          title="Send Email"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                      {teacher.phone && (
+                        <a
+                          href={`tel:${teacher.phone}`}
+                          className="p-2 rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
+                          title="Call"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-slate-50/50 rounded-2xl p-6 border border-dashed border-slate-200 text-center text-xs text-slate-400 font-medium italic">
+                No Subject Teachers Assigned
+              </div>
+            )}
           </div>
         </div>
 
