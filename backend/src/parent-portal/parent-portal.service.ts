@@ -1274,6 +1274,7 @@ export class ParentPortalService {
     const student = await this.verifyOwnership(userId, studentId);
     if (!student.classSectionId) return [];
 
+    // 1. Fetch assigned periods for this student's class section
     const periods = await this.prisma.period.findMany({
       where: { classSectionId: student.classSectionId },
       include: {
@@ -1281,22 +1282,72 @@ export class ParentPortalService {
         teacher: { include: { user: true } },
         periodTiming: true,
       },
-      orderBy: [
-        { dayOfWeek: 'asc' },
-        { periodTiming: { periodNumber: 'asc' } },
-      ],
     });
 
-    return periods.map(p => ({
-      id: p.id,
-      day: p.dayOfWeek,
-      subject: p.subject.name,
-      teacher: p.teacher.user?.name || 'Teacher',
-      startTime: p.periodTiming.startTime,
-      endTime: p.periodTiming.endTime,
-      periodNumber: p.periodTiming.periodNumber,
-      isBreak: p.periodTiming.isBreak,
-    }));
+    // 2. Fetch all configured period timings for this school tenant
+    let timings = await this.prisma.periodTiming.findMany({
+      where: { tenantId: student.tenantId, isActive: true },
+      orderBy: { periodNumber: 'asc' },
+    });
+
+    if (timings.length === 0) {
+      timings = [
+        { id: '1', periodNumber: 1, name: 'P1', startTime: '09:00 AM', endTime: '10:00 AM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+        { id: '2', periodNumber: 2, name: 'P2', startTime: '10:00 AM', endTime: '11:00 AM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+        { id: '3', periodNumber: 3, name: 'P3', startTime: '11:00 AM', endTime: '12:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+        { id: '4', periodNumber: 4, name: 'P4', startTime: '12:00 PM', endTime: '01:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+        { id: '5', periodNumber: 5, name: 'Lunch Break', startTime: '01:00 PM', endTime: '02:00 PM', isBreak: true, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+        { id: '6', periodNumber: 6, name: 'P6', startTime: '02:00 PM', endTime: '03:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+        { id: '7', periodNumber: 7, name: 'P7', startTime: '03:00 PM', endTime: '04:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+        { id: '8', periodNumber: 8, name: 'P8', startTime: '04:00 PM', endTime: '05:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+      ] as any;
+    }
+
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const result: any[] = [];
+
+    daysOfWeek.forEach(day => {
+      const dayPeriods = periods.filter(p => p.dayOfWeek.toLowerCase() === day.toLowerCase());
+
+      timings.forEach(timing => {
+        const assigned = dayPeriods.find(p => p.periodTimingId === timing.id || p.periodTiming?.periodNumber === timing.periodNumber);
+
+        if (assigned) {
+          result.push({
+            id: assigned.id,
+            day,
+            subject: assigned.subject.name,
+            teacher: assigned.teacher?.user?.name || 'Teacher',
+            startTime: assigned.periodTiming?.startTime || timing.startTime,
+            endTime: assigned.periodTiming?.endTime || timing.endTime,
+            periodNumber: timing.periodNumber,
+            isBreak: false,
+          });
+        } else {
+          const isBreakTiming = timing.isBreak ||
+            (timing.name && /break|lunch|recess|tea/i.test(timing.name)) ||
+            (timing.periodNumber === 5 && dayPeriods.length > 0);
+
+          let breakName = timing.name;
+          if (!breakName || /^P\d+$/i.test(breakName) || breakName === `Period ${timing.periodNumber}`) {
+            breakName = isBreakTiming ? 'Lunch Break' : `Period ${timing.periodNumber}`;
+          }
+
+          result.push({
+            id: `SLOT-${day}-${timing.periodNumber}`,
+            day,
+            subject: isBreakTiming ? (breakName.includes('Break') || breakName.includes('Recess') ? breakName : `${breakName} (Break)`) : 'Recess / Free Slot',
+            teacher: 'N/A',
+            startTime: timing.startTime,
+            endTime: timing.endTime,
+            periodNumber: timing.periodNumber,
+            isBreak: true,
+          });
+        }
+      });
+    });
+
+    return result;
   }
 
   private sanitizeAnnouncementContent(content?: string): string {
