@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { updateStudent } from '@/lib/api';
 import PhotoUpload from './PhotoUpload';
+import Modal from '@/components/Modal';
 
 interface EditStudentModalProps {
   student: {
@@ -69,37 +70,29 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xs p-4">
-      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] animate-fade-in border border-slate-100 min-h-0">
-        <button
-          onClick={onClose}
-          type="button"
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition p-1.5 rounded-full hover:bg-slate-100 z-10"
-        >
-          <X size={18} />
-        </button>
-        
-        <div className="p-5 border-b border-slate-100 flex-shrink-0">
-          <h2 className="text-lg font-bold text-slate-950 dark:text-white">Edit Student Profile</h2>
-          <p className="text-xs text-slate-500 mt-1 font-medium">Update the student's personal and parent details.</p>
-        </div>
-
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title="Edit Student Profile"
+      subtitle="Update the student's personal and parent details."
+      size="xl"
+    >
+      <div className="space-y-4">
         {error && (
-          <div className="mx-5 mt-4 p-3 bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold rounded-xl leading-relaxed">
+          <div className="p-3 bg-rose-50 dark:bg-rose-950/30 border border-rose-100 dark:border-rose-900/50 text-rose-700 dark:text-rose-400 text-xs font-semibold rounded-xl leading-relaxed">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-          <div className="p-5 overflow-y-auto flex-1 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Section 1: Academic Info (Read-Only) & Roll Number */}
-          <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5">Class</label>
               <input
                 value={student.class}
                 disabled
-                className="w-full bg-slate-100 border border-slate-200 text-slate-500 rounded-xl px-3.5 py-2 text-xs font-semibold cursor-not-allowed"
+                className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-xl px-3.5 py-2 text-xs font-semibold cursor-not-allowed"
               />
             </div>
             <div>
@@ -107,7 +100,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
               <input
                 value={student.section.replace('Section ', '')}
                 disabled
-                className="w-full bg-slate-100 border border-slate-200 text-slate-500 rounded-xl px-3.5 py-2 text-xs font-semibold cursor-not-allowed"
+                className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-xl px-3.5 py-2 text-xs font-semibold cursor-not-allowed"
               />
             </div>
             <div>
@@ -117,7 +110,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
                 value={formData.rollNo}
                 onChange={handleChange}
                 placeholder="Roll No"
-                className="w-full bg-white border border-slate-200 text-slate-800 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF] focus:ring-2 focus:ring-blue-100 transition-all"
+                className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF]"
                 required
               />
             </div>
@@ -125,7 +118,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
 
           {/* Profile Photo Section */}
           <div>
-            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2 mb-4">Profile Photo</h3>
+            <h3 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2 mb-4">Profile Photo</h3>
             <PhotoUpload
               value={formData.profilePhotoUrl}
               onChange={(val) => setFormData((prev) => ({ ...prev, profilePhotoUrl: val }))}
@@ -134,7 +127,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
 
           {/* Section 2: Personal Details */}
           <div>
-            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2 mb-4">Personal Details</h3>
+            <h3 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2 mb-4">Personal Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Student Name</label>
@@ -143,7 +136,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
                   value={formData.name}
                   onChange={handleChange}
                   placeholder="Student Name"
-                  className="w-full bg-white border border-slate-200 text-slate-800 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF] focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF]"
                   required
                 />
               </div>
@@ -155,7 +148,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="email@example.com"
-                  className="w-full bg-white border border-slate-200 text-slate-800 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF] focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF]"
                 />
               </div>
               <div>
@@ -165,7 +158,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
                   value={formData.phone}
                   onChange={handleChange}
                   placeholder="10-digit number"
-                  className="w-full bg-white border border-slate-200 text-slate-800 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF] focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF]"
                 />
               </div>
               <div>
@@ -175,7 +168,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
                   value={formData.aadharNo}
                   onChange={handleChange}
                   placeholder="Aadhar Number"
-                  className="w-full bg-white border border-slate-200 text-slate-800 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF] focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF]"
                 />
               </div>
             </div>
@@ -183,7 +176,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
 
           {/* Section 3: Parent Info */}
           <div>
-            <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2 mb-4">Parent Details</h3>
+            <h3 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2 mb-4">Parent Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Father's Name</label>
@@ -192,7 +185,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
                   value={formData.fatherName}
                   onChange={handleChange}
                   placeholder="Father's Name"
-                  className="w-full bg-white border border-slate-200 text-slate-800 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF] focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF]"
                 />
               </div>
               <div>
@@ -202,20 +195,18 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
                   value={formData.motherName}
                   onChange={handleChange}
                   placeholder="Mother's Name"
-                  className="w-full bg-white border border-slate-200 text-slate-800 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF] focus:ring-2 focus:ring-blue-100 transition-all"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2 text-xs font-bold focus:outline-none focus:border-[#2E5BFF]"
                 />
               </div>
             </div>
           </div>
 
-          </div>
-
-          {/* Buttons Footer (fixed at bottom) */}
-          <div className="flex gap-3 p-5 border-t border-slate-100 bg-slate-50/50 rounded-b-2xl flex-shrink-0">
+          {/* Buttons Footer */}
+          <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-850 bg-white hover:bg-slate-50 text-xs font-bold transition-all min-h-[40px] cursor-pointer"
+              className="flex-1 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all min-h-[40px] cursor-pointer"
             >
               Cancel
             </button>
@@ -236,6 +227,7 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   );
 }
+
