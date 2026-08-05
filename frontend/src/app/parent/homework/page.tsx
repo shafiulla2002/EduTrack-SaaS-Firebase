@@ -21,15 +21,22 @@ import {
   FileText,
   File,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface PreviewState {
+  attachmentsList: string[];
+  currentIndex: number;
   url: string;
   blobUrl?: string;
   fileName: string;
   category: 'pdf' | 'image' | 'text' | 'unsupported';
   extension: string;
   rawText?: string;
+  fileSizeStr?: string;
+  loading: boolean;
+  error: boolean;
 }
 
 export default function HomeworkPage() {
@@ -46,14 +53,23 @@ export default function HomeworkPage() {
   // Preview Modal States
   const [previewAttachment, setPreviewAttachment] = useState<PreviewState | null>(null);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
+  const [isDownloading, setIsDownloading] = useState(false);
 
-  // Lock body scroll and ESC key listener when preview modal is active
+  // Lock body scroll and handle keyboard navigation (ESC, ArrowLeft, ArrowRight)
   useEffect(() => {
     if (previewAttachment) {
       document.body.style.overflow = 'hidden';
       const handleKeyDown = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
           closePreview();
+        } else if (e.key === 'ArrowLeft') {
+          if (previewAttachment.currentIndex > 0) {
+            handleNavAttachment(previewAttachment.currentIndex - 1);
+          }
+        } else if (e.key === 'ArrowRight') {
+          if (previewAttachment.currentIndex < previewAttachment.attachmentsList.length - 1) {
+            handleNavAttachment(previewAttachment.currentIndex + 1);
+          }
         }
       };
       window.addEventListener('keydown', handleKeyDown);
@@ -71,6 +87,143 @@ export default function HomeworkPage() {
     setPreviewAttachment(null);
     setZoomLevel(100);
     document.body.style.overflow = '';
+  };
+
+  const getFormattedFileSize = (att: string): string => {
+    if (!att) return '';
+    let bytes = 0;
+    if (att.startsWith('data:')) {
+      const base64Str = att.split(',')[1] || '';
+      bytes = Math.round(base64Str.length * 0.75);
+    } else {
+      return '';
+    }
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const loadAttachmentDetails = (attachmentsList: string[], index: number): PreviewState => {
+    const att = attachmentsList[index] || '';
+    let category: 'pdf' | 'image' | 'text' | 'unsupported' = 'unsupported';
+    let extension = 'file';
+    let blobUrl: string | undefined = undefined;
+    let rawText: string | undefined = undefined;
+    let error = false;
+    const fileSizeStr = getFormattedFileSize(att);
+
+    if (!att || att === '#') {
+      return {
+        attachmentsList,
+        currentIndex: index,
+        url: att,
+        fileName: `Attachment File ${index + 1}`,
+        category: 'unsupported',
+        extension: 'file',
+        fileSizeStr: '',
+        loading: false,
+        error: true,
+      };
+    }
+
+    if (att.startsWith('data:')) {
+      const mimeMatch = att.match(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-+.]+);base64,/);
+      const mime = mimeMatch ? mimeMatch[1].toLowerCase() : '';
+      extension = mime.split('/')[1] || 'file';
+
+      try {
+        const parts = att.split(';base64,');
+        const contentType = parts[0].split(':')[1] || 'application/octet-stream';
+        const raw = window.atob(parts[1]);
+        const uInt8Array = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        const blob = new Blob([uInt8Array], { type: contentType });
+        blobUrl = URL.createObjectURL(blob);
+
+        if (mime.includes('pdf')) {
+          category = 'pdf';
+        } else if (mime.includes('image')) {
+          category = 'image';
+        } else if (mime.includes('text') || mime.includes('json') || mime.includes('xml')) {
+          category = 'text';
+          rawText = raw;
+        } else {
+          category = 'unsupported';
+        }
+      } catch (err) {
+        console.error('Failed to parse base64 file:', err);
+        error = true;
+      }
+    } else {
+      const cleanUrl = att.split('?')[0].toLowerCase();
+      if (cleanUrl.endsWith('.pdf')) {
+        category = 'pdf';
+        extension = 'pdf';
+      } else if (/\.(jpg|jpeg|png|webp|gif|svg)$/i.test(cleanUrl)) {
+        category = 'image';
+        extension = cleanUrl.split('.').pop() || 'image';
+      } else if (/\.(txt|csv|json|log|md)$/i.test(cleanUrl)) {
+        category = 'text';
+        extension = cleanUrl.split('.').pop() || 'txt';
+      } else {
+        category = 'unsupported';
+        extension = cleanUrl.split('.').pop() || 'file';
+      }
+    }
+
+    return {
+      attachmentsList,
+      currentIndex: index,
+      url: att,
+      blobUrl,
+      fileName: `Attachment File ${index + 1}`,
+      category,
+      extension,
+      rawText,
+      fileSizeStr,
+      loading: false,
+      error,
+    };
+  };
+
+  const handleOpenPreview = (attachmentsList: string[], index: number) => {
+    if (!attachmentsList || attachmentsList.length === 0) return;
+    setZoomLevel(100);
+    const details = loadAttachmentDetails(attachmentsList, index);
+    setPreviewAttachment(details);
+  };
+
+  const handleNavAttachment = (newIndex: number) => {
+    if (!previewAttachment) return;
+    if (newIndex < 0 || newIndex >= previewAttachment.attachmentsList.length) return;
+
+    if (previewAttachment.blobUrl) {
+      URL.revokeObjectURL(previewAttachment.blobUrl);
+    }
+
+    setZoomLevel(100);
+    const details = loadAttachmentDetails(previewAttachment.attachmentsList, newIndex);
+    setPreviewAttachment(details);
+  };
+
+  const handleDownloadAttachment = async (preview: PreviewState) => {
+    if (isDownloading) return;
+    try {
+      setIsDownloading(true);
+      const targetUrl = preview.blobUrl || (preview.url.startsWith('http') || preview.url.startsWith('/uploads') ? preview.url : `http://${preview.url}`);
+      const a = document.createElement('a');
+      a.href = targetUrl;
+      a.download = `${preview.fileName.replace(/\s+/g, '_')}.${preview.extension}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Download error:', err);
+    } finally {
+      setTimeout(() => setIsDownloading(false), 800);
+    }
   };
 
   const fetchHomework = async (childId: string) => {
@@ -150,81 +303,6 @@ export default function HomeworkPage() {
     return `${day}/${month}/${year}`;
   };
 
-  const handleOpenPreview = (att: string, index: number) => {
-    if (!att || att === '#') return;
-
-    let category: 'pdf' | 'image' | 'text' | 'unsupported' = 'unsupported';
-    let extension = 'file';
-    let blobUrl: string | undefined = undefined;
-    let rawText: string | undefined = undefined;
-
-    if (att.startsWith('data:')) {
-      const mimeMatch = att.match(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-+.]+);base64,/);
-      const mime = mimeMatch ? mimeMatch[1].toLowerCase() : '';
-      extension = mime.split('/')[1] || 'file';
-
-      try {
-        const parts = att.split(';base64,');
-        const contentType = parts[0].split(':')[1] || 'application/octet-stream';
-        const raw = window.atob(parts[1]);
-        const uInt8Array = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; ++i) {
-          uInt8Array[i] = raw.charCodeAt(i);
-        }
-        const blob = new Blob([uInt8Array], { type: contentType });
-        blobUrl = URL.createObjectURL(blob);
-
-        if (mime.includes('pdf')) {
-          category = 'pdf';
-        } else if (mime.includes('image')) {
-          category = 'image';
-        } else if (mime.includes('text') || mime.includes('json') || mime.includes('xml')) {
-          category = 'text';
-          rawText = raw;
-        } else {
-          category = 'unsupported';
-        }
-      } catch (err) {
-        console.error('Failed to parse base64 file:', err);
-      }
-    } else {
-      const cleanUrl = att.split('?')[0].toLowerCase();
-      if (cleanUrl.endsWith('.pdf')) {
-        category = 'pdf';
-        extension = 'pdf';
-      } else if (/\.(jpg|jpeg|png|webp|gif|svg)$/i.test(cleanUrl)) {
-        category = 'image';
-        extension = cleanUrl.split('.').pop() || 'image';
-      } else if (/\.(txt|csv|json|log|md)$/i.test(cleanUrl)) {
-        category = 'text';
-        extension = cleanUrl.split('.').pop() || 'txt';
-      } else {
-        category = 'unsupported';
-        extension = cleanUrl.split('.').pop() || 'file';
-      }
-    }
-
-    setZoomLevel(100);
-    setPreviewAttachment({
-      url: att,
-      blobUrl,
-      fileName: `Attachment File ${index + 1}`,
-      category,
-      extension,
-      rawText,
-    });
-  };
-
-  const handleDownloadAttachment = (preview: PreviewState) => {
-    const targetUrl = preview.blobUrl || (preview.url.startsWith('http') || preview.url.startsWith('/uploads') ? preview.url : `http://${preview.url}`);
-    const a = document.createElement('a');
-    a.href = targetUrl;
-    a.download = `${preview.fileName.replace(/\s+/g, '_')}.${preview.extension}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
   if (!selectedChild) {
     return (
       <div className="text-slate-500 text-sm text-center py-12">
@@ -296,7 +374,7 @@ export default function HomeworkPage() {
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => handleOpenPreview(att, idx)}
+                        onClick={() => handleOpenPreview(hw.attachments, idx)}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-600 hover:text-[#2E5BFF] hover:border-[#2E5BFF]/40 hover:bg-blue-50/40 transition-all cursor-pointer font-semibold"
                       >
                         <Paperclip className="w-3 h-3 text-[#2E5BFF]" />
@@ -428,6 +506,31 @@ export default function HomeworkPage() {
             {/* Modal Header Bar */}
             <div className="flex flex-wrap justify-between items-center px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 gap-3 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
+                {/* Navigation Buttons for multiple attachments */}
+                {previewAttachment.attachmentsList.length > 1 && (
+                  <div className="flex items-center gap-1 bg-slate-200/80 dark:bg-slate-800 p-1 rounded-xl shrink-0">
+                    <button
+                      onClick={() => handleNavAttachment(previewAttachment.currentIndex - 1)}
+                      disabled={previewAttachment.currentIndex === 0}
+                      className="p-1 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+                      title="Previous Attachment (←)"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 px-1">
+                      {previewAttachment.currentIndex + 1} / {previewAttachment.attachmentsList.length}
+                    </span>
+                    <button
+                      onClick={() => handleNavAttachment(previewAttachment.currentIndex + 1)}
+                      disabled={previewAttachment.currentIndex === previewAttachment.attachmentsList.length - 1}
+                      className="p-1 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+                      title="Next Attachment (→)"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
                 <div className="w-9 h-9 bg-blue-50 dark:bg-blue-950/60 border border-blue-100 dark:border-blue-900/40 rounded-xl flex items-center justify-center text-[#2E5BFF] shrink-0">
                   {previewAttachment.category === 'pdf' ? (
                     <FileText className="w-5 h-5" />
@@ -445,12 +548,13 @@ export default function HomeworkPage() {
                   </h3>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider block">
                     Type: {previewAttachment.category.toUpperCase()} ({previewAttachment.extension})
+                    {previewAttachment.fileSizeStr ? ` • ${previewAttachment.fileSizeStr}` : ''}
                   </span>
                 </div>
               </div>
 
-              {/* Image Controls */}
-              {previewAttachment.category === 'image' && (
+              {/* Image Zoom Controls */}
+              {previewAttachment.category === 'image' && !previewAttachment.loading && !previewAttachment.error && (
                 <div className="flex items-center gap-1.5 bg-slate-200/60 dark:bg-slate-800/80 px-3 py-1.5 rounded-2xl border border-slate-300/40 dark:border-slate-700/40 text-xs font-semibold text-slate-700 dark:text-slate-200">
                   <button
                     onClick={() => setZoomLevel((z) => Math.max(50, z - 25))}
@@ -481,10 +585,20 @@ export default function HomeworkPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleDownloadAttachment(previewAttachment)}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#2E5BFF] text-white font-bold text-xs hover:bg-blue-600 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  disabled={isDownloading}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  Download
+                  {isDownloading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      Download
+                    </>
+                  )}
                 </button>
 
                 <button
@@ -499,14 +613,61 @@ export default function HomeworkPage() {
 
             {/* Modal Body Container */}
             <div className="flex-1 bg-slate-900/90 dark:bg-slate-950 flex items-center justify-center p-4 overflow-auto relative">
-              {previewAttachment.category === 'pdf' ? (
+              {previewAttachment.loading ? (
+                <div className="flex flex-col items-center justify-center p-12 text-slate-400 space-y-3">
+                  <Loader2 className="w-10 h-10 animate-spin text-[#2E5BFF]" />
+                  <span className="text-xs font-semibold">Fetching attachment preview...</span>
+                </div>
+              ) : previewAttachment.error ? (
+                <div className="text-center p-8 max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl space-y-4">
+                  <div className="w-14 h-14 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/40 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
+                    <ShieldAlert className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-slate-100 text-base">Failed to Load Attachment</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-light leading-relaxed">
+                      An error occurred while attempting to render this attachment preview.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleNavAttachment(previewAttachment.currentIndex)}
+                    className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-semibold text-xs transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Retry Loading
+                  </button>
+                </div>
+              ) : previewAttachment.category === 'pdf' ? (
                 <iframe
                   src={previewAttachment.blobUrl || (previewAttachment.url.startsWith('http') || previewAttachment.url.startsWith('/uploads') ? previewAttachment.url : `http://${previewAttachment.url}`)}
                   className="w-full h-full border-0 rounded-2xl bg-white shadow-md"
                   title={previewAttachment.fileName}
                 />
               ) : previewAttachment.category === 'image' ? (
-                <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
+                <div className="w-full h-full flex items-center justify-center overflow-auto p-4 relative">
+                  {/* Floating Prev / Next arrows over image */}
+                  {previewAttachment.attachmentsList.length > 1 && (
+                    <>
+                      {previewAttachment.currentIndex > 0 && (
+                        <button
+                          onClick={() => handleNavAttachment(previewAttachment.currentIndex - 1)}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700 shadow-xl transition-all cursor-pointer z-10"
+                          title="Previous Attachment"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                      )}
+                      {previewAttachment.currentIndex < previewAttachment.attachmentsList.length - 1 && (
+                        <button
+                          onClick={() => handleNavAttachment(previewAttachment.currentIndex + 1)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700 shadow-xl transition-all cursor-pointer z-10"
+                          title="Next Attachment"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      )}
+                    </>
+                  )}
                   <img
                     src={previewAttachment.blobUrl || previewAttachment.url}
                     alt={previewAttachment.fileName}
@@ -536,7 +697,8 @@ export default function HomeworkPage() {
                   </div>
                   <button
                     onClick={() => handleDownloadAttachment(previewAttachment)}
-                    className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl font-semibold text-xs transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                    disabled={isDownloading}
+                    className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl font-semibold text-xs transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     <Download className="w-4 h-4" />
                     Download File
