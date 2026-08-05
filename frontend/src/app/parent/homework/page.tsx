@@ -83,6 +83,16 @@ export default function HomeworkPage() {
     }
   };
 
+  const formatDateDDMMYYYY = (dateStr: string) => {
+    if (!dateStr) return '';
+    const dateObj = new Date(dateStr);
+    if (isNaN(dateObj.getTime())) return dateStr;
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
   if (!selectedChild) {
     return (
       <div className="text-slate-500 text-sm text-center py-12">
@@ -167,7 +177,7 @@ export default function HomeworkPage() {
               </div>
 
               <div className="border-t border-slate-100 pt-4 flex justify-between items-center text-[10px] text-slate-400">
-                <span>Due Date: <strong className="text-slate-700 font-bold">{new Date(hw.dueDate).toLocaleDateString()}</strong></span>
+                <span>Due Date: <strong className="text-slate-700 font-bold">{formatDateDDMMYYYY(hw.dueDate)}</strong></span>
                 {!hw.submitted && (
                   <button
                     onClick={() => setSubmittingHomework(hw)}
