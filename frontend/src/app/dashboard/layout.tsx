@@ -18,7 +18,8 @@ export default function DashboardLayout({
   const { theme, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const { schoolName, schoolType, adminName, logoUrl, currentUser, loading, subscription, isSubscriptionActive, showLockPopup, setShowLockPopup } = useTenant();
+  const isImpersonating = typeof window !== 'undefined' && sessionStorage.getItem('impersonating_from_platform') === 'true';
+  const impersonatedSchool = typeof window !== 'undefined' ? sessionStorage.getItem('impersonated_school_name') || schoolName : schoolName;
 
   // Subscription state helpers
   const isSubscriptionBlocked = !isSubscriptionActive;
@@ -582,7 +583,29 @@ export default function DashboardLayout({
 
   return (
     <ToastProvider>
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex font-sans overflow-x-hidden">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans overflow-x-hidden">
+      {isImpersonating && (
+        <div className="bg-amber-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between z-[9999] sticky top-0 shadow-md">
+          <div className="flex items-center gap-2">
+            <span className="bg-amber-800/80 text-amber-200 px-2 py-0.5 rounded text-[10px] tracking-wider uppercase font-mono animate-pulse">
+              IMPERSONATION ACTIVE
+            </span>
+            <span>You are currently impersonating <strong>{impersonatedSchool || 'School Admin'}</strong></span>
+          </div>
+          <button
+            onClick={() => {
+              sessionStorage.removeItem('impersonating_from_platform');
+              sessionStorage.removeItem('impersonated_school_name');
+              const isVercel = window.location.hostname.includes('vercel.app');
+              window.location.href = isVercel ? 'https://edutrack-platform-lac.vercel.app/dashboard' : 'http://localhost:3002/dashboard';
+            }}
+            className="px-3 py-1 bg-black/30 hover:bg-black/50 text-white rounded-lg text-[11px] font-extrabold uppercase transition-all cursor-pointer"
+          >
+            Exit & Return to Super Admin Platform →
+          </button>
+        </div>
+      )}
+      <div className="flex-1 flex min-h-screen">
       {/* Sidebar - Fix position matching .sidebar in LWC CSS */}
       <aside className="hidden lg:block w-[280px] bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-50 py-6 select-none shadow-sm print:hidden">
         {/* Sidebar Nav section blocks */}
@@ -1604,6 +1627,8 @@ function NotificationBell() {
           </div>
         </div>
       )}
+      </div>
     </div>
+    </ToastProvider>
   );
 }

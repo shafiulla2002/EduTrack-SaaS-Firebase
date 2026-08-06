@@ -1,33 +1,12 @@
-# Dependencies
-node_modules/
-
-# Next.js Build Outputs
-.next/
-out/
-
-# NestJS Build Outputs
-dist/
-
-# Local Environment & Secrets
+node_modules
+.next
+dist
+build
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# OS Files
-.DS_Store
-Thumbs.db
-
-# IDE Files
-.vscode/
-.idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-.vercel
-.env*
-firebase-service-account.json
+.env.*.local
+*.log
+*.zip
+*.7z
+.temp
+*.tsbuildinfo

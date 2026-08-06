@@ -13,6 +13,8 @@ import {
   HelpCircle,
   LogOut,
   User,
+  Tag,
+  Receipt,
 } from 'lucide-react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -42,6 +44,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Schools', href: '/dashboard/schools', icon: Building2 },
     { label: 'Subscriptions', href: '/dashboard/subscriptions', icon: CreditCard },
+    { label: 'Discounts & Coupons', href: '/dashboard/discounts', icon: Tag },
+    { label: 'Invoices', href: '/dashboard/invoices', icon: Receipt },
+    { label: 'Payments', href: '/dashboard/payments', icon: CreditCard },
     { label: 'Payment Settings', href: '/dashboard/payment-settings', icon: Settings },
     { label: 'Audit Logs', href: '/dashboard/audit-logs', icon: FileText },
     { label: 'Support & Requests', href: '/dashboard/support', icon: HelpCircle },
