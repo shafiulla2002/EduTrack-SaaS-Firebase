@@ -1,0 +1,407 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+  STAFF
+  DRIVER
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIALLY_PAID
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  CARD
+  ONLINE
+  GPAY_UPI
+  PHONEPE_UPI
+  NET_BANKING
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LeaveType {
+  SICK
+  CASUAL
+  MATERNITY
+  PATERNITY
+  UNPAID
+  OTHER
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  GRACE_PERIOD
+  CANCELLED
+}
+
+enum SaaSPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum SaaSInvoiceStatus {
+  GENERATED
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Tenant {
+  id               String                @id @default(uuid())
+  name             String
+  code             String                @unique
+  address          String?
+  phone            String?
+  email            String?
+  logoUrl          String?
+  schoolType       String?
+  establishedYear  Int?
+  affiliationBoard String?
+  principalName    String?
+  website          String?
+  tagline          String?
+  activeAcademicYearId String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  users            User[]
+  academicYears    AcademicYear[]
+  students         StudentProfile[]
+  staff            StaffProfile[]
+  subjects         Subject[]
+  classes          Class[]
+  sections         Section[]
+  attendance       Attendance[]
+  exams            Exam[]
+  opportunities    Opportunity[]
+  expenses         Expense[]
+  books            Book[]
+  announcements    Announcement[]
+  timetables       Timetable[]
+  complaints       Complaint[]
+  examConfigs      ExamConfig[]
+  buses            Bus[]
+  routes           Route[]
+  drivers          DriverProfile[]
+  leaveRequests    LeaveRequest[]
+  supportInquiries SupportInquiry[]
+  subscriptions    Subscription[]
+  saasPayments     SubscriptionPayment[]
+  saasInvoices     SubscriptionInvoice[]
+  auditLogs        AuditLog[]
+}
+
+model User {
+  id           String          @id @default(uuid())
+  name         String
+  email        String          @unique
+  phone        String?
+  passwordHash String
+  role         Role
+  tenantId     String
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  student      StudentProfile?
+  staff        StaffProfile?
+  driver       DriverProfile?
+  createdLogs  AuditLog[]      @relation("AuditLogUser")
+}
+
+model Subscription {
+  id           String             @id @default(uuid())
+  tenantId     String
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planName     String             @default("BASIC")
+  status       SubscriptionStatus @default(ACTIVE)
+  startDate    DateTime           @default(now())
+  expiryDate   DateTime
+  billingCycle String             @default("MONTHLY")
+  amount       Float              @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([tenantId, status])
+}
+
+model SubscriptionPayment {
+  id             String            @id @default(uuid())
+  tenantId       String
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceId      String?
+  amount         Float
+  currency       String            @default("INR")
+  status         SaaSPaymentStatus @default(PENDING)
+  paymentMethod  String            @default("RAZORPAY")
+  gatewayTxnId   String?
+  gatewayOrderNo String?
+  eventId        String?           @unique
+  rawPayload     String?
+  createdAt      DateTime          @default(now())
+
+  @@index([tenantId, status])
+}
+
+model SubscriptionInvoice {
+  id            String            @id @default(uuid())
+  tenantId      String
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceNumber String            @unique
+  amount        Float
+  taxAmount     Float             @default(0)
+  totalAmount   Float
+  status        SaaSInvoiceStatus @default(GENERATED)
+  dueDate       DateTime
+  paidAt        DateTime?
+  pdfUrl        String?
+  lineItems     String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([tenantId, status])
+}
+
+model PaymentSettings {
+  id            String   @id @default("global")
+  companyName   String   @default("EduTrack SaaS Platforms Inc.")
+  supportEmail  String   @default("billing@edutrack.com")
+  supportPhone  String   @default("+91 9876543210")
+  gstNumber     String   @default("29ABCDE1234F1Z5")
+  panNumber     String   @default("ABCDE1234F")
+  gstPercentage Float    @default(18.0)
+  invoicePrefix String   @default("INV-SUB")
+  bankName      String   @default("HDFC Bank")
+  accountNumber String   @default("50200012345678")
+  ifscCode      String   @default("HDFC0001234")
+  upiId         String   @default("edutrack@hdfcbank")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  tenantId     String?
+  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  userId       String?
+  user         User?    @relation("AuditLogUser", fields: [userId], references: [id], onDelete: SetNull)
+  userRole     String?
+  userEmail    String?
+  action       String
+  entity       String
+  entityId     String?
+  details      String?
+  ipAddress    String?
+  userAgent    String?
+  route        String?
+  method       String?
+  statusCode   Int?
+  responseTime Int?
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([action, entity])
+}
+
+model AcademicYear {
+  id        String   @id @default(uuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StudentProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rollNo    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StaffProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subject {
+  id        String   @id @default(uuid())
+  name      String
+  code      String
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Class {
+  id        String   @id @default(uuid())
+  name      String
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Section {
+  id        String   @id @default(uuid())
+  name      String
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Attendance {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Exam {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Opportunity {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Expense {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Book {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Timetable {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Complaint {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model ExamConfig {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Bus {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Route {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model DriverProfile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model LeaveRequest {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model SupportInquiry {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
