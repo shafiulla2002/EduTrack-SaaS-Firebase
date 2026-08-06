@@ -28,7 +28,8 @@ export default function PaymentSettingsPage() {
       const token = localStorage.getItem('token');
       const baseUrl = getApiUrl();
       const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-      const res = await fetch(`${cleanUrl}/api/v1/platform/payment-settings`, {
+      const endpoint = cleanUrl.endsWith('/api') ? `${cleanUrl}/v1/platform/payment-settings` : `${cleanUrl}/api/v1/platform/payment-settings`;
+      const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -55,7 +56,8 @@ export default function PaymentSettingsPage() {
       const token = localStorage.getItem('token');
       const baseUrl = getApiUrl();
       const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-      const res = await fetch(`${cleanUrl}/api/v1/platform/payment-settings`, {
+      const endpoint = cleanUrl.endsWith('/api') ? `${cleanUrl}/v1/platform/payment-settings` : `${cleanUrl}/api/v1/platform/payment-settings`;
+      const res = await fetch(endpoint, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
