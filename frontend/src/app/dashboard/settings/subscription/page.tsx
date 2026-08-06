@@ -73,6 +73,7 @@ export default function SubscriptionPage() {
   // History
   const [invoices, setInvoices] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
 
   // ─── Real-Time Pricing Calculation ───────────────────────────────────────
   const basePrice = PLAN_PRICING.BASIC[billingMonths] ?? 11999;
@@ -138,6 +139,116 @@ export default function SubscriptionPage() {
     setPaymentError('');
     setPaymentSuccess(null);
     setShowCheckoutModal(true);
+  };
+
+  // ─── PDF Download Handler (In-Memory Download on Same Page) ─────────────
+  const handleDownloadInvoicePDF = async (inv: any) => {
+    try {
+      setDownloadingPdfId(inv.id);
+
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+
+      const subtotal = Number(inv.amount || 0);
+      const gst = Number(inv.gst || 0);
+      const total = subtotal + gst;
+      const invNumber = inv.invoiceNumber || 'INV-SUB-001';
+
+      const container = document.createElement('div');
+      container.style.position = 'fixed';
+      container.style.left = '-9999px';
+      container.style.top = '-9999px';
+      container.style.width = '800px';
+      container.style.backgroundColor = '#ffffff';
+      container.style.color = '#1e293b';
+      container.style.fontFamily = 'Inter, system-ui, sans-serif';
+      container.style.padding = '40px';
+
+      container.innerHTML = `
+        <div style="border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
+          <!-- Header -->
+          <div style="background-color: #0f172a; color: #ffffff; padding: 32px; border-bottom: 5px solid #2563eb; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h1 style="margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; text-transform: uppercase; color: #ffffff;">EduTrack SaaS Platform</h1>
+              <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8; font-weight: 600;">Official Tax Invoice & Payment Receipt</p>
+            </div>
+            <div style="text-align: right;">
+              <div style="background-color: #059669; color: #ffffff; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 800; display: inline-block; text-transform: uppercase;">${inv.status || 'PAID'}</div>
+              <div style="font-size: 11px; color: #cbd5e1; margin-top: 6px; font-family: monospace;">Date: ${new Date(inv.createdDate || inv.createdAt || Date.now()).toLocaleDateString('en-IN')}</div>
+            </div>
+          </div>
+
+          <!-- Content -->
+          <div style="padding: 32px;">
+            <!-- Meta Table -->
+            <table style="width: 100%; font-size: 13px; margin-bottom: 24px; border-collapse: collapse; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px;">
+              <tbody>
+                <tr>
+                  <td style="padding: 6px 0;"><strong>Invoice No:</strong> <span style="font-family: monospace; font-weight: 700; color: #0f172a;">${invNumber}</span></td>
+                  <td style="padding: 6px 0; text-align: right;"><strong>Payment Method:</strong> <span style="font-weight: 700; color: #0f172a;">RAZORPAY (Online)</span></td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0;"><strong>School Tenant:</strong> <span style="font-weight: 700; color: #0f172a;">${stats?.schoolName || 'School Admin'}</span></td>
+                  <td style="padding: 6px 0; text-align: right;"><strong>Currency:</strong> <span style="font-weight: 700; color: #0f172a;">INR (₹)</span></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Particulars Table -->
+            <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
+              <thead>
+                <tr style="background-color: #f8fafc; color: #475569; font-size: 11px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #e2e8f0;">
+                  <th style="padding: 12px 16px; text-align: left;">Description</th>
+                  <th style="padding: 12px 16px; text-align: center;">Billing Cycle</th>
+                  <th style="padding: 12px 16px; text-align: right;">Subtotal</th>
+                  <th style="padding: 12px 16px; text-align: right;">GST (18%)</th>
+                  <th style="padding: 12px 16px; text-align: right;">Total Amount</th>
+                </tr>
+              </thead>
+              <tbody style="font-size: 13px;">
+                <tr style="border-bottom: 1px solid #f1f5f9;">
+                  <td style="padding: 16px; font-weight: 700; color: #0f172a;">EduTrack SaaS ${inv.planId || 'BASIC'} Plan Subscription Renewal</td>
+                  <td style="padding: 16px; text-align: center; color: #475569;">Standard Tier</td>
+                  <td style="padding: 16px; text-align: right; font-family: monospace;">₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td style="padding: 16px; text-align: right; font-family: monospace;">₹${gst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                  <td style="padding: 16px; text-align: right; font-weight: 800; color: #059669; font-family: monospace;">₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Footer -->
+          <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 11px; color: #64748b; font-weight: 500; max-width: 400px; line-height: 1.4;">
+              This is an official computer generated tax invoice issued by EduTrack SaaS Platforms.<br/>No physical signature is required.
+            </div>
+            <div style="background-color: #0f172a; color: #ffffff; border-radius: 10px; padding: 14px 24px; text-align: right;">
+              <div style="font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Grand Total Paid</div>
+              <div style="font-size: 20px; font-weight: 900; font-family: monospace; color: #34d399;">₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(container);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      document.body.removeChild(container);
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const imgWidth = 210;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+      pdf.save(`${invNumber}.pdf`);
+    } catch (err: any) {
+      console.error('PDF download error:', err);
+      alert('Failed to generate PDF invoice download.');
+    } finally {
+      setDownloadingPdfId(null);
+    }
   };
 
   // ─── Razorpay Payment Handler ─────────────────────────────────────────────
@@ -517,11 +628,19 @@ export default function SubscriptionPage() {
                   </td>
                   <td className="p-3 text-slate-500">{new Date(inv.createdDate || inv.createdAt).toLocaleDateString()}</td>
                   <td className="p-3">
-                    {inv.pdfUrl ? (
-                      <a href={inv.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-bold">
-                        <Download className="w-3.5 h-3.5" /> PDF
-                      </a>
-                    ) : <span className="text-slate-400">—</span>}
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadInvoicePDF(inv)}
+                      disabled={downloadingPdfId === inv.id}
+                      className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-bold cursor-pointer transition-all disabled:opacity-50"
+                    >
+                      {downloadingPdfId === inv.id ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      PDF
+                    </button>
                   </td>
                 </tr>
               )) : (
@@ -578,10 +697,10 @@ export default function SubscriptionPage() {
         </div>
       </div>
 
-      {/* ── Checkout Modal ──────────────────────────────────────────────────── */}
+      {/* ── Checkout Modal (Full Viewport Coverage via z-[99999] top-0 left-0 w-screen h-screen) ───── */}
       {showCheckoutModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 w-full max-w-md space-y-5 text-white shadow-2xl">
+        <div className="fixed inset-0 top-0 left-0 w-screen h-screen bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-[99999] overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 w-full max-w-md space-y-5 text-white shadow-2xl my-auto">
             {/* Header */}
             <div className="flex justify-between items-center border-b border-slate-800 pb-4">
               <div>
