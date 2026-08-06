@@ -1354,39 +1354,82 @@ enum PlanType {
 }
 
 enum SubscriptionStatus {
+  TRIAL
   ACTIVE
-  EXPIRED
+  GRACE_PERIOD
   PAST_DUE
+  EXPIRED
+  RENEWED
+  CANCELLED
+  SUSPENDED
+}
+
+enum SaaSPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum SaaSInvoiceStatus {
+  GENERATED
+  SENT
+  PAID
   CANCELLED
 }
 
+model AuditLog {
+  id          String   @id @default(uuid())
+  action      String
+  entityId    String?
+  entityType  String?
+  performedBy String   // adminId or schoolAdminId
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([performedBy])
+  @@index([entityType])
+  @@index([createdAt])
+}
+
 model SubscriptionPlan {
-  id           String    @id @default(uuid())
-  name         PlanType  @unique
-  studentLimit Int?      // Null represents "Unlimited"
-  teacherLimit Int?      // Null represents "Unlimited"
-  parentLimit  Int?      // Null represents "Unlimited"
-  storageLimit Decimal?  @db.Decimal(12, 2) // In MB
-  features     Json      // Features list: ["attendance", "timetable", "exams", "transport", ...]
-  price        Decimal   @db.Decimal(12, 2)
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  name           PlanType  @unique
+  studentLimit   Int?      // Null represents "Unlimited"
+  teacherLimit   Int?      // Null represents "Unlimited"
+  parentLimit    Int?      // Null represents "Unlimited"
+  storageLimit   Decimal?  @db.Decimal(12, 2) // In MB
+  features       Json      // Features list: ["attendance", "timetable", "exams", "transport", ...]
+  price          Decimal   @db.Decimal(12, 2)
+  durationMonths Int       @default(12)
+  priceCents     Int       @default(0)
+  isDefault      Boolean   @default(false)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   subscriptions TenantSubscription[]
 }
 
 model TenantSubscription {
-  id         String             @id @default(uuid())
-  tenantId   String             @unique
-  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  planId     String
-  plan       SubscriptionPlan   @relation(fields: [planId], references: [id])
-  startDate  DateTime           @default(now())
-  expiryDate DateTime
-  status     SubscriptionStatus @default(ACTIVE)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  id                 String               @id @default(uuid())
+  tenantId           String               @unique
+  tenant             Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId             String
+  plan               SubscriptionPlan     @relation(fields: [planId], references: [id])
+  startDate          DateTime             @default(now())
+  expiryDate         DateTime
+  gracePeriodEndDate DateTime?
+  status             SubscriptionStatus   @default(ACTIVE)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  billingRecords     SubscriptionBilling[]
+  payments           SubscriptionPayment[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([expiryDate])
 }
 
 model SubscriptionHistory {
@@ -1404,36 +1447,87 @@ model SubscriptionHistory {
   createdAt            DateTime           @default(now())
 }
 
+model SubscriptionBilling {
+  id             String   @id @default(uuid())
+  subscriptionId String
+  subscription   TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  invoiceId      String?  @unique
+  invoice        SubscriptionInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  amountCents    Int
+  taxCents       Int
+  discountCents  Int?     @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  payments       SubscriptionPayment[]
+
+  @@index([subscriptionId])
+  @@index([invoiceId])
+  @@index([createdAt])
+}
+
 model SubscriptionInvoice {
-  id            String    @id @default(uuid())
-  invoiceNumber String    @unique
+  id            String            @id @default(uuid())
+  invoiceNumber String            @unique
   tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  planId        PlanType
-  amount        Decimal   @db.Decimal(12, 2)
-  gst           Decimal   @db.Decimal(12, 2)
-  currency      String    @default("INR")
-  status        String    @default("UNPAID") // PAID, UNPAID, VOIDED
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId        PlanType?
+  amount        Decimal           @db.Decimal(12, 2)
+  gst           Decimal           @db.Decimal(12, 2)
+  currency      String            @default("INR")
+  status        SaaSInvoiceStatus @default(GENERATED)
   paymentDate   DateTime?
   pdfUrl        String?
-  createdDate   DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  downloadUrl   String?
+  snapshotData  Json?             // Immutable snapshot of PaymentSettings, items, company, tax & bank details at generation time
+  createdDate   DateTime          @default(now())
+  generatedAt   DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
-  payments SubscriptionPayment[]
+  billing       SubscriptionBilling?
+  payments      SubscriptionPayment[]
+
+  @@index([tenantId])
+  @@index([invoiceNumber])
+  @@index([status])
+  @@index([createdDate])
 }
 
 model SubscriptionPayment {
-  id            String              @id @default(uuid())
-  tenantId      String
-  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  invoiceId     String
-  invoice       SubscriptionInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  amount        Decimal             @db.Decimal(12, 2)
-  transactionId String              @unique
-  gateway       String              // "SIMULATED", "RAZORPAY", "PHONEPE", "CASHFREE", "STRIPE"
-  status        String              @default("PENDING") // SUCCESS, PENDING, FAILED
-  paidAt        DateTime?
-  createdAt     DateTime            @default(now())
+  id                    String               @id @default(uuid())
+  tenantId              String
+  tenant                Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  schoolId              String?
+  planId                String?
+  billingDurationMonths Int?                 @default(12)
+  currency              String               @default("INR")
+  method                String?              @default("RAZORPAY")
+  gateway               String               // "SIMULATED", "RAZORPAY", "PHONEPE", "CASHFREE", "STRIPE"
+  gatewayReference      String?
+  eventId               String?              @unique // For Razorpay webhook deduplication/idempotency
+  amountCents           Int?
+  amount                Decimal              @db.Decimal(12, 2)
+  transactionId         String               @unique
+  status                SaaSPaymentStatus    @default(PENDING)
+  signatureVerified     Boolean              @default(false)
+  gatewayResponse       Json?
+  failureReason         String?
+  paidAt                DateTime?
+  createdAt             DateTime             @default(now())
+
+  invoiceId             String?
+  invoice               SubscriptionInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  billingId             String?
+  billing               SubscriptionBilling? @relation(fields: [billingId], references: [id], onDelete: SetNull)
+  subscriptionId        String?
+  subscription          TenantSubscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([subscriptionId])
+  @@index([gatewayReference])
+  @@index([eventId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model SubscriptionNotificationLog {
@@ -1447,5 +1541,54 @@ model SubscriptionNotificationLog {
   status           String    // "SUCCESS", "FAILED"
   errorMessage     String?
 }
+
+model PaymentSettings {
+  id                  String   @id @default(uuid())
+  companyName         String   @default("EduTrack Inc.")
+  companyLogoUrl      String?
+  address             String?  @db.Text
+  website             String?  @default("https://edutrack.com")
+  supportEmail        String   @default("support@edutrack.com")
+  supportPhone        String?  @default("+91 9876543210")
+  gstNumber           String?
+  panNumber           String?
+  gstPercentage       Decimal  @default(18.00) @db.Decimal(5, 2)
+  invoicePrefix       String   @default("INV-SUB-")
+  invoiceNumberFormat String   @default("INV-{YYYY}-{MM}-{NUMBER}")
+  footer              String?  @db.Text
+  termsAndConditions  String?  @db.Text
+  signatureImageUrl   String?
+  defaultCurrency     String   @default("INR")
+  timeZone            String   @default("Asia/Kolkata")
+  bankName            String?
+  accountName         String?
+  accountNumber       String?
+  ifscCode            String?
+  branchName          String?
+  upiId               String?
+  updatedAt           DateTime @updatedAt
+}
+
+model PlatformSettings {
+  id                  String   @id @default(uuid())
+  companyName         String   @default("EduTrack Inc.")
+  supportEmail        String   @default("support@edutrack.com")
+  trialDays           Int      @default(180)
+  currency            String   @default("INR")
+  taxRate             Decimal  @default(18.00) @db.Decimal(5, 2)
+  invoicePrefix       String   @default("INV-SUB-")
+  updatedAt           DateTime @updatedAt
+}
+
+model PaymentGatewayConfig {
+  id             String   @id @default(uuid())
+  gatewayName    String   @unique // "RAZORPAY", "STRIPE"
+  isActive       Boolean  @default(false)
+  apiKey         String   // Encrypted
+  apiSecret      String   // Encrypted
+  webhookSecret  String?  // Encrypted
+  updatedAt      DateTime @updatedAt
+}
+
 
 

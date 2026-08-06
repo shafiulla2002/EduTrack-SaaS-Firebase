@@ -1,7 +1,8 @@
-import { Controller, Post, Body, Get, UseGuards, Req, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Get, UseGuards, Req, UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { TenantContext } from '../tenants/tenant.context';
+import { Role } from '@prisma/client';
 
 @Controller('auth')
 export class AuthController {
@@ -42,8 +43,24 @@ export class AuthController {
     if (!user) {
       throw new UnauthorizedException('Invalid email or password');
     }
+
+    // Strict Target Portal Authorization Lock
+    const targetPortal = body.targetPortal ? String(body.targetPortal).toUpperCase() : null;
+    if (targetPortal === 'PLATFORM' && user.role !== Role.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Your account belongs to the School Portal. Please use https://app.edutrack.com (http://localhost:3000).'
+      );
+    }
+    if (targetPortal === 'SCHOOL' && user.role === Role.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Your account belongs to the Platform Portal. Please use https://platform.edutrack.com (http://localhost:3002).'
+      );
+    }
+
     return this.authService.login(user);
   }
+
+
 
   @Post('register')
   async register(@Body() body: any) {

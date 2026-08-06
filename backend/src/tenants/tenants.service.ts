@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma.service';
 import { Tenant, PlanType, SubscriptionStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PaymentService } from '../common/services/payment.service';
+import { generateInvoicePDF } from '../common/utils/pdf.util';
+import * as path from 'path';
 
 @Injectable()
 export class TenantsService {
@@ -351,6 +353,21 @@ export class TenantsService {
 
       // 3. Generate SubscriptionInvoice
       const invoiceNumber = 'INV-SUB-' + Date.now().toString().slice(-6) + '-' + Math.floor(Math.random() * 1000);
+      const pdfFilePath = path.join(process.cwd(), 'public', 'invoices', `${invoiceNumber}.pdf`);
+      
+      const invoiceData = {
+         invoiceNumber,
+         tenantId,
+         planId: plan.name,
+         amount: baseAmount,
+         gst: Number(baseAmount) * 0.18,
+         currency: 'INR',
+         status: 'PAID',
+         createdDate: new Date(),
+      };
+
+      await generateInvoicePDF(invoiceData, pdfFilePath);
+
       const invoice = await tx.subscriptionInvoice.create({
         data: {
           invoiceNumber,
@@ -361,7 +378,7 @@ export class TenantsService {
           currency: 'INR',
           status: 'PAID',
           paymentDate: new Date(),
-          pdfUrl: `/billing/invoices/subscription/${invoiceNumber}.pdf`,
+          pdfUrl: `/invoices/${invoiceNumber}.pdf`,
         },
       });
 

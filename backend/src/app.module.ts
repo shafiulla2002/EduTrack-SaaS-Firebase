@@ -27,6 +27,14 @@ import { ExamConfigModule } from './exam-config/exam-config.module';
 import { TransportModule } from './transport/transport.module';
 import { LeaveManagementModule } from './leave-management/leave-management.module';
 import { SupportModule } from './support/support.module';
+import { SubscriptionModule } from './subscription/subscription.module';
+import { SaaSBillingModule } from './saas-billing/saas-billing.module';
+import { PaymentsModule } from './payments/payments.module';
+import { QueueModule } from './queue/queue.module';
+import { PaymentSettingsModule } from './payment-settings/payment-settings.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
+
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -57,6 +65,13 @@ import { SupportModule } from './support/support.module';
     TransportModule,
     LeaveManagementModule,
     SupportModule,
+    SubscriptionModule,
+    SaaSBillingModule,
+    PaymentsModule,
+    QueueModule,
+    PaymentSettingsModule,
+    AuditLogModule,
+    MonitoringModule,
   ],
   controllers: [],
   providers: [
@@ -68,17 +83,6 @@ import { SupportModule } from './support/support.module';
   ],
 })
 export class AppModule implements NestModule {
-
-
-
-
-
-
-
-
-
-
-
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(TenantMiddleware)
@@ -89,8 +93,12 @@ export class AppModule implements NestModule {
         'auth/exchange-code',
         'tenant/register',
         'support/contact',
+        'api/v1/payments/webhook',
+        'health',
+        'ready',
       )
       .forRoutes('*');
   }
 }
+
 

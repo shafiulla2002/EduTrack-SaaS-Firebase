@@ -13,7 +13,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { PrismaService } from '../prisma.service';
-import { Role, PlanType, SubscriptionStatus } from '@prisma/client';
+import { Role, PlanType, SubscriptionStatus, SaaSInvoiceStatus, SaaSPaymentStatus } from '@prisma/client';
+import { encrypt } from '../common/utils/encryption.util';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.SUPER_ADMIN)
@@ -121,7 +122,7 @@ export class SuperAdminController {
         amount,
         gst: Number(amount) * 0.18,
         currency: 'INR',
-        status: 'UNPAID',
+        status: SaaSInvoiceStatus.GENERATED,
         pdfUrl: `/billing/invoices/subscription/${invoiceNumber}.pdf`,
       },
     });
@@ -149,7 +150,7 @@ export class SuperAdminController {
     ).length;
 
     const payments = await this.prisma.subscriptionPayment.findMany({
-      where: { status: 'SUCCESS' },
+      where: { status: SaaSPaymentStatus.SUCCESS },
       include: { tenant: { select: { name: true } } },
       orderBy: { createdAt: 'desc' },
       take: 10,
@@ -157,9 +158,10 @@ export class SuperAdminController {
 
     // Calculate total revenue from all successful payments
     const allSuccessfulPayments = await this.prisma.subscriptionPayment.findMany({
-      where: { status: 'SUCCESS' },
+      where: { status: SaaSPaymentStatus.SUCCESS },
       select: { amount: true },
     });
+
     const totalRevenue = allSuccessfulPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
     const planDistribution = subscriptions.reduce((acc, sub) => {
@@ -215,6 +217,70 @@ export class SuperAdminController {
     return this.prisma.subscriptionPlan.update({
       where: { id },
       data: updateData,
+    });
+  }
+
+  // --- Platform Settings ---
+  @Get('settings')
+  async getSettings() {
+    let settings = await this.prisma.platformSettings.findFirst();
+    if (!settings) {
+      settings = await this.prisma.platformSettings.create({ data: {} });
+    }
+    return settings;
+  }
+
+  @Put('settings')
+  async updateSettings(@Body() body: any) {
+    let settings = await this.prisma.platformSettings.findFirst();
+    if (settings) {
+      return this.prisma.platformSettings.update({
+        where: { id: settings.id },
+        data: body,
+      });
+    } else {
+      return this.prisma.platformSettings.create({ data: body });
+    }
+  }
+
+  // --- Payment Gateway Config ---
+  @Get('gateways')
+  async getGateways() {
+    const gateways = await this.prisma.paymentGatewayConfig.findMany();
+    // Mask secrets for frontend
+    return gateways.map(g => ({
+      ...g,
+      apiKey: g.apiKey ? '********' : null,
+      apiSecret: g.apiSecret ? '********' : null,
+      webhookSecret: g.webhookSecret ? '********' : null,
+    }));
+  }
+
+  @Put('gateways/:name')
+  async updateGateway(@Param('name') name: string, @Body() body: any) {
+    const secretKey = process.env.ENCRYPTION_KEY || 'default_secret_key_needs_to_be_32_bytes!';
+    
+    const updateData: any = {
+      isActive: body.isActive,
+    };
+    
+    if (body.apiKey && body.apiKey !== '********') {
+      updateData.apiKey = encrypt(body.apiKey, secretKey);
+    }
+    if (body.apiSecret && body.apiSecret !== '********') {
+      updateData.apiSecret = encrypt(body.apiSecret, secretKey);
+    }
+    if (body.webhookSecret && body.webhookSecret !== '********') {
+      updateData.webhookSecret = encrypt(body.webhookSecret, secretKey);
+    }
+
+    return this.prisma.paymentGatewayConfig.upsert({
+      where: { gatewayName: name.toUpperCase() },
+      create: {
+        gatewayName: name.toUpperCase(),
+        ...updateData,
+      },
+      update: updateData,
     });
   }
 }

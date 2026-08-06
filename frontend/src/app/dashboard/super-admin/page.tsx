@@ -26,7 +26,7 @@ export default function SuperAdminDashboard() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'tenants' | 'plans' | 'invoices'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'plans' | 'invoices' | 'settings'>('tenants');
 
   // Selected entities for actions
   const [selectedTenant, setSelectedTenant] = useState<any>(null);
@@ -54,17 +54,27 @@ export default function SuperAdminDashboard() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Settings State
+  const [platformSettings, setPlatformSettings] = useState<any>({});
+  const [gateways, setGateways] = useState<any[]>([]);
+  const [settingsSubmitting, setSettingsSubmitting] = useState(false);
+  const [editGateway, setEditGateway] = useState<any>(null);
+
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      const [statsRes, tenantsRes, plansRes] = await Promise.all([
+      const [statsRes, tenantsRes, plansRes, settingsRes, gatewaysRes] = await Promise.all([
         api.get('/super-admin/dashboard/stats'),
         api.get('/super-admin/tenants'),
         api.get('/super-admin/plans'),
+        api.get('/super-admin/settings'),
+        api.get('/super-admin/gateways'),
       ]);
       setStats(statsRes.data);
       setTenants(tenantsRes.data);
       setPlans(plansRes.data || []);
+      setPlatformSettings(settingsRes.data || {});
+      setGateways(gatewaysRes.data || []);
     } catch (err) {
       console.error('Failed to load Super Admin dashboard data:', err);
     } finally {
@@ -172,6 +182,45 @@ export default function SuperAdminDashboard() {
       setEditPlanFeatures(prev => prev.filter(f => f !== feature));
     } else {
       setEditPlanFeatures(prev => [...prev, feature]);
+    }
+  };
+
+  const handleUpdateSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingsSubmitting(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      await api.put('/super-admin/settings', platformSettings);
+      setSuccessMsg('Platform settings updated successfully.');
+      await fetchAllData();
+    } catch (err: any) {
+      setErrorMsg(err.response?.data?.message || 'Failed to update platform settings.');
+    } finally {
+      setSettingsSubmitting(false);
+    }
+  };
+
+  const handleUpdateGateway = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editGateway) return;
+    setSettingsSubmitting(true);
+    setSuccessMsg('');
+    setErrorMsg('');
+    try {
+      await api.put(`/super-admin/gateways/${editGateway.gatewayName}`, {
+        isActive: editGateway.isActive,
+        apiKey: editGateway.apiKey,
+        apiSecret: editGateway.apiSecret,
+        webhookSecret: editGateway.webhookSecret,
+      });
+      setSuccessMsg(`${editGateway.gatewayName} configuration updated successfully.`);
+      setEditGateway(null);
+      await fetchAllData();
+    } catch (err: any) {
+      setErrorMsg(err.response?.data?.message || 'Failed to update gateway configuration.');
+    } finally {
+      setSettingsSubmitting(false);
     }
   };
 
@@ -306,6 +355,14 @@ export default function SuperAdminDashboard() {
           }`}
         >
           Manual Invoicing
+        </button>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`pb-4 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            activeTab === 'settings' ? 'border-indigo-600 text-indigo-900' : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          Platform Settings
         </button>
       </div>
 
@@ -626,6 +683,137 @@ export default function SuperAdminDashboard() {
                   )}
                 </button>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab CONTENT: Platform Settings */}
+      {activeTab === 'settings' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* General Platform Settings */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+            <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider mb-6 flex items-center gap-2">
+              <Settings className="w-4.5 h-4.5 text-indigo-600" />
+              General Platform Settings
+            </h2>
+            <form onSubmit={handleUpdateSettings} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Company Name</label>
+                <input
+                  type="text"
+                  value={platformSettings.companyName || ''}
+                  onChange={(e) => setPlatformSettings({...platformSettings, companyName: e.target.value})}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Currency Code</label>
+                  <input
+                    type="text"
+                    value={platformSettings.currency || ''}
+                    onChange={(e) => setPlatformSettings({...platformSettings, currency: e.target.value})}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tax Rate (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={platformSettings.taxRate || ''}
+                    onChange={(e) => setPlatformSettings({...platformSettings, taxRate: parseFloat(e.target.value)})}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 outline-none focus:border-indigo-600 focus:bg-white transition-all"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={settingsSubmitting}
+                className="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {settingsSubmitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Save General Settings
+              </button>
+            </form>
+          </div>
+
+          {/* Payment Gateways Config */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+            <h2 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider mb-6 flex items-center gap-2">
+              <DollarSign className="w-4.5 h-4.5 text-indigo-600" />
+              Payment Gateway Configurations
+            </h2>
+            <div className="space-y-4">
+              {gateways.length === 0 && (
+                <div className="text-center py-6 text-slate-400 text-xs font-semibold">
+                  No payment gateways configured. Start by editing RAZORPAY.
+                </div>
+              )}
+              {['RAZORPAY', 'STRIPE'].map(gatewayName => {
+                const gateway = gateways.find(g => g.gatewayName === gatewayName) || { gatewayName, isActive: false, apiKey: '', apiSecret: '' };
+                const isEditing = editGateway?.gatewayName === gatewayName;
+                
+                if (isEditing) {
+                  return (
+                    <form key={gatewayName} onSubmit={handleUpdateGateway} className="p-4 border border-indigo-200 bg-indigo-50/20 rounded-2xl space-y-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="font-black text-slate-800 uppercase">{gatewayName} Config</h4>
+                        <div className="flex items-center gap-2">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">Active</label>
+                          <input 
+                            type="checkbox" 
+                            checked={editGateway.isActive}
+                            onChange={(e) => setEditGateway({...editGateway, isActive: e.target.checked})}
+                            className="w-4 h-4 accent-indigo-600"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">API Key / Key ID</label>
+                        <input
+                          type="text"
+                          value={editGateway.apiKey || ''}
+                          onChange={(e) => setEditGateway({...editGateway, apiKey: e.target.value})}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
+                          placeholder="rzp_live_..."
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">API Secret / Key Secret</label>
+                        <input
+                          type="password"
+                          value={editGateway.apiSecret || ''}
+                          onChange={(e) => setEditGateway({...editGateway, apiSecret: e.target.value})}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs"
+                          placeholder="********"
+                          required
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-2 border-t border-slate-100">
+                        <button type="button" onClick={() => setEditGateway(null)} className="flex-1 py-2 text-xs font-semibold border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Cancel</button>
+                        <button type="submit" disabled={settingsSubmitting} className="flex-1 py-2 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 disabled:opacity-50">Save</button>
+                      </div>
+                    </form>
+                  );
+                }
+
+                return (
+                  <div key={gatewayName} className="flex items-center justify-between p-4 border border-slate-200 rounded-2xl bg-slate-50">
+                    <div>
+                      <h4 className="font-bold text-slate-800 uppercase">{gatewayName}</h4>
+                      <span className={`text-[10px] font-bold uppercase ${gateway.isActive ? 'text-emerald-600' : 'text-slate-400'}`}>
+                        {gateway.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <button onClick={() => setEditGateway({...gateway})} className="px-3 py-1.5 border border-slate-200 text-[11px] font-semibold text-indigo-600 bg-white hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer">
+                      Edit
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

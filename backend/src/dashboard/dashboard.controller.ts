@@ -39,4 +39,11 @@ export class DashboardController {
   async getGradingReport(@Req() req: any) {
     return this.dashboardService.getGradingReport(req.user.sub, req.user.role);
   }
+
+  @Roles(Role.SUPER_ADMIN)
+  @Get('platform/metrics')
+  async getPlatformMetrics() {
+    return this.dashboardService.getPlatformMetrics();
+  }
 }
+

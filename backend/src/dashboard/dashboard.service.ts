@@ -674,4 +674,102 @@ export class DashboardService {
       };
     });
   }
+
+  /**
+   * Super Admin Platform Dashboard Aggregations
+   */
+  async getPlatformMetrics() {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const yearStart = new Date(now.getFullYear(), 0, 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const [
+      totalRevenueAgg,
+      todayRevenueAgg,
+      monthlyRevenueAgg,
+      annualRevenueAgg,
+      totalSchools,
+      activeSubscriptions,
+      trialSubscriptions,
+      expiredSubscriptions,
+      gracePeriodSubscriptions,
+      renewalsDueThisMonth,
+      failedPaymentsCount,
+      successfulPaymentsCount
+    ] = await Promise.all([
+      this.prisma.subscriptionPayment.aggregate({
+        where: { status: 'SUCCESS' },
+        _sum: { amount: true },
+      }),
+      this.prisma.subscriptionPayment.aggregate({
+        where: { status: 'SUCCESS', createdAt: { gte: todayStart } },
+        _sum: { amount: true },
+      }),
+      this.prisma.subscriptionPayment.aggregate({
+        where: { status: 'SUCCESS', createdAt: { gte: monthStart } },
+        _sum: { amount: true },
+      }),
+      this.prisma.subscriptionPayment.aggregate({
+        where: { status: 'SUCCESS', createdAt: { gte: yearStart } },
+        _sum: { amount: true },
+      }),
+      this.prisma.tenant.count(),
+      this.prisma.tenantSubscription.count({
+        where: { status: { in: ['ACTIVE', 'RENEWED'] } },
+      }),
+      this.prisma.tenantSubscription.count({
+        where: { status: 'TRIAL' },
+      }),
+      this.prisma.tenantSubscription.count({
+        where: { status: 'EXPIRED' },
+      }),
+      this.prisma.tenantSubscription.count({
+        where: { status: 'GRACE_PERIOD' },
+      }),
+      this.prisma.tenantSubscription.count({
+        where: { expiryDate: { gte: monthStart, lte: monthEnd } },
+      }),
+      this.prisma.subscriptionPayment.count({
+        where: { status: 'FAILED' },
+      }),
+      this.prisma.subscriptionPayment.count({
+        where: { status: 'SUCCESS' },
+      }),
+    ]);
+
+    const totalRevenue = Number(totalRevenueAgg._sum.amount || 0);
+    const todayRevenue = Number(todayRevenueAgg._sum.amount || 0);
+    const monthlyRevenue = Number(monthlyRevenueAgg._sum.amount || 0);
+    const annualRevenue = Number(annualRevenueAgg._sum.amount || 0);
+
+    const totalPaymentAttempts = successfulPaymentsCount + failedPaymentsCount;
+    const renewalSuccessRate = totalPaymentAttempts > 0
+      ? Math.round((successfulPaymentsCount / totalPaymentAttempts) * 1000) / 10
+      : 100;
+
+    const mrr = Math.round(monthlyRevenue);
+
+    return {
+      metrics: {
+        totalRevenue,
+        todayRevenue,
+        monthlyRevenue,
+        annualRevenue,
+        mrr,
+        totalSchools,
+        activeSchools: activeSubscriptions,
+        trialSchools: trialSubscriptions,
+        expiredSchools: expiredSubscriptions,
+        gracePeriodSchools: gracePeriodSubscriptions,
+        renewalsDueThisMonth,
+        failedPayments: failedPaymentsCount,
+        renewalSuccessRate: `${renewalSuccessRate}%`,
+        activeSubscriptions,
+        trialConversions: activeSubscriptions,
+      },
+    };
+  }
 }
+
