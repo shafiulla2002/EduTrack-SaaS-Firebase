@@ -2,20 +2,22 @@
 
 import { useState, useEffect } from 'react';
 import { FileText, Shield, User, Calendar, Activity } from 'lucide-react';
+import { getApiUrl } from '@/lib/api';
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchLogs = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/activity-logs`, {
+      const baseUrl = getApiUrl();
+      const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+      const res = await fetch(`${cleanUrl}/activity-logs`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
       if (res.ok) {
         const data = await res.json();
         setLogs(Array.isArray(data) ? data : data.logs || []);

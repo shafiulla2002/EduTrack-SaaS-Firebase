@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '@/lib/api';
 import {
   TrendingUp,
   Building2,
@@ -18,16 +19,17 @@ export default function PlatformDashboardOverview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchMetrics = async () => {
     setLoading(true);
     setError('');
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/dashboard/platform/metrics`, {
+      const baseUrl = getApiUrl();
+      const endpoint = `${baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl}/dashboard/platform/metrics`;
+      const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
       if (!res.ok) throw new Error('Failed to fetch platform metrics');
       const data = await res.json();
       setMetrics(data.metrics);

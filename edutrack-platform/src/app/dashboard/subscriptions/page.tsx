@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { CreditCard, CheckCircle, RefreshCw, AlertTriangle, Shield, Check } from 'lucide-react';
+import { getApiUrl } from '@/lib/api';
 
 export default function SubscriptionsManagementPage() {
   const [tenants, setTenants] = useState<any[]>([]);
@@ -12,15 +13,15 @@ export default function SubscriptionsManagementPage() {
   const [newStatus, setNewStatus] = useState('ACTIVE');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchData = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
+      const baseUrl = getApiUrl();
+      const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
       const [tRes, pRes] = await Promise.all([
-        fetch(`${API_URL}/super-admin/tenants`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/super-admin/plans`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${cleanUrl}/super-admin/tenants`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${cleanUrl}/super-admin/plans`, { headers: { Authorization: `Bearer ${token}` } }),
       ]);
       const tData = await tRes.json();
       const pData = await pRes.json();
@@ -31,6 +32,7 @@ export default function SubscriptionsManagementPage() {
     } finally {
       setLoading(false);
     }
+
   };
 
   useEffect(() => {
@@ -41,7 +43,9 @@ export default function SubscriptionsManagementPage() {
     setSuccessMsg('');
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/super-admin/tenants/${tenantId}/subscription`, {
+      const baseUrl = getApiUrl();
+      const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+      const res = await fetch(`${cleanUrl}/super-admin/tenants/${tenantId}/subscription`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -52,6 +56,7 @@ export default function SubscriptionsManagementPage() {
           status: newStatus,
         }),
       });
+
 
       if (!res.ok) throw new Error('Failed to update subscription');
       setSuccessMsg(`Subscription updated successfully for school.`);

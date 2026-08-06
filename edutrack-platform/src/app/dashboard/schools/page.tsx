@@ -2,21 +2,23 @@
 
 import { useState, useEffect } from 'react';
 import { Building2, Search, Plus, ExternalLink, ShieldCheck, Mail, Phone } from 'lucide-react';
+import { getApiUrl } from '@/lib/api';
 
 export default function SchoolsManagementPage() {
   const [schools, setSchools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchSchools = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/super-admin/tenants`, {
+      const baseUrl = getApiUrl();
+      const endpoint = `${baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl}/super-admin/tenants`;
+      const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` },
       });
+
       if (!res.ok) throw new Error('Failed to fetch tenants');
       const data = await res.json();
       setSchools(data);

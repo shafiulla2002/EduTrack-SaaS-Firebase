@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ShieldCheck, AlertCircle, Lock, Mail, ArrowRight } from 'lucide-react';
+import { getApiUrl } from '@/lib/api';
 
 export default function PlatformLoginPage() {
   const router = useRouter();
@@ -11,21 +12,23 @@ export default function PlatformLoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_URL}/auth/login`, {
+      const baseUrl = getApiUrl();
+      const loginEndpoint = `${baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl}/auth/login`;
+
+      const res = await fetch(loginEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, targetPortal: 'PLATFORM' }),
       });
 
       const data = await res.json();
+
 
       if (!res.ok) {
         throw new Error(data.message || 'Authentication failed');

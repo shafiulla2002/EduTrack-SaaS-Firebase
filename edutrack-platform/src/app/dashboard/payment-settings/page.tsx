@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Settings, Save, CheckCircle2, Building, Receipt, Landmark } from 'lucide-react';
+import { getApiUrl } from '@/lib/api';
 
 export default function PaymentSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -21,13 +22,13 @@ export default function PaymentSettingsPage() {
     upiId: 'edutrack@hdfcbank',
   });
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
   const fetchSettings = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/v1/platform/payment-settings`, {
+      const baseUrl = getApiUrl();
+      const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+      const res = await fetch(`${cleanUrl}/api/v1/platform/payment-settings`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -52,7 +53,9 @@ export default function PaymentSettingsPage() {
 
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/v1/platform/payment-settings`, {
+      const baseUrl = getApiUrl();
+      const cleanUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+      const res = await fetch(`${cleanUrl}/api/v1/platform/payment-settings`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -60,6 +63,7 @@ export default function PaymentSettingsPage() {
         },
         body: JSON.stringify(settings),
       });
+
 
       if (!res.ok) throw new Error('Failed to update payment settings');
       setSuccess(true);
