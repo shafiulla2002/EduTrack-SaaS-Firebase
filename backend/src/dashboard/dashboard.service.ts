@@ -697,7 +697,11 @@ export class DashboardService {
       gracePeriodSubscriptions,
       renewalsDueThisMonth,
       failedPaymentsCount,
-      successfulPaymentsCount
+      successfulPaymentsCount,
+      pendingPayments,
+      totalStudents,
+      totalTeachers,
+      totalParents
     ] = await Promise.all([
       this.prisma.subscriptionPayment.aggregate({
         where: { status: 'SUCCESS' },
@@ -737,6 +741,16 @@ export class DashboardService {
       this.prisma.subscriptionPayment.count({
         where: { status: 'SUCCESS' },
       }),
+      this.prisma.subscriptionPayment.findMany({
+        where: { status: 'PENDING' },
+        include: {
+          tenant: { select: { id: true, name: true, subDomain: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.studentProfile.count(),
+      this.prisma.staffProfile.count(),
+      this.prisma.parentProfile.count(),
     ]);
 
     const totalRevenue = Number(totalRevenueAgg._sum.amount || 0);
@@ -750,6 +764,28 @@ export class DashboardService {
       : 100;
 
     const mrr = Math.round(monthlyRevenue);
+    const arr = totalRevenue > 0 ? Math.round(totalRevenue) : mrr * 12;
+
+    const pendingRequests = pendingPayments.map((p) => {
+      const resp = (p.gatewayResponse as any) || {};
+      return {
+        id: p.id,
+        tenantId: p.tenantId,
+        schoolName: p.tenant?.name || 'School',
+        subDomain: p.tenant?.subDomain || '',
+        plan: p.planId || 'BASIC',
+        billingCycle: p.billingDurationMonths ? `${p.billingDurationMonths} Months` : '12 Months',
+        billingMonths: p.billingDurationMonths || 12,
+        amount: Number(p.amount),
+        coupon: resp.couponCode || null,
+        razorpayOrderId: p.gatewayReference || '',
+        razorpayPaymentId: p.transactionId || '',
+        transactionId: p.transactionId || '',
+        paymentStatus: p.status,
+        signatureVerified: p.signatureVerified,
+        createdAt: p.createdAt,
+      };
+    });
 
     return {
       metrics: {
@@ -758,6 +794,7 @@ export class DashboardService {
         monthlyRevenue,
         annualRevenue,
         mrr,
+        arr,
         totalSchools,
         activeSchools: activeSubscriptions,
         trialSchools: trialSubscriptions,
@@ -768,6 +805,12 @@ export class DashboardService {
         renewalSuccessRate: `${renewalSuccessRate}%`,
         activeSubscriptions,
         trialConversions: activeSubscriptions,
+        pendingApprovals: pendingRequests.length,
+        totalStudents,
+        totalTeachers,
+        totalParents,
+        totalEcosystemUsers: totalStudents + totalTeachers + totalParents,
+        pendingRequests,
       },
     };
   }

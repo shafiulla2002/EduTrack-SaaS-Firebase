@@ -18,7 +18,7 @@ import {
   Zap,
   ChevronRight,
   Banknote,
-  FileText,
+  Sparkles,
 } from 'lucide-react';
 
 // ─── Pricing Configuration ────────────────────────────────────────────────
@@ -57,7 +57,7 @@ export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
-  // Billing & plan
+  // Selected Billing Duration (6 or 12 months)
   const [billingMonths, setBillingMonths] = useState<6 | 12>(12);
 
   // Coupon
@@ -131,6 +131,13 @@ export default function SubscriptionPage() {
     setAppliedCoupon(null);
     setCouponCode('');
     setCouponMsg(null);
+  };
+
+  const openCheckoutWithMonths = (months: 6 | 12) => {
+    setBillingMonths(months);
+    setPaymentError('');
+    setPaymentSuccess(null);
+    setShowCheckoutModal(true);
   };
 
   // ─── Razorpay Payment Handler ─────────────────────────────────────────────
@@ -261,7 +268,7 @@ export default function SubscriptionPage() {
           <p className="text-xs text-slate-400 mt-1">Real-time Razorpay checkout, automated invoicing, and approval workflows.</p>
         </div>
         <button
-          onClick={() => { setPaymentError(''); setPaymentSuccess(null); setShowCheckoutModal(true); }}
+          onClick={() => openCheckoutWithMonths(12)}
           className="flex items-center gap-2 px-5 py-3 text-xs font-extrabold text-white bg-blue-600 hover:bg-blue-500 rounded-2xl shadow-lg shadow-blue-600/30 cursor-pointer transition-all"
         >
           <CreditCard className="w-4 h-4" />
@@ -308,10 +315,10 @@ export default function SubscriptionPage() {
       {/* ── Status Cards ────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Current Plan', value: subscription?.plan || 'BASIC', sub: 'Tier allocation' },
+          { label: 'Current Plan', value: subscription?.plan || 'BASIC', sub: 'Standard tier' },
           { label: 'Expiry Date', value: expiryDate.toLocaleDateString(), sub: `${daysRemaining} days remaining` },
-          { label: 'Billing Cycle', value: stats?.billingCycle || '—', sub: 'Auto-renewal enabled' },
-          { label: 'Grace Period', value: 'Active', sub: '3-day grace window', green: true },
+          { label: 'Billing Cycle', value: stats?.billingCycle || '12 Months', sub: 'Auto-renewal enabled' },
+          { label: 'Grace Period', value: 'Active', sub: '14-day grace window', green: true },
         ].map((card) => (
           <div key={card.label} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
             <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">{card.label}</span>
@@ -321,68 +328,157 @@ export default function SubscriptionPage() {
         ))}
       </div>
 
-      {/* ── BASIC Plan Card ─────────────────────────────────────────────────── */}
-      <div className="space-y-3">
-        <h2 className="text-lg font-bold text-slate-900">Available Subscription Plans</h2>
-        <div className="bg-white border-2 border-blue-500 rounded-3xl p-8 shadow-xl max-w-lg relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider">
-            ONLY PLAN
-          </div>
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center shrink-0">
-              <Zap className="w-6 h-6 text-blue-600" />
-            </div>
-            <div className="flex-1">
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded-full uppercase">Standard</span>
-              <h3 className="text-xl font-black text-slate-900 mt-2">BASIC Plan</h3>
-              <p className="text-xs text-slate-500 mt-1">Complete school management for all school sizes.</p>
-            </div>
-          </div>
+      {/* ── SIDE-BY-SIDE BASIC PLAN CARDS ───────────────────────────────────── */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">Available Subscription Plans</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Select a billing duration to proceed with secure Razorpay checkout.</p>
+        </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-4">
-            {/* 6 Months */}
-            <div className={`border-2 rounded-2xl p-4 cursor-pointer transition-all ${billingMonths === 6 ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-300'}`}
-              onClick={() => setBillingMonths(6)}>
-              <div className="flex items-center gap-2 mb-1">
-                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${billingMonths === 6 ? 'border-blue-600' : 'border-slate-300'}`}>
-                  {billingMonths === 6 && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
-                </div>
-                <span className="text-xs font-bold text-slate-600">6 Months</span>
-              </div>
-              <div className="text-2xl font-black text-slate-900">₹5,999</div>
-              <div className="text-[10px] text-slate-400 mt-1">₹999/month avg</div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-            {/* 12 Months */}
-            <div className={`border-2 rounded-2xl p-4 cursor-pointer transition-all ${billingMonths === 12 ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-300'}`}
-              onClick={() => setBillingMonths(12)}>
-              <div className="flex items-center gap-2 mb-1">
-                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${billingMonths === 12 ? 'border-blue-600' : 'border-slate-300'}`}>
-                  {billingMonths === 12 && <div className="w-2 h-2 bg-blue-600 rounded-full" />}
-                </div>
-                <span className="text-xs font-bold text-slate-600">12 Months</span>
-              </div>
-              <div className="text-2xl font-black text-slate-900">₹11,999</div>
-              <div className="flex items-center gap-1 mt-1">
-                <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded-full">Save ₹999</span>
-              </div>
-            </div>
-          </div>
-
-          <ul className="mt-5 space-y-2 text-xs text-slate-600">
-            {['Unlimited Students & Staff', 'Attendance, Fees & Timetable', 'Exams, Grades & Reports', 'Parent Portal & SMS Notifications', 'Transport & GPS Tracking'].map(f => (
-              <li key={f} className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500 shrink-0" />{f}</li>
-            ))}
-          </ul>
-
-          <button
-            onClick={() => { setPaymentError(''); setPaymentSuccess(null); setShowCheckoutModal(true); }}
-            className="mt-6 w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-extrabold text-sm transition-all shadow-lg shadow-blue-600/30 cursor-pointer flex items-center justify-center gap-2"
+          {/* ── CARD 1: 6 MONTHS ──────────────────────────────────────────────── */}
+          <div
+            onClick={() => setBillingMonths(6)}
+            className={`bg-white border-2 rounded-3xl p-6 transition-all duration-200 flex flex-col justify-between cursor-pointer relative overflow-hidden ${
+              billingMonths === 6
+                ? 'border-blue-600 shadow-2xl bg-gradient-to-b from-blue-50/50 to-white ring-2 ring-blue-600/20'
+                : 'border-slate-200 hover:border-blue-300 shadow-md hover:shadow-lg'
+            }`}
           >
-            <CreditCard className="w-4 h-4" />
-            Proceed to Payment
-            <ChevronRight className="w-4 h-4" />
-          </button>
+            <div className="space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${billingMonths === 6 ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'}`}>
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-100 px-2.5 py-0.5 rounded-full">Half-Yearly</span>
+                    <h3 className="text-lg font-black text-slate-900 mt-0.5">BASIC PLAN</h3>
+                  </div>
+                </div>
+
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${billingMonths === 6 ? 'border-blue-600 bg-blue-600' : 'border-slate-300'}`}>
+                  {billingMonths === 6 && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Billing Duration: 6 Months</span>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-3xl font-black text-slate-900">₹5,999</span>
+                  <span className="text-xs text-slate-400 font-medium">/ 6 months</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">Includes all core school management modules</p>
+              </div>
+
+              <div className="border-t border-slate-100 pt-4 space-y-2">
+                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Plan Features:</p>
+                <ul className="space-y-2 text-xs text-slate-600">
+                  {[
+                    'Unlimited Students & Staff Profiles',
+                    'Attendance, Fees & Timetable Management',
+                    'Exams, Grading & Progress Reports',
+                    'Parent Portal & In-App Notifications',
+                    'Transport & Bus GPS Tracking',
+                  ].map((feature) => (
+                    <li key={feature} className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openCheckoutWithMonths(6);
+              }}
+              className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-extrabold text-sm transition-all shadow-lg shadow-blue-600/30 cursor-pointer flex items-center justify-center gap-2"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Proceed to Payment (₹5,999)</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* ── CARD 2: 12 MONTHS ─────────────────────────────────────────────── */}
+          <div
+            onClick={() => setBillingMonths(12)}
+            className={`bg-white border-2 rounded-3xl p-6 transition-all duration-200 flex flex-col justify-between cursor-pointer relative overflow-hidden ${
+              billingMonths === 12
+                ? 'border-blue-600 shadow-2xl bg-gradient-to-b from-blue-50/50 to-white ring-2 ring-blue-600/20'
+                : 'border-slate-200 hover:border-blue-300 shadow-md hover:shadow-lg'
+            }`}
+          >
+            {/* Top Ribbon Badge */}
+            <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
+              <Sparkles className="w-3 h-3" /> BEST VALUE — SAVE ₹999
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${billingMonths === 12 ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'}`}>
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">Annual Plan</span>
+                    <h3 className="text-lg font-black text-slate-900 mt-0.5">BASIC PLAN</h3>
+                  </div>
+                </div>
+
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${billingMonths === 12 ? 'border-blue-600 bg-blue-600' : 'border-slate-300'}`}>
+                  {billingMonths === 12 && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Billing Duration: 12 Months</span>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-3xl font-black text-slate-900">₹11,999</span>
+                  <span className="text-xs text-slate-400 font-medium">/ 12 months</span>
+                  <span className="text-xs bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-md">
+                    Save ₹999
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">Best value annual plan for full academic year support</p>
+              </div>
+
+              <div className="border-t border-slate-100 pt-4 space-y-2">
+                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Plan Features:</p>
+                <ul className="space-y-2 text-xs text-slate-600">
+                  {[
+                    'Unlimited Students & Staff Profiles',
+                    'Attendance, Fees & Timetable Management',
+                    'Exams, Grading & Progress Reports',
+                    'Parent Portal & In-App Notifications',
+                    'Transport & Bus GPS Tracking',
+                  ].map((feature) => (
+                    <li key={feature} className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openCheckoutWithMonths(12);
+              }}
+              className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-extrabold text-sm transition-all shadow-lg shadow-blue-600/30 cursor-pointer flex items-center justify-center gap-2"
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>Proceed to Payment (₹11,999)</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
         </div>
       </div>
 
@@ -411,9 +507,9 @@ export default function SubscriptionPage() {
                 <tr key={inv.id}>
                   <td className="p-3 font-mono font-bold text-slate-900">{inv.invoiceNumber}</td>
                   <td className="p-3 font-semibold">{inv.planId || 'BASIC'}</td>
-                  <td className="p-3 font-mono">₹{Number(inv.amount).toLocaleString()}</td>
-                  <td className="p-3 font-mono">₹{Number(inv.gst).toLocaleString()}</td>
-                  <td className="p-3 font-mono font-bold text-emerald-600">₹{(Number(inv.amount) + Number(inv.gst)).toLocaleString()}</td>
+                  <td className="p-3 font-mono">₹{Number(inv.amount).toLocaleString('en-IN')}</td>
+                  <td className="p-3 font-mono">₹{Number(inv.gst).toLocaleString('en-IN')}</td>
+                  <td className="p-3 font-mono font-bold text-emerald-600">₹{(Number(inv.amount) + Number(inv.gst)).toLocaleString('en-IN')}</td>
                   <td className="p-3">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${inv.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                       {inv.status}
@@ -465,7 +561,7 @@ export default function SubscriptionPage() {
                   <td className="p-3">{p.gateway || '—'}</td>
                   <td className="p-3">{p.method || '—'}</td>
                   <td className="p-3 font-mono text-slate-600">{p.transactionId?.slice(0, 20) || '—'}</td>
-                  <td className="p-3 font-mono font-bold text-emerald-600">₹{Number(p.amount).toLocaleString()}</td>
+                  <td className="p-3 font-mono font-bold text-emerald-600">₹{Number(p.amount).toLocaleString('en-IN')}</td>
                   <td className="p-3">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                       p.status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700'
@@ -489,35 +585,30 @@ export default function SubscriptionPage() {
             {/* Header */}
             <div className="flex justify-between items-center border-b border-slate-800 pb-4">
               <div>
-                <h3 className="text-lg font-black">BASIC Plan — Checkout</h3>
+                <h3 className="text-lg font-black">BASIC Plan ({billingMonths} Months) — Checkout</h3>
                 <p className="text-xs text-slate-400 mt-0.5">Secure Razorpay Checkout</p>
               </div>
               <button onClick={() => setShowCheckoutModal(false)} className="text-slate-400 hover:text-white text-2xl leading-none cursor-pointer">✕</button>
             </div>
 
-            {/* Billing Cycle Selector */}
+            {/* Selected Duration Switcher */}
             <div>
-              <label className="block text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Billing Cycle</label>
+              <label className="block text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider">Selected Duration</label>
               <div className="grid grid-cols-2 gap-3">
                 {([6, 12] as const).map((m) => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => setBillingMonths(m)}
-                    className={`border-2 rounded-2xl p-4 text-left cursor-pointer transition-all ${billingMonths === m ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-600'}`}
+                    className={`border-2 rounded-2xl p-3 text-left cursor-pointer transition-all ${billingMonths === m ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-600'}`}
                   >
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2">
                       <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${billingMonths === m ? 'border-blue-400' : 'border-slate-600'}`}>
                         {billingMonths === m && <div className="w-2 h-2 bg-blue-400 rounded-full" />}
                       </div>
                       <span className="text-xs font-bold text-slate-300">{m} Months</span>
                     </div>
-                    <div className="text-xl font-black text-white">₹{PLAN_PRICING.BASIC[m].toLocaleString()}</div>
-                    {PLAN_SAVINGS.BASIC[m] > 0 && (
-                      <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold mt-1 inline-block">
-                        Save ₹{PLAN_SAVINGS.BASIC[m].toLocaleString()}
-                      </span>
-                    )}
+                    <div className="text-lg font-black text-white mt-1">₹{PLAN_PRICING.BASIC[m].toLocaleString('en-IN')}</div>
                   </button>
                 ))}
               </div>
@@ -555,29 +646,29 @@ export default function SubscriptionPage() {
               )}
             </div>
 
-            {/* Pricing Summary */}
+            {/* Real-Time Pricing Summary */}
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2 text-xs font-mono">
               <div className="flex justify-between text-slate-400">
-                <span>Plan Price ({billingMonths} months):</span>
-                <span>₹{basePrice.toLocaleString()}</span>
+                <span>Plan Price ({billingMonths} Months):</span>
+                <span>₹{basePrice.toLocaleString('en-IN')}</span>
               </div>
               {appliedCoupon && (
                 <div className="flex justify-between text-emerald-400">
                   <span>Coupon ({appliedCoupon.code}):</span>
-                  <span>−₹{discountAmount.toLocaleString()}</span>
+                  <span>−₹{discountAmount.toLocaleString('en-IN')}</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-400">
                 <span>Subtotal:</span>
-                <span>₹{taxableAmount.toLocaleString()}</span>
+                <span>₹{taxableAmount.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-slate-400">
                 <span>GST (18%):</span>
-                <span>+₹{gstAmount.toLocaleString()}</span>
+                <span>+₹{gstAmount.toLocaleString('en-IN')}</span>
               </div>
               <div className="border-t border-slate-800 pt-2 flex justify-between text-sm font-bold text-white">
                 <span>Grand Total:</span>
-                <span className="text-emerald-400">₹{finalPayable.toLocaleString()}</span>
+                <span className="text-emerald-400">₹{finalPayable.toLocaleString('en-IN')}</span>
               </div>
             </div>
 
@@ -612,7 +703,7 @@ export default function SubscriptionPage() {
                 {paymentProcessing ? (
                   <><RefreshCw className="w-4 h-4 animate-spin" /> Processing...</>
                 ) : (
-                  <><CreditCard className="w-4 h-4" /> Pay ₹{finalPayable.toLocaleString()}</>
+                  <><CreditCard className="w-4 h-4" /> Pay ₹{finalPayable.toLocaleString('en-IN')}</>
                 )}
               </button>
             </div>

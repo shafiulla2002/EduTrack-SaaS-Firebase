@@ -288,7 +288,7 @@ export class SuperAdminController {
   @Get('pending-payments')
   async getPendingPayments() {
     return this.prisma.subscriptionPayment.findMany({
-      where: { status: SaaSPaymentStatus.PENDING, signatureVerified: true },
+      where: { status: SaaSPaymentStatus.PENDING },
       include: {
         tenant: { select: { id: true, name: true, subDomain: true, email: true } },
         invoice: true,
