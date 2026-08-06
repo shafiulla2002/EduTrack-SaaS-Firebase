@@ -1,9 +1,16 @@
 import axios from 'axios';
 
+export const DEFAULT_PRODUCTION_API_URL = 'https://edutrack.covenantsynergy.in/api';
+
 export function getApiUrl(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) {
+  // If explicitly configured and valid (not fly.dev placeholder)
+  if (
+    process.env.NEXT_PUBLIC_API_URL &&
+    !process.env.NEXT_PUBLIC_API_URL.includes('edutrack-saas-backend.fly.dev')
+  ) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
+
   if (typeof window !== 'undefined') {
     const isLocalhost =
       window.location.hostname === 'localhost' ||
@@ -11,10 +18,10 @@ export function getApiUrl(): string {
     if (isLocalhost) {
       return 'http://localhost:3001';
     }
-    // In production Vercel deployment without explicit NEXT_PUBLIC_API_URL:
-    // Use Next.js API proxy route /api
-    return '/api';
+    // In production Vercel deployment: use live backend API https://edutrack.covenantsynergy.in/api
+    return DEFAULT_PRODUCTION_API_URL;
   }
+
   return 'http://localhost:3001';
 }
 

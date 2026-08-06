@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Backend URL - reads from env var on Vercel, falls back to localhost for local dev
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
+const RAW_BACKEND_URL =
   process.env.BACKEND_INTERNAL_URL ||
-  'http://localhost:3001';
+  process.env.NEXT_PUBLIC_API_URL ||
+  'https://edutrack.covenantsynergy.in/api';
+
+const BACKEND_URL = RAW_BACKEND_URL.includes('edutrack-saas-backend.fly.dev')
+  ? 'https://edutrack.covenantsynergy.in/api'
+  : RAW_BACKEND_URL;
 
 export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {
   return proxyRequest(request, params.path, 'GET');
@@ -29,7 +32,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { path:
 async function proxyRequest(request: NextRequest, pathSegments: string[], method: string) {
   const path = pathSegments.join('/');
   const searchParams = request.nextUrl.searchParams.toString();
-  const targetUrl = `${BACKEND_URL}/${path}${searchParams ? `?${searchParams}` : ''}`;
+  const cleanBackendUrl = BACKEND_URL.endsWith('/') ? BACKEND_URL.slice(0, -1) : BACKEND_URL;
+  const targetUrl = `${cleanBackendUrl}/${path}${searchParams ? `?${searchParams}` : ''}`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
