@@ -20,11 +20,64 @@ if (!process.env.VERCEL) {
   }
 }
 
+const allowedOrigins = [
+  'https://edutrack-platform-lac.vercel.app',
+  'https://edutrack-platform.vercel.app',
+  'https://edutrack-saas.vercel.app',
+  'https://app.edutrack.com',
+  'https://platform.edutrack.com',
+  'http://localhost:3000',
+  'http://localhost:3002',
+];
+
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) return callback(null, true);
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.vercel.app') ||
+      origin.endsWith('.edutrack.com')
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Authorization',
+    'Content-Type',
+    'Accept',
+    'Origin',
+    'X-Requested-With',
+    'X-Tenant-ID',
+  ],
+};
+
 let cachedServer: any;
 
 async function bootstrap() {
   if (!cachedServer) {
     const expressApp = express();
+    
+    // Explicit Preflight & CORS Middleware on Express level
+    expressApp.use((req, res, next) => {
+      const origin = req.headers.origin;
+      if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      } else {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      }
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, Origin, X-Requested-With, X-Tenant-ID');
+
+      if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+      }
+      next();
+    });
+
     expressApp.use(express.json({ limit: '10mb' }));
     expressApp.use(express.urlencoded({ limit: '10mb', extended: true }));
     
@@ -33,10 +86,7 @@ async function bootstrap() {
 
     const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), { bodyParser: false });
 
-    app.enableCors({
-      origin: true,
-      credentials: true,
-    });
+    app.enableCors(corsOptions);
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -62,14 +112,12 @@ export default async (req: any, res: any) => {
 if (!process.env.VERCEL) {
   async function startLocal() {
     const app = await NestFactory.create(AppModule, { bodyParser: false });
+    
+    app.enableCors(corsOptions);
+
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ limit: '10mb', extended: true }));
     app.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
-
-    app.enableCors({
-      origin: true,
-      credentials: true,
-    });
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -87,4 +135,3 @@ if (!process.env.VERCEL) {
   }
   startLocal();
 }
-
