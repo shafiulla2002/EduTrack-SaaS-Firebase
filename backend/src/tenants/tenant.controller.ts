@@ -342,4 +342,42 @@ export class TenantController {
     const userId = req.user.id;
     return this.tenantsService.upgradeOrRenewSubscription(tenantId, planName as any, paymentDetails, userId);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('subscription/create-order')
+  async createRazorpayOrder(
+    @Req() req: any,
+    @Body('planName') planName: string,
+    @Body('billingMonths') billingMonths: number,
+    @Body('baseAmountRs') baseAmountRs: number,
+    @Body('couponCode') couponCode?: string,
+  ) {
+    const tenantId = req.user.tenantId;
+    return this.tenantsService.createRazorpayOrder(tenantId, planName, billingMonths, baseAmountRs, couponCode);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('subscription/verify-payment')
+  async verifyPayment(
+    @Req() req: any,
+    @Body('razorpay_order_id') razorpayOrderId: string,
+    @Body('razorpay_payment_id') razorpayPaymentId: string,
+    @Body('razorpay_signature') razorpaySignature: string,
+    @Body('planName') planName: string,
+    @Body('billingMonths') billingMonths: number,
+    @Body('finalAmountRs') finalAmountRs: number,
+    @Body('couponCode') couponCode?: string,
+  ) {
+    const tenantId = req.user.tenantId;
+    return this.tenantsService.verifyAndRecordPayment(
+      tenantId,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+      planName,
+      billingMonths,
+      finalAmountRs,
+      couponCode,
+    );
+  }
 }

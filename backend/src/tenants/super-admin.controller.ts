@@ -283,4 +283,146 @@ export class SuperAdminController {
       update: updateData,
     });
   }
+
+  // ─── Pending Payment Requests (Subscription Renewal Approvals) ──────────
+  @Get('pending-payments')
+  async getPendingPayments() {
+    return this.prisma.subscriptionPayment.findMany({
+      where: { status: SaaSPaymentStatus.PENDING, signatureVerified: true },
+      include: {
+        tenant: { select: { id: true, name: true, subDomain: true, email: true } },
+        invoice: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  @Post('payments/:paymentId/approve')
+  async approvePayment(
+    @Param('paymentId') paymentId: string,
+    @Body('remarks') remarks?: string,
+  ) {
+    const payment = await this.prisma.subscriptionPayment.findUnique({
+      where: { id: paymentId },
+      include: { tenant: true },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    const tenantId = payment.tenantId;
+    const billingMonths = payment.billingDurationMonths || 12;
+
+    // Find the plan by name (planId stores the name string)
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { name: (payment.planId || 'BASIC') as any },
+    });
+    if (!plan) throw new NotFoundException('Plan not found');
+
+    // Compute new expiry
+    const currentSub = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId },
+    });
+    let baseDate = new Date();
+    if (currentSub && new Date(currentSub.expiryDate) > new Date()) {
+      baseDate = new Date(currentSub.expiryDate);
+    }
+    const newExpiry = new Date(baseDate);
+    newExpiry.setMonth(newExpiry.getMonth() + billingMonths);
+
+    // Generate invoice
+    const invoiceNumber = 'INV-' + Date.now().toString().slice(-8) + '-' + Math.floor(Math.random() * 100);
+    const gstAmount = Math.round(Number(payment.amount) * 0.18 * 100) / 100;
+
+    const invoice = await this.prisma.subscriptionInvoice.create({
+      data: {
+        invoiceNumber,
+        tenantId,
+        planId: plan.name,
+        amount: payment.amount,
+        gst: gstAmount,
+        currency: 'INR',
+        status: SaaSInvoiceStatus.PAID,
+        paymentDate: new Date(),
+        pdfUrl: `/billing/invoices/subscription/${invoiceNumber}.pdf`,
+        snapshotData: {
+          paymentId: payment.transactionId,
+          gatewayRef: payment.gatewayReference,
+          billingMonths,
+          approvedAt: new Date().toISOString(),
+          remarks,
+        },
+      },
+    });
+
+    // Mark payment as SUCCESS and link invoice
+    await this.prisma.subscriptionPayment.update({
+      where: { id: paymentId },
+      data: {
+        status: SaaSPaymentStatus.SUCCESS,
+        invoiceId: invoice.id,
+        paidAt: new Date(),
+      },
+    });
+
+    // Activate / Renew subscription
+    if (currentSub) {
+      await this.prisma.tenantSubscription.update({
+        where: { tenantId },
+        data: {
+          planId: plan.id,
+          expiryDate: newExpiry,
+          status: SubscriptionStatus.ACTIVE,
+          updatedAt: new Date(),
+        },
+      });
+    }
+
+    // Send approval notification to tenant
+    await this.prisma.notification.create({
+      data: {
+        tenantId,
+        title: 'Subscription Activated!',
+        message: `Your subscription renewal has been approved and activated. New expiry: ${newExpiry.toLocaleDateString()}. Invoice: ${invoiceNumber}`,
+        type: 'SUBSCRIPTION',
+      } as any,
+    }).catch(() => {});
+
+    return {
+      success: true,
+      invoiceNumber,
+      newExpiry,
+      message: 'Subscription approved and activated successfully.',
+    };
+  }
+
+  @Post('payments/:paymentId/reject')
+  async rejectPayment(
+    @Param('paymentId') paymentId: string,
+    @Body('reason') reason: string,
+  ) {
+    const payment = await this.prisma.subscriptionPayment.findUnique({
+      where: { id: paymentId },
+      include: { tenant: true },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    await this.prisma.subscriptionPayment.update({
+      where: { id: paymentId },
+      data: {
+        status: SaaSPaymentStatus.FAILED,
+        failureReason: reason || 'Rejected by Super Admin',
+      },
+    });
+
+    // Send rejection notification to tenant
+    await this.prisma.notification.create({
+      data: {
+        tenantId: payment.tenantId,
+        title: 'Subscription Request Rejected',
+        message: `Your subscription renewal request has been rejected. Reason: ${reason || 'Not specified'}. Please contact support for assistance.`,
+        type: 'SUBSCRIPTION',
+      } as any,
+    }).catch(() => {});
+
+    return { success: true, message: 'Payment rejected and tenant notified.' };
+  }
 }
