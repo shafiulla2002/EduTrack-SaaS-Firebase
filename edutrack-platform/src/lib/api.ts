@@ -1,16 +1,6 @@
 import axios from 'axios';
 
-export const DEFAULT_PRODUCTION_API_URL = 'https://edutrack.covenantsynergy.in/api';
-
 export function getApiUrl(): string {
-  // If explicitly configured and valid (not fly.dev placeholder)
-  if (
-    process.env.NEXT_PUBLIC_API_URL &&
-    !process.env.NEXT_PUBLIC_API_URL.includes('edutrack-saas-backend.fly.dev')
-  ) {
-    return process.env.NEXT_PUBLIC_API_URL;
-  }
-
   if (typeof window !== 'undefined') {
     const isLocalhost =
       window.location.hostname === 'localhost' ||
@@ -18,11 +8,12 @@ export function getApiUrl(): string {
     if (isLocalhost) {
       return 'http://localhost:3001';
     }
-    // In production Vercel deployment: use live backend API https://edutrack.covenantsynergy.in/api
-    return DEFAULT_PRODUCTION_API_URL;
+    // In production Vercel deployment: ALWAYS use same-origin relative /api route.
+    // Same-Origin requests eliminate browser CORS checks completely!
+    return '/api';
   }
 
-  return 'http://localhost:3001';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 }
 
 export const api = axios.create({
