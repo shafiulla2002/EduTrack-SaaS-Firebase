@@ -3,10 +3,20 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 
+const FALLBACK_DB_URL =
+  'postgresql://postgres:School2026DB@school-management-db-recovered-final-v2.cex84kesyw9q.us-east-1.rds.amazonaws.com:5432/postgres?schema=public&connection_limit=15&pool_timeout=60';
+
 let prisma: PrismaClient | null = null;
 function getPrisma() {
   if (!prisma) {
-    prisma = new PrismaClient();
+    const dbUrl = process.env.DATABASE_URL || FALLBACK_DB_URL;
+    prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: dbUrl,
+        },
+      },
+    });
   }
   return prisma;
 }
