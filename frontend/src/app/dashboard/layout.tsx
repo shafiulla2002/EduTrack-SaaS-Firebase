@@ -18,8 +18,9 @@ export default function DashboardLayout({
   const { theme, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const { schoolName, schoolType, adminName, logoUrl, currentUser, loading, subscription, isSubscriptionActive, showLockPopup, setShowLockPopup } = useTenant();
   const isImpersonating = typeof window !== 'undefined' && sessionStorage.getItem('impersonating_from_platform') === 'true';
-  const impersonatedSchool = typeof window !== 'undefined' ? sessionStorage.getItem('impersonated_school_name') || schoolName : schoolName;
+  const impersonatedSchool = typeof window !== 'undefined' ? (sessionStorage.getItem('impersonated_school_name') || schoolName) : schoolName;
 
   // Subscription state helpers
   const isSubscriptionBlocked = !isSubscriptionActive;
@@ -582,7 +583,6 @@ export default function DashboardLayout({
   }
 
   return (
-    <ToastProvider>
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans overflow-x-hidden">
       {isImpersonating && (
         <div className="bg-amber-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-between z-[9999] sticky top-0 shadow-md">
@@ -1179,7 +1179,7 @@ export default function DashboardLayout({
         </div>
       )}
     </div>
-    </ToastProvider>
+    </div>
   );
 }
 function parseLeaveRequestMessage(message: string) {
@@ -1627,8 +1627,6 @@ function NotificationBell() {
           </div>
         </div>
       )}
-      </div>
     </div>
-    </ToastProvider>
   );
 }

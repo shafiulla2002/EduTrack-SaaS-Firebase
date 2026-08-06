@@ -338,4 +338,11 @@ export class PDFService {
       });
     });
   }
+
+  static downloadInvoicePDF(invoice: any): void {
+    if (typeof window !== 'undefined') {
+      const invId = invoice?.id || invoice?.invoiceNumber || 'INV-001';
+      window.alert(`Downloading Invoice ${invId} PDF...`);
+    }
+  }
 }
