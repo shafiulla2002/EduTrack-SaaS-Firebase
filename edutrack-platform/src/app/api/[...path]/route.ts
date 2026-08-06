@@ -110,70 +110,265 @@ async function handleRoute(request: NextRequest, pathSegments: string[], method:
   if (path === 'dashboard/platform/metrics' && method === 'GET') {
     try {
       const totalSchools = await db.tenant.count();
-      const activeSchools = await db.tenantSubscription.count({ where: { status: 'ACTIVE' } }).catch(() => 12);
-      const trialSchools = await db.tenantSubscription.count({ where: { status: 'TRIAL' } }).catch(() => 2);
-      const expiredSchools = await db.tenantSubscription.count({ where: { status: 'EXPIRED' } }).catch(() => 1);
+      const activeSchools = await db.tenantSubscription.count({ where: { status: { in: ['ACTIVE', 'RENEWED'] } } }).catch(() => 0);
+      const trialSchools = await db.tenantSubscription.count({ where: { status: 'TRIAL' } }).catch(() => 0);
+      const expiredSchools = await db.tenantSubscription.count({ where: { status: 'EXPIRED' } }).catch(() => 0);
+      const gracePeriodSchools = await db.tenantSubscription.count({ where: { status: 'GRACE_PERIOD' } }).catch(() => 0);
 
-      const totalStudents = await db.studentProfile.count().catch(() => 3246);
-      const totalTeachers = await db.staffProfile.count().catch(() => 99);
-      const totalParents = await db.user.count({ where: { role: 'PARENT' } }).catch(() => 1150);
+      const totalStudents = await db.studentProfile.count().catch(() => 0);
+      const totalTeachers = await db.staffProfile.count().catch(() => 0);
+      const totalParents = await db.user.count({ where: { role: 'PARENT' } }).catch(() => 0);
 
-      const paidInvoices = await db.subscriptionInvoice.aggregate({
-        where: { status: 'PAID' },
-        _sum: { amount: true, gst: true }
+      const totalRevenueAgg = await db.subscriptionPayment.aggregate({
+        where: { status: 'SUCCESS' },
+        _sum: { amount: true }
       }).catch(() => null);
 
-      const totalRev = Number(paidInvoices?._sum?.amount || 1500000);
+      const totalRev = Number(totalRevenueAgg?._sum?.amount || 0);
       const mrr = Math.round(totalRev / 12);
+
+      // Query REAL pending subscription payments from DB!
+      const pendingPayments = await db.subscriptionPayment.findMany({
+        where: { status: 'PENDING' },
+        include: {
+          tenant: { select: { id: true, name: true, subDomain: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+
+      const pendingRequests = pendingPayments.map((p) => {
+        const resp = (p.gatewayResponse as any) || {};
+        return {
+          id: p.id,
+          tenantId: p.tenantId,
+          schoolName: p.tenant?.name || 'School',
+          subDomain: p.tenant?.subDomain || '',
+          plan: p.planId || 'BASIC',
+          billingCycle: p.billingDurationMonths ? `${p.billingDurationMonths} Months` : '12 Months',
+          billingMonths: p.billingDurationMonths || 12,
+          amount: Number(p.amount),
+          coupon: resp.couponCode || null,
+          razorpayOrderId: p.gatewayReference || '',
+          razorpayPaymentId: p.transactionId || '',
+          transactionId: p.transactionId || '',
+          paymentStatus: p.status,
+          signatureVerified: p.signatureVerified,
+          createdAt: p.createdAt,
+        };
+      });
 
       return NextResponse.json({
         metrics: {
-          totalSchools: totalSchools || 23,
-          activeSchools: activeSchools || 20,
-          trialSchools: trialSchools || 2,
-          expiredSchools: expiredSchools || 1,
-          suspendedSchools: 0,
-          cancelledSchools: 0,
+          totalSchools,
+          activeSchools,
+          trialSchools,
+          expiredSchools,
+          gracePeriodSchools,
           totalRevenue: totalRev,
-          mrr: mrr || 125000,
-          arr: totalRev || 1500000,
-          revenueToday: 15000,
-          revenueMonth: mrr || 125000,
-          revenueYear: totalRev || 1500000,
-          renewalsDue: 2,
-          pendingApprovals: 1,
-          pendingPayments: 0,
-          failedPayments: 0,
-          supportTickets: 1,
-          totalStudents: totalStudents || 3246,
-          totalTeachers: totalTeachers || 99,
-          totalParents: totalParents || 1150,
+          mrr,
+          arr: totalRev || mrr * 12,
+          pendingApprovals: pendingRequests.length,
+          pendingRequests,
+          totalStudents,
+          totalTeachers,
+          totalParents,
+          totalEcosystemUsers: totalStudents + totalTeachers + totalParents,
         },
       });
     } catch (err: any) {
       return NextResponse.json({
         metrics: {
-          totalSchools: 23,
-          activeSchools: 20,
-          trialSchools: 2,
-          expiredSchools: 1,
-          totalRevenue: 1500000,
-          mrr: 125000,
-          arr: 1500000,
-          totalStudents: 3246,
-          totalTeachers: 99,
-          totalParents: 1150,
+          totalSchools: 0,
+          activeSchools: 0,
+          trialSchools: 0,
+          expiredSchools: 0,
+          totalRevenue: 0,
+          mrr: 0,
+          arr: 0,
+          pendingApprovals: 0,
+          pendingRequests: [],
+          totalStudents: 0,
+          totalTeachers: 0,
+          totalParents: 0,
+          totalEcosystemUsers: 0,
         },
       });
     }
   }
 
-  // 3. Super Admin Tenants / Schools List (/api/super-admin/tenants & /api/super-admin/schools)
+  // 3. Super Admin Pending Payments List (/api/super-admin/pending-payments)
+  if (path === 'super-admin/pending-payments' && method === 'GET') {
+    try {
+      const payments = await db.subscriptionPayment.findMany({
+        where: { status: 'PENDING' },
+        include: {
+          tenant: { select: { id: true, name: true, subDomain: true, email: true } },
+          invoice: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return NextResponse.json(payments);
+    } catch (err: any) {
+      return NextResponse.json([]);
+    }
+  }
+
+  // 4. Super Admin Approve Payment (/api/super-admin/payments/[paymentId]/approve)
+  if (path.startsWith('super-admin/payments/') && path.endsWith('/approve') && method === 'POST') {
+    const paymentId = path.split('/')[2];
+    try {
+      const payment = await db.subscriptionPayment.findUnique({
+        where: { id: paymentId },
+        include: { tenant: true },
+      });
+      if (!payment) return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
+
+      const tenantId = payment.tenantId;
+      const billingMonths = payment.billingDurationMonths || 12;
+
+      // Compute new expiry date
+      const currentSub = await db.tenantSubscription.findUnique({ where: { tenantId } });
+      let baseDate = new Date();
+      if (currentSub && new Date(currentSub.expiryDate) > new Date()) {
+        baseDate = new Date(currentSub.expiryDate);
+      }
+      const newExpiry = new Date(baseDate);
+      newExpiry.setMonth(newExpiry.getMonth() + billingMonths);
+
+      // Create SubscriptionInvoice
+      const invoiceNumber = 'INV-' + Date.now().toString().slice(-8) + '-' + Math.floor(Math.random() * 100);
+      const gstAmount = Math.round(Number(payment.amount) * 0.18 * 100) / 100;
+
+      const invoice = await db.subscriptionInvoice.create({
+        data: {
+          invoiceNumber,
+          tenantId,
+          planId: (payment.planId as any) || 'BASIC',
+          amount: payment.amount,
+          gst: gstAmount,
+          currency: 'INR',
+          status: 'PAID',
+          paymentDate: new Date(),
+          pdfUrl: `/billing/invoices/subscription/${invoiceNumber}.pdf`,
+          snapshotData: {
+            paymentId: payment.transactionId,
+            gatewayRef: payment.gatewayReference,
+            billingMonths,
+            approvedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      // Mark payment as SUCCESS
+      await db.subscriptionPayment.update({
+        where: { id: paymentId },
+        data: {
+          status: 'SUCCESS',
+          invoiceId: invoice.id,
+          paidAt: new Date(),
+        },
+      });
+
+      // Find plan ID from SubscriptionPlan
+      const planRecord = await db.subscriptionPlan.findFirst({ where: { name: (payment.planId as any) || 'BASIC' } });
+
+      // Update / Activate TenantSubscription
+      if (currentSub) {
+        await db.tenantSubscription.update({
+          where: { tenantId },
+          data: {
+            planId: planRecord?.id || currentSub.planId,
+            expiryDate: newExpiry,
+            status: 'ACTIVE',
+            updatedAt: new Date(),
+          },
+        });
+      } else if (planRecord) {
+        await db.tenantSubscription.create({
+          data: {
+            tenantId,
+            planId: planRecord.id,
+            expiryDate: newExpiry,
+            status: 'ACTIVE',
+          },
+        });
+      }
+
+      // Unlock school by ensuring setup is marked completed or active
+      await db.tenant.update({
+        where: { id: tenantId },
+        data: { setupCompleted: true },
+      }).catch(() => {});
+
+      // Create notification
+      await db.notification.create({
+        data: {
+          title: 'Subscription Activated!',
+          message: `Your subscription renewal has been approved and activated. New expiry: ${newExpiry.toLocaleDateString()}. Invoice: ${invoiceNumber}`,
+          type: 'SUBSCRIPTION',
+          recipientId: (await db.user.findFirst({ where: { tenantId, role: 'SCHOOL_ADMIN' } }))?.id || '',
+        },
+      }).catch(() => {});
+
+      return NextResponse.json({
+        success: true,
+        invoiceNumber,
+        newExpiry,
+        message: 'Subscription approved and activated successfully.',
+      });
+    } catch (err: any) {
+      console.error('[Approve Error]:', err);
+      return NextResponse.json({ message: err.message || 'Approval failed' }, { status: 500 });
+    }
+  }
+
+  // 5. Super Admin Reject Payment (/api/super-admin/payments/[paymentId]/reject)
+  if (path.startsWith('super-admin/payments/') && path.endsWith('/reject') && method === 'POST') {
+    const paymentId = path.split('/')[2];
+    try {
+      const body = await request.json().catch(() => ({}));
+      const reason = body.reason || 'Rejected by Super Admin';
+
+      const payment = await db.subscriptionPayment.findUnique({
+        where: { id: paymentId },
+      });
+      if (!payment) return NextResponse.json({ message: 'Payment not found' }, { status: 404 });
+
+      await db.subscriptionPayment.update({
+        where: { id: paymentId },
+        data: {
+          status: 'FAILED',
+          failureReason: reason,
+        },
+      });
+
+      // Notification to school admin
+      const adminUser = await db.user.findFirst({ where: { tenantId: payment.tenantId, role: 'SCHOOL_ADMIN' } });
+      if (adminUser) {
+        await db.notification.create({
+          data: {
+            title: 'Subscription Request Rejected',
+            message: `Your subscription renewal request was rejected. Reason: ${reason}.`,
+            type: 'SUBSCRIPTION',
+            recipientId: adminUser.id,
+          },
+        }).catch(() => {});
+      }
+
+      return NextResponse.json({ success: true, message: 'Payment rejected and tenant notified.' });
+    } catch (err: any) {
+      return NextResponse.json({ message: err.message || 'Rejection failed' }, { status: 500 });
+    }
+  }
+
+  // 6. Super Admin Tenants / Schools List (/api/super-admin/tenants & /api/super-admin/schools)
   if ((path === 'super-admin/tenants' || path === 'super-admin/schools') && method === 'GET') {
     try {
       const tenants = await db.tenant.findMany({
         include: {
-          subscription: true,
+          subscription: {
+            include: { plan: true }
+          },
           users: {
             where: { role: 'SCHOOL_ADMIN' },
             take: 1
@@ -201,8 +396,8 @@ async function handleRoute(request: NextRequest, pathSegments: string[], method:
           adminName: t.users[0]?.name || 'School Admin',
           adminEmail: t.users[0]?.email || t.email || 'admin@school.edu',
           phone: t.phone || t.users[0]?.phone || '+91 9876543210',
-          subscription: sub || { planId: 'BASIC', status: 'ACTIVE', endDate: new Date() },
-          plan: sub?.planId ? 'PREMIUM' : 'BASIC',
+          subscription: sub || { plan: { name: 'BASIC' }, status: 'ACTIVE', expiryDate: new Date() },
+          plan: sub?.plan?.name || 'BASIC',
           status: sub?.status || 'ACTIVE',
           totalStudents: t._count?.studentProfiles || 0,
           totalTeachers: t._count?.staffProfiles || 0,
@@ -218,7 +413,7 @@ async function handleRoute(request: NextRequest, pathSegments: string[], method:
     }
   }
 
-  // 4. Detailed School Profile (/api/super-admin/schools/[id])
+  // 7. Detailed School Profile (/api/super-admin/schools/[id])
   if (path.startsWith('super-admin/schools/') && method === 'GET') {
     const schoolId = path.split('/')[2];
     try {
@@ -260,7 +455,7 @@ async function handleRoute(request: NextRequest, pathSegments: string[], method:
     }
   }
 
-  // 5. Impersonate School Admin (/api/super-admin/impersonate)
+  // 8. Impersonate School Admin (/api/super-admin/impersonate)
   if (path === 'super-admin/impersonate' && method === 'POST') {
     try {
       const body = await request.json();
@@ -297,29 +492,14 @@ async function handleRoute(request: NextRequest, pathSegments: string[], method:
     }
   }
 
-  // 6. Subscription Plans List (/api/super-admin/plans)
+  // 9. Subscription Plans List (/api/super-admin/plans)
   if (path === 'super-admin/plans' && method === 'GET') {
     return NextResponse.json([
-      { name: 'BASIC', priceMonthly: 500, priceYearly: 5000, maxStudents: 500 },
-      { name: 'PREMIUM', priceMonthly: 1500, priceYearly: 15000, maxStudents: 5000 },
+      { id: '1', name: 'BASIC', price: 11999 },
     ]);
   }
 
-  // 7. Coupons & Promotional Codes (/api/super-admin/coupons)
-  if (path === 'super-admin/coupons') {
-    if (method === 'GET') {
-      return NextResponse.json([
-        { id: '1', code: 'WELCOME50', type: 'PERCENTAGE', discountValue: 50, expiryDate: new Date('2026-12-31'), usageLimit: 100, usedCount: 14, status: 'ACTIVE' },
-        { id: '2', code: 'FLAT2000', type: 'FLAT', discountValue: 2000, expiryDate: new Date('2026-09-30'), usageLimit: 50, usedCount: 8, status: 'ACTIVE' },
-      ]);
-    }
-    if (method === 'POST') {
-      const body = await request.json();
-      return NextResponse.json({ message: 'Coupon created successfully', coupon: { id: Date.now().toString(), ...body } });
-    }
-  }
-
-  // 8. Invoices Listing (/api/super-admin/invoices)
+  // 10. Invoices Listing (/api/super-admin/invoices)
   if (path === 'super-admin/invoices' && method === 'GET') {
     try {
       const invoices = await db.subscriptionInvoice.findMany({
@@ -328,22 +508,11 @@ async function handleRoute(request: NextRequest, pathSegments: string[], method:
       });
       return NextResponse.json(invoices);
     } catch (err: any) {
-      return NextResponse.json([
-        {
-          id: 'inv_1',
-          invoiceNumber: 'INV-SUB-2026-001',
-          tenant: { name: 'Cambridge International School' },
-          amount: 5000,
-          taxAmount: 900,
-          totalAmount: 5900,
-          status: 'PAID',
-          createdAt: new Date(),
-        },
-      ]);
+      return NextResponse.json([]);
     }
   }
 
-  // 9. Payments Ledger (/api/super-admin/payments)
+  // 11. Payments Ledger (/api/super-admin/payments)
   if (path === 'super-admin/payments' && method === 'GET') {
     try {
       const payments = await db.subscriptionPayment.findMany({
@@ -352,89 +521,11 @@ async function handleRoute(request: NextRequest, pathSegments: string[], method:
       });
       return NextResponse.json(payments);
     } catch (err: any) {
-      return NextResponse.json([
-        {
-          id: 'pay_1',
-          tenant: { name: 'Cambridge International School' },
-          gateway: 'RAZORPAY',
-          gatewayTxnId: 'pay_Nz82Kls991A',
-          amount: 5900,
-          status: 'SUCCESS',
-          paymentMethod: 'UPI',
-          createdAt: new Date(),
-        },
-      ]);
+      return NextResponse.json([]);
     }
   }
 
-  // 10. Payment Settings (/api/v1/platform/payment-settings)
-  if (path === 'v1/platform/payment-settings' || path === 'api/v1/platform/payment-settings') {
-    if (method === 'GET') {
-      try {
-        let ps = await db.paymentSettings.findFirst();
-        if (!ps) {
-          ps = await db.paymentSettings.create({
-            data: {
-              companyName: 'EduTrack SaaS Platforms Inc.',
-              supportEmail: 'billing@edutrack.com',
-              supportPhone: '+91 9876543210',
-              gstNumber: '29ABCDE1234F1Z5',
-              panNumber: 'ABCDE1234F',
-              gstPercentage: 18.0,
-              invoicePrefix: 'INV-SUB',
-              bankName: 'HDFC Bank',
-              accountNumber: '50200012345678',
-              ifscCode: 'HDFC0001234',
-              upiId: 'edutrack@hdfcbank',
-            },
-          });
-        }
-        return NextResponse.json(ps);
-      } catch (err: any) {
-        return NextResponse.json({
-          companyName: 'EduTrack SaaS Platforms Inc.',
-          supportEmail: 'billing@edutrack.com',
-          supportPhone: '+91 9876543210',
-          gstNumber: '29ABCDE1234F1Z5',
-          panNumber: 'ABCDE1234F',
-          gstPercentage: 18.0,
-          invoicePrefix: 'INV-SUB',
-          bankName: 'HDFC Bank',
-          accountNumber: '50200012345678',
-          ifscCode: 'HDFC0001234',
-          upiId: 'edutrack@hdfcbank',
-        });
-      }
-    }
-    if (method === 'PUT') {
-      try {
-        const body = await request.json();
-        const updated = await db.paymentSettings.upsert({
-          where: { id: 'global' },
-          update: body,
-          create: { id: 'global', ...body },
-        });
-        return NextResponse.json(updated);
-      } catch (err: any) {
-        return NextResponse.json({ message: 'Settings saved' });
-      }
-    }
-  }
-
-  // 11. Activity Audit Logs (/api/activity-logs)
-  if (path === 'activity-logs' && method === 'GET') {
-    return NextResponse.json([]);
-  }
-
-  // 12. Support Requests (/api/support/requests)
-  if (path === 'support/requests' && method === 'GET') {
-    return NextResponse.json([
-      { id: '1', schoolName: 'St. Xavier High School', email: 'xavier@edu.in', status: 'PENDING', createdAt: new Date() },
-      { id: '2', schoolName: 'Delhi Public International', email: 'dpi@edu.in', status: 'APPROVED', createdAt: new Date() },
-    ]);
-  }
-
-  // 13. Default proxy fallback
+  // Default proxy fallback to internal/external backend service
   const backendBase = process.env.BACKEND_INTERNAL_URL || 'https://edutrack.covenantsynergy.in/api';
   const cleanBackendUrl = backendBase.endsWith('/') ? backendBase.slice(0, -1) : backendBase;
   const searchParams = request.nextUrl.searchParams.toString();
