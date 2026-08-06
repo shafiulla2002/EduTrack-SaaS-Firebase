@@ -74,9 +74,13 @@ enum Priority {
 enum SubscriptionStatus {
   TRIAL
   ACTIVE
-  EXPIRED
+  PENDING_APPROVAL
   GRACE_PERIOD
+  PAST_DUE
+  EXPIRED
+  RENEWED
   CANCELLED
+  SUSPENDED
 }
 
 enum SaaSPaymentStatus {
