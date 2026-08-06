@@ -10,3 +10,8 @@ build
 *.7z
 .temp
 *.tsbuildinfo
+# Firebase credentials
+*firebase-service-account*.json
+# Vercel
+.vercel
+.env.vercel.*
