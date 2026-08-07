@@ -1861,42 +1861,10 @@ export class BillingService {
   async checkCorrespondentAccess(userId: string, tenantId: string): Promise<boolean> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        staffProfile: true,
-      },
     });
 
     if (!user) return false;
-    if (user.role === 'SUPER_ADMIN') return true;
-
-    // Check designation
-    if (user.staffProfile) {
-      const designation = user.staffProfile.designation?.toLowerCase() || '';
-      if (
-        designation.includes('correspondent') ||
-        designation.includes('owner') ||
-        designation.includes('director')
-      ) {
-        return true;
-      }
-    }
-
-    // Check if user email matches tenant or school setup registration email
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-    });
-    if (tenant && tenant.email && user.email && tenant.email.toLowerCase() === user.email.toLowerCase()) {
-      return true;
-    }
-
-    const setup = await this.prisma.schoolSetup.findUnique({
-      where: { tenantId },
-    });
-    if (setup && setup.email && user.email && setup.email.toLowerCase() === user.email.toLowerCase()) {
-      return true;
-    }
-
-    return false;
+    return user.role === 'SUPER_ADMIN' || user.role === 'SCHOOL_ADMIN';
   }
 
   async getFinancialCommandCenterData(tenantId: string, filters: any) {

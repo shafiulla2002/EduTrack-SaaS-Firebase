@@ -552,13 +552,7 @@ export default function FeesBillingPage() {
     }
   };
 
-  const designation = currentUser?.staffProfile?.designation?.toLowerCase() || '';
-  const isCorrespondent = 
-    currentUser?.role === 'SUPER_ADMIN' ||
-    (currentUser?.email && setupStats?.setup?.email && currentUser.email.toLowerCase() === setupStats.setup.email.toLowerCase()) ||
-    designation.includes('correspondent') ||
-    designation.includes('owner') ||
-    designation.includes('director');
+  const showCommandCenter = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'SCHOOL_ADMIN';
 
   return (
     <div className="space-y-6 animate-in">
@@ -572,7 +566,7 @@ export default function FeesBillingPage() {
             Collect school tuition fees, issue transaction logs, and generate invoice bills.
           </p>
         </div>
-        {isCorrespondent && (
+        {showCommandCenter && (
           <Link
             href="/dashboard/billing/financial-command-center"
             className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-750 text-white rounded-xl shadow-md shadow-blue-500/10 text-xs font-bold transition-all shrink-0 select-none hover:scale-[1.02] active:scale-[0.98]"

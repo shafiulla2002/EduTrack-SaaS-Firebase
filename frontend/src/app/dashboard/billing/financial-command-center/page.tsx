@@ -36,13 +36,9 @@ export default function FinancialCommandCenter() {
   const [drilldownSearch, setDrilldownSearch] = useState('');
 
   // Access check
-  const designation = currentUser?.staffProfile?.designation?.toLowerCase() || '';
   const hasAccess = 
     currentUser?.role === 'SUPER_ADMIN' ||
-    (currentUser?.email && setupStats?.setup?.email && currentUser.email.toLowerCase() === setupStats.setup.email.toLowerCase()) ||
-    designation.includes('correspondent') ||
-    designation.includes('owner') ||
-    designation.includes('director');
+    currentUser?.role === 'SCHOOL_ADMIN';
 
   const fetchDashboardData = async () => {
     try {
