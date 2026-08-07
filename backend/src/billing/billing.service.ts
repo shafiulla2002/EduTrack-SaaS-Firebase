@@ -2001,15 +2001,26 @@ export class BillingService {
     let revenueLast30Days = 0;
     let revenueAcademicYear = 0;
 
+    let paidInvoicesCountCurrentMonth = 0;
+    let paidInvoicesCountPrevMonth = 0;
+
     for (const inv of allTimeInvoices) {
       const amt = Number(inv.paidAmount);
       const date = new Date(inv.invoiceDate);
+      const isPaid = inv.status === PaymentStatus.PAID || inv.status === PaymentStatus.PARTIALLY_PAID;
 
       if (date >= startOfToday) revenueToday += amt;
       if (date >= startOfYesterday && date < startOfToday) revenueYesterday += amt;
       if (date >= startOfWeek) revenueThisWeek += amt;
-      if (date >= startOfMonth) revenueCurrentMonth += amt;
-      if (date >= startOfPrevMonth && date <= endOfPrevMonth) revenuePrevMonth += amt;
+      
+      if (date >= startOfMonth) {
+        revenueCurrentMonth += amt;
+        if (isPaid && amt > 0) paidInvoicesCountCurrentMonth++;
+      }
+      if (date >= startOfPrevMonth && date <= endOfPrevMonth) {
+        revenuePrevMonth += amt;
+        if (isPaid && amt > 0) paidInvoicesCountPrevMonth++;
+      }
       if (date >= last30DaysLimit) revenueLast30Days += amt;
       
       if (activeYear && date >= activeYear.startDate && date <= activeYear.endDate) {
@@ -2724,6 +2735,8 @@ export class BillingService {
           yesterday: revenueYesterday,
           thisWeek: revenueThisWeek,
           last30Days: revenueLast30Days,
+          currentMonthInvoicesCount: paidInvoicesCountCurrentMonth,
+          prevMonthInvoicesCount: paidInvoicesCountPrevMonth,
         },
         pending: {
           total: totalPendingAmount,

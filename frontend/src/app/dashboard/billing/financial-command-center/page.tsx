@@ -366,129 +366,137 @@ export default function FinancialCommandCenter() {
             </div>
           )}
 
-          {/* Section 1 - Executive Summary Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {/* Section 1 - Core Payment Summary Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             
-            {/* Health Score Card */}
-            <div className="bg-gradient-to-tr from-slate-950 to-slate-900 text-white border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col justify-between select-none relative overflow-hidden group hover:scale-[1.01] transition-all">
-              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none group-hover:scale-110 transition-transform">
-                <Sparkles className="w-24 h-24" />
-              </div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Institution Health</span>
-              <div className="my-2.5">
-                <span className="text-2xl font-black block tracking-tight">{data.summary?.healthScore}</span>
-                <span className="text-[10px] text-slate-400 font-semibold block mt-1.5">Collection Rate & Expense Ratio</span>
-              </div>
-              <div className="border-t border-slate-800/80 pt-2 flex items-center justify-between text-[11px] font-bold text-slate-400">
-                <span>Fee Setup: 🟢 Online</span>
-                <span className="text-emerald-400">{data.kpis?.feeCollectionRate}% rate</span>
-              </div>
-            </div>
-
-            {/* Revenue Card */}
-            <div 
-              onClick={() => {
-                setDrilldownType('revenue');
-                setDrilldownTitle('Collected Revenue Ledger');
-              }}
-              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between hover:border-blue-400 hover:shadow-md cursor-pointer transition-all select-none group hover:scale-[1.01]"
-            >
-              <div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Billed Revenue</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5 ${
-                    data.growth?.revenue >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                  }`}>
-                    {data.growth?.revenue >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                    {data.growth?.revenue}%
+            {/* Previous Month Collection */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between select-none hover:border-emerald-400 hover:shadow-md transition-all h-36">
+              <div className="flex justify-between items-start w-full">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Previous Month Collection</span>
+                  <span className="text-2.5xl font-black text-emerald-600 block tracking-tight mt-2.5">
+                    ₹{data.summary?.revenue?.prevMonth?.toLocaleString() || '0'}
                   </span>
                 </div>
-                <div className="my-2.5">
-                  <span className="text-2xl font-black text-slate-900 block tracking-tight">₹{data.summary?.revenue?.academicYear?.toLocaleString() || '0'}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold mt-1 block">Selected Academic Year Revenue</span>
+                <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                  <Calendar className="w-5 h-5" />
                 </div>
               </div>
-              <div className="border-t border-slate-100 pt-2 flex justify-between text-[10px] font-bold text-slate-500">
-                <span>Today: ₹{data.summary?.revenue?.today?.toLocaleString()}</span>
-                <span>All-Time: ₹{data.summary?.revenue?.allTime?.toLocaleString()}</span>
+              <div className="border-t border-slate-100 pt-2 text-[10px] font-bold text-slate-500">
+                {data.summary?.revenue?.prevMonthInvoicesCount || 0} Paid Invoices
               </div>
             </div>
 
-            {/* Pending Fees Card */}
+            {/* Current Month Collection */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between select-none hover:border-emerald-400 hover:shadow-md transition-all h-36">
+              <div className="flex justify-between items-start w-full">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Current Month Collection</span>
+                  <span className="text-2.5xl font-black text-emerald-600 block tracking-tight mt-2.5">
+                    ₹{data.summary?.revenue?.currentMonth?.toLocaleString() || '0'}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-2 text-[10px] font-bold text-slate-500">
+                {data.summary?.revenue?.currentMonthInvoicesCount || 0} Paid Invoices
+              </div>
+            </div>
+
+            {/* Total Student Fee Amount */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between select-none hover:border-blue-450 hover:shadow-md transition-all h-36">
+              <div className="flex justify-between items-start w-full">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Student Fee</span>
+                  <span className="text-2.5xl font-black text-slate-900 block tracking-tight mt-2.5">
+                    ₹{((data.summary?.revenue?.academicYear || 0) + (data.summary?.pending?.total || 0)).toLocaleString()}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 shrink-0">
+                  <Landmark className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-2 text-[10px] font-bold text-slate-500">
+                Expected Academic Year Fees
+              </div>
+            </div>
+
+            {/* Remaining Balance */}
             <div 
               onClick={() => {
                 setDrilldownType('pending');
                 setDrilldownTitle('Outstanding Student Accounts');
               }}
-              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between hover:border-amber-400 hover:shadow-md cursor-pointer transition-all select-none group hover:scale-[1.01]"
+              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between cursor-pointer hover:border-rose-450 hover:shadow-md transition-all h-36 select-none"
             >
-              <div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Outstanding Dues</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-600">
-                    {data.summary?.pending?.studentsCount} Students
+              <div className="flex justify-between items-start w-full">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Remaining Balance</span>
+                  <span className="text-2.5xl font-black text-rose-650 block tracking-tight mt-2.5 font-mono">
+                    ₹{data.summary?.pending?.total?.toLocaleString() || '0'}
                   </span>
                 </div>
-                <div className="my-2.5">
-                  <span className="text-2xl font-black text-rose-600 block tracking-tight">₹{data.summary?.pending?.total?.toLocaleString() || '0'}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold mt-1 block">Due this session</span>
+                <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
                 </div>
               </div>
-              <div className="border-t border-slate-100 pt-2 flex justify-between text-[10px] font-bold text-slate-500">
-                <span>Today: ₹{data.summary?.pending?.dueToday?.toLocaleString()}</span>
-                <span>Overdue: ₹{data.summary?.pending?.overdue?.toLocaleString()}</span>
+              <div className="border-t border-slate-100 pt-2 text-[10px] font-bold text-slate-500">
+                {data.summary?.pending?.studentsCount || 0} Students Pending
               </div>
             </div>
 
-            {/* Expenses Card */}
+            {/* Total Amount Collected */}
             <div 
               onClick={() => {
-                setDrilldownType('expenses');
-                setDrilldownTitle('Expense Statement & Receipts');
+                setDrilldownType('revenue');
+                setDrilldownTitle('Collected Revenue Ledger');
               }}
-              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between hover:border-rose-400 hover:shadow-md cursor-pointer transition-all select-none group hover:scale-[1.01]"
+              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between cursor-pointer hover:border-emerald-450 hover:shadow-md transition-all h-36 select-none"
             >
-              <div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Gross Expenses</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-50 text-slate-650">
-                    This Month
+              <div className="flex justify-between items-start w-full">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Amount Collected</span>
+                  <span className="text-2.5xl font-black text-emerald-600 block tracking-tight mt-2.5 font-mono">
+                    ₹{data.summary?.revenue?.academicYear?.toLocaleString() || '0'}
                   </span>
                 </div>
-                <div className="my-2.5">
-                  <span className="text-2xl font-black text-slate-900 block tracking-tight">₹{data.summary?.expenses?.academicYear?.toLocaleString() || '0'}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold mt-1 block">Year Expenses (Paid/Approved)</span>
+                <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shrink-0">
+                  <CheckCircle className="w-5 h-5" />
                 </div>
               </div>
-              <div className="border-t border-slate-100 pt-2 flex justify-between text-[10px] font-bold text-slate-500">
-                <span>Today: ₹{data.summary?.expenses?.today?.toLocaleString()}</span>
-                <span>All-Time: ₹{data.summary?.expenses?.allTime?.toLocaleString()}</span>
+              <div className="border-t border-slate-100 pt-2 text-[10px] font-bold text-slate-500">
+                Overall Collected (Academic Year)
               </div>
             </div>
 
-            {/* Student Stats Card */}
-            <div 
-              onClick={() => {
-                setDrilldownType('students');
-                setDrilldownTitle('School Student Directory');
-              }}
-              className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between hover:border-indigo-400 hover:shadow-md cursor-pointer transition-all select-none group hover:scale-[1.01]"
-            >
-              <div>
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Enrollment Statistics</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
-                    Active
-                  </span>
-                </div>
-                <div className="my-2.5">
-                  <span className="text-2xl font-black text-slate-900 block tracking-tight">{data.summary?.students?.total} Students</span>
-                  <span className="text-[10px] text-slate-400 font-semibold mt-1 block">{data.summary?.students?.active} users active</span>
+            {/* Collection Progress */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between select-none h-36">
+              <div className="flex justify-between items-start w-full">
+                <div className="w-full">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Collection Progress</span>
+                  
+                  <div className="flex justify-between items-baseline mt-2">
+                    <span className="text-2xl font-black text-emerald-600">
+                      {data.summary?.profit?.collectionRate || 100}%
+                    </span>
+                    <span className="text-[10px] font-bold text-rose-500">
+                      {data.summary?.profit?.pendingPercentage || 0}% Pending
+                    </span>
+                  </div>
+                  
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-2 border border-slate-150">
+                    <div 
+                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      style={{ width: `${data.summary?.profit?.collectionRate || 100}%` }}
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="border-t border-slate-100 pt-2 flex justify-between text-[10px] font-bold text-slate-500">
-                <span>Fully Paid: {data.summary?.students?.paidCompletely}</span>
-                <span>Pending: {data.summary?.students?.pending}</span>
+              <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between border-t border-slate-50 pt-2">
+                <span>Collected</span>
+                <span>Pending</span>
               </div>
             </div>
 
