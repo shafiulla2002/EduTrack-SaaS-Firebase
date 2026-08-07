@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Res, Req, HttpException, HttpStatus } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -135,5 +135,47 @@ export class BillingController {
     @Body('priceItems') priceItems: { productId: string; price: number; selected: boolean }[],
   ) {
     return this.billingService.savePriceBook(classId, academicYearId, priceItems);
+  }
+
+  @Get('financial-command-center')
+  async getFinancialCommandCenter(
+    @Req() req: any,
+    @Query('academicYearId') academicYearId?: string,
+    @Query('financialYear') financialYear?: string,
+    @Query('month') month?: string,
+    @Query('week') week?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('classId') classId?: string,
+    @Query('sectionId') sectionId?: string,
+    @Query('studentId') studentId?: string,
+    @Query('paymentMethod') paymentMethod?: string,
+    @Query('feeCategory') feeCategory?: string,
+    @Query('expenseCategory') expenseCategory?: string,
+    @Query('collectionStatus') collectionStatus?: string,
+  ) {
+    const userId = req.user.id;
+    const tenantId = req.user.tenantId;
+
+    const hasAccess = await this.billingService.checkCorrespondentAccess(userId, tenantId);
+    if (!hasAccess) {
+      throw new HttpException('Access denied. Only school owners, correspondents, or super admins can access this data.', HttpStatus.FORBIDDEN);
+    }
+
+    return this.billingService.getFinancialCommandCenterData(tenantId, {
+      academicYearId,
+      financialYear,
+      month: month ? parseInt(month, 10) : undefined,
+      week: week ? parseInt(week, 10) : undefined,
+      startDate,
+      endDate,
+      classId,
+      sectionId,
+      studentId,
+      paymentMethod,
+      feeCategory,
+      expenseCategory,
+      collectionStatus,
+    });
   }
 }
