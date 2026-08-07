@@ -51,7 +51,7 @@ function loadRazorpayScript(): Promise<boolean> {
 }
 
 export default function SubscriptionPage() {
-  const { subscription, refresh } = useTenant();
+  const { subscription, refresh, schoolName } = useTenant();
 
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -188,7 +188,7 @@ export default function SubscriptionPage() {
                   <td style="padding: 6px 0; text-align: right;"><strong>Payment Method:</strong> <span style="font-weight: 700; color: #0f172a;">RAZORPAY (Online)</span></td>
                 </tr>
                 <tr>
-                  <td style="padding: 6px 0;"><strong>School Tenant:</strong> <span style="font-weight: 700; color: #0f172a;">${stats?.schoolName || 'School Admin'}</span></td>
+                  <td style="padding: 6px 0;"><strong>School Tenant:</strong> <span style="font-weight: 700; color: #0f172a;">${schoolName || stats?.schoolName || 'School Admin'}</span></td>
                   <td style="padding: 6px 0; text-align: right;"><strong>Currency:</strong> <span style="font-weight: 700; color: #0f172a;">INR (₹)</span></td>
                 </tr>
               </tbody>

@@ -232,6 +232,14 @@ export class TenantsService {
       throw new NotFoundException('Subscription not found for this tenant');
     }
 
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+
+    const setup = await this.prisma.schoolSetup.findUnique({
+      where: { tenantId },
+    });
+
     const now = new Date();
     const expiry = new Date(subscription.expiryDate);
     const diffTime = expiry.getTime() - now.getTime();
@@ -273,7 +281,11 @@ export class TenantsService {
       parentUsage,
       features: subscription.plan.features,
       invoices,
-      payments
+      payments,
+      schoolName: setup?.schoolName || tenant?.name || 'School Admin',
+      email: setup?.email || tenant?.email || '',
+      phone: setup?.mobileNumber || tenant?.phone || '',
+      address: setup?.address || tenant?.address || '',
     };
   }
 
