@@ -2225,8 +2225,22 @@ export class BillingService {
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const newAdmissionsCount = studentProfiles.filter(sp => new Date(sp.user.createdAt) >= currentMonthStart).length;
     
-    // Promoted Count logic
-    const promotedCount = Math.round(totalStudentsCount * 0.85);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthAdmissionsCount = studentProfiles.filter(sp => {
+      const d = new Date(sp.user.createdAt);
+      return d >= prevMonthStart && d < currentMonthStart;
+    }).length;
+
+    // Promoted Count logic - query from ActivityLog
+    const promotedCount = await this.prisma.activityLog.count({
+      where: {
+        tenantId,
+        action: 'RECORD_UPDATE',
+        entityName: 'StudentProfile',
+        details: { contains: 'Promoted from' },
+        createdAt: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
+      }
+    });
 
     // ── CASH FLOW CALCULATIONS ──
     const priorInvoicesSum = await this.prisma.invoice.aggregate({
@@ -2287,7 +2301,7 @@ export class BillingService {
     const expenseGrowthMonth = calcGrowth(currentPeriod.expense, prevPeriod.expense);
     const profitGrowthMonth = calcGrowth(currentPeriod.profit, prevPeriod.profit);
     const collectionGrowthMonth = calcGrowth(currentPeriod.revenue, prevPeriod.revenue);
-    const studentGrowthMonth = calcGrowth(newAdmissionsCount, Math.round(newAdmissionsCount * 0.8));
+    const studentGrowthMonth = calcGrowth(newAdmissionsCount, prevMonthAdmissionsCount);
 
     // ── SCHOOL HEALTH SCORE (Blended algorithm) ──
     const collectionRateVal = (revenueAcademicYear + totalPendingAmount) > 0
@@ -2355,15 +2369,28 @@ export class BillingService {
       percentage: totalExpensesFiltered > 0 ? Math.round((totalAmt / totalExpensesFiltered) * 100) : 0
     }));
 
-    // ── BUDGET VS ACTUAL ──
+    // Compute previous month's expenses by category to derive dynamic budget
+    const prevMonthExpensesList = allTimeExpensesList.filter(e => {
+      const d = new Date(e.date);
+      return d >= startOfPrevMonth && d <= endOfPrevMonth;
+    });
+
+    const getPrevMonthExpenseAmount = (categoryKeyword: string) => {
+      return prevMonthExpensesList
+        .filter(exp => exp.category.toLowerCase().includes(categoryKeyword.toLowerCase()))
+        .reduce((sum, exp) => sum + Number(exp.amount), 0);
+    };
+
+    // Calculate dynamic budget: 1.25 * (previous month's expenses) or fallback to a baseline minimum
     const budgetCategories = [
-      { category: 'Salaries', budget: 500000 },
-      { category: 'Transport', budget: 150000 },
-      { category: 'Maintenance', budget: 80000 },
-      { category: 'Events', budget: 120000 },
-      { category: 'Marketing', budget: 50000 },
-      { category: 'Utilities', budget: 60000 },
+      { category: 'Salaries', budget: Math.max(Math.round(getPrevMonthExpenseAmount('salary') * 1.25), 500000) },
+      { category: 'Transport', budget: Math.max(Math.round(getPrevMonthExpenseAmount('transport') * 1.25), 150000) },
+      { category: 'Maintenance', budget: Math.max(Math.round(getPrevMonthExpenseAmount('maintenance') * 1.25), 80000) },
+      { category: 'Events', budget: Math.max(Math.round(getPrevMonthExpenseAmount('event') * 1.25), 120000) },
+      { category: 'Marketing', budget: Math.max(Math.round(getPrevMonthExpenseAmount('marketing') * 1.25), 50000) },
+      { category: 'Utilities', budget: Math.max(Math.round((getPrevMonthExpenseAmount('electricity') + getPrevMonthExpenseAmount('internet') + getPrevMonthExpenseAmount('utility')) * 1.25), 60000) },
     ];
+
     const budgetVsActual = budgetCategories.map(b => {
       const actual = filteredExpenses
         .filter(exp => exp.category.toLowerCase().includes(b.category.toLowerCase()) || (b.category === 'Utilities' && (exp.category.toLowerCase().includes('electricity') || exp.category.toLowerCase().includes('internet'))))
@@ -2565,6 +2592,60 @@ export class BillingService {
         amount: -Number(exp.amount),
         date: exp.date,
         description: `${exp.description || 'No description'} · Mode: ${exp.paymentMode}`
+      });
+    }
+
+    for (const student of studentProfiles) {
+      const date = new Date(student.user.createdAt);
+      if (startDate && endDate && (date < startDate || date > endDate)) continue;
+      timeline.push({
+        id: `adm-${student.id}`,
+        type: 'ADMISSION',
+        title: `New Admission: ${student.user.name}`,
+        amount: 0,
+        date,
+        description: `Enrolled in class ${student.classSection ? classMap.get(student.classSection.classId) : 'N/A'}`
+      });
+    }
+
+    const promotionLogs = await this.prisma.activityLog.findMany({
+      where: {
+        tenantId,
+        action: 'RECORD_UPDATE',
+        entityName: 'StudentProfile',
+        details: { contains: 'Promoted from' },
+        createdAt: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
+      }
+    });
+
+    for (const log of promotionLogs) {
+      timeline.push({
+        id: `prom-${log.id}`,
+        type: 'PROMOTION',
+        title: `Student Promoted`,
+        amount: 0,
+        date: log.createdAt,
+        description: log.details || ''
+      });
+    }
+
+    const voidedInvoicesTimeline = await this.prisma.invoice.findMany({
+      where: {
+        tenantId,
+        status: PaymentStatus.VOIDED,
+        invoiceDate: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
+      },
+      include: { student: { include: { user: true } } }
+    });
+
+    for (const inv of voidedInvoicesTimeline) {
+      timeline.push({
+        id: `void-${inv.id}`,
+        type: 'ROLLBACK',
+        title: `Invoice Rollback: ${inv.student.user.name}`,
+        amount: -Number(inv.totalAmount),
+        date: inv.invoiceDate,
+        description: `Voided Invoice Reference: ${inv.id.slice(-6)}`
       });
     }
 

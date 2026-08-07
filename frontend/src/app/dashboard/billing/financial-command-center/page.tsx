@@ -945,17 +945,26 @@ export default function FinancialCommandCenter() {
               </div>
               <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
                 {data.timeline?.slice(0, 8).map((event: any) => (
-                  <div key={event.id} className="relative pl-6 pb-2 last:pb-0 border-l border-slate-200 last:border-l-transparent">
+                  <div key={event.id} className="relative pl-6 pb-2 last:pb-0 border-l border-slate-200 last:border-l-transparent animate-in fade-in slide-in-from-left-2 duration-200">
                     {/* Circle mark */}
                     <span className={`absolute left-[-5px] top-1.5 w-2.5 h-2.5 rounded-full ${
-                      event.type === 'PAYMENT' ? 'bg-emerald-500' : 'bg-rose-500'
+                      event.type === 'PAYMENT' ? 'bg-emerald-500' :
+                      event.type === 'EXPENSE' ? 'bg-rose-500' :
+                      event.type === 'ADMISSION' ? 'bg-blue-500' :
+                      event.type === 'PROMOTION' ? 'bg-indigo-500' :
+                      event.type === 'ROLLBACK' ? 'bg-amber-500' :
+                      'bg-slate-400'
                     } block`}></span>
                     
                     <div className="text-xs">
                       <div className="flex justify-between items-start font-bold">
                         <span className="text-slate-800">{event.title}</span>
-                        <span className={`font-mono ${event.amount >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {event.amount >= 0 ? '+' : ''}₹{Math.abs(event.amount).toLocaleString()}
+                        <span className={`font-mono ${
+                          event.amount > 0 ? 'text-emerald-600' :
+                          event.amount < 0 ? 'text-rose-600' :
+                          'text-slate-400'
+                        }`}>
+                          {event.amount > 0 ? '+' : ''}{event.amount !== 0 ? `₹${Math.abs(event.amount).toLocaleString()}` : '—'}
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-450 mt-0.5">{event.description}</p>
