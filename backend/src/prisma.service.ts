@@ -6,10 +6,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private static instance: PrismaService;
 
   constructor() {
+    const dbUrl = process.env.DATABASE_URL || "postgresql://edutrack_app:edutrack%402026@34.180.7.94:5432/edutrack?sslmode=require";
     super({
       datasources: {
         db: {
-          url: process.env.DATABASE_URL,
+          url: dbUrl,
         },
       },
       log: ['error'],

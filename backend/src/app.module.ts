@@ -92,6 +92,7 @@ export class AppModule implements NestModule {
         'auth/verify-otp',
         'auth/exchange-code',
         'tenant/register',
+        'tenant/public-branding',
         'support/contact',
         'api/v1/payments/webhook',
         'health',
