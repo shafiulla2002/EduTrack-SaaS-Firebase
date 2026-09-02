@@ -68,26 +68,35 @@ async function bootstrap() {
       next();
     });
 
-    expressApp.use(express.json({ limit: '10mb' }));
-    expressApp.use(express.urlencoded({ limit: '10mb', extended: true }));
-    
-    // Serve static uploaded files
-    expressApp.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
+    expressApp.get('/health', (req, res) => {
+      res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+    });
 
-    const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), { bodyParser: false });
+    try {
+      expressApp.use(express.json({ limit: '10mb' }));
+      expressApp.use(express.urlencoded({ limit: '10mb', extended: true }));
+      
+      // Serve static uploaded files
+      expressApp.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
 
-    app.enableCors(corsOptions);
+      const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), { bodyParser: false });
 
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
+      app.enableCors(corsOptions);
 
-    await app.init();
-    cachedServer = expressApp;
+      app.useGlobalPipes(
+        new ValidationPipe({
+          whitelist: true,
+          transform: true,
+          forbidNonWhitelisted: true,
+        }),
+      );
+
+      await app.init();
+      cachedServer = expressApp;
+    } catch (err: any) {
+      console.error('NestJS Bootstrap Error:', err);
+      throw err;
+    }
   }
   return cachedServer;
 }
