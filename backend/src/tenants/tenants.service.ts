@@ -108,11 +108,24 @@ export class TenantsService {
     return this.prisma.$transaction(async (tx) => {
       // 1. Resolve selected subscription plan details
       const selectedPlanName = data.subscriptionPlan ? data.subscriptionPlan.toUpperCase() : 'TRIAL';
-      const plan = await tx.subscriptionPlan.findUnique({
+      let plan = await tx.subscriptionPlan.findUnique({
         where: { name: selectedPlanName as any }
       });
       if (!plan) {
-        throw new NotFoundException(`Subscription plan '${selectedPlanName}' not found`);
+        plan = await tx.subscriptionPlan.create({
+          data: {
+            name: (selectedPlanName === 'BASIC' || selectedPlanName === 'PREMIUM') ? selectedPlanName as any : 'TRIAL',
+            studentLimit: selectedPlanName === 'PREMIUM' ? 5000 : 500,
+            teacherLimit: selectedPlanName === 'PREMIUM' ? 500 : 50,
+            parentLimit: selectedPlanName === 'PREMIUM' ? 10000 : 1000,
+            storageLimit: 1024,
+            features: ['attendance', 'timetable', 'exams', 'billing', 'reports'],
+            price: selectedPlanName === 'PREMIUM' ? 2999 : (selectedPlanName === 'BASIC' ? 999 : 0),
+            durationMonths: selectedPlanName === 'TRIAL' ? 1 : 12,
+            isDefault: selectedPlanName === 'TRIAL',
+            isActive: true,
+          }
+        });
       }
 
       // 2. Create Tenant
