@@ -705,8 +705,20 @@ export class StudentsService implements OnModuleInit {
     const errors: string[] = [];
 
     // Cache lists to resolve names to primary keys
-    const ays = await this.prisma.academicYear.findMany({ where: { tenantId } });
-    const activeYear = ays.find(ay => ay.isActive);
+    let ays = await this.prisma.academicYear.findMany({ where: { tenantId } });
+    if (ays.length === 0) {
+      const defaultYear = await this.prisma.academicYear.create({
+        data: {
+          name: '2026-2027',
+          startDate: new Date('2026-06-01'),
+          endDate: new Date('2027-04-30'),
+          isActive: true,
+          tenantId,
+        },
+      });
+      ays = [defaultYear];
+    }
+    const activeYear = ays.find(ay => ay.isActive) || ays[0];
     const classes = await this.prisma.class.findMany({ where: { tenantId } });
     const sections = await this.prisma.section.findMany({ where: { tenantId } });
     const classSections = await this.prisma.classSection.findMany({

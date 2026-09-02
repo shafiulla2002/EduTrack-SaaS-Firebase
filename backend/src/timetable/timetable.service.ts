@@ -229,6 +229,11 @@ export class TimetableService {
     return this.prisma.subject.findMany({ where: { tenantId } });
   }
 
+  async deleteSubject(id: string) {
+    const tenantId = this.getTenantId();
+    return this.prisma.subject.delete({ where: { id, tenantId } });
+  }
+
   async createSubject(dto: any) {
     const tenantId = this.getTenantId();
     return this.prisma.subject.create({ data: { name: dto.name, tenantId } });

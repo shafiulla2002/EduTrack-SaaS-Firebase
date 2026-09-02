@@ -1287,6 +1287,67 @@ export default function TeacherClassManagement() {
     }
   };
 
+  const handleDeleteSubject = async (subjectId: string) => {
+    if (!confirm('Are you sure you want to delete this subject?')) return;
+    try {
+      setIsLoading(true);
+      await api.delete(`/timetable/subjects/${subjectId}`);
+      showToast('Subject deleted successfully.', 'success');
+      const subjectsRes = await api.get('/timetable/subjects');
+      setAllSubjects(subjectsRes.data || []);
+      await loadWorkloadDashboard();
+    } catch (err: any) {
+      console.error('Error deleting subject:', err);
+      showToast(err.response?.data?.message || 'Failed to delete subject.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const [sectionNamesInput, setSectionNamesInput] = useState([{ id: 1, name: '' }]);
+
+  const handleSaveSectionsBulk = async () => {
+    const valid = sectionNamesInput.filter(s => s.name.trim());
+    if (valid.length === 0) {
+      showToast('Please enter at least one section letter (e.g. Section A).', 'error');
+      return;
+    }
+    try {
+      setIsLoading(true);
+      for (const item of valid) {
+        await api.post('/academics/sections', { name: item.name.trim() });
+      }
+      showToast('Section(s) created successfully.', 'success');
+      setShowCreateSection(false);
+      setSectionNamesInput([{ id: 1, name: '' }]);
+      const secRes = await api.get('/academics/sections');
+      setAvailableSections(secRes.data || []);
+      await loadWorkloadDashboard();
+    } catch (err: any) {
+      console.error('Error creating sections:', err);
+      showToast(err.response?.data?.message || 'Failed to create section(s).', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteSection = async (sectionId: string) => {
+    if (!confirm('Are you sure you want to delete this section?')) return;
+    try {
+      setIsLoading(true);
+      await api.delete(`/academics/sections/${sectionId}`);
+      showToast('Section deleted successfully.', 'success');
+      const secRes = await api.get('/academics/sections');
+      setAvailableSections(secRes.data || []);
+      await loadWorkloadDashboard();
+    } catch (err: any) {
+      console.error('Error deleting section:', err);
+      showToast(err.response?.data?.message || 'Failed to delete section.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const fetchExistingClasses = useCallback(async () => {
     try {
       // Use the academics endpoint to get the list of classes for the selected academic year
@@ -3405,7 +3466,30 @@ export default function TeacherClassManagement() {
               <h3 className="font-extrabold text-slate-800 text-sm">Add Subjects Catalog</h3>
               <button onClick={() => setShowAddSubject(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
             </div>
+
+            {allSubjects.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Existing Subjects Catalog</h4>
+                <div className="max-h-36 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                  {allSubjects.map((sub) => (
+                    <div key={sub.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-700 font-medium">
+                      <span>{sub.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSubject(sub.id)}
+                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Subject"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2 mb-4">
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Add New Subjects</h4>
               {subjectsListInput.map((s, idx) => (
                 <div key={s.id} className="flex gap-2">
                   <input
@@ -3419,18 +3503,19 @@ export default function TeacherClassManagement() {
                     placeholder="e.g. Mathematics, Physical Science"
                   />
                   <button
+                    type="button"
                     onClick={() => setSubjectsListInput([...subjectsListInput, { id: Date.now(), name: '' }])}
                     className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold hover:bg-purple-200"
                   >+</button>
                   {subjectsListInput.length > 1 && (
-                    <button onClick={() => setSubjectsListInput(subjectsListInput.filter((_, i) => i !== idx))} className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100">
+                    <button type="button" onClick={() => setSubjectsListInput(subjectsListInput.filter((_, i) => i !== idx))} className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100">
                       <X className="w-4 h-4" />
                     </button>
                   )}
                 </div>
               ))}
             </div>
-            <button onClick={handleSaveSubjects} className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs">
+            <button onClick={handleSaveSubjects} className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs cursor-pointer">
               ✓ Submit Subjects
             </button>
           </div>
@@ -3498,7 +3583,7 @@ export default function TeacherClassManagement() {
                 </div>
               ))}
             </div>
-            <button onClick={handleSaveClass} className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs">
+            <button onClick={handleSaveClass} className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer">
               ✓ Save Classes
             </button>
           </div>
@@ -3510,17 +3595,65 @@ export default function TeacherClassManagement() {
           <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCreateSection(false)} />
           <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-50 p-6 animate-in">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-              <h3 className="font-extrabold text-slate-800 text-sm">Create Section Letter</h3>
+              <h3 className="font-extrabold text-slate-800 text-sm">Create Section Letters</h3>
               <button onClick={() => setShowCreateSection(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
             </div>
-            <input
-              value={newSectionName}
-              onChange={e => setNewSectionName(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500 mb-4"
-              placeholder="e.g. Section D"
-            />
-            <button onClick={handleSaveSection} className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs">
-              Save Section
+
+            {availableSections.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Existing Sections</h4>
+                <div className="max-h-32 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                  {availableSections.map((sec) => (
+                    <div key={sec.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-700 font-medium">
+                      <span>{sec.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSection(sec.id)}
+                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Section"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 mb-4">
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Add New Sections</h4>
+              {sectionNamesInput.map((entry, idx) => (
+                <div key={entry.id} className="flex gap-2 items-center">
+                  <input
+                    value={entry.name}
+                    onChange={e => {
+                      const arr = [...sectionNamesInput];
+                      arr[idx] = { ...arr[idx], name: e.target.value };
+                      setSectionNamesInput(arr);
+                    }}
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
+                    placeholder={`e.g. Section ${String.fromCharCode(65 + idx)}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSectionNamesInput([...sectionNamesInput, { id: Date.now(), name: '' }])}
+                    className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold hover:bg-blue-200"
+                  >+</button>
+                  {sectionNamesInput.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setSectionNamesInput(sectionNamesInput.filter((_, i) => i !== idx))}
+                      className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleSaveSectionsBulk} className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer">
+              ✓ Save Sections
             </button>
           </div>
         </>

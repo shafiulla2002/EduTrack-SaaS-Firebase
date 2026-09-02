@@ -233,8 +233,6 @@ export default function BulkTeacherImportModal({ isOpen, onClose, onImportSucces
               skillLevel: getRowVal(row, skillLevelKey) || 'Expert',
               yearsOfExperience: 5
             });
-          } else {
-            errorLogs.push(`Row ${rowNum}: Subject "${sName}" not found in database catalog.`);
           }
         }
       };

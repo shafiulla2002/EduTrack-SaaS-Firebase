@@ -99,6 +99,11 @@ export class TimetableController {
     return this.timetableService.bulkCreateSubjects(dto.subjects);
   }
 
+  @Delete('subjects/:id')
+  deleteSubject(@Param('id') id: string) {
+    return this.timetableService.deleteSubject(id);
+  }
+
   @Get('teachers/subject')
   getTeachersForSubject(@Query('subjectIds') subjectIds: string) {
     const ids = subjectIds ? subjectIds.split(',') : [];
