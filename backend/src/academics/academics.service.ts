@@ -46,10 +46,24 @@ export class AcademicsService {
 
   async getAcademicYears() {
     const tenantId = this.getTenantId();
-    return this.prisma.academicYear.findMany({
+    let years = await this.prisma.academicYear.findMany({
       where: { tenantId },
       orderBy: { startDate: 'desc' },
     });
+
+    if (years.length === 0) {
+      const defaultYear = await this.prisma.academicYear.create({
+        data: {
+          name: '2026-2027',
+          startDate: new Date('2026-06-01'),
+          endDate: new Date('2027-04-30'),
+          isActive: true,
+          tenantId,
+        },
+      });
+      years = [defaultYear];
+    }
+    return years;
   }
 
   async toggleAcademicYearActive(id: string) {

@@ -34,7 +34,20 @@ export class TimetableService {
   // ---------- Academic Years ----------
   async getAcademicYears() {
     const tenantId = this.getTenantId();
-    return this.prisma.academicYear.findMany({ where: { tenantId } });
+    let years = await this.prisma.academicYear.findMany({ where: { tenantId } });
+    if (years.length === 0) {
+      const defaultYear = await this.prisma.academicYear.create({
+        data: {
+          name: '2026-2027',
+          startDate: new Date('2026-06-01'),
+          endDate: new Date('2027-04-30'),
+          isActive: true,
+          tenantId,
+        },
+      });
+      years = [defaultYear];
+    }
+    return years;
   }
 
   // ---------- Classes ----------
@@ -617,15 +630,22 @@ export class TimetableService {
   async getWorkloadSummary(academicYearId: string) {
     const tenantId = this.getTenantId();
     
+    const teacherWhere: any = {
+      tenantId,
+      OR: [
+        { user: { role: 'TEACHER' } },
+        { designation: { contains: 'Teacher', mode: 'insensitive' } },
+        { teacherSkills: { some: {} } },
+      ],
+    };
+
     const totalClassSections = await this.prisma.classSection.count({ where: { tenantId } });
-    const totalTeachers = await this.prisma.staffProfile.count({
-      where: { tenantId, user: { role: 'TEACHER' } },
-    });
+    const totalTeachers = await this.prisma.staffProfile.count({ where: teacherWhere });
     const totalAssignments = await this.prisma.teacherAssignment.count({ where: { tenantId } });
 
     // Calculate avgLoadPercent (simple aggregation based on total periods scheduled vs standard load)
     const teachers = await this.prisma.staffProfile.findMany({
-      where: { tenantId, user: { role: 'TEACHER' } },
+      where: teacherWhere,
       include: {
         _count: {
           select: { teacherAssignments: true }
@@ -649,7 +669,14 @@ export class TimetableService {
   async getAllTeacherWorkloads() {
     const tenantId = this.getTenantId();
     const teachers = await this.prisma.staffProfile.findMany({
-      where: { tenantId, user: { role: 'TEACHER', isActive: true } },
+      where: {
+        tenantId,
+        OR: [
+          { user: { role: 'TEACHER' } },
+          { designation: { contains: 'Teacher', mode: 'insensitive' } },
+          { teacherSkills: { some: {} } },
+        ],
+      },
       include: {
         user: true,
         teacherAssignments: {
