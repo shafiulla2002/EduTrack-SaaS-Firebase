@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { Calendar } from 'lucide-react';
 import { formatDateDDMMYYYY } from '@/lib/date';
 
@@ -29,10 +29,27 @@ export default function DatePickerInput({
   id,
   name,
 }: DatePickerInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const displayFormatted = value ? formatDateDDMMYYYY(value) : placeholder;
 
+  const handleOpenPicker = () => {
+    if (disabled) return;
+    try {
+      if (inputRef.current && typeof inputRef.current.showPicker === 'function') {
+        inputRef.current.showPicker();
+      } else {
+        inputRef.current?.focus();
+      }
+    } catch (e) {
+      inputRef.current?.focus();
+    }
+  };
+
   return (
-    <div className="relative w-full">
+    <div 
+      onClick={handleOpenPicker}
+      className="relative w-full cursor-pointer"
+    >
       <div
         className={`flex items-center justify-between px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-800 dark:text-slate-100 text-sm font-semibold shadow-xs select-none transition-colors ${
           disabled ? 'opacity-60 bg-slate-100 dark:bg-slate-950 cursor-not-allowed' : 'hover:border-[#2E5BFF] focus-within:ring-2 focus-within:ring-[#2E5BFF]/20'
@@ -44,11 +61,20 @@ export default function DatePickerInput({
         <Calendar className="w-4 h-4 text-slate-400 shrink-0 ml-2 pointer-events-none" />
       </div>
       <input
+        ref={inputRef}
         type="date"
         id={id}
         name={name}
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => {
+          e.stopPropagation();
+          try {
+            if (typeof e.currentTarget.showPicker === 'function') {
+              e.currentTarget.showPicker();
+            }
+          } catch {}
+        }}
         disabled={disabled}
         min={min}
         max={max}
