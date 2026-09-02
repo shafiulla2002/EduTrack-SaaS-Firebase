@@ -9,7 +9,7 @@ import { formatDateDDMMYYYY } from '@/lib/date';
 import { 
   Receipt, Search, CreditCard, Sparkles, X, CheckCircle2, 
   QrCode, User, ArrowRight, CornerDownRight, RotateCcw,
-  BookOpen, Calendar, Printer, ShieldCheck, AlertCircle
+  BookOpen, Calendar, Printer, ShieldCheck, AlertCircle, MessageCircle
 } from 'lucide-react';
 
 interface StagedInvoice {
@@ -44,7 +44,7 @@ interface InvoicePDFData {
 }
 
 export default function FeesBillingPage() {
-  const { setupStats, currentUser } = useTenant();
+  const { setupStats, currentUser, schoolName } = useTenant();
   const [search, setSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [selectedYear, setSelectedYear] = useState('');
@@ -1162,14 +1162,42 @@ export default function FeesBillingPage() {
                     downloadInvoicePDF(successInvoiceId);
                   }
                 }}
-                className="w-full sm:w-auto flex-1 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer border-none"
+                className="w-full sm:w-auto flex-1 px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer border-none"
               >
                 <Printer className="w-4 h-4" /> Save / Print PDF
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  const acc = selectedStudent?.account || {};
+                  const rawPhone = (selectedStudent?.fatherPhone || selectedStudent?.motherPhone || acc.phone || selectedStudent?.phone || '').replace(/\D/g, '');
+                  const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
+
+                  const text = `*FEE PAYMENT RECEIPT CONFIRMATION*\n` +
+                    `🏫 *School:* ${schoolName || 'EduTrack School Portal'}\n` +
+                    `📄 *Receipt No:* ${successInvoiceId}\n` +
+                    `👤 *Student:* ${lastPaidStudentName}\n` +
+                    `📅 *Date & Time:* ${successPaymentDate}\n\n` +
+                    `----------------------------------------\n` +
+                    `💳 *Amount Paid:* ₹${lastPaidAmount.toLocaleString()}\n` +
+                    `⏳ *Remaining Balance:* ₹${successRemainingBalance.toLocaleString()}\n` +
+                    `----------------------------------------\n\n` +
+                    `Thank you for your payment!`;
+
+                  const whatsappUrl = phoneClean 
+                    ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(text)}`
+                    : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+
+                  window.open(whatsappUrl, '_blank');
+                }}
+                className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer border-none"
+              >
+                <MessageCircle className="w-4 h-4" /> Share WhatsApp
+              </button>
+              <button
+                type="button"
                 onClick={() => setSuccessModalOpen(false)}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all cursor-pointer bg-white"
+                className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all cursor-pointer bg-white"
               >
                 Close
               </button>

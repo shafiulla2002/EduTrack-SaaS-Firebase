@@ -2,12 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Printer, ArrowLeft } from 'lucide-react';
+import { Printer, ArrowLeft, Download, MessageCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { PDFService } from '@/lib/pdf';
 import { PDFLayout } from '@/components/PDFLayout';
 import { PDFTable } from '@/components/PDFTable';
-import { Download } from 'lucide-react';
 
 interface InvoicePDFData {
   schoolName: string;
@@ -27,6 +26,8 @@ interface InvoicePDFData {
   studentDob: string;
   addressVillage: string;
   totalAmount: number;
+  remainingBalance?: number;
+  parentPhone?: string;
   items: { particulars: string; amount: number }[];
 }
 
@@ -89,6 +90,29 @@ export default function InvoicePrintPage() {
     }
   };
 
+  const handleShareWhatsApp = () => {
+    if (!invoiceData) return;
+    const rawPhone = (invoiceData.parentPhone || '').replace(/\D/g, '');
+    const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
+
+    const text = `*OFFICIAL STUDENT FEE RECEIPT*\n` +
+      `🏫 *School:* ${invoiceData.schoolName}\n` +
+      `📄 *Receipt No:* ${invoiceData.invoiceNo}\n` +
+      `📅 *Date:* ${invoiceData.invoiceDate}\n` +
+      `👤 *Student:* ${invoiceData.studentName} (${invoiceData.className} - ${invoiceData.sectionName})\n\n` +
+      `----------------------------------------\n` +
+      `💳 *Amount Paid:* ₹${invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+      `⏳ *Remaining Balance:* ₹${(invoiceData.remainingBalance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+      `----------------------------------------\n\n` +
+      `Thank you for your payment!`;
+
+    const whatsappUrl = phoneClean 
+      ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+
+    window.open(whatsappUrl, '_blank');
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center font-medium text-xs text-slate-400">
@@ -124,6 +148,13 @@ export default function InvoicePrintPage() {
           Back to Billing
         </button>
         <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={handleShareWhatsApp}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[13px] flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer border-none"
+          >
+            <MessageCircle className="w-4 h-4" />
+            Share WhatsApp
+          </button>
           <button
             onClick={handlePrint}
             className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-[13px] flex items-center justify-center gap-2 transition-all cursor-pointer"
@@ -165,7 +196,7 @@ export default function InvoicePrintPage() {
           {/* Main Content Area */}
           <div className="mt-4">
 
-          {/* ── Fee Parti          {/* ── Fee Particulars Table ── */}
+          {/* ── Fee Particulars Table ── */}
           <PDFTable
             items={invoiceData.items}
             columns={[
@@ -195,12 +226,18 @@ export default function InvoicePrintPage() {
           />
         </div>
 
-          {/* ── Grand Total ── */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', breakInside: 'avoid' }}>
-            <div style={{ backgroundColor: '#1a365d', color: '#ffffff', borderRadius: '0.5rem', padding: '1rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '2rem', minWidth: '280px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#cbd5e1' }}>Grand Total Paid</span>
-              <span style={{ fontSize: '20px', fontWeight: 900, fontFamily: 'monospace', color: '#ffffff' }}>
+          {/* ── Grand Total & Remaining Balance Bar ── */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem', breakInside: 'avoid', flexWrap: 'wrap' }}>
+            <div style={{ backgroundColor: '#1a365d', color: '#ffffff', borderRadius: '0.5rem', padding: '0.85rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', minWidth: '240px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#cbd5e1' }}>Paid Amount</span>
+              <span style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: '#ffffff' }}>
                 ₹{invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div style={{ backgroundColor: (invoiceData.remainingBalance ?? 0) > 0 ? '#fff1f2' : '#f0fdf4', color: (invoiceData.remainingBalance ?? 0) > 0 ? '#9f1239' : '#166534', border: `1px solid ${(invoiceData.remainingBalance ?? 0) > 0 ? '#fecdd3' : '#bbf7d0'}`, borderRadius: '0.5rem', padding: '0.85rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', minWidth: '240px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Remaining Balance</span>
+              <span style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace' }}>
+                ₹{(invoiceData.remainingBalance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
             </div>
           </div>

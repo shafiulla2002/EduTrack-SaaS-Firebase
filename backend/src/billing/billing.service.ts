@@ -1122,6 +1122,14 @@ export class BillingService {
       where: { id: tenantId },
     });
 
+    // Calculate remaining balance for student
+    const studentInvoices = await this.prisma.invoice.findMany({
+      where: { studentId: invoice.studentId, tenantId },
+      select: { remainingBalance: true }
+    });
+    const totalRemainingBalance = studentInvoices.reduce((sum, inv) => sum + Number(inv.remainingBalance || 0), 0);
+    const parentPhone = invoice.student.fatherPhone || invoice.student.motherPhone || invoice.student.user?.phone || '';
+
     return {
       schoolName: school?.name || 'Vikas Senior Secondary School',
       schoolAddress: school?.address || 'School Campus Address',
@@ -1140,6 +1148,9 @@ export class BillingService {
       studentDob: '', // Dob can be added to user/student profile if needed
       addressVillage: school?.address || '',
       totalAmount: Number(invoice.totalAmount),
+      remainingBalance: totalRemainingBalance,
+      invoiceRemainingBalance: Number(invoice.remainingBalance || 0),
+      parentPhone,
       items: invoice.invoiceItems.map(item => ({
         particulars: item.name,
         amount: Number(item.amount),
