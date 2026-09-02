@@ -83,7 +83,7 @@ export class TenantController {
   @UseGuards(JwtAuthGuard)
   @Get('setup-status')
   async getSetupStatus(@Req() req: any) {
-    const tenantId = req.user.tenantId;
+    const tenantId = req.user?.tenantId;
 
     const currentUser = await this.prisma.user.findUnique({
       where: { id: req.user.id },
@@ -98,6 +98,19 @@ export class TenantController {
         }
       },
     });
+
+    if (!tenantId) {
+      return {
+        setupCompleted: false,
+        completionPercentage: 0,
+        classesCount: 0,
+        teachersCount: 0,
+        studentsCount: 0,
+        setup: null,
+        currentUser,
+        subscription: null,
+      };
+    }
 
     const setup = await this.prisma.schoolSetup.findUnique({
       where: { tenantId },

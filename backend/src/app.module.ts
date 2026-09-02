@@ -93,6 +93,7 @@ export class AppModule implements NestModule {
         'auth/exchange-code',
         'tenant/register',
         'tenant/public-branding',
+        'tenant/setup-status',
         'support/contact',
         'api/v1/payments/webhook',
         'health',
