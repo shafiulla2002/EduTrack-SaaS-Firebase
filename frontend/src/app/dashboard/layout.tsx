@@ -7,6 +7,8 @@ import { useTenant } from '../providers/TenantContext';
 import { useTheme } from '../providers/ThemeContext';
 import ToastProvider from '@/components/Toast';
 import { clearStoredAuth, api } from '@/lib/api';
+import { SubscriptionExpiryBanner } from '@/components/SubscriptionExpiryBanner';
+import { SubscriptionExpiredPortalLock } from '@/components/SubscriptionExpiredPortalLock';
 
 export default function DashboardLayout({
   children,
@@ -809,27 +811,12 @@ export default function DashboardLayout({
         <main className={`p-4 sm:p-8 print:p-0 print:max-w-none print:m-0 flex-1 max-w-7xl w-full mx-auto min-w-0 ${
           currentUser?.role === 'TEACHER' || currentUser?.role === 'SCHOOL_ADMIN' ? 'pb-24 lg:pb-8' : ''
         }`}>
-          {isGracePeriod && (
-            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 text-amber-600 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
-              <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <span className="text-xs sm:text-sm font-semibold">
-                  Attention: Your school's EduTrack subscription has expired. You are currently in a 3-day grace period. Please renew to prevent service lockout.
-                </span>
-              </div>
-              {currentUser?.role === 'SCHOOL_ADMIN' && (
-                <Link
-                  href="/dashboard/settings/subscription"
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs rounded-xl shadow-sm text-center shrink-0 transition-all"
-                >
-                  Renew Subscription
-                </Link>
-              )}
-            </div>
+          <SubscriptionExpiryBanner />
+          {(!isSubscriptionActive && currentUser?.role && ['TEACHER', 'STAFF', 'PARENT', 'STUDENT'].includes(currentUser.role)) ? (
+            <SubscriptionExpiredPortalLock />
+          ) : (
+            children
           )}
-          {children}
         </main>
       </div>
 

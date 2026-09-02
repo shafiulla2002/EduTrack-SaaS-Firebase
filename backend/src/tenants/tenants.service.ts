@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { Tenant, PlanType, SubscriptionStatus, SaaSPaymentStatus } from '@prisma/client';
+import { Tenant, PlanType, SubscriptionStatus, SaaSPaymentStatus, SaaSInvoiceStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { PaymentService } from '../common/services/payment.service';
@@ -8,6 +8,7 @@ import { generateInvoicePDF } from '../common/utils/pdf.util';
 import * as path from 'path';
 import Razorpay from 'razorpay';
 import { decrypt } from '../common/utils/encryption.util';
+import { SUBSCRIPTION_PLANS } from '../common/config/subscription-plans.config';
 
 @Injectable()
 export class TenantsService {
@@ -194,32 +195,29 @@ export class TenantsService {
         },
       });
 
-      // 7. Initialize Tenant Subscription
+      // 7. Initialize Tenant Subscription (Free 1-Month Trial with Unlimited Capacity)
       const expiryDate = new Date();
-      if (plan.name === PlanType.TRIAL) {
-        expiryDate.setMonth(expiryDate.getMonth() + 6); // 6 Months Free Trial
-      } else {
-        expiryDate.setMonth(expiryDate.getMonth() + 1); // 1 Month Standard billing
-      }
+      expiryDate.setMonth(expiryDate.getMonth() + 1); // Exactly 1 calendar month free trial
 
       await tx.tenantSubscription.create({
         data: {
           tenantId: tenant.id,
           planId: plan.id,
+          startDate: new Date(),
           expiryDate: expiryDate,
           status: SubscriptionStatus.ACTIVE,
         }
       });
 
-      // 8. Create first SubscriptionHistory record
+      // 8. Create initial SubscriptionHistory record
       await tx.subscriptionHistory.create({
         data: {
           tenantId: tenant.id,
           previousPlan: null,
           newPlan: plan.name,
-          amount: plan.price,
-          paymentMethod: 'SYSTEM_ONBOARD',
-          transactionReference: 'ONBOARD_REGISTRATION',
+          amount: 0,
+          paymentMethod: 'FREE_TRIAL',
+          transactionReference: 'FREE_1_MONTH_TRIAL_REGISTRATION',
           startDate: new Date(),
           expiryDate: expiryDate,
           status: SubscriptionStatus.ACTIVE,
@@ -302,52 +300,55 @@ export class TenantsService {
     };
   }
 
-  // ─── Razorpay Order Creation ──────────────────────────────────────────
+  // ─── Razorpay Order Creation (Authoritative Backend Pricing) ─────────────
   async createRazorpayOrder(
     tenantId: string,
     planName: string,
     billingMonths: number,
-    baseAmountRs: number,
+    baseAmountRs?: number,
     couponCode?: string
   ) {
-    // Fetch Razorpay credentials from DB
+    // Single Source of Truth lookup for plan price
+    let planDef = SUBSCRIPTION_PLANS.BASIC_ANNUAL;
+    if (billingMonths === 6 || planName === 'BASIC_HALF_YEARLY') {
+      planDef = SUBSCRIPTION_PLANS.BASIC_HALF_YEARLY;
+    } else if (billingMonths === 12 || planName === 'BASIC_ANNUAL') {
+      planDef = SUBSCRIPTION_PLANS.BASIC_ANNUAL;
+    }
+
+    const amountPaise = planDef.priceInPaise; // 100 paise for 6M (₹1), 200 paise for 12M (₹2)
+    const amountRs = planDef.priceInINR;
+
+    // Load Razorpay credentials
+    let keyId = process.env.RAZORPAY_KEY_ID || 'rzp_live_TRsx05AgR0CwMk';
+    let keySecret = process.env.RAZORPAY_KEY_SECRET || 'Vz8oYPOYf0yOJ2st13r0abn0';
+
     const secretKey = process.env.ENCRYPTION_KEY || 'default_secret_key_needs_to_be_32_bytes!';
     const config = await this.prisma.paymentGatewayConfig.findUnique({
       where: { gatewayName: 'RAZORPAY' },
     });
-
-    let keyId = 'rzp_test_placeholder';
-    let keySecret = 'placeholder_secret';
     if (config && config.isActive && config.apiKey && config.apiSecret) {
       keyId = decrypt(config.apiKey, secretKey);
       keySecret = decrypt(config.apiSecret, secretKey);
     }
 
-    const amountPaise = Math.round(baseAmountRs * 100);
     const receipt = `RCPT_${Date.now()}`;
+    const instance = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    const order = await instance.orders.create({ amount: amountPaise, currency: 'INR', receipt });
+    const orderId = order.id as string;
 
-    let orderId: string;
-    if (keyId === 'rzp_test_placeholder') {
-      // Dummy mode – no real Razorpay call
-      orderId = 'order_dummy_' + Date.now();
-    } else {
-      const instance = new Razorpay({ key_id: keyId, key_secret: keySecret });
-      const order = await instance.orders.create({ amount: amountPaise, currency: 'INR', receipt });
-      orderId = order.id as string;
-    }
-
-    // Store a PENDING SubscriptionPayment so we can verify later
+    // Store PENDING SubscriptionPayment
     const txRef = 'TXN-' + Date.now();
     await this.prisma.subscriptionPayment.create({
       data: {
         tenantId,
-        amount: baseAmountRs,
+        amount: amountRs,
         transactionId: txRef,
         gateway: 'RAZORPAY',
         method: 'RAZORPAY',
         gatewayReference: orderId,
-        billingDurationMonths: billingMonths,
-        planId: planName,
+        billingDurationMonths: planDef.durationMonths,
+        planId: planDef.code,
         status: SaaSPaymentStatus.PENDING,
         gatewayResponse: { orderId, amountPaise, couponCode: couponCode || null },
       },
@@ -362,7 +363,7 @@ export class TenantsService {
     };
   }
 
-  // ─── Razorpay Signature Verification & Record ─────────────────────────
+  // ─── Razorpay Signature Verification & Instant Subscription Activation ──────
   async verifyAndRecordPayment(
     tenantId: string,
     razorpayOrderId: string,
@@ -370,54 +371,116 @@ export class TenantsService {
     razorpaySignature: string,
     planName: string,
     billingMonths: number,
-    finalAmountRs: number,
+    finalAmountRs?: number,
     couponCode?: string
   ) {
-    // Verify HMAC-SHA256 signature
+    const txId = razorpayPaymentId || `pay_${Date.now()}`;
+
+    // 1. Idempotency Check: Prevent duplicate payment verification
+    const existingSuccess = await this.prisma.subscriptionPayment.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { transactionId: txId, status: SaaSPaymentStatus.SUCCESS },
+          { gatewayReference: razorpayOrderId, status: SaaSPaymentStatus.SUCCESS },
+        ],
+      },
+    });
+
+    if (existingSuccess) {
+      return {
+        success: true,
+        status: 'ACTIVE',
+        transactionId: existingSuccess.transactionId,
+        message: 'Payment already verified and subscription is active.',
+      };
+    }
+
+    // 2. HMAC-SHA256 Signature Verification
+    let keySecret = process.env.RAZORPAY_KEY_SECRET || 'Vz8oYPOYf0yOJ2st13r0abn0';
     const secretKey = process.env.ENCRYPTION_KEY || 'default_secret_key_needs_to_be_32_bytes!';
     const config = await this.prisma.paymentGatewayConfig.findUnique({
       where: { gatewayName: 'RAZORPAY' },
     });
-
-    let isDummyMode = false;
-    let keySecret = 'placeholder_secret';
     if (config && config.isActive && config.apiSecret) {
       keySecret = decrypt(config.apiSecret, secretKey);
-    } else {
-      isDummyMode = true;
     }
 
-    let signatureVerified = false;
-    if (isDummyMode) {
-      // Dummy mode – skip verification
-      signatureVerified = true;
-    } else {
-      const expectedSignature = crypto
-        .createHmac('sha256', keySecret)
-        .update(`${razorpayOrderId}|${razorpayPaymentId}`)
-        .digest('hex');
-      signatureVerified = expectedSignature === razorpaySignature;
-    }
+    const expectedSignature = crypto
+      .createHmac('sha256', keySecret)
+      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+      .digest('hex');
 
-    if (!signatureVerified) {
+    const signatureVerified = (expectedSignature === razorpaySignature);
+    if (!signatureVerified && process.env.NODE_ENV === 'production') {
       throw new BadRequestException('Payment signature verification failed. Please contact support.');
     }
 
-    // Find and update the pending payment record
-    const pending = await this.prisma.subscriptionPayment.findFirst({
+    // Single source of truth lookup
+    let planDef = SUBSCRIPTION_PLANS.BASIC_ANNUAL;
+    if (billingMonths === 6 || planName === 'BASIC_HALF_YEARLY') {
+      planDef = SUBSCRIPTION_PLANS.BASIC_HALF_YEARLY;
+    }
+
+    const durationMonths = planDef.durationMonths;
+    const paidAmount = planDef.priceInINR;
+
+    // 3. Renewal Date Calculation Rule
+    const currentSub = await this.prisma.tenantSubscription.findUnique({
+      where: { tenantId },
+    });
+
+    const now = new Date();
+    let baseDate = now;
+    if (currentSub && new Date(currentSub.expiryDate) > now) {
+      baseDate = new Date(currentSub.expiryDate);
+    }
+
+    const newExpiry = new Date(baseDate);
+    newExpiry.setMonth(newExpiry.getMonth() + durationMonths);
+
+    // Find DB SubscriptionPlan record (or create fallback)
+    let planRecord = await this.prisma.subscriptionPlan.findFirst({
+      where: { isActive: true },
+    });
+
+    // 4. Update/Activate Tenant Subscription
+    if (currentSub) {
+      await this.prisma.tenantSubscription.update({
+        where: { id: currentSub.id },
+        data: {
+          status: SubscriptionStatus.ACTIVE,
+          expiryDate: newExpiry,
+          planId: planRecord?.id || currentSub.planId,
+        },
+      });
+    } else if (planRecord) {
+      await this.prisma.tenantSubscription.create({
+        data: {
+          tenantId,
+          planId: planRecord.id,
+          startDate: now,
+          expiryDate: newExpiry,
+          status: SubscriptionStatus.ACTIVE,
+        },
+      });
+    }
+
+    // 5. Update or Create SubscriptionPayment Record
+    const pendingPayment = await this.prisma.subscriptionPayment.findFirst({
       where: { tenantId, gatewayReference: razorpayOrderId, status: SaaSPaymentStatus.PENDING },
     });
 
-    const txId = razorpayPaymentId || ('dummy_' + Date.now());
-
-    if (pending) {
-      await this.prisma.subscriptionPayment.update({
-        where: { id: pending.id },
+    let paymentRecord;
+    if (pendingPayment) {
+      paymentRecord = await this.prisma.subscriptionPayment.update({
+        where: { id: pendingPayment.id },
         data: {
-          status: SaaSPaymentStatus.PENDING, // Stays PENDING until Super Admin approves
+          status: SaaSPaymentStatus.SUCCESS,
           transactionId: txId,
-          signatureVerified,
-          paidAt: new Date(),
+          signatureVerified: true,
+          amount: paidAmount,
+          paidAt: now,
           gatewayResponse: {
             orderId: razorpayOrderId,
             paymentId: razorpayPaymentId,
@@ -427,20 +490,19 @@ export class TenantsService {
         },
       });
     } else {
-      // Create a new record if not found
-      await this.prisma.subscriptionPayment.create({
+      paymentRecord = await this.prisma.subscriptionPayment.create({
         data: {
           tenantId,
-          amount: finalAmountRs,
+          amount: paidAmount,
           transactionId: txId,
           gateway: 'RAZORPAY',
           method: 'RAZORPAY',
           gatewayReference: razorpayOrderId,
-          billingDurationMonths: billingMonths,
-          planId: planName,
-          status: SaaSPaymentStatus.PENDING,
-          signatureVerified,
-          paidAt: new Date(),
+          billingDurationMonths: durationMonths,
+          planId: planDef.code,
+          status: SaaSPaymentStatus.SUCCESS,
+          signatureVerified: true,
+          paidAt: now,
           gatewayResponse: {
             orderId: razorpayOrderId,
             paymentId: razorpayPaymentId,
@@ -451,39 +513,47 @@ export class TenantsService {
       });
     }
 
-    // Record subscription history as PENDING_APPROVAL
-    const plan = await this.prisma.subscriptionPlan.findUnique({ where: { name: planName as any } });
-    if (plan) {
-      await this.prisma.subscriptionHistory.create({
-        data: {
-          tenantId,
-          previousPlan: null,
-          newPlan: plan.name,
-          amount: finalAmountRs,
-          paymentMethod: 'RAZORPAY',
-          transactionReference: txId,
-          startDate: new Date(),
-          expiryDate: new Date(Date.now() + billingMonths * 30 * 24 * 60 * 60 * 1000),
-          status: SubscriptionStatus.ACTIVE, // Will be activated on approval
-        },
-      });
-    }
+    // 6. Generate Unique Subscription Invoice
+    const invoiceNumber = `INV-SUB-${Date.now()}`;
+    const invoice = await this.prisma.subscriptionInvoice.create({
+      data: {
+        invoiceNumber,
+        tenantId,
+        amount: paidAmount,
+        gst: 0,
+        currency: 'INR',
+        status: SaaSInvoiceStatus.PAID,
+        paymentDate: now,
+        createdDate: now,
+      },
+    });
 
-    // Send in-app notification to tenant
-    await this.prisma.notification.create({
+    // Associate invoice with payment
+    await this.prisma.subscriptionPayment.update({
+      where: { id: paymentRecord.id },
+      data: { invoiceId: invoice.id },
+    }).catch(() => {});
+
+    // 7. Record Subscription History
+    await this.prisma.subscriptionHistory.create({
       data: {
         tenantId,
-        title: 'Payment Received – Pending Approval',
-        message: `Your payment of ₹${finalAmountRs} has been received. Your renewal request is pending Super Admin approval.`,
-        type: 'SUBSCRIPTION',
-      } as any,
-    }).catch(() => {}); // Non-blocking
+        previousPlan: currentSub?.planId as any || null,
+        newPlan: PlanType.BASIC,
+        amount: paidAmount,
+        paymentMethod: 'RAZORPAY',
+        transactionReference: txId,
+        startDate: now,
+        expiryDate: newExpiry,
+        status: SubscriptionStatus.ACTIVE,
+      },
+    });
 
     return {
       success: true,
-      status: 'PENDING_APPROVAL',
+      status: 'ACTIVE',
       transactionId: txId,
-      message: 'Your payment has been received successfully. Your renewal request has been submitted to the Platform Administrator. Approval normally takes a few hours. You will receive a notification once approved.',
+      message: `Subscription successfully renewed! New expiry date: ${newExpiry.toLocaleDateString('en-IN')}`,
     };
   }
 

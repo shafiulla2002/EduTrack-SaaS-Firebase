@@ -23,10 +23,10 @@ import {
 
 // ─── Pricing Configuration ────────────────────────────────────────────────
 const PLAN_PRICING: Record<string, Record<string, number>> = {
-  BASIC: { 6: 5999, 12: 11999 },
+  BASIC: { 6: 1, 12: 2 },
 };
 const PLAN_SAVINGS: Record<string, Record<string, number>> = {
-  BASIC: { 6: 0, 12: 999 },
+  BASIC: { 6: 0, 12: 0 },
 };
 
 const VALID_COUPONS: Record<string, { type: 'percent' | 'flat'; value: number; label: string }> = {

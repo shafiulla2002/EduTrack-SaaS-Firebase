@@ -339,10 +339,8 @@ export class TenantController {
   @UseGuards(JwtAuthGuard)
   @Get('subscription/plans')
   async getPlans() {
-    return this.prisma.subscriptionPlan.findMany({
-      where: { isActive: true },
-      orderBy: { price: 'asc' },
-    });
+    const { SUBSCRIPTION_PLANS } = await import('../common/config/subscription-plans.config');
+    return Object.values(SUBSCRIPTION_PLANS);
   }
 
   @UseGuards(JwtAuthGuard)

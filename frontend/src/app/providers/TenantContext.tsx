@@ -46,18 +46,17 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [showLockPopup, setShowLockPopup] = useState(false);
 
   const isSubscriptionActive = !token || loading || !subscription || (
-    subscription.status === 'ACTIVE' ||
-    subscription.status === 'PAST_DUE' ||
-    new Date(subscription.expiryDate).getTime() + (3 * 24 * 60 * 60 * 1000) >= Date.now()
+    subscription.status === 'ACTIVE' &&
+    new Date(subscription.expiryDate).getTime() >= Date.now()
   );
 
-  // Register Axios response interceptor to handle 402 status codes globally
+  // Register Axios response interceptor to handle 402/403 subscription expired status codes globally
   useEffect(() => {
     const interceptor = api.interceptors.response.use(
       (response) => response,
       (error) => {
-        if (error.response && error.response.status === 402) {
-          console.warn('Axios Interceptor: 402 Payment Required detected. Triggering subscription renewal popup.');
+        if (error.response && (error.response.status === 402 || error.response.status === 403) && error.response.data?.code === 'SUBSCRIPTION_EXPIRED') {
+          console.warn('Axios Interceptor: SUBSCRIPTION_EXPIRED detected.');
           setShowLockPopup(true);
         }
         return Promise.reject(error);

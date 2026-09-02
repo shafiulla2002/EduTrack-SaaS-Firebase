@@ -282,83 +282,27 @@ function RegisterSchoolContent() {
 
               {/* Subscription Plan Selection */}
               <div className="col-span-1 md:col-span-2 border-t border-slate-900/50 pt-5 mt-2">
-                <h3 className="text-sm font-semibold text-brand-400 uppercase tracking-wider mb-4">Select Subscription Plan</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <h3 className="text-sm font-semibold text-brand-400 uppercase tracking-wider mb-4">Initial Registration Plan</h3>
+                <div className="grid grid-cols-1 gap-4">
                   {/* Trial Card */}
                   <div
                     onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: 'TRIAL' }))}
-                    className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-                      formData.subscriptionPlan === 'TRIAL'
-                        ? 'border-brand-500 bg-brand-500/5 text-white'
-                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
-                    }`}
+                    className="p-6 rounded-2xl border border-brand-500 bg-brand-500/10 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
                   >
                     <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-bold uppercase tracking-wider text-slate-200">Trial</span>
-                        {formData.subscriptionPlan === 'TRIAL' && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-brand-500" />
-                        )}
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base font-bold uppercase tracking-wider text-brand-300">Free 1-Month Trial</span>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-brand-500 text-slate-950 uppercase">Included</span>
                       </div>
-                      <p className="text-2xl font-black text-white mb-2">Free</p>
-                      <p className="text-[11px] leading-relaxed mb-4">6 Months Trial. Full access to evaluate platform capabilities.</p>
+                      <p className="text-3xl font-black text-white mb-1">₹0 <span className="text-xs font-normal text-slate-300">for 1st Month</span></p>
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        Enjoy full application access for 1 month with unlimited student and staff profiles.
+                      </p>
                     </div>
-                    <ul className="text-[10px] space-y-1.5 border-t border-slate-900/50 pt-3">
-                      <li>• 1,000 Students Limit</li>
-                      <li>• 100 Teachers Limit</li>
-                      <li>• Standard Support</li>
-                    </ul>
-                  </div>
-
-                  {/* Basic Card */}
-                  <div
-                    onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: 'BASIC' }))}
-                    className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-                      formData.subscriptionPlan === 'BASIC'
-                        ? 'border-indigo-500 bg-indigo-500/5 text-white'
-                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-bold uppercase tracking-wider text-slate-200">Basic</span>
-                        {formData.subscriptionPlan === 'BASIC' && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                        )}
-                      </div>
-                      <p className="text-2xl font-black text-white mb-2">₹1,999<span className="text-xs font-normal">/mo</span></p>
-                      <p className="text-[11px] leading-relaxed mb-4">Essential features for small to mid-sized schools.</p>
-                    </div>
-                    <ul className="text-[10px] space-y-1.5 border-t border-slate-900/50 pt-3">
-                      <li>• 5,000 Students Limit</li>
-                      <li>• 200 Teachers Limit</li>
-                      <li>• Priority Support</li>
-                    </ul>
-                  </div>
-
-                  {/* Premium Card */}
-                  <div
-                    onClick={() => setFormData(prev => ({ ...prev, subscriptionPlan: 'PREMIUM' }))}
-                    className={`p-5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-                      formData.subscriptionPlan === 'PREMIUM'
-                        ? 'border-pink-500 bg-pink-500/5 text-white'
-                        : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-bold uppercase tracking-wider text-slate-200">Premium</span>
-                        {formData.subscriptionPlan === 'PREMIUM' && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-pink-500" />
-                        )}
-                      </div>
-                      <p className="text-2xl font-black text-white mb-2">₹4,999<span className="text-xs font-normal">/mo</span></p>
-                      <p className="text-[11px] leading-relaxed mb-4">Unlimited operations and premium modules for large schools.</p>
-                    </div>
-                    <ul className="text-[10px] space-y-1.5 border-t border-slate-900/50 pt-3">
-                      <li>• Unlimited Students</li>
-                      <li>• Unlimited Teachers</li>
-                      <li>• 24/7 Dedicated Support</li>
+                    <ul className="text-xs space-y-1.5 border-t sm:border-t-0 sm:border-l border-brand-500/30 pt-3 sm:pt-0 sm:pl-6 shrink-0 font-medium text-slate-200">
+                      <li className="flex items-center gap-1.5"><span className="text-brand-400 font-bold">✓</span> Unlimited Students Limit</li>
+                      <li className="flex items-center gap-1.5"><span className="text-brand-400 font-bold">✓</span> Unlimited Staff Limit</li>
+                      <li className="flex items-center gap-1.5"><span className="text-brand-400 font-bold">✓</span> 100% Free Full Access</li>
                     </ul>
                   </div>
                 </div>
