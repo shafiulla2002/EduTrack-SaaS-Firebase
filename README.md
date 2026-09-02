@@ -5,7 +5,7 @@ This is a completely independent, multi-tenant SaaS version of the EduTrack Scho
 ## Tech Stack
 * **Frontend**: Next.js, TypeScript, Tailwind CSS, Framer Motion
 * **Backend**: NestJS, TypeScript, REST APIs
-* **Database**: AWS RDS PostgreSQL via Prisma ORM
+* **Database**: Firebase / Cloud SQL PostgreSQL via Prisma ORM
 * **Authentication**: JWT Auth with Role-Based Access Control (RBAC)
 * **File Storage**: AWS S3 integration
 
