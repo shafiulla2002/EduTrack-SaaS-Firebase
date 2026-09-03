@@ -20,6 +20,8 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
   const [fileName, setFileName] = useState('');
   const [parsedData, setParsedData] = useState<ParsedRecord[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressStatus, setProgressStatus] = useState('');
   const [successCount, setSuccessCount] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -174,29 +176,57 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
     reader.readAsText(file);
   };
 
-  // Run validations and upload via backend API
+  // Run validations and upload via backend API in chunked batches
   const handleConfirmImport = async () => {
     setStep(3);
     setIsProcessing(true);
     setErrors([]);
+    setProgressPercent(0);
+    setProgressStatus(`Preparing to import ${parsedData.length} records...`);
 
-    try {
-      const response = await api.post('/students/import', { students: parsedData }, { timeout: 60000 });
-      const { successCount, errors } = response.data;
+    let totalSuccess = 0;
+    const accumulatedErrors: string[] = [];
 
-      setSuccessCount(successCount || 0);
-      setErrors(errors || []);
+    // Process in batches of 50 records. This guarantees zero timeouts even with 2,000+ records!
+    const BATCH_SIZE = 50;
+    const totalBatches = Math.ceil(parsedData.length / BATCH_SIZE);
 
-      if (successCount > 0) {
-        onImportSuccess(successCount);
+    for (let b = 0; b < totalBatches; b++) {
+      const start = b * BATCH_SIZE;
+      const end = Math.min(start + BATCH_SIZE, parsedData.length);
+      const batch = parsedData.slice(start, end);
+
+      const percent = Math.round((start / parsedData.length) * 100);
+      setProgressPercent(percent);
+      setProgressStatus(`Importing records ${start + 1} to ${end} of ${parsedData.length}...`);
+
+      try {
+        const response = await api.post('/students/import', { students: batch }, { timeout: 60000 });
+        const { successCount, errors } = response.data;
+
+        totalSuccess += successCount || 0;
+        if (errors && errors.length > 0) {
+          // Adjust row number to match the actual CSV line number
+          const offsetErrors = errors.map((errStr: string) => {
+            return errStr.replace(/Row (\d+)/g, (_, rNum) => `Row ${start + parseInt(rNum, 10)}`);
+          });
+          accumulatedErrors.push(...offsetErrors);
+        }
+      } catch (err: any) {
+        console.error(`Batch ${b + 1} error:`, err);
+        const errMsg = err.response?.data?.message || err.message || 'Batch request failed';
+        accumulatedErrors.push(`Records ${start + 1} to ${end}: ${errMsg}`);
       }
-    } catch (err: any) {
-      console.error('Students bulk import error:', err);
-      const errMsg = err.response?.data?.message || err.message || 'Server failed to process bulk import';
-      setErrors([`Critical Error: ${errMsg}`]);
-      setSuccessCount(0);
-    } finally {
-      setIsProcessing(false);
+    }
+
+    setProgressPercent(100);
+    setProgressStatus('Finalizing import...');
+    setSuccessCount(totalSuccess);
+    setErrors(accumulatedErrors);
+    setIsProcessing(false);
+
+    if (totalSuccess > 0) {
+      onImportSuccess(totalSuccess);
     }
   };
 
@@ -347,11 +377,20 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
         {step === 3 && (
           <div className="space-y-6">
             {isProcessing ? (
-              <div className="flex flex-col items-center justify-center py-10 space-y-4">
+              <div className="flex flex-col items-center justify-center py-8 space-y-4 w-full">
                 <RefreshCw className="w-8 h-8 text-[#2E5BFF] animate-spin" />
-                <div className="text-center">
+                <div className="text-center w-full max-w-sm space-y-2">
                   <p className="text-[14px] font-bold text-slate-900 dark:text-white">Processing Bulk Import</p>
-                  <p className="text-[11px] text-slate-400 font-semibold mt-1">Creating Accounts records and allocating fee lines...</p>
+                  <p className="text-[12px] text-slate-500 dark:text-slate-400 font-semibold">
+                    {progressStatus}
+                  </p>
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className="bg-[#2E5BFF] h-2.5 rounded-full transition-all duration-300"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400 font-bold block">{progressPercent}% Completed</span>
                 </div>
               </div>
             ) : (

@@ -442,6 +442,18 @@ export class ParentPortalService {
       subjectTeachers = Array.from(teacherMap.values());
     }
 
+    const cleanDisplayPhone = (phone?: string | null): string => {
+      if (!phone || phone === 'N/A') return 'N/A';
+      if (phone.includes('-')) {
+        const parts = phone.split('-');
+        const lastPart = parts[parts.length - 1];
+        if (/^\d{7,15}$/.test(lastPart)) {
+          return lastPart;
+        }
+      }
+      return phone;
+    };
+
     return {
       student: {
         id: student.id,
@@ -453,12 +465,12 @@ export class ParentPortalService {
         classSectionId: student.classSectionId,
         fatherName: student.fatherName || 'N/A',
         motherName: student.motherName || 'N/A',
-        fatherPhone: student.fatherPhone || 'N/A',
-        motherPhone: student.motherPhone || 'N/A',
+        fatherPhone: cleanDisplayPhone(student.fatherPhone),
+        motherPhone: cleanDisplayPhone(student.motherPhone),
         guardianName: guardianName || 'N/A',
-        guardianPhone: guardianPhone || 'N/A',
-        emergencyPhone: currentParentLink?.parent?.emergencyContact || 'N/A',
-        primaryContactPhone: primaryContactPhone || 'N/A',
+        guardianPhone: cleanDisplayPhone(guardianPhone),
+        emergencyPhone: cleanDisplayPhone(currentParentLink?.parent?.emergencyContact),
+        primaryContactPhone: cleanDisplayPhone(primaryContactPhone),
         primaryContactRole: primaryContactRole,
       },
       metrics: {

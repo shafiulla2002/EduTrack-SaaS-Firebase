@@ -5,6 +5,18 @@ import { useParent } from '../ParentContext';
 import { api } from '@/lib/api';
 import { User, Shield, Info, Heart, Briefcase, Mail, Phone } from 'lucide-react';
 
+const cleanPhoneNumber = (phone: string | null | undefined): string => {
+  if (!phone || phone === 'N/A') return 'N/A';
+  if (phone.includes('-')) {
+    const parts = phone.split('-');
+    const lastPart = parts[parts.length - 1];
+    if (/^\d{7,15}$/.test(lastPart)) {
+      return lastPart;
+    }
+  }
+  return phone;
+};
+
 export default function StudentProfilePage() {
   const { selectedChild } = useParent();
   const [profileData, setProfileData] = useState<any>(null);
@@ -127,7 +139,7 @@ export default function StudentProfilePage() {
             {profileData?.student?.fatherPhone && profileData.student.fatherPhone !== 'N/A' && (
               <div className="flex justify-between">
                 <span className="text-slate-400">Father's Phone</span>
-                <strong className="text-slate-700">{profileData.student.fatherPhone}</strong>
+                <strong className="text-slate-700">{cleanPhoneNumber(profileData.student.fatherPhone)}</strong>
               </div>
             )}
             {profileData?.student?.motherName && profileData.student.motherName !== 'N/A' && (
@@ -139,7 +151,7 @@ export default function StudentProfilePage() {
             {profileData?.student?.motherPhone && profileData.student.motherPhone !== 'N/A' && (
               <div className="flex justify-between">
                 <span className="text-slate-400">Mother's Phone</span>
-                <strong className="text-slate-700">{profileData.student.motherPhone}</strong>
+                <strong className="text-slate-700">{cleanPhoneNumber(profileData.student.motherPhone)}</strong>
               </div>
             )}
             {profileData?.student?.guardianName && profileData.student.guardianName !== 'N/A' && (
@@ -151,7 +163,7 @@ export default function StudentProfilePage() {
             {profileData?.student?.guardianPhone && profileData.student.guardianPhone !== 'N/A' && (
               <div className="flex justify-between">
                 <span className="text-slate-400">Guardian's Phone</span>
-                <strong className="text-slate-700">{profileData.student.guardianPhone}</strong>
+                <strong className="text-slate-700">{cleanPhoneNumber(profileData.student.guardianPhone)}</strong>
               </div>
             )}
             {profileData?.student?.primaryContactRole && (
@@ -165,13 +177,13 @@ export default function StudentProfilePage() {
             {profileData?.student?.primaryContactPhone && profileData.student.primaryContactPhone !== 'N/A' && (
               <div className="flex justify-between">
                 <span className="text-slate-400">Primary Contact Number</span>
-                <strong className="text-slate-700">{profileData.student.primaryContactPhone}</strong>
+                <strong className="text-slate-700">{cleanPhoneNumber(profileData.student.primaryContactPhone)}</strong>
               </div>
             )}
             {profileData?.student?.emergencyPhone && profileData.student.emergencyPhone !== 'N/A' && (
               <div className="flex justify-between">
                 <span className="text-slate-400">Emergency Phone</span>
-                <strong className="text-slate-700">{profileData.student.emergencyPhone}</strong>
+                <strong className="text-slate-700">{cleanPhoneNumber(profileData.student.emergencyPhone)}</strong>
               </div>
             )}
           </div>

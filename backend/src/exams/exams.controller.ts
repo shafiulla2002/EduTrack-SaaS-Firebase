@@ -27,13 +27,13 @@ export class ExamsController {
   }
 
   @Get('classes')
-  async getClasses(@Req() req: any) {
-    return this.examsService.getClasses(req.user.sub, req.user.role);
+  async getClasses(@Req() req: any, @Query('academicYearId') academicYearId?: string) {
+    return this.examsService.getClasses(req.user.sub, req.user.role, academicYearId);
   }
 
   @Get('subjects')
-  async getSubjects(@Req() req: any) {
-    return this.examsService.getSubjects(req.user.sub, req.user.role);
+  async getSubjects(@Req() req: any, @Query('classSectionId') classSectionId?: string) {
+    return this.examsService.getSubjects(req.user.sub, req.user.role, classSectionId);
   }
 
   @Get('exam-types')

@@ -1,10 +1,11 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { TenantsModule } from './tenants/tenants.module';
 import { TenantMiddleware } from './tenants/tenant.middleware';
 import { PrismaService } from './prisma.service';
 import { SubscriptionGuard } from './common/guards/subscription.guard';
+import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { AcademicsModule } from './academics/academics.module';
 import { StudentsModule } from './students/students.module';
@@ -79,6 +80,10 @@ import { MonitoringModule } from './monitoring/monitoring.module';
     {
       provide: APP_GUARD,
       useClass: SubscriptionGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantContextInterceptor,
     },
   ],
 })

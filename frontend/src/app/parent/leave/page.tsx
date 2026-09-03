@@ -5,7 +5,7 @@ import { useParent } from '../ParentContext';
 import { api } from '@/lib/api';
 import {
   FileText, CheckCircle, Clock, Upload, X, ShieldAlert, Loader2,
-  Paperclip, Eye, User, Calendar
+  Paperclip, Eye, User, Calendar, Download
 } from 'lucide-react';
 import DatePickerInput from '@/components/DatePickerInput';
 import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '@/lib/date';
@@ -26,6 +26,11 @@ export default function LeavePage() {
 
   // Audit modal state
   const [selectedAuditLeave, setSelectedAuditLeave] = useState<any | null>(null);
+
+  // Preview attachment modal state (in-page preview)
+  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState<string>('Medical Certificate / Attachment');
+  const [imageZoom, setImageZoom] = useState<number>(1);
 
   const fetchLeaves = async (childId: string) => {
     try {
@@ -301,14 +306,17 @@ export default function LeavePage() {
                       {/* Card Footer Actions */}
                       <div className="flex items-center justify-between pt-1 border-t border-slate-100">
                         {leave.attachmentUrl ? (
-                          <a
-                            href={leave.attachmentUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[11px] text-[#2E5BFF] hover:underline flex items-center gap-1 font-bold"
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewAttachmentUrl(leave.attachmentUrl);
+                              setPreviewTitle(`${leave.leaveType} Leave Attachment`);
+                              setImageZoom(1);
+                            }}
+                            className="text-[11px] text-[#2E5BFF] hover:underline flex items-center gap-1 font-bold cursor-pointer bg-transparent border-0 p-0"
                           >
                             <Paperclip className="w-3.5 h-3.5" /> Medical Certificate / File
-                          </a>
+                          </button>
                         ) : (
                           <span className="text-[10px] text-slate-400 italic">No attachment</span>
                         )}
@@ -364,6 +372,106 @@ export default function LeavePage() {
               ) : (
                 <div className="text-xs text-slate-500 text-center py-6">
                   Initial application submitted and recorded in audit ledger.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Attachment Preview Modal (opens in the same page) */}
+      {previewAttachmentUrl && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[999] p-4 animate-in fade-in">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2">
+                <Paperclip className="w-4 h-4 text-[#2E5BFF]" />
+                <div>
+                  <h3 className="font-extrabold text-sm leading-none">{previewTitle}</h3>
+                  <p className="text-slate-400 text-[10px] mt-0.5">In-Page Attachment Preview</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewAttachmentUrl}
+                  download="leave_attachment"
+                  className="px-3 py-1.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachmentUrl(null)}
+                  className="text-slate-400 hover:text-white p-1 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 flex-1 overflow-auto flex flex-col items-center justify-center bg-slate-50 min-h-[300px]">
+              {previewAttachmentUrl.startsWith('data:image/') || previewAttachmentUrl.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i) ? (
+                <div className="flex flex-col items-center justify-center w-full space-y-3">
+                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => setImageZoom(z => Math.max(0.5, z - 0.2))}
+                      className="px-2 py-0.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                    >
+                      - Zoom
+                    </button>
+                    <span className="text-xs font-mono font-bold text-slate-500">{Math.round(imageZoom * 100)}%</span>
+                    <button
+                      type="button"
+                      onClick={() => setImageZoom(z => Math.min(3, z + 0.2))}
+                      className="px-2 py-0.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                    >
+                      + Zoom
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImageZoom(1)}
+                      className="px-2 py-0.5 text-xs text-blue-600 font-bold hover:bg-blue-50 rounded-lg cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div className="max-h-[60vh] overflow-auto flex items-center justify-center p-2">
+                    <img
+                      src={previewAttachmentUrl}
+                      alt="Attachment Preview"
+                      style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center', transition: 'transform 0.15s ease-out' }}
+                      className="max-h-[55vh] max-w-full rounded-xl object-contain shadow-md border border-slate-200"
+                    />
+                  </div>
+                </div>
+              ) : previewAttachmentUrl.startsWith('data:application/pdf') || previewAttachmentUrl.endsWith('.pdf') ? (
+                <iframe
+                  src={previewAttachmentUrl}
+                  title="PDF Attachment"
+                  className="w-full h-[65vh] rounded-xl border border-slate-200 bg-white"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-white rounded-2xl border border-slate-200">
+                  <FileText className="w-12 h-12 text-[#2E5BFF]" />
+                  <p className="text-xs text-slate-600 font-semibold text-center">
+                    Attachment loaded. Preview or download below:
+                  </p>
+                  <img
+                    src={previewAttachmentUrl}
+                    alt="Attachment Preview"
+                    className="max-h-[50vh] max-w-full rounded-xl object-contain shadow-sm border border-slate-200"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                  <a
+                    href={previewAttachmentUrl}
+                    download="leave_attachment"
+                    className="px-4 py-2 bg-[#2E5BFF] text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition-all flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" /> Download File
+                  </a>
                 </div>
               )}
             </div>

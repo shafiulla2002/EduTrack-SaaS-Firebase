@@ -80,6 +80,8 @@ export default function ExamSchedulePage() {
   const [classes, setClasses] = useState<ClassSectionOption[]>([]);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [formSubjects, setFormSubjects] = useState<SubjectOption[]>([]);
+  const [isFormSubjectsLoading, setIsFormSubjectsLoading] = useState(false);
   
   // Filters
   const [activeTab, setActiveTab] = useState<'list' | 'calendar'>('list');
@@ -130,24 +132,61 @@ export default function ExamSchedulePage() {
     fetchSchedules();
   }, [filterClass, filterSubject, filterStatus, filterYear, searchQuery]);
 
+  // Dynamically load subjects mapped to the selected class/section
+  useEffect(() => {
+    if (!formClassSectionId) {
+      setFormSubjects(subjects);
+      return;
+    }
+    let isMounted = true;
+    setIsFormSubjectsLoading(true);
+    api.get('/exams/subjects', { params: { classSectionId: formClassSectionId } })
+      .then(res => {
+        if (isMounted) {
+          setFormSubjects(res.data || []);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load subjects for class:', err);
+        if (isMounted) {
+          setFormSubjects(subjects);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsFormSubjectsLoading(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [formClassSectionId, subjects]);
+
   const fetchMetadata = async () => {
     try {
       setIsLoading(true);
-      const [classRes, subRes, yearsRes] = await Promise.all([
+      const [classResult, subResult, yearsResult] = await Promise.allSettled([
         api.get('/exams/classes'),
         api.get('/exams/subjects'),
-        api.get('/complaint-box/academic-years')
+        api.get('/academics/academic-years').catch(() => api.get('/complaint-box/academic-years')),
       ]);
-      setClasses(classRes.data || []);
-      setSubjects(subRes.data || []);
-      setAcademicYears(yearsRes.data || []);
 
-      if (yearsRes.data && yearsRes.data.length > 0) {
-        const activeYear = yearsRes.data.find((y: any) => y.isActive) || yearsRes.data[0];
+      const classData = classResult.status === 'fulfilled' ? classResult.value.data || [] : [];
+      const subData = subResult.status === 'fulfilled' ? subResult.value.data || [] : [];
+      const yearsData = yearsResult.status === 'fulfilled' ? yearsResult.value.data || [] : [];
+
+      setClasses(classData);
+      setSubjects(subData);
+      setFormSubjects(subData);
+      setAcademicYears(yearsData);
+
+      if (yearsData.length > 0) {
+        const activeYear = yearsData.find((y: any) => y.isActive) || yearsData[0];
         setFormAcademicYearId(activeYear.id);
       }
-      if (classRes.data && classRes.data.length > 0) {
-        setFormClassSectionId(classRes.data[0].value);
+      if (classData.length > 0) {
+        setFormClassSectionId(classData[0].value);
+      }
+
+      if (classResult.status === 'rejected' && subResult.status === 'rejected') {
+        showToastMessage('Failed to fetch class and subject mappings.', 'error');
       }
     } catch (err) {
       console.error('Failed to load metadata:', err);
@@ -904,8 +943,14 @@ export default function ExamSchedulePage() {
                         onChange={(e) => handleRowChange(idx, 'subjectId', e.target.value)}
                         className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500"
                       >
-                        <option value="" className="dark:bg-slate-800">-- Select Subject --</option>
-                        {subjects.map(sub => (
+                        <option value="" className="dark:bg-slate-800">
+                          {isFormSubjectsLoading
+                            ? 'Loading subjects...'
+                            : formSubjects.length === 0
+                            ? 'No subjects mapped for this class'
+                            : '-- Select Subject --'}
+                        </option>
+                        {formSubjects.map(sub => (
                           <option key={sub.id} value={sub.id} className="dark:bg-slate-800">{sub.name}</option>
                         ))}
                       </select>

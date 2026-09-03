@@ -178,6 +178,9 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     let previousStats: any = null;
 
     const interval = setInterval(async () => {
+      // Skip polling if document is hidden to conserve connection pool
+      if (typeof document !== 'undefined' && document.hidden) return;
+
       try {
         const response = await api.get('/tenant/setup-status');
         const data = response.data;
@@ -209,7 +212,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error('Failed background sync of tenant data:', err);
       }
-    }, 5000); // Check every 5 seconds
+    }, 60000); // Check every 60 seconds
 
     return () => clearInterval(interval);
   }, [token]);

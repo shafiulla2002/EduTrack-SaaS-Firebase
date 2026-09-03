@@ -1107,6 +1107,9 @@ model ExamSchedule {
   updatedAt      DateTime     @updatedAt
 
   @@index([tenantId, classSectionId, subjectId])
+  @@index([tenantId, academicYearId])
+  @@index([tenantId, status])
+  @@index([tenantId, examDate])
 }
 
 model ExamConfig {

@@ -732,6 +732,10 @@ export class StudentsService implements OnModuleInit {
     const affectedClasses = new Map<string, string>(); // classId -> academicYearId
     const affectedClassSectionIds = new Set<string>();
 
+    // In-memory caches for the duration of this import batch to eliminate redundant queries
+    const priceBookCache = new Map<string, { classPriceBook: any; pbes: any[] }>();
+    const rollNoTracker = new Map<string, { nextRoll: number; existingRolls: Set<string> }>();
+
     for (let i = 0; i < studentRows.length; i++) {
       const row = studentRows[i];
       try {
@@ -842,20 +846,21 @@ export class StudentsService implements OnModuleInit {
           }
         }
 
-        // Perform user creation transaction with 30s timeout and fast execution
-        await this.prisma.$transaction(async (tx) => {
-          // Resolve class pricebook & entries (optional - does not block student creation if missing)
+        // Resolve pricebook from in-memory batch cache or fetch once
+        const pbCacheKey = `${matchedClass.id}:${matchedAY?.id || ''}`;
+        let pbInfo = priceBookCache.get(pbCacheKey);
+        if (!pbInfo) {
           const priceBookName = matchedClass.name.replace('-', ' ');
           const priceBookNameAlt = matchedClass.name.replace(' ', '-');
 
-          const classPriceBook = await tx.pricebook.findFirst({
+          const classPriceBook = await this.prisma.pricebook.findFirst({
             where: {
               tenantId,
               classId: matchedClass.id,
               academicYearId: matchedAY?.id || undefined,
               isActive: true
             },
-          }) || await tx.pricebook.findFirst({
+          }) || await this.prisma.pricebook.findFirst({
             where: {
               tenantId,
               isActive: true,
@@ -868,7 +873,7 @@ export class StudentsService implements OnModuleInit {
 
           let pbes: any[] = [];
           if (classPriceBook) {
-            pbes = await tx.pricebookEntry.findMany({
+            pbes = await this.prisma.pricebookEntry.findMany({
               where: {
                 tenantId,
                 isActive: true,
@@ -882,7 +887,35 @@ export class StudentsService implements OnModuleInit {
               },
             });
           }
+          pbInfo = { classPriceBook, pbes };
+          priceBookCache.set(pbCacheKey, pbInfo);
+        }
 
+        // Resolve roll number from tracker or initial DB fetch once per section
+        let rollInfo = rollNoTracker.get(matchedClassSection.id);
+        if (!rollInfo) {
+          const existingInCS = await this.prisma.studentProfile.findMany({
+            where: { classSectionId: matchedClassSection.id, tenantId },
+            select: { rollNo: true }
+          });
+          const existingRolls = new Set(existingInCS.map(s => s.rollNo?.trim()).filter(Boolean) as string[]);
+          const parsedInts = existingInCS
+            .map(s => parseInt(s.rollNo || '', 10))
+            .filter(val => !isNaN(val));
+          const nextRoll = parsedInts.length > 0 ? Math.max(...parsedInts) + 1 : 1;
+          rollInfo = { nextRoll, existingRolls };
+          rollNoTracker.set(matchedClassSection.id, rollInfo);
+        }
+
+        let finalRollNo = rollNo ? String(rollNo).trim() : '';
+        if (!finalRollNo || rollInfo.existingRolls.has(finalRollNo)) {
+          finalRollNo = String(rollInfo.nextRoll);
+          rollInfo.nextRoll++;
+        }
+        rollInfo.existingRolls.add(finalRollNo);
+
+        // Perform user creation transaction with 30s timeout and fast execution
+        await this.prisma.$transaction(async (tx) => {
           const user = await tx.user.create({
             data: {
               email: emailLower,
@@ -893,21 +926,6 @@ export class StudentsService implements OnModuleInit {
               tenantId,
             }
           });
-
-          let finalRollNo = rollNo ? String(rollNo).trim() : '';
-          const existingInCS = await tx.studentProfile.findMany({
-            where: { classSectionId: matchedClassSection.id, tenantId },
-            select: { rollNo: true }
-          });
-          const existingRolls = new Set(existingInCS.map(s => s.rollNo?.trim()).filter(Boolean));
-
-          if (!finalRollNo || existingRolls.has(finalRollNo)) {
-            const parsedInts = existingInCS
-              .map(s => parseInt(s.rollNo || '', 10))
-              .filter(val => !isNaN(val));
-            const nextRoll = parsedInts.length > 0 ? Math.max(...parsedInts) + 1 : 1;
-            finalRollNo = String(nextRoll);
-          }
 
           const profile = await tx.studentProfile.create({
             data: {
@@ -921,16 +939,7 @@ export class StudentsService implements OnModuleInit {
             }
           });
 
-          // Check if Opportunity already exists for this student for this academic year to avoid duplicates
-          const existingOpp = await tx.opportunity.findFirst({
-            where: {
-              studentId: profile.id,
-              academicYearId: matchedAY?.id || undefined,
-              tenantId,
-            }
-          });
-
-          if (!existingOpp && classPriceBook && pbes.length > 0) {
+          if (pbInfo.classPriceBook && pbInfo.pbes.length > 0) {
             const opp = await tx.opportunity.create({
               data: {
                 name: `${firstName || ''} ${lastName} - Admission ${matchedAY?.name || ''}`.trim(),
@@ -945,7 +954,7 @@ export class StudentsService implements OnModuleInit {
               },
             });
 
-            const olis = pbes.map(pbe => ({
+            const olis = pbInfo.pbes.map(pbe => ({
               opportunityId: opp.id,
               pricebookEntryId: pbe.id,
               productId: pbe.productId,

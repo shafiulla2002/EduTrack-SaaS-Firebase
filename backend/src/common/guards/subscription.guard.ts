@@ -19,6 +19,8 @@ export class SubscriptionGuard implements CanActivate {
     private jwtService: JwtService,
   ) {}
 
+  private static subscriptionCache = new Map<string, { sub: any; expiresAt: number }>();
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     let user = request.user;
@@ -82,10 +84,21 @@ export class SubscriptionGuard implements CanActivate {
       }
     }
 
-    // 4. Fetch Tenant Subscription
-    const sub = await this.prisma.tenantSubscription.findUnique({
-      where: { tenantId: user.tenantId },
-    });
+    // 4. Fetch Tenant Subscription (best-effort 30s cache to avoid querying on every request)
+    const nowTime = Date.now();
+    let sub: any;
+    const cachedSub = SubscriptionGuard.subscriptionCache.get(user.tenantId);
+    if (cachedSub && cachedSub.expiresAt > nowTime) {
+      sub = cachedSub.sub;
+    } else {
+      sub = await this.prisma.tenantSubscription.findUnique({
+        where: { tenantId: user.tenantId },
+      });
+      SubscriptionGuard.subscriptionCache.set(user.tenantId, {
+        sub,
+        expiresAt: nowTime + 30 * 1000,
+      });
+    }
 
     if (!sub) {
       return true; // If no subscription record, allow navigation

@@ -63,47 +63,75 @@ export class ExamsService {
 
   // ── CUSTOM API ENDPOINTS FOR FRONTEND PARITY WITH SALESFORCE ────────────────
 
-  async getClasses(userId?: string, role?: string) {
+  async getClasses(userId?: string, role?: string, academicYearId?: string) {
     const tenantId = this.getTenantId();
+    const classWhere: any = {};
+    if (academicYearId && academicYearId !== 'All') {
+      classWhere.academicYearId = academicYearId;
+    }
+
     if (this.roleFilterHelper.isTeacher(role)) {
       const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
       if (scope.assignedClassSectionIds.length === 0) return [];
       const sections = await this.prisma.classSection.findMany({
-        where: { id: { in: scope.assignedClassSectionIds }, tenantId },
+        where: {
+          id: { in: scope.assignedClassSectionIds },
+          tenantId,
+          ...(Object.keys(classWhere).length > 0 ? { class: classWhere } : {}),
+        },
         include: { class: true, section: true },
         orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
       });
-      return sections.map(s => ({
+      return sections
+        .filter(s => s.class && s.section)
+        .map(s => ({
+          value: s.id,
+          label: `${s.class.name} - ${s.section.name}`,
+          displayName: `${s.class.name} - ${s.section.name}`,
+          classId: s.classId,
+          sectionId: s.sectionId,
+        }));
+    }
+
+    // Admin: all class-sections
+    const sections = await this.prisma.classSection.findMany({
+      where: {
+        tenantId,
+        ...(Object.keys(classWhere).length > 0 ? { class: classWhere } : {}),
+      },
+      include: { class: true, section: true },
+      orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
+    });
+    return sections
+      .filter(s => s.class && s.section)
+      .map(s => ({
         value: s.id,
         label: `${s.class.name} - ${s.section.name}`,
         displayName: `${s.class.name} - ${s.section.name}`,
         classId: s.classId,
         sectionId: s.sectionId,
       }));
-    }
-
-    // Admin: all class-sections
-    const sections = await this.prisma.classSection.findMany({
-      where: { tenantId },
-      include: { class: true, section: true },
-      orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
-    });
-    return sections.map(s => ({
-      value: s.id,
-      label: `${s.class.name} - ${s.section.name}`,
-      displayName: `${s.class.name} - ${s.section.name}`,
-      classId: s.classId,
-      sectionId: s.sectionId,
-    }));
   }
 
-  async getSubjects(userId?: string, role?: string) {
+  async getSubjects(userId?: string, role?: string, classSectionId?: string) {
     const tenantId = this.getTenantId();
     if (this.roleFilterHelper.isTeacher(role)) {
       const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
       if (scope.assignedSubjectIds.length === 0) return [];
+
+      let targetSubjectIds = scope.assignedSubjectIds;
+      if (classSectionId) {
+        const classMappings = await this.prisma.classSubject.findMany({
+          where: { classSectionId, tenantId, subjectId: { in: targetSubjectIds } },
+          select: { subjectId: true },
+        });
+        if (classMappings.length > 0) {
+          targetSubjectIds = classMappings.map(cm => cm.subjectId);
+        }
+      }
+
       const subjects = await this.prisma.subject.findMany({
-        where: { id: { in: scope.assignedSubjectIds }, tenantId, isActive: true },
+        where: { id: { in: targetSubjectIds }, tenantId, isActive: true },
         orderBy: { name: 'asc' },
       });
       return subjects.map(s => ({
@@ -114,7 +142,27 @@ export class ExamsService {
       }));
     }
 
-    // Admin: all subjects
+    // Admin
+    if (classSectionId) {
+      const classSubjects = await this.prisma.classSubject.findMany({
+        where: { classSectionId, tenantId },
+        include: { subject: true },
+        orderBy: { subject: { name: 'asc' } },
+      });
+      if (classSubjects.length > 0) {
+        return classSubjects
+          .filter(cs => cs.subject && cs.subject.isActive)
+          .map(cs => ({
+            id: cs.subject.id,
+            name: cs.subject.name,
+            maxMarks: 100,
+            icon: cs.subject.name.substring(0, 1).toUpperCase(),
+          }));
+      }
+      // If no class-specific mappings configured yet for this section,
+      // fallback to tenant-wide active subjects so scheduling is not blocked.
+    }
+
     const subjects = await this.prisma.subject.findMany({
       where: { tenantId, isActive: true },
       orderBy: { name: 'asc' },

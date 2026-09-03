@@ -37,9 +37,25 @@ export function getStoredToken(): string | null {
 export function getStoredTenantId(): string | null {
   if (typeof window === 'undefined') return null;
   const role = getActiveRole();
-  if (role === 'PARENT') return localStorage.getItem('parent_tenantId');
-  if (role === 'TEACHER' || role === 'DRIVER') return localStorage.getItem('teacher_tenantId');
-  return localStorage.getItem('admin_tenantId');
+  let tid = role === 'PARENT' ? localStorage.getItem('parent_tenantId') :
+            (role === 'TEACHER' || role === 'DRIVER') ? localStorage.getItem('teacher_tenantId') :
+            localStorage.getItem('admin_tenantId');
+  if (tid) return tid;
+
+  // Convenience fallback: extract tenantId from the user's stored token
+  const token = getStoredToken();
+  if (token) {
+    try {
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(atob(parts[1]));
+        if (payload.tenantId) {
+          return payload.tenantId;
+        }
+      }
+    } catch {}
+  }
+  return null;
 }
 
 export function getStoredUserPhone(): string | null {
@@ -69,6 +85,19 @@ export function clearStoredAuth() {
   sessionStorage.removeItem('active_role');
 }
 
+const PLATFORM_HOSTS = new Set([
+  'www',
+  'api',
+  'app',
+  'localhost',
+  'edutrack-frontend-live',
+  'edutrack-frontend',
+  'edutrack-platform',
+  'edu-track-saa-s-orcin',
+  'edutrack-saas',
+  'edutrack-saas-independent',
+]);
+
 export function getTenantFromHostname(): string {
   if (typeof window === 'undefined') return '';
 
@@ -83,7 +112,7 @@ export function getTenantFromHostname(): string {
   } else if (hostname.endsWith('.edutrack.covenantsynergy.in')) {
     const parts = hostname.replace('.edutrack.covenantsynergy.in', '').split('.');
     const sub = parts[parts.length - 1];
-    if (sub !== 'www' && sub !== 'api') {
+    if (!PLATFORM_HOSTS.has(sub)) {
       return sub;
     }
   } else if (hostname === 'edutrack.com' || hostname === 'www.edutrack.com' || hostname === 'app.edutrack.com') {
@@ -91,17 +120,17 @@ export function getTenantFromHostname(): string {
   } else if (hostname.endsWith('.edutrack.com')) {
     const parts = hostname.replace('.edutrack.com', '').split('.');
     const sub = parts[parts.length - 1];
-    if (sub !== 'www' && sub !== 'api' && sub !== 'app') {
+    if (!PLATFORM_HOSTS.has(sub)) {
       return sub;
     }
   } else if (hostname.endsWith('.vercel.app')) {
     const parts = hostname.replace('.vercel.app', '').split('.');
-    if (parts.length > 1 && parts[0] !== 'www') {
+    if (parts.length > 1 && !PLATFORM_HOSTS.has(parts[0])) {
       return parts[0];
     }
   } else {
     const parts = hostname.split('.');
-    if (parts.length > 1 && parts[0] !== 'localhost' && parts[0] !== 'www' && isNaN(Number(parts[0]))) {
+    if (parts.length > 1 && !PLATFORM_HOSTS.has(parts[0]) && isNaN(Number(parts[0]))) {
       return parts[0];
     }
   }

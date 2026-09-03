@@ -18,6 +18,7 @@ export class TenantsService {
   ) {}
 
   private subdomainCache = new Map<string, { tenant: Tenant; expiresAt: number }>();
+  private idCache = new Map<string, { tenant: Tenant; expiresAt: number }>();
 
   async findBySubdomain(subDomain: string): Promise<Tenant> {
     const nowTime = Date.now();
@@ -37,17 +38,40 @@ export class TenantsService {
       tenant,
       expiresAt: nowTime + 5 * 60 * 1000, // Cache subdomain mapping for 5 minutes
     });
+    // Also index in idCache
+    this.idCache.set(tenant.id, {
+      tenant,
+      expiresAt: nowTime + 5 * 60 * 1000,
+    });
 
     return tenant;
   }
 
   async findById(id: string): Promise<Tenant> {
+    const nowTime = Date.now();
+    const cached = this.idCache.get(id);
+    if (cached && cached.expiresAt > nowTime) {
+      return cached.tenant;
+    }
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id },
     });
     if (!tenant) {
       throw new NotFoundException(`Tenant with ID '${id}' not found`);
     }
+
+    this.idCache.set(id, {
+      tenant,
+      expiresAt: nowTime + 5 * 60 * 1000, // Cache ID mapping for 5 minutes
+    });
+    if (tenant.subDomain) {
+      this.subdomainCache.set(tenant.subDomain, {
+        tenant,
+        expiresAt: nowTime + 5 * 60 * 1000,
+      });
+    }
+
     return tenant;
   }
 
