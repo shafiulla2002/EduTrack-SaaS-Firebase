@@ -20,6 +20,11 @@ export class BillingService {
     return tenantId;
   }
 
+  // Public accessor so controller can capture tenantId within request scope for async calls
+  getTenantIdPublic(): string {
+    return this.getTenantId();
+  }
+
   // ── OPPORTUNITY SERVICE LOGIC (Centralized trigger logic from Apex) ─────────
 
   async recalculatePaidAmount(oppId: string, tx?: any): Promise<number> {
@@ -1720,8 +1725,9 @@ export class BillingService {
     }, { timeout: 15000 });
 
     // Stage 2: Synchronize all students OUTSIDE the transaction (can be large for big classes)
+    // tenantId captured NOW while still in the request async context (AsyncLocalStorage will be gone after response)
     // Run asynchronously so the API response returns immediately; errors are logged not thrown
-    this.syncPriceBookToStudents(classId, academicYearId).catch((err) => {
+    this.syncPriceBookToStudents(classId, academicYearId, undefined, tenantId).catch((err) => {
       console.error(`[savePriceBook] Background sync failed for class ${classId}:`, err?.message || err);
     });
 
@@ -1729,8 +1735,8 @@ export class BillingService {
   }
 
 
-  async syncPriceBookToStudents(classId: string, academicYearId: string, tx?: any) {
-    const tenantId = this.getTenantId();
+  async syncPriceBookToStudents(classId: string, academicYearId: string, tx?: any, explicitTenantId?: string) {
+    const tenantId = explicitTenantId || this.getTenantId();
     const db = tx || this.prisma;
 
     // 1. Find the active pricebook for the class and academic year

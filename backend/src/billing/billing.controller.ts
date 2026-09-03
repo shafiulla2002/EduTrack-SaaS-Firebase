@@ -137,6 +137,19 @@ export class BillingController {
     return this.billingService.savePriceBook(classId, academicYearId, priceItems);
   }
 
+  @Post('pricebook/sync')
+  async syncPriceBook(
+    @Body('classId') classId: string,
+    @Body('academicYearId') academicYearId: string,
+  ) {
+    if (!classId || !academicYearId) {
+      throw new Error('classId and academicYearId are required');
+    }
+    const tenantId = (await this.billingService.getTenantIdPublic());
+    await this.billingService.syncPriceBookToStudents(classId, academicYearId, undefined, tenantId);
+    return { success: true, message: 'Fee structure synced to all students in this class.' };
+  }
+
   @Get('financial-command-center')
   async getFinancialCommandCenter(
     @Req() req: any,

@@ -61,6 +61,7 @@ export default function FeeSetupPage() {
   const [priceItems, setPriceItems] = useState<PriceItem[]>([]);
   const [loadingPriceBook, setLoadingPriceBook] = useState(false);
   const [savingPriceBook, setSavingPriceBook] = useState(false);
+  const [syncingFees, setSyncingFees] = useState(false);
 
   // ── Load dropdowns on mount ──────────────────────────────────────────────
 
@@ -556,7 +557,7 @@ export default function FeeSetupPage() {
                 <button
                   onClick={handleSubmitPriceBook}
                   disabled={savingPriceBook || loadingPriceBook}
-                  className="w-full py-3 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-750 text-white text-sm flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-md hover:shadow-indigo-500/10 cursor-pointer"
+                  className="w-full py-3 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white text-sm flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-md hover:shadow-indigo-500/10 cursor-pointer"
                 >
                   {savingPriceBook ? (
                     <>
@@ -565,6 +566,39 @@ export default function FeeSetupPage() {
                     </>
                   ) : (
                     'Submit Price Book'
+                  )}
+                </button>
+
+                {/* Retroactive sync for students imported before pricebook was created */}
+                <button
+                  onClick={async () => {
+                    if (!selectedClass || !selectedYear) {
+                      showToast('Please select a class and academic year first.', 'error');
+                      return;
+                    }
+                    setSyncingFees(true);
+                    try {
+                      await api.post('/billing/pricebook/sync', { classId: selectedClass, academicYearId: selectedYear });
+                      showToast('✅ Fee structure synced to all students in this class!', 'success');
+                    } catch (err: any) {
+                      showToast(err?.response?.data?.message || 'Sync failed. Please try again.', 'error');
+                    } finally {
+                      setSyncingFees(false);
+                    }
+                  }}
+                  disabled={syncingFees || !selectedClass || !selectedYear}
+                  className="w-full py-2.5 rounded-xl font-bold border-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50 text-sm flex items-center justify-center gap-2 disabled:opacity-60 transition-all cursor-pointer"
+                >
+                  {syncingFees ? (
+                    <>
+                      <span className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+                      Syncing fees to students...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Sync Fees to All Students
+                    </>
                   )}
                 </button>
               </>
