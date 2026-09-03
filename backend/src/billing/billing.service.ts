@@ -1638,7 +1638,8 @@ export class BillingService {
 
     const pricebookName = `${classRecord.name} - ${ayRecord.name}`;
 
-    return this.prisma.$transaction(async (tx) => {
+    // Stage 1: Commit pricebook upsert + entries in a short, focused transaction
+    const result = await this.prisma.$transaction(async (tx) => {
       // Upsert the pricebook record
       const pricebook = await tx.pricebook.upsert({
         where: {
@@ -1692,7 +1693,7 @@ export class BillingService {
         }
       }
 
-      // Return the updated pricebook
+      // Return the updated pricebook inside the transaction while we still have it
       const finalPb = await tx.pricebook.findUnique({
         where: { id: pricebook.id },
         include: {
@@ -1702,9 +1703,6 @@ export class BillingService {
           },
         },
       });
-
-      // Synchronize all students in this class/academic year to the updated price book
-      await this.syncPriceBookToStudents(classId, academicYearId, tx);
 
       return {
         id: finalPb.id,
@@ -1719,8 +1717,17 @@ export class BillingService {
           isActive: e.isActive,
         })),
       };
-    }, { timeout: 30000 });
+    }, { timeout: 15000 });
+
+    // Stage 2: Synchronize all students OUTSIDE the transaction (can be large for big classes)
+    // Run asynchronously so the API response returns immediately; errors are logged not thrown
+    this.syncPriceBookToStudents(classId, academicYearId).catch((err) => {
+      console.error(`[savePriceBook] Background sync failed for class ${classId}:`, err?.message || err);
+    });
+
+    return result;
   }
+
 
   async syncPriceBookToStudents(classId: string, academicYearId: string, tx?: any) {
     const tenantId = this.getTenantId();
