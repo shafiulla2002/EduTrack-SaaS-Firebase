@@ -1814,18 +1814,52 @@ export class BillingService {
 
           const currentOlis = opp.opportunityLineItems || [];
 
-          // A. Update or create line items for active pricebook entries
-          for (const entry of activeEntries) {
-            const existingOli = currentOlis.find(oli => oli.productId === entry.productId);
+          // Group existing OLIs by productId to detect & clean any duplicates
+          const oliByProduct = new Map<string, any[]>();
+          for (const oli of currentOlis) {
+            if (!oliByProduct.has(oli.productId)) {
+              oliByProduct.set(oli.productId, []);
+            }
+            oliByProduct.get(oli.productId)!.push(oli);
+          }
 
-            if (existingOli) {
-              if (Number(existingOli.unitPrice) !== Number(entry.unitPrice)) {
+          // A. Update existing line items or create new ones for active pricebook entries
+          for (const entry of activeEntries) {
+            const matchingOlis = oliByProduct.get(entry.productId) || [];
+
+            if (matchingOlis.length > 0) {
+              // Update primary OLI price and pricebookEntryId
+              const primaryOli = matchingOlis[0];
+              if (Number(primaryOli.unitPrice) !== Number(entry.unitPrice) || primaryOli.pricebookEntryId !== entry.id) {
                 await db.opportunityLineItem.update({
-                  where: { id: existingOli.id },
-                  data: { unitPrice: entry.unitPrice }
+                  where: { id: primaryOli.id },
+                  data: {
+                    unitPrice: entry.unitPrice,
+                    pricebookEntryId: entry.id,
+                  }
                 });
               }
+
+              // Remove any accidental duplicate OLIs for this same product
+              for (let i = 1; i < matchingOlis.length; i++) {
+                const extraOli = matchingOlis[i];
+                const invoiceItems = await db.invoiceItem.findMany({
+                  where: {
+                    opportunityLineItemId: extraOli.id,
+                    tenantId,
+                    invoice: {
+                      status: { in: [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID] }
+                    }
+                  }
+                });
+                if (invoiceItems.length === 0) {
+                  await db.opportunityLineItem.delete({
+                    where: { id: extraOli.id }
+                  });
+                }
+              }
             } else {
+              // Create new line item
               await db.opportunityLineItem.create({
                 data: {
                   opportunityId: opp.id,
