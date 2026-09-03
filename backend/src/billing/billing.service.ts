@@ -1310,19 +1310,34 @@ export class BillingService {
     const defaultPassword = 'Welcome@123';
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
+    const affectedClasses = new Map<string, string>(); // classId -> academicYearId
+    const affectedClassSectionIds = new Set<string>();
+
     for (let i = 0; i < studentDataList.length; i++) {
       const data = studentDataList[i];
       try {
-        const firstName = data['First Name'] || data['firstName'];
-        const lastName = data['Last Name'] || data['lastName'];
-        const email = data['Email'] || data['email'];
-        const phone = data['Phone'] || data['phone'];
-        const classStr = data['Class'] || data['class'];
-        const sectionStr = data['Section'] || data['section'];
-        const ayStr = data['Academic Year'] || data['academicYear'];
+        let firstName = (data['First Name'] || data['firstName'] || data['Name'] || data['Student Name'] || data['name'] || '').toString().trim();
+        let lastName = (data['Last Name'] || data['lastName'] || '').toString().trim();
 
-        if (!email || !lastName || !classStr || !sectionStr) {
-          errors.push(`Row ${i + 1}: Missing mandatory fields (Email, Last Name, Class, Section)`);
+        if (firstName && !lastName && firstName.includes(' ')) {
+          const parts = firstName.split(/\s+/);
+          firstName = parts[0];
+          lastName = parts.slice(1).join(' ');
+        }
+
+        const rawEmail = (data['Email'] || data['email'] || '').toString().trim();
+        const phone = (data['Phone'] || data['phone'] || '').toString().trim();
+        const classStr = (data['Class'] || data['class'] || data['Grade'] || data['grade'] || '').toString().trim();
+        const sectionStr = (data['Section'] || data['section'] || 'A').toString().trim();
+        const ayStr = (data['Academic Year'] || data['academicYear'] || '').toString().trim();
+
+        if (!classStr) {
+          errors.push(`Row ${i + 1}: Missing mandatory field (Class)`);
+          continue;
+        }
+
+        if (!firstName && !lastName) {
+          errors.push(`Row ${i + 1}: Missing student name`);
           continue;
         }
 
@@ -1342,11 +1357,32 @@ export class BillingService {
 
         const matchedAY = ays.find(ay => ay.name.toLowerCase() === (ayStr || '').toLowerCase().trim()) || ays.find(ay => ay.isActive);
 
-        const emailLower = email.toLowerCase().trim();
-        const existingUser = await this.prisma.user.findUnique({ where: { email: emailLower } });
-        if (existingUser) {
-          errors.push(`Row ${i + 1}: Email "${email}" is already registered`);
-          continue;
+        let emailLower: string;
+        if (rawEmail) {
+          emailLower = rawEmail.toLowerCase().trim();
+          const existingUser = await this.prisma.user.findUnique({ where: { email: emailLower } });
+          if (existingUser) {
+            errors.push(`Row ${i + 1}: Email "${rawEmail}" is already registered`);
+            continue;
+          }
+        } else {
+          const randomSuffix = Math.random().toString(36).substring(2, 8) + Date.now().toString().slice(-4);
+          const cleanFirst = (firstName || 'student').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanLast = (lastName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          emailLower = `${cleanFirst}${cleanLast ? '.' + cleanLast : ''}.${randomSuffix}@noemail.local`;
+        }
+
+        if (matchedAY) {
+          affectedClasses.set(matchedClass.id, matchedAY.id);
+        }
+        affectedClassSectionIds.add(matchedCS.id);
+
+        let finalPhone: string | null = null;
+        if (phone) {
+          const digitsOnly = phone.replace(/\D/g, '').slice(-10);
+          if (digitsOnly.length >= 10) {
+            finalPhone = `${tenantId.substring(0, 8)}-${digitsOnly}`;
+          }
         }
 
         await this.prisma.$transaction(async (tx) => {
@@ -1357,7 +1393,7 @@ export class BillingService {
               name: `${firstName || ''} ${lastName}`.trim(),
               passwordHash,
               role: Role.STUDENT,
-              phone: phone ? String(phone) : null,
+              phone: finalPhone,
               tenantId,
             },
           });
@@ -1375,22 +1411,7 @@ export class BillingService {
             },
           });
 
-          // Create Opportunity
-          const opp = await tx.opportunity.create({
-            data: {
-              name: `${firstName || ''} ${lastName} - Admission ${matchedAY?.name || ''}`.trim(),
-              studentId: profile.id,
-              stageName: 'Prospecting',
-              closeDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-              classId: matchedClass.id,
-              sectionId: matchedSection.id,
-              academicYearId: matchedAY?.id || null,
-              totalPaidAmount: 0,
-              tenantId,
-            },
-          });
-
-          // Resolve class pricebook & entries
+          // Resolve class pricebook & entries (optional)
           const priceBookName = matchedClass.name.replace('-', ' ');
           const priceBookNameAlt = matchedClass.name.replace(' ', '-');
 
@@ -1412,49 +1433,82 @@ export class BillingService {
             },
           });
 
-          if (!classPriceBook) {
-            throw new Error(`No active Price Book (fee structure) configured for class "${matchedClass.name}"`);
-          }
-
-          const pbes = await tx.pricebookEntry.findMany({
-            where: {
-              tenantId,
-              isActive: true,
-              pricebookId: classPriceBook.id,
-              pricebook: { isActive: true },
-              product: {
+          let pbes: any[] = [];
+          if (classPriceBook) {
+            pbes = await tx.pricebookEntry.findMany({
+              where: {
+                tenantId,
                 isActive: true,
-                productCode: { not: 'PREV_DUES' },
-                name: { not: { contains: 'Previous' } },
+                pricebookId: classPriceBook.id,
+                pricebook: { isActive: true },
+                product: {
+                  isActive: true,
+                  productCode: { not: 'PREV_DUES' },
+                  name: { not: { contains: 'Previous' } },
+                },
               },
-            },
-          });
-
-          if (pbes.length === 0) {
-            throw new Error(`No active fee products found in the Price Book for class "${matchedClass.name}"`);
+            });
           }
 
-          const olis = pbes.map(pbe => ({
-            opportunityId: opp.id,
-            pricebookEntryId: pbe.id,
-            productId: pbe.productId,
-            quantity: 1,
-            unitPrice: pbe.unitPrice,
-            discount: 0,
-            tenantId,
-          }));
+          if (classPriceBook && pbes.length > 0) {
+            // Create Opportunity
+            const opp = await tx.opportunity.create({
+              data: {
+                name: `${firstName || ''} ${lastName} - Admission ${matchedAY?.name || ''}`.trim(),
+                studentId: profile.id,
+                stageName: 'Prospecting',
+                closeDate: new Date(new Date().setDate(new Date().getDate() + 30)),
+                classId: matchedClass.id,
+                sectionId: matchedSection.id,
+                academicYearId: matchedAY?.id || null,
+                totalPaidAmount: 0,
+                tenantId,
+              },
+            });
 
-          await tx.opportunityLineItem.createMany({
-            data: olis,
-          });
+            const olis = pbes.map(pbe => ({
+              opportunityId: opp.id,
+              pricebookEntryId: pbe.id,
+              productId: pbe.productId,
+              quantity: 1,
+              unitPrice: pbe.unitPrice,
+              discount: 0,
+              tenantId,
+            }));
 
-          // Trigger sync to ensure ledger is fully initialized & recalculated
-          await this.syncPriceBookToStudents(matchedClass.id, matchedAY.id, tx);
-        });
+            await tx.opportunityLineItem.createMany({
+              data: olis,
+            });
+          }
+        }, { timeout: 30000 });
 
         successCount++;
-      } catch (err) {
+      } catch (err: any) {
         errors.push(`Row ${i + 1} Error: ${err.message}`);
+      }
+    }
+
+    // Post-import sync: update section strengths
+    for (const csId of affectedClassSectionIds) {
+      try {
+        const count = await this.prisma.studentProfile.count({
+          where: { classSectionId: csId, tenantId }
+        });
+        await this.prisma.classSection.update({
+          where: { id: csId },
+          data: { strength: count }
+        });
+      } catch (e) {
+        console.warn(`Failed to update strength for class section ${csId}:`, e);
+      }
+    }
+
+    // Post-import sync: sync pricebook once per affected class outside per-student transactions
+    for (const [classId, ayId] of affectedClasses.entries()) {
+      try {
+        await this.syncPriceBookToStudents(classId, ayId);
+      } catch (e) {
+        console.warn(`Post-import pricebook sync skipped for class ${classId}:`, e);
       }
     }
 

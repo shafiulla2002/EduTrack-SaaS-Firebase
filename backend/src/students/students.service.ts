@@ -729,24 +729,56 @@ export class StudentsService implements OnModuleInit {
     const defaultPassword = 'Welcome@123';
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
+    const affectedClasses = new Map<string, string>(); // classId -> academicYearId
+    const affectedClassSectionIds = new Set<string>();
+
     for (let i = 0; i < studentRows.length; i++) {
       const row = studentRows[i];
       try {
-        const email = row['Email'] || row['email'];
-        const firstName = row['First Name'] || row['firstName'];
-        const lastName = row['Last Name'] || row['lastName'];
-        const phone = row['Phone'] || row['phone'];
-        const className = row['Class'] || row['class'];
-        const sectionName = row['Section'] || row['section'];
-        const rollNo = row['Roll No'] || row['rollNo'];
-        const fatherName = row['Father Name'] || row['fatherName'];
-        const motherName = row['Mother Name'] || row['motherName'];
-        const aadharNo = row['Aadhar No'] || row['aadharNo'];
-        const ayStr = row['Academic Year'] || row['academicYear'];
+        let firstName = (row['First Name'] || row['firstName'] || row['Name'] || row['Student Name'] || row['name'] || '').toString().trim();
+        let lastName = (row['Last Name'] || row['lastName'] || '').toString().trim();
 
-        if (!email || !lastName || !className || !sectionName) {
-          errors.push(`Row ${i + 1}: Missing mandatory fields (Email, Last Name, Class, Section)`);
+        // If only a single full name was provided in firstName and lastName is empty, split it
+        if (firstName && !lastName && firstName.includes(' ')) {
+          const parts = firstName.split(/\s+/);
+          firstName = parts[0];
+          lastName = parts.slice(1).join(' ');
+        }
+
+        const rawEmail = (row['Email'] || row['email'] || '').toString().trim();
+        const phone = (row['Phone'] || row['phone'] || '').toString().trim();
+        const className = (row['Class'] || row['class'] || row['Grade'] || row['grade'] || '').toString().trim();
+        const sectionName = (row['Section'] || row['section'] || 'A').toString().trim();
+        const rollNo = row['Roll No'] || row['rollNo'];
+        const fatherName = (row['Father Name'] || row['fatherName'] || '').toString().trim() || null;
+        const motherName = (row['Mother Name'] || row['motherName'] || '').toString().trim() || null;
+        const aadharNo = (row['Aadhar No'] || row['aadharNo'] || '').toString().trim() || null;
+        const ayStr = (row['Academic Year'] || row['academicYear'] || '').toString().trim();
+
+        if (!className) {
+          errors.push(`Row ${i + 1}: Missing mandatory field (Class)`);
           continue;
+        }
+
+        if (!firstName && !lastName) {
+          errors.push(`Row ${i + 1}: Missing student name`);
+          continue;
+        }
+
+        // Email: if provided, validate uniqueness. If not provided, generate fallback unique email
+        let emailLower: string;
+        if (rawEmail) {
+          emailLower = rawEmail.toLowerCase().trim();
+          const existingUser = await this.prisma.user.findUnique({ where: { email: emailLower } });
+          if (existingUser) {
+            errors.push(`Row ${i + 1}: Email "${rawEmail}" is already registered`);
+            continue;
+          }
+        } else {
+          const randomSuffix = Math.random().toString(36).substring(2, 8) + Date.now().toString().slice(-4);
+          const cleanFirst = (firstName || 'student').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cleanLast = (lastName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          emailLower = `${cleanFirst}${cleanLast ? '.' + cleanLast : ''}.${randomSuffix}@noemail.local`;
         }
 
         const matchedAY = ays.find(ay => ay.name.toLowerCase() === (ayStr || '').toLowerCase().trim()) || activeYear;
@@ -799,18 +831,20 @@ export class StudentsService implements OnModuleInit {
           classSections.push(matchedClassSection);
         }
 
-        const emailLower = email.toLowerCase().trim();
-        const existingUser = await this.prisma.user.findUnique({ where: { email: emailLower } });
-        if (existingUser) {
-          errors.push(`Row ${i + 1}: Email "${email}" is already registered`);
-          continue;
+        affectedClasses.set(matchedClass.id, matchedAY.id);
+        affectedClassSectionIds.add(matchedClassSection.id);
+
+        let finalPhone: string | null = null;
+        if (phone) {
+          const digitsOnly = phone.replace(/\D/g, '').slice(-10);
+          if (digitsOnly.length >= 10) {
+            finalPhone = `${tenantId.substring(0, 8)}-${digitsOnly}`;
+          }
         }
 
-        const finalPhone = phone ? String(phone).replace(/\D/g, '').slice(-10) : null;
-
-        // Perform user creation transaction
+        // Perform user creation transaction with 30s timeout and fast execution
         await this.prisma.$transaction(async (tx) => {
-          // Resolve class pricebook & entries BEFORE creating transaction entities to fail fast if missing
+          // Resolve class pricebook & entries (optional - does not block student creation if missing)
           const priceBookName = matchedClass.name.replace('-', ' ');
           const priceBookNameAlt = matchedClass.name.replace(' ', '-');
 
@@ -832,26 +866,21 @@ export class StudentsService implements OnModuleInit {
             },
           });
 
-          if (!classPriceBook) {
-            throw new Error(`No active Price Book (fee structure) configured for class "${matchedClass.name}"`);
-          }
-
-          const pbes = await tx.pricebookEntry.findMany({
-            where: {
-              tenantId,
-              isActive: true,
-              pricebookId: classPriceBook.id,
-              pricebook: { isActive: true },
-              product: {
+          let pbes: any[] = [];
+          if (classPriceBook) {
+            pbes = await tx.pricebookEntry.findMany({
+              where: {
+                tenantId,
                 isActive: true,
-                productCode: { not: 'PREV_DUES' },
-                name: { not: { contains: 'Previous' } },
+                pricebookId: classPriceBook.id,
+                pricebook: { isActive: true },
+                product: {
+                  isActive: true,
+                  productCode: { not: 'PREV_DUES' },
+                  name: { not: { contains: 'Previous' } },
+                },
               },
-            },
-          });
-
-          if (pbes.length === 0) {
-            throw new Error(`No active fee products found in the Price Book for class "${matchedClass.name}"`);
+            });
           }
 
           const user = await tx.user.create({
@@ -901,7 +930,7 @@ export class StudentsService implements OnModuleInit {
             }
           });
 
-          if (!existingOpp) {
+          if (!existingOpp && classPriceBook && pbes.length > 0) {
             const opp = await tx.opportunity.create({
               data: {
                 name: `${firstName || ''} ${lastName} - Admission ${matchedAY?.name || ''}`.trim(),
@@ -930,14 +959,35 @@ export class StudentsService implements OnModuleInit {
               data: olis,
             });
           }
-
-          // Trigger sync to ensure ledger is fully initialized & recalculated
-          await this.billingService.syncPriceBookToStudents(matchedClass.id, matchedAY.id, tx);
-        });
+        }, { timeout: 30000 });
 
         successCount++;
-      } catch (err) {
+      } catch (err: any) {
         errors.push(`Row ${i + 1} Error: ${err.message}`);
+      }
+    }
+
+    // Post-import sync: update section strengths
+    for (const csId of affectedClassSectionIds) {
+      try {
+        const count = await this.prisma.studentProfile.count({
+          where: { classSectionId: csId, tenantId }
+        });
+        await this.prisma.classSection.update({
+          where: { id: csId },
+          data: { strength: count }
+        });
+      } catch (e) {
+        console.warn(`Failed to update strength for class section ${csId}:`, e);
+      }
+    }
+
+    // Post-import sync: sync pricebook once per affected class outside per-student transactions
+    for (const [classId, ayId] of affectedClasses.entries()) {
+      try {
+        await this.billingService.syncPriceBookToStudents(classId, ayId);
+      } catch (e) {
+        console.warn(`Post-import pricebook sync skipped for class ${classId}:`, e);
       }
     }
 

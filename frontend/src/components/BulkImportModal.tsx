@@ -45,21 +45,93 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
     document.body.removeChild(element);
   };
 
+  // RFC-4180 compliant CSV row parser
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim().replace(/^"|"$/g, '').trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim().replace(/^"|"$/g, '').trim());
+    return result;
+  };
+
+  // Helper to split CSV text into lines, respecting quotes across newlines
+  const splitCSVLines = (text: string): string[] => {
+    const lines: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        current += char;
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && text[i + 1] === '\n') {
+          i++;
+        }
+        if (current.trim()) {
+          lines.push(current);
+        }
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current.trim()) {
+      lines.push(current);
+    }
+    return lines;
+  };
+
+  // Case-insensitive & quote-stripped helper to retrieve a field value from a row record
+  const getRowVal = (row: ParsedRecord, key: string): string => {
+    if (!row) return '';
+    let rawVal = row[key];
+    if (rawVal === undefined) {
+      const foundKey = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase());
+      if (foundKey) rawVal = row[foundKey];
+    }
+    if (!rawVal) return '';
+    return String(rawVal).replace(/^"|"$/g, '').trim();
+  };
+
   // CSV Parsing logic
   const parseCSV = (text: string) => {
     try {
-      const lines = text.split(/\r\n|\n/);
-      if (lines.length === 0 || !lines[0].trim()) {
+      const lines = splitCSVLines(text);
+      if (lines.length === 0) {
         alert('CSV file is empty.');
         return;
       }
 
-      const headers = lines[0].split(',').map(h => h.trim());
-      
-      // Basic check for templates headers matching
-      const hasCorrectHeaders = templateHeaders.every(h => headers.includes(h));
-      if (!hasCorrectHeaders) {
-        alert('Invalid CSV template format. Please download and use the official template.');
+      // Strip UTF-8 BOM if present
+      const rawHeaderLine = lines[0].replace(/^\uFEFF/, '');
+      const headers = parseCSVLine(rawHeaderLine).map(h => h.toLowerCase());
+      const originalHeaders = parseCSVLine(rawHeaderLine);
+
+      // Check for presence of at least student name and class
+      const hasName = headers.some(h => ['first name', 'name', 'student name', 'fullname'].includes(h));
+      const hasClass = headers.some(h => ['class', 'grade'].includes(h));
+
+      if (!hasName || !hasClass) {
+        alert('Invalid CSV template format. The CSV must contain at least "First Name" (or "Name") and "Class" columns. Please download and use the official template.');
         return;
       }
 
@@ -68,11 +140,12 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
         const line = lines[i].trim();
         if (!line) continue;
 
-        const currentLine = line.split(',');
+        const currentValues = parseCSVLine(line);
         const obj: ParsedRecord = {};
-        
-        for (let j = 0; j < headers.length; j++) {
-          obj[headers[j]] = currentLine[j] ? currentLine[j].trim() : '';
+
+        for (let j = 0; j < originalHeaders.length; j++) {
+          const headerName = originalHeaders[j];
+          obj[headerName] = currentValues[j] !== undefined ? currentValues[j] : '';
         }
         rows.push(obj);
       }
@@ -108,12 +181,12 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
     setErrors([]);
 
     try {
-      const response = await api.post('/students/import', { students: parsedData });
+      const response = await api.post('/students/import', { students: parsedData }, { timeout: 60000 });
       const { successCount, errors } = response.data;
-      
+
       setSuccessCount(successCount || 0);
       setErrors(errors || []);
-      
+
       if (successCount > 0) {
         onImportSuccess(successCount);
       }
@@ -229,16 +302,23 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[12px] text-slate-700 dark:text-slate-300">
-                    {parsedData.slice(0, 3).map((row, idx) => (
-                      <tr key={idx}>
-                        <td className="px-4 py-2 font-bold text-slate-900 dark:text-white">
-                          {row['First Name']} {row['Last Name']}
-                        </td>
-                        <td className="px-4 py-2">{row['Class']} - {row['Section']}</td>
-                        <td className="px-4 py-2">{row['Father Name']}</td>
-                        <td className="px-4 py-2 font-mono">{row['Aadhar No']}</td>
-                      </tr>
-                    ))}
+                    {parsedData.slice(0, 3).map((row, idx) => {
+                      const name = `${getRowVal(row, 'First Name') || getRowVal(row, 'Name') || getRowVal(row, 'Student Name')} ${getRowVal(row, 'Last Name')}`.trim();
+                      const cls = getRowVal(row, 'Class') || getRowVal(row, 'Grade') || '—';
+                      const sec = getRowVal(row, 'Section') || 'A';
+                      const father = getRowVal(row, 'Father Name') || '—';
+                      const aadhar = getRowVal(row, 'Aadhar No') || '—';
+                      return (
+                        <tr key={idx}>
+                          <td className="px-4 py-2 font-bold text-slate-900 dark:text-white">
+                            {name || 'Unnamed Student'}
+                          </td>
+                          <td className="px-4 py-2">{cls} - {sec}</td>
+                          <td className="px-4 py-2">{father}</td>
+                          <td className="px-4 py-2 font-mono">{aadhar}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
