@@ -22,8 +22,48 @@ export class ExamConfigController {
   /** Everyone (teachers, parents via parent-portal service): resolve config for a specific exam type */
   @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.PARENT)
   @Get('resolve')
-  async resolveConfig(@Query('examType') examType: string) {
-    return this.examConfigService.resolveConfig(examType || '__global__');
+  async resolveConfig(
+    @Query('examType') examType: string,
+    @Query('classId') classId?: string,
+    @Query('academicYearId') academicYearId?: string,
+    @Query('classSectionId') classSectionId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('subjectType') subjectType?: string,
+  ) {
+    let targetClassId = classId;
+    let targetAyId = academicYearId;
+    if (!targetClassId && classSectionId) {
+      const cs = await this.examConfigService.getClassSectionDetails(classSectionId);
+      if (cs) {
+        targetClassId = cs.classId;
+        targetAyId = cs.class?.academicYearId;
+      }
+    }
+
+    const cfg = await this.examConfigService.resolveConfig(
+      examType || '__global__',
+      targetClassId,
+      targetAyId,
+    );
+
+    let maxMarks = cfg.maxMarks;
+    let passingPercentage = cfg.passingPercentage;
+
+    if (subjectId && cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
+      const sc = cfg.subjectConfigs.find(
+        s => s.subjectId === subjectId && (subjectType ? s.subjectType === subjectType : true)
+      );
+      if (sc) {
+        maxMarks = sc.maxMarks;
+        passingPercentage = Number(sc.passingPercentage);
+      }
+    }
+
+    return {
+      ...cfg,
+      maxMarks,
+      passingPercentage,
+    };
   }
 
   /** Admin: get default grade ranges */

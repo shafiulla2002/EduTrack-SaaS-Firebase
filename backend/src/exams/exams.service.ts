@@ -345,7 +345,6 @@ export class ExamsService {
     // If resolvedExamId exists, load current marks
     const marksMap = new Map<string, any>();
     let maxMarks = 100;
-    
     let passingPercentage = 35;
     
     if (resolvedExamId) {
@@ -365,9 +364,24 @@ export class ExamsService {
       maxMarks = examSub.maxMarks;
       passingPercentage = Number(examSub.passingPercentage);
     } else {
-      const cfg = await this.examConfigService.resolveConfig(examName, tenantId);
+      const classSection = await this.prisma.classSection.findUnique({
+        where: { id: resolvedClassSectionId },
+        include: { class: true },
+      });
+      const classId = classSection?.classId;
+      const academicYearId = classSection?.class?.academicYearId;
+
+      const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
       maxMarks = cfg.maxMarks;
       passingPercentage = cfg.passingPercentage;
+
+      if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
+        const sc = cfg.subjectConfigs.find(s => s.subjectId === subjectId && s.subjectType === subjectType);
+        if (sc) {
+          maxMarks = sc.maxMarks;
+          passingPercentage = Number(sc.passingPercentage);
+        }
+      }
     }
 
     return {

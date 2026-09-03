@@ -52,10 +52,15 @@ export class ExamConfigService {
     const tid = tenantId ?? this.getTenantId();
 
     // 0. Try class-specific config
-    if (classId && academicYearId) {
+    if (classId) {
       const classCfg = await prisma.examConfig.findFirst({
-        where: { tenantId: tid, examTypeName, classId, academicYearId },
-        include: { subjectConfigs: true }
+        where: {
+          tenantId: tid,
+          examTypeName: { equals: examTypeName, mode: 'insensitive' },
+          classId,
+          ...(academicYearId ? { academicYearId } : {}),
+        },
+        include: { subjectConfigs: true },
       });
       if (classCfg) {
         return {
@@ -70,7 +75,11 @@ export class ExamConfigService {
 
     // 1. Try exam-specific config (global template for the Exam Type, classId/academicYearId = null)
     const specific = await prisma.examConfig.findFirst({
-      where: { tenantId: tid, examTypeName, classId: null, academicYearId: null },
+      where: {
+        tenantId: tid,
+        examTypeName: { equals: examTypeName, mode: 'insensitive' },
+        classId: null,
+      },
     });
     if (specific) {
       return {
@@ -83,7 +92,7 @@ export class ExamConfigService {
 
     // 2. Try global config (stored under key '__global__')
     const globalCfg = await prisma.examConfig.findFirst({
-      where: { tenantId: tid, examTypeName: '__global__', classId: null, academicYearId: null },
+      where: { tenantId: tid, examTypeName: '__global__', classId: null },
     });
     if (globalCfg) {
       return {
@@ -101,6 +110,13 @@ export class ExamConfigService {
       gradeRanges: DEFAULT_GRADE_RANGES,
       source: 'system-default',
     };
+  }
+
+  async getClassSectionDetails(classSectionId: string) {
+    return this.prisma.classSection.findUnique({
+      where: { id: classSectionId },
+      include: { class: true },
+    });
   }
 
   // ── Grade calculation ──────────────────────────────────────────────────────
@@ -284,38 +300,47 @@ export class ExamConfigService {
       where: { examId_subjectId_subjectType: { examId, subjectId, subjectType } },
     });
 
-    if (!examSubject) {
-      const exam = await prisma.exam.findUnique({
-        where: { id: examId },
-        include: { classSection: { include: { class: true } } }
-      });
-      if (!exam) throw new NotFoundException('Exam not found');
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: { classSection: { include: { class: true } } }
+    });
+    if (!exam) throw new NotFoundException('Exam not found');
 
-      const classId = exam.classSection?.classId;
-      const academicYearId = exam.classSection?.class?.academicYearId;
+    const classId = exam.classSection?.classId;
+    const academicYearId = exam.classSection?.class?.academicYearId;
 
-      const cfg = await this.resolveConfig(exam.type, classId, academicYearId, tid, db);
+    const cfg = await this.resolveConfig(exam.type || exam.name, classId, academicYearId, tid, db);
 
-      // Check if this specific subject/component has an override
-      let maxMarks = cfg.maxMarks;
-      let passingPercentage = cfg.passingPercentage;
-      let passMarks = Math.round((cfg.passingPercentage / 100) * cfg.maxMarks);
+    // Check if this specific subject/component has an override
+    let maxMarks = cfg.maxMarks;
+    let passingPercentage = cfg.passingPercentage;
+    let passMarks = Math.round((cfg.passingPercentage / 100) * cfg.maxMarks);
 
-      if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
-        const sc = cfg.subjectConfigs.find(s => s.subjectId === subjectId && s.subjectType === subjectType);
-        if (sc) {
-          maxMarks = sc.maxMarks;
-          passingPercentage = Number(sc.passingPercentage);
-          passMarks = sc.passMarks ? Number(sc.passMarks) : Math.round((Number(sc.passingPercentage) / 100) * sc.maxMarks);
-        }
+    if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
+      const sc = cfg.subjectConfigs.find(s => s.subjectId === subjectId && s.subjectType === subjectType);
+      if (sc) {
+        maxMarks = sc.maxMarks;
+        passingPercentage = Number(sc.passingPercentage);
+        passMarks = sc.passMarks ? Number(sc.passMarks) : Math.round((Number(sc.passingPercentage) / 100) * sc.maxMarks);
       }
+    }
 
+    if (!examSubject) {
       examSubject = await prisma.examSubject.create({
         data: {
           tenantId: tid,
           examId,
           subjectId,
           subjectType,
+          maxMarks,
+          passingPercentage,
+          passMarks,
+        }
+      });
+    } else if (examSubject.maxMarks !== maxMarks || Number(examSubject.passingPercentage) !== Number(passingPercentage)) {
+      examSubject = await prisma.examSubject.update({
+        where: { id: examSubject.id },
+        data: {
           maxMarks,
           passingPercentage,
           passMarks,

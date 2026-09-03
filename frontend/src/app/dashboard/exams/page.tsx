@@ -169,13 +169,17 @@ export default function ExamsAndMarksPage() {
     }
   };
 
-  // Re-fetch exam config when exam name changes
+  // Re-fetch exam config when exam name, class, subject, or component changes
   useEffect(() => {
     if (!selectedExamName) return;
-    api.get(`/exam-config/resolve?examType=${encodeURIComponent(selectedExamName)}`)
+    const params: any = { examType: selectedExamName };
+    if (selectedClassSectionId) params.classSectionId = selectedClassSectionId;
+    if (selectedSubjectId) params.subjectId = selectedSubjectId;
+    if (selectedSubjectType) params.subjectType = selectedSubjectType;
+    api.get('/exam-config/resolve', { params })
       .then(res => setExamConfig({ passingPercentage: res.data.passingPercentage, maxMarks: res.data.maxMarks }))
       .catch(() => {});
-  }, [selectedExamName]);
+  }, [selectedExamName, selectedClassSectionId, selectedSubjectId, selectedSubjectType]);
 
   useEffect(() => {
     if (selectedClassSectionId && selectedSubjectId && selectedExamName && selectedSubjectType) {
@@ -211,7 +215,7 @@ export default function ExamsAndMarksPage() {
 
   const handleScoreChange = (studentId: string, valStr: string) => {
     const valNum = valStr === '' ? null : Number(valStr);
-    const val = valNum === null ? null : isNaN(valNum) ? 0 : Math.min(100, Math.max(0, valNum));
+    const val = valNum === null ? null : isNaN(valNum) ? 0 : Math.min(examConfig.maxMarks, Math.max(0, valNum));
     
     setRoster(prev =>
       prev.map(item =>
