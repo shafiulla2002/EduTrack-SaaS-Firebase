@@ -35,4 +35,9 @@ export class HomeworkController {
   async deleteHomework(@Req() req: any, @Param('id') id: string) {
     return this.homeworkService.deleteHomework(req.user.sub, req.user.role, id);
   }
+
+  @Get(':id/submissions')
+  async getSubmissions(@Req() req: any, @Param('id') id: string) {
+    return this.homeworkService.getHomeworkSubmissions(req.user.sub, req.user.role, id);
+  }
 }

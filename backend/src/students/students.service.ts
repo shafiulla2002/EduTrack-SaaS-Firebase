@@ -1645,6 +1645,635 @@ export class StudentsService implements OnModuleInit {
       throw new BadRequestException(`Failed to delete students transactionally: ${err.message}`);
     }
   }
+
+  // ── STUDENT LIFECYCLE MANAGEMENT ───────────────────────────────────────────
+
+  async updateStudentLifecycleStatus(actorUserId: string, payload: {
+    studentId: string;
+    status: string; // LEFT, TRANSFERRED, WITHDRAWN, GRADUATED
+    reason?: string;
+    effectiveDate?: string;
+    lastClassName?: string;
+    lastSectionName?: string;
+    academicYearId?: string;
+    notes?: string;
+  }) {
+    const tenantId = this.getTenantId();
+    const { studentId, status, reason, effectiveDate, lastClassName, lastSectionName, academicYearId, notes } = payload;
+
+    const student = await this.prisma.studentProfile.findFirst({
+      where: { id: studentId, tenantId },
+      include: {
+        user: true,
+        classSection: {
+          include: {
+            class: true,
+            section: true,
+          }
+        }
+      }
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student profile not found.');
+    }
+
+    const currentClass = lastClassName || student.classSection?.class.name || '—';
+    const currentSection = lastSectionName || student.classSection?.section.name || '—';
+    const resolvedYearId = academicYearId || student.classSection?.class.academicYearId || null;
+    const resolvedEffectiveDate = effectiveDate ? new Date(effectiveDate) : new Date();
+
+    const remarksPayload = {
+      status,
+      reason: reason || status,
+      effectiveDate: resolvedEffectiveDate.toISOString(),
+      lastClass: currentClass,
+      lastSection: currentSection,
+      academicYearId: resolvedYearId,
+      notes: notes || '',
+    };
+
+    // Update user and student profile
+    await this.prisma.user.update({
+      where: { id: student.userId },
+      data: { isActive: false }
+    });
+
+    await this.prisma.studentProfile.update({
+      where: { id: studentId },
+      data: { classSectionId: null }
+    });
+
+    // Record in StatusHistory
+    await this.prisma.statusHistory.create({
+      data: {
+        entityType: 'STUDENT_LIFECYCLE',
+        entityId: studentId,
+        previousStatus: 'ACTIVE',
+        currentStatus: status,
+        remarks: JSON.stringify(remarksPayload),
+        updatedById: actorUserId,
+        tenantId,
+      }
+    });
+
+    // Record audit ActivityLog
+    await this.prisma.activityLog.create({
+      data: {
+        userId: student.userId,
+        action: 'RECORD_UPDATE',
+        entityName: 'StudentLifecycle',
+        entityId: studentId,
+        details: `Student marked as ${status} from ${currentClass} - ${currentSection}. Reason: ${reason || status}. Notes: ${notes || 'None'}`,
+        tenantId,
+      }
+    });
+
+    return {
+      success: true,
+      message: `Student successfully updated to status: ${status}.`,
+      studentId,
+      status,
+    };
+  }
+
+  async bulkUpdateStudentLifecycleStatus(actorUserId: string, payload: {
+    studentIds: string[];
+    status: string;
+    reason?: string;
+    effectiveDate?: string;
+    academicYearId?: string;
+    notes?: string;
+  }) {
+    const { studentIds, status, reason, effectiveDate, academicYearId, notes } = payload;
+    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+      throw new BadRequestException('No students provided for lifecycle update.');
+    }
+
+    let successCount = 0;
+    const errors: string[] = [];
+
+    for (const studentId of studentIds) {
+      try {
+        await this.updateStudentLifecycleStatus(actorUserId, {
+          studentId,
+          status,
+          reason,
+          effectiveDate,
+          academicYearId,
+          notes,
+        });
+        successCount++;
+      } catch (err: any) {
+        errors.push(`Failed for student ${studentId}: ${err.message}`);
+      }
+    }
+
+    return {
+      success: true,
+      totalRequested: studentIds.length,
+      successCount,
+      errors,
+    };
+  }
+
+  async getHistoricalStudents(filters: {
+    status?: string;
+    search?: string;
+    academicYearId?: string;
+    className?: string;
+    sectionName?: string;
+  }) {
+    const tenantId = this.getTenantId();
+    const { status, search, academicYearId, className, sectionName } = filters;
+
+    // Fetch all student profiles for tenant
+    const profiles = await this.prisma.studentProfile.findMany({
+      where: {
+        tenantId,
+        ...(search ? {
+          OR: [
+            { rollNo: { contains: search, mode: 'insensitive' } },
+            { fatherName: { contains: search, mode: 'insensitive' } },
+            { motherName: { contains: search, mode: 'insensitive' } },
+            {
+              user: {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' } },
+                  { email: { contains: search, mode: 'insensitive' } },
+                  { phone: { contains: search, mode: 'insensitive' } },
+                ]
+              }
+            }
+          ]
+        } : {})
+      },
+      include: {
+        user: true,
+        classSection: {
+          include: {
+            class: true,
+            section: true,
+          }
+        },
+        parentProfile: {
+          include: {
+            user: true,
+          }
+        }
+      },
+      orderBy: { user: { name: 'asc' } },
+    });
+
+    // Fetch all lifecycle StatusHistory records for this tenant
+    const statusHistories = await this.prisma.statusHistory.findMany({
+      where: {
+        tenantId,
+        entityType: 'STUDENT_LIFECYCLE',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Group status histories by studentId (latest first)
+    const historiesByStudent = new Map<string, any[]>();
+    for (const sh of statusHistories) {
+      if (!historiesByStudent.has(sh.entityId)) {
+        historiesByStudent.set(sh.entityId, []);
+      }
+      historiesByStudent.get(sh.entityId).push(sh);
+    }
+
+    // Map each profile to its lifecycle representation
+    const results = profiles.map((p) => {
+      const studentHistoryList = historiesByStudent.get(p.id) || [];
+      const latestHistory = studentHistoryList[0] || null;
+
+      let parsedRemarks: any = {};
+      if (latestHistory?.remarks) {
+        try {
+          parsedRemarks = JSON.parse(latestHistory.remarks);
+        } catch {
+          parsedRemarks = { notes: latestHistory.remarks };
+        }
+      }
+
+      // Determine current lifecycle state
+      let lifecycleStatus = 'ACTIVE';
+      if (!p.user.isActive) {
+        lifecycleStatus = latestHistory?.currentStatus || 'LEFT';
+      } else if (latestHistory?.currentStatus === 'ACTIVE') {
+        lifecycleStatus = 'ACTIVE';
+      }
+
+      const lastClass = parsedRemarks.lastClass || p.classSection?.class.name || '—';
+      const lastSection = parsedRemarks.lastSection || p.classSection?.section.name || '—';
+      const effectiveDate = parsedRemarks.effectiveDate || latestHistory?.createdAt || p.user.updatedAt;
+
+      // Clean phone
+      let parentPhone = p.fatherPhone || p.motherPhone || p.parentProfile?.user?.phone || 'N/A';
+      if (parentPhone && parentPhone.includes('-')) {
+        const parts = parentPhone.split('-');
+        const lastPart = parts[parts.length - 1];
+        if (/^\d{7,15}$/.test(lastPart)) parentPhone = lastPart;
+      }
+
+      return {
+        id: p.id,
+        userId: p.userId,
+        name: p.user.name,
+        email: p.user.email,
+        phone: p.user.phone,
+        rollNo: p.rollNo || '—',
+        avatarUrl: p.user.avatarUrl || p.profilePhotoUrl || null,
+        fatherName: p.fatherName || '—',
+        motherName: p.motherName || '—',
+        parentPhone,
+        isActive: p.user.isActive,
+        lifecycleStatus,
+        lastClass,
+        lastSection,
+        effectiveDate,
+        reason: parsedRemarks.reason || latestHistory?.remarks || '—',
+        notes: parsedRemarks.notes || '',
+        historyCount: studentHistoryList.length,
+      };
+    });
+
+    // Filter by lifecycleStatus if requested
+    let filtered = results;
+    if (status && status !== 'ALL') {
+      filtered = filtered.filter(r => r.lifecycleStatus.toUpperCase() === status.toUpperCase());
+    }
+
+    if (className && className !== 'ALL') {
+      filtered = filtered.filter(r => r.lastClass.toLowerCase() === className.toLowerCase());
+    }
+
+    if (sectionName && sectionName !== 'ALL') {
+      filtered = filtered.filter(r => r.lastSection.toLowerCase() === sectionName.toLowerCase());
+    }
+
+    return filtered;
+  }
+
+  async reEnrollStudent(actorUserId: string, payload: {
+    studentId: string;
+    targetYearId: string;
+    targetClassId: string;
+    targetSectionId: string;
+    rollNo?: string;
+    notes?: string;
+  }) {
+    const tenantId = this.getTenantId();
+    const { studentId, targetYearId, targetClassId, targetSectionId, rollNo, notes } = payload;
+
+    const student = await this.prisma.studentProfile.findFirst({
+      where: { id: studentId, tenantId },
+      include: { user: true }
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student profile not found.');
+    }
+
+    // Verify or find ClassSection
+    let classSection = await this.prisma.classSection.findFirst({
+      where: {
+        classId: targetClassId,
+        sectionId: targetSectionId,
+        tenantId,
+      },
+      include: { class: true, section: true }
+    });
+
+    if (!classSection) {
+      classSection = await this.prisma.classSection.create({
+        data: {
+          classId: targetClassId,
+          sectionId: targetSectionId,
+          tenantId,
+        },
+        include: { class: true, section: true }
+      });
+    }
+
+    // Resolve roll number if not provided
+    let resolvedRollNo = rollNo;
+    if (!resolvedRollNo) {
+      const existingInCS = await this.prisma.studentProfile.findMany({
+        where: { classSectionId: classSection.id, tenantId },
+        select: { rollNo: true }
+      });
+      const parsedInts = existingInCS
+        .map(s => parseInt(s.rollNo || '', 10))
+        .filter(val => !isNaN(val));
+      resolvedRollNo = String(parsedInts.length > 0 ? Math.max(...parsedInts) + 1 : 1);
+    }
+
+    // Re-activate user and attach studentProfile
+    await this.prisma.user.update({
+      where: { id: student.userId },
+      data: { isActive: true }
+    });
+
+    await this.prisma.studentProfile.update({
+      where: { id: studentId },
+      data: {
+        classSectionId: classSection.id,
+        rollNo: resolvedRollNo,
+      }
+    });
+
+    // Record in StatusHistory
+    await this.prisma.statusHistory.create({
+      data: {
+        entityType: 'STUDENT_LIFECYCLE',
+        entityId: studentId,
+        previousStatus: 'FORMER',
+        currentStatus: 'ACTIVE',
+        remarks: JSON.stringify({
+          action: 'RE_ENROLL',
+          targetClass: classSection.class.name,
+          targetSection: classSection.section.name,
+          academicYearId: targetYearId,
+          reEnrolledAt: new Date().toISOString(),
+          notes: notes || 'Student re-enrolled into school',
+        }),
+        updatedById: actorUserId,
+        tenantId,
+      }
+    });
+
+    // Audit log
+    await this.prisma.activityLog.create({
+      data: {
+        userId: student.userId,
+        action: 'RECORD_UPDATE',
+        entityName: 'StudentLifecycle',
+        entityId: studentId,
+        details: `Student re-enrolled into ${classSection.class.name} - ${classSection.section.name} (Roll: ${resolvedRollNo})`,
+        tenantId,
+      }
+    });
+
+    return {
+      success: true,
+      message: `Student re-enrolled successfully into ${classSection.class.name} - ${classSection.section.name}.`,
+      studentId,
+      rollNo: resolvedRollNo,
+    };
+  }
+
+  async getCompleteStudentHistory(studentId: string) {
+    const tenantId = this.getTenantId();
+
+    const student = await this.prisma.studentProfile.findFirst({
+      where: { id: studentId, tenantId },
+      include: {
+        user: true,
+        classSection: {
+          include: {
+            class: true,
+            section: true,
+          }
+        },
+        parentProfile: {
+          include: {
+            user: true,
+          }
+        },
+        invoices: {
+          where: { tenantId },
+          include: {
+            invoiceItems: true,
+            opportunity: {
+              include: { academicYear: true }
+            }
+          },
+          orderBy: { invoiceDate: 'desc' }
+        },
+        opportunities: {
+          where: { tenantId },
+          include: {
+            academicYear: true,
+            opportunityLineItems: {
+              include: { product: true }
+            }
+          },
+          orderBy: { createdAt: 'desc' }
+        },
+        examMarks: {
+          where: { tenantId },
+          include: {
+            exam: true,
+            subject: true,
+          },
+          orderBy: { exam: { date: 'desc' } }
+        },
+        attendances: {
+          where: { tenantId },
+          include: {
+            attendanceSession: true,
+          },
+          orderBy: { attendanceSession: { date: 'desc' } },
+          take: 100,
+        }
+      }
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student record not found.');
+    }
+
+    // 1. Fetch Lifecycle StatusHistory
+    const statusHistories = await this.prisma.statusHistory.findMany({
+      where: {
+        tenantId,
+        entityType: 'STUDENT_LIFECYCLE',
+        entityId: studentId,
+      },
+      include: {
+        updatedBy: {
+          select: { name: true, email: true, role: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // 2. Fetch ActivityLogs (Promotions, updates)
+    const activityLogs = await this.prisma.activityLog.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { entityId: studentId },
+          { userId: student.userId }
+        ]
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    // 3. Fetch Homework Submissions
+    const homeworkSubmissions = await this.prisma.activityLog.findMany({
+      where: {
+        tenantId,
+        action: 'SUBMIT_ASSIGNMENT',
+        entityName: 'Homework',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const studentHomeworks = homeworkSubmissions
+      .filter((log) => {
+        try {
+          const detail = JSON.parse(log.details || '{}');
+          return detail.studentId === studentId;
+        } catch {
+          return false;
+        }
+      })
+      .map((log) => {
+        let detail: any = {};
+        try {
+          detail = JSON.parse(log.details || '{}');
+        } catch {}
+        return {
+          id: log.id,
+          homeworkId: log.entityId,
+          fileName: detail.fileName || 'Attachment',
+          fileUrl: detail.fileUrl || '',
+          submittedAt: log.createdAt,
+        };
+      });
+
+    // 4. Attendance Aggregates
+    const allAttendance = await this.prisma.attendance.findMany({
+      where: { studentId, tenantId },
+      select: { status: true }
+    });
+    const totalSessions = allAttendance.length;
+    const presentSessions = allAttendance.filter(a => a.status === 'PRESENT').length;
+    const absentSessions = allAttendance.filter(a => a.status === 'ABSENT').length;
+    const attendancePercentage = totalSessions > 0 ? Math.round((presentSessions / totalSessions) * 100) : 100;
+
+    // 5. Complaints
+    const complaints = await this.prisma.complaint.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { submittedById: student.userId },
+          ...(student.parentProfile?.userId ? [{ submittedById: student.parentProfile.userId }] : []),
+          ...(student.classSectionId ? [{ classSectionId: student.classSectionId }] : [])
+        ]
+      },
+      include: {
+        submittedBy: { select: { name: true, role: true } },
+        academicYear: { select: { name: true } }
+      },
+      orderBy: { id: 'desc' },
+      take: 20,
+    });
+
+    // Parse status history remarks
+    const parsedHistories = statusHistories.map((sh) => {
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(sh.remarks || '{}');
+      } catch {
+        parsed = { notes: sh.remarks };
+      }
+      return {
+        id: sh.id,
+        currentStatus: sh.currentStatus,
+        previousStatus: sh.previousStatus,
+        date: sh.createdAt,
+        updatedBy: sh.updatedBy?.name || 'Administrator',
+        details: parsed,
+      };
+    });
+
+    return {
+      profile: {
+        id: student.id,
+        userId: student.userId,
+        name: student.user.name,
+        email: student.user.email,
+        phone: student.user.phone,
+        rollNo: student.rollNo || '—',
+        avatarUrl: student.user.avatarUrl || student.profilePhotoUrl || null,
+        fatherName: student.fatherName || '—',
+        motherName: student.motherName || '—',
+        aadharNo: student.aadharNo || '—',
+        fatherPhone: student.fatherPhone || '—',
+        motherPhone: student.motherPhone || '—',
+        guardianPhone: student.guardianPhone || '—',
+        isActive: student.user.isActive,
+        currentClass: student.classSection ? `${student.classSection.class.name} - ${student.classSection.section.name}` : 'Not Enrolled (Former/Inactive)',
+        parentName: student.parentProfile?.user?.name || student.fatherName || '—',
+      },
+      lifecycleHistories: parsedHistories,
+      activityLogs: activityLogs.map(l => ({
+        id: l.id,
+        action: l.action,
+        entityName: l.entityName,
+        details: l.details,
+        date: l.createdAt,
+      })),
+      academicHistory: student.opportunities.map(opp => ({
+        id: opp.id,
+        academicYear: opp.academicYear?.name || '—',
+        stage: opp.stageName,
+        date: opp.createdAt,
+        totalFees: opp.opportunityLineItems.reduce((s, i) => s + (Number(i.unitPrice) * Number(i.quantity)), 0),
+      })),
+      attendance: {
+        totalSessions,
+        presentSessions,
+        absentSessions,
+        attendancePercentage,
+        recentRecords: student.attendances.map(a => ({
+          id: a.id,
+          date: a.attendanceSession.date,
+          status: a.status,
+          reason: a.reason,
+        }))
+      },
+      examMarks: student.examMarks.map(em => ({
+        id: em.id,
+        examName: em.exam.name,
+        examDate: em.exam.date,
+        subjectName: em.subject.name,
+        subjectType: em.subjectType || 'Theory',
+        marksObtained: Number(em.marksObtained),
+        remarks: em.remarks || '—',
+      })),
+      homeworkSubmissions: studentHomeworks,
+      feeInvoices: student.invoices.map(inv => ({
+        id: inv.id,
+        invoiceDate: inv.invoiceDate,
+        dueDate: inv.dueDate,
+        totalAmount: Number(inv.totalAmount),
+        paidAmount: Number(inv.paidAmount),
+        remainingBalance: Number(inv.remainingBalance),
+        status: inv.status,
+        academicYear: inv.opportunity?.academicYear?.name || '—',
+        items: inv.invoiceItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          amount: Number(item.amount),
+        }))
+      })),
+      complaints: complaints.map(c => ({
+        id: c.id,
+        title: c.title,
+        description: c.description,
+        status: c.status,
+        category: c.category,
+        adminReply: c.adminReply,
+        academicYear: c.academicYear?.name || '—',
+      }))
+    };
+  }
 }
 
 function getNextClass(currentClass: string): string {

@@ -358,7 +358,17 @@ export class TenantsService {
 
     const receipt = `RCPT_${Date.now()}`;
     const instance = new Razorpay({ key_id: keyId, key_secret: keySecret });
-    const order = await instance.orders.create({ amount: amountPaise, currency: 'INR', receipt });
+    const order = await instance.orders.create({
+      amount: amountPaise,
+      currency: 'INR',
+      receipt,
+      notes: {
+        tenantId,
+        planCode: planDef.code,
+        billingMonths: String(planDef.durationMonths),
+        priceInINR: String(amountRs),
+      },
+    });
     const orderId = order.id as string;
 
     // Store PENDING SubscriptionPayment

@@ -925,6 +925,168 @@ export class TeacherPortalService {
     return { success: true };
   }
 
+  async getHomeworkSubmissions(userId: string, tenantId: string, homeworkId: string) {
+    const homework = await this.prisma.homework.findUnique({
+      where: { id: homeworkId },
+      include: {
+        classSection: {
+          include: {
+            class: true,
+            section: true,
+          }
+        },
+        subject: true,
+        teacher: {
+          include: {
+            user: { select: { name: true, email: true } }
+          }
+        }
+      }
+    });
+
+    if (!homework || homework.tenantId !== tenantId) {
+      throw new NotFoundException('Homework assignment not found.');
+    }
+
+    // Verify teacher or admin access
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user && user.role === Role.TEACHER) {
+      const staff = await this.getStaffProfile(userId, tenantId);
+      if (staff && homework.teacherId !== staff.id) {
+        await this.verifyTeacherAssignment(staff.id, homework.classSectionId);
+      }
+    }
+
+    // Fetch all enrolled students in this class section
+    const students = await this.prisma.studentProfile.findMany({
+      where: {
+        classSectionId: homework.classSectionId,
+        tenantId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            avatarUrl: true,
+          }
+        },
+        parentProfile: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+              }
+            }
+          }
+        }
+      },
+      orderBy: [
+        { rollNo: 'asc' },
+        { user: { name: 'asc' } }
+      ]
+    });
+
+    // Fetch all submissions recorded for this homework in this tenant
+    const submissionLogs = await this.prisma.activityLog.findMany({
+      where: {
+        tenantId,
+        action: 'SUBMIT_ASSIGNMENT',
+        entityName: 'Homework',
+        entityId: homeworkId,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const studentSubmissions = students.map((student) => {
+      // Find logs matching this studentId
+      const matchedLogs = submissionLogs.filter((log) => {
+        try {
+          const detail = JSON.parse(log.details || '{}');
+          return detail.studentId === student.id;
+        } catch {
+          return false;
+        }
+      });
+
+      const isCompleted = matchedLogs.length > 0;
+      let submissionData: any = null;
+
+      if (isCompleted) {
+        const latestLog = matchedLogs[0];
+        let parsedDetail: any = {};
+        try {
+          parsedDetail = JSON.parse(latestLog.details || '{}');
+        } catch {
+          parsedDetail = {};
+        }
+
+        submissionData = {
+          submissionId: latestLog.id,
+          fileName: parsedDetail.fileName || 'Attachment',
+          fileUrl: parsedDetail.fileUrl || '',
+          submittedAt: latestLog.createdAt,
+          submissionCount: matchedLogs.length,
+          isResubmitted: matchedLogs.length > 1,
+          submissionStatus: matchedLogs.length > 1 ? 'Resubmitted' : 'Completed',
+        };
+      }
+
+      // Format parent phone cleanly
+      let parentName = student.fatherName || student.motherName || student.parentProfile?.user?.name || 'N/A';
+      let parentPhone = student.fatherPhone || student.motherPhone || student.parentProfile?.user?.phone || 'N/A';
+      if (parentPhone && parentPhone.includes('-')) {
+        const parts = parentPhone.split('-');
+        const lastPart = parts[parts.length - 1];
+        if (/^\d{7,15}$/.test(lastPart)) parentPhone = lastPart;
+      }
+
+      return {
+        studentId: student.id,
+        name: student.user.name,
+        rollNo: student.rollNo || '—',
+        avatarUrl: student.user.avatarUrl || student.profilePhotoUrl || null,
+        parentName,
+        parentPhone,
+        status: isCompleted ? 'Completed' : 'Incomplete',
+        submitted: isCompleted,
+        submissionStatus: isCompleted ? (submissionData?.submissionStatus || 'Completed') : 'Incomplete',
+        submission: submissionData,
+      };
+    });
+
+    const completedCount = studentSubmissions.filter((s) => s.submitted).length;
+    const totalCount = studentSubmissions.length;
+    const incompleteCount = totalCount - completedCount;
+
+    return {
+      homework: {
+        id: homework.id,
+        title: homework.title,
+        description: homework.description,
+        dueDate: homework.dueDate,
+        assignmentType: homework.assignmentType,
+        maxMarks: Number(homework.maxMarks),
+        status: homework.status,
+        className: `${homework.classSection.class.name} - ${homework.classSection.section.name}`,
+        subjectName: homework.subject.name,
+        teacherName: homework.teacher?.user?.name || 'Teacher',
+        attachments: homework.attachments || [],
+      },
+      summary: {
+        totalStudents: totalCount,
+        completed: completedCount,
+        incomplete: incompleteCount,
+        completionRate: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0,
+      },
+      students: studentSubmissions,
+    };
+  }
+
   // 8. Announcements CRUD
   async getAnnouncements(userId: string, tenantId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });

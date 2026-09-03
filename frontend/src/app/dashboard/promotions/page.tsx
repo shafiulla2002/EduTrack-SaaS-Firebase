@@ -4,8 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, ArrowLeft, Check, CheckCircle, Plus, X, 
   ChevronLeft, User, Calendar, DollarSign, AlertCircle, 
-  Award, Users, ArrowRight, Shield, RefreshCw
+  Award, Users, ArrowRight, Shield, RefreshCw,
+  GraduationCap, UserX, UserCheck, History, Clock, 
+  FileText, ChevronRight, Loader2, BookOpen, AlertTriangle, ExternalLink, ArrowUpRight, Eye
 } from 'lucide-react';
+import Drawer from '@/components/Drawer';
 import { api } from '@/lib/api';
 
 const CLASS_ORDER = [
@@ -89,7 +92,44 @@ export default function StudentPromotionPage() {
   // Post-Promotion Summary Report State
   const [reportData, setReportData] = useState<any>(null);
 
-  // Load Academic Years
+  // Sections cache for re-enrollment
+  const [dbSections, setDbSections] = useState<any[]>([]);
+
+  // ── Student Lifecycle States ──
+  const [isLifecycleDrawerOpen, setIsLifecycleDrawerOpen] = useState(false);
+  const [lifecycleTab, setLifecycleTab] = useState<'actions' | 'former' | 'reenroll'>('actions');
+  
+  // Tab 1: Lifecycle Actions
+  const [selectedStudentForLifecycle, setSelectedStudentForLifecycle] = useState<any | null>(null);
+  const [lifecycleActionType, setLifecycleActionType] = useState<'LEFT' | 'TRANSFERRED' | 'WITHDRAWN' | 'GRADUATED'>('LEFT');
+  const [lifecycleReason, setLifecycleReason] = useState('Left School');
+  const [lifecycleEffectiveDate, setLifecycleEffectiveDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [lifecycleNotes, setLifecycleNotes] = useState('');
+  const [lifecycleSubmitting, setLifecycleSubmitting] = useState(false);
+  const [lifecycleStudentSearch, setLifecycleStudentSearch] = useState('');
+
+  // Tab 2: Former / Historical Students
+  const [historicalStudents, setHistoricalStudents] = useState<any[]>([]);
+  const [loadingHistorical, setLoadingHistorical] = useState(false);
+  const [historicalStatusFilter, setHistoricalStatusFilter] = useState('ALL');
+  const [historicalSearchQuery, setHistoricalSearchQuery] = useState('');
+
+  // Tab 3: Re-enroll Student
+  const [studentToReEnroll, setStudentToReEnroll] = useState<any | null>(null);
+  const [reEnrollYearId, setReEnrollYearId] = useState('');
+  const [reEnrollClassId, setReEnrollClassId] = useState('');
+  const [reEnrollSectionId, setReEnrollSectionId] = useState('');
+  const [reEnrollRollNo, setReEnrollRollNo] = useState('');
+  const [reEnrollNotes, setReEnrollNotes] = useState('');
+  const [reEnrollSubmitting, setReEnrollSubmitting] = useState(false);
+
+  // Complete Student History Modal
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [studentHistoryData, setStudentHistoryData] = useState<any | null>(null);
+  const [loadingStudentHistory, setLoadingStudentHistory] = useState(false);
+  const [historyActiveTab, setHistoryActiveTab] = useState<'overview' | 'timeline' | 'attendance' | 'exams' | 'homework' | 'fees' | 'complaints'>('overview');
+
+  // Load Academic Years & Classes & Sections
   useEffect(() => {
     const fetchYears = async () => {
       try {
@@ -129,9 +169,124 @@ export default function StudentPromotionPage() {
         console.error('Error fetching classes:', err);
       }
     };
+    const fetchSections = async () => {
+      try {
+        const res = await api.get('/academics/sections');
+        setDbSections(res.data || []);
+      } catch (err) {
+        console.error('Error fetching sections:', err);
+      }
+    };
     fetchYears();
     fetchClasses();
+    fetchSections();
   }, []);
+
+  const fetchHistoricalStudents = async () => {
+    setLoadingHistorical(true);
+    try {
+      const res = await api.get('/students/lifecycle/historical', {
+        params: {
+          status: historicalStatusFilter !== 'ALL' ? historicalStatusFilter : undefined,
+          search: historicalSearchQuery || undefined,
+        }
+      });
+      setHistoricalStudents(res.data || []);
+    } catch (err) {
+      console.error('Failed to load historical students:', err);
+    } finally {
+      setLoadingHistorical(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isLifecycleDrawerOpen && lifecycleTab === 'former') {
+      fetchHistoricalStudents();
+    }
+  }, [isLifecycleDrawerOpen, lifecycleTab, historicalStatusFilter]);
+
+  const handleApplyLifecycleStatus = async () => {
+    if (!selectedStudentForLifecycle) {
+      alert('Please select a student to update lifecycle status.');
+      return;
+    }
+    setLifecycleSubmitting(true);
+    try {
+      await api.post('/students/lifecycle/status', {
+        studentId: selectedStudentForLifecycle.id,
+        status: lifecycleActionType,
+        reason: lifecycleReason,
+        effectiveDate: lifecycleEffectiveDate,
+        lastClassName: selectedStudentForLifecycle.class,
+        lastSectionName: selectedStudentForLifecycle.section,
+        academicYearId: sourceYear,
+        notes: lifecycleNotes,
+      });
+
+      alert(`Student ${selectedStudentForLifecycle.name} has been marked as ${lifecycleActionType}.`);
+      setSelectedStudentForLifecycle(null);
+      setLifecycleNotes('');
+      await fetchCandidates();
+      if (lifecycleTab === 'former') {
+        await fetchHistoricalStudents();
+      }
+    } catch (err: any) {
+      console.error('Lifecycle update failed:', err);
+      alert(`Failed to update lifecycle status: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setLifecycleSubmitting(false);
+    }
+  };
+
+  const handleReEnrollSubmit = async () => {
+    if (!studentToReEnroll) {
+      alert('Please select a former student to re-enroll.');
+      return;
+    }
+    if (!reEnrollClassId || !reEnrollSectionId) {
+      alert('Please select target class and section.');
+      return;
+    }
+    setReEnrollSubmitting(true);
+    try {
+      await api.post('/students/lifecycle/re-enroll', {
+        studentId: studentToReEnroll.id,
+        targetYearId: reEnrollYearId || targetYear || sourceYear,
+        targetClassId: reEnrollClassId,
+        targetSectionId: reEnrollSectionId,
+        rollNo: reEnrollRollNo || undefined,
+        notes: reEnrollNotes,
+      });
+
+      alert(`Student ${studentToReEnroll.name} has been re-enrolled successfully!`);
+      setStudentToReEnroll(null);
+      setReEnrollRollNo('');
+      setReEnrollNotes('');
+      await fetchCandidates();
+      fetchHistoricalStudents();
+      setLifecycleTab('former');
+    } catch (err: any) {
+      console.error('Re-enrollment failed:', err);
+      alert(`Failed to re-enroll student: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setReEnrollSubmitting(false);
+    }
+  };
+
+  const openCompleteStudentHistory = async (studentId: string) => {
+    setIsHistoryModalOpen(true);
+    setLoadingStudentHistory(true);
+    setHistoryActiveTab('overview');
+    try {
+      const res = await api.get(`/students/${studentId}/complete-history`);
+      setStudentHistoryData(res.data);
+    } catch (err) {
+      console.error('Failed to load complete student history:', err);
+      alert('Failed to load complete student history.');
+    } finally {
+      setLoadingStudentHistory(false);
+    }
+  };
 
   // Fetch Candidates
   const fetchCandidates = async () => {
@@ -415,6 +570,21 @@ export default function StudentPromotionPage() {
             Reassign classes, sections, and reset fee ledgers for students entering the next academic year.
           </p>
         </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setIsLifecycleDrawerOpen(true);
+              setLifecycleTab('actions');
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer"
+            title="Manage Student Status / Student Lifecycle"
+          >
+            <Users className="w-4 h-4 text-blue-400" />
+            <span>Student Lifecycle</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Layout Grid */}
@@ -562,6 +732,19 @@ export default function StudentPromotionPage() {
                   }
                 </>
               )}
+            </button>
+
+            {/* Student Lifecycle Action Shortcut */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsLifecycleDrawerOpen(true);
+                setLifecycleTab('actions');
+              }}
+              className="w-full py-2.5 rounded-xl font-bold text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+            >
+              <Users className="w-3.5 h-3.5 text-blue-600" />
+              <span>Manage Student Status / Lifecycle</span>
             </button>
           </div>
         </div>
@@ -713,15 +896,30 @@ export default function StudentPromotionPage() {
                             </div>
                           </div>
                           
-                          {/* Financial validation check */}
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border flex items-center gap-1.5 ${
-                            hasDue 
-                              ? 'bg-amber-50 text-amber-600 border-amber-200' 
-                              : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                          }`}>
-                            <span className={`w-1 h-1 rounded-full ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                            {s.financialStatus || (hasDue ? `₹${s.balanceDue} Due` : 'Paid Clear')}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {/* Financial validation check */}
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border flex items-center gap-1.5 ${
+                              hasDue 
+                                ? 'bg-amber-50 text-amber-600 border-amber-200' 
+                                : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                            }`}>
+                              <span className={`w-1 h-1 rounded-full ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                              {s.financialStatus || (hasDue ? `₹${s.balanceDue} Due` : 'Paid Clear')}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedStudentForLifecycle(s);
+                                setIsLifecycleDrawerOpen(true);
+                                setLifecycleTab('actions');
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                              title="Manage Student Lifecycle Status"
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -1074,6 +1272,950 @@ export default function StudentPromotionPage() {
               )}
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────────────────────────────────────────────────────────────── */}
+      {/* ── STUDENT LIFECYCLE MANAGEMENT DRAWER ─────────────────────────────────── */}
+      {/* ────────────────────────────────────────────────────────────────────────── */}
+      <Drawer
+        open={isLifecycleDrawerOpen}
+        onClose={() => setIsLifecycleDrawerOpen(false)}
+        title={
+          <div className="flex items-center gap-2">
+            <Users className="w-5 h-5 text-[#2E5BFF]" />
+            <span>Student Academic Lifecycle</span>
+          </div>
+        }
+        subtitle="Manage student departure, transfers, withdrawals, Class 10 graduation, re-enrollment, and view permanent records."
+        size="2xl"
+      >
+        <div className="flex flex-col h-full bg-slate-50/50">
+          {/* Navigation Sub-Tabs */}
+          <div className="flex border-b border-slate-200 bg-white px-6 pt-3 gap-6">
+            <button
+              type="button"
+              onClick={() => setLifecycleTab('actions')}
+              className={`pb-3 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+                lifecycleTab === 'actions'
+                  ? 'border-[#2E5BFF] text-[#2E5BFF]'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>Update Student Status</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLifecycleTab('former')}
+              className={`pb-3 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+                lifecycleTab === 'former'
+                  ? 'border-[#2E5BFF] text-[#2E5BFF]'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <History className="w-4 h-4" />
+              <span>Former & Historical Students</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setLifecycleTab('reenroll')}
+              className={`pb-3 text-xs font-bold transition-all cursor-pointer border-b-2 flex items-center gap-1.5 ${
+                lifecycleTab === 'reenroll'
+                  ? 'border-[#2E5BFF] text-[#2E5BFF]'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Re-enroll Returning Student</span>
+            </button>
+          </div>
+
+          {/* TAB 1: UPDATE STUDENT STATUS */}
+          {lifecycleTab === 'actions' && (
+            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+              {/* Action Type Selector */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  Select Lifecycle Action
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {[
+                    { id: 'LEFT', label: 'Not Promoting / Left', icon: UserX, desc: 'Leaving school' },
+                    { id: 'TRANSFERRED', label: 'Transfer Student', icon: ArrowUpRight, desc: 'Moving to other school' },
+                    { id: 'WITHDRAWN', label: 'Withdraw Student', icon: AlertTriangle, desc: 'Voluntary withdrawal' },
+                    { id: 'GRADUATED', label: 'Graduate / Class 10', icon: GraduationCap, desc: 'Higher education' },
+                  ].map((act) => {
+                    const Icon = act.icon;
+                    const isCur = lifecycleActionType === act.id;
+                    return (
+                      <button
+                        key={act.id}
+                        type="button"
+                        onClick={() => {
+                          setLifecycleActionType(act.id as any);
+                          if (act.id === 'LEFT') setLifecycleReason('Left School');
+                          if (act.id === 'TRANSFERRED') setLifecycleReason('Transferred to another school');
+                          if (act.id === 'WITHDRAWN') setLifecycleReason('Parent withdrawal request');
+                          if (act.id === 'GRADUATED') setLifecycleReason('Completed Secondary Education (Class 10)');
+                        }}
+                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          isCur
+                            ? 'bg-blue-50/80 border-[#2E5BFF] shadow-xs ring-1 ring-[#2E5BFF]'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <Icon className={`w-5 h-5 mb-2 ${isCur ? 'text-[#2E5BFF]' : 'text-slate-400'}`} />
+                        <div>
+                          <div className={`text-xs font-bold ${isCur ? 'text-blue-950' : 'text-slate-800'}`}>{act.label}</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">{act.desc}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Student Picker */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex justify-between items-center">
+                  <span>Selected Student</span>
+                  {selectedStudentForLifecycle && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStudentForLifecycle(null)}
+                      className="text-[11px] text-blue-600 hover:underline font-bold"
+                    >
+                      Change Student
+                    </button>
+                  )}
+                </label>
+
+                {selectedStudentForLifecycle ? (
+                  <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2E5BFF] flex items-center justify-center font-bold text-sm">
+                        {selectedStudentForLifecycle.name ? selectedStudentForLifecycle.name[0] : 'S'}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm">{selectedStudentForLifecycle.name}</h4>
+                        <p className="text-xs text-slate-500 font-mono">
+                          Roll: {selectedStudentForLifecycle.rollNo || '—'} • Class: {selectedStudentForLifecycle.class} ({selectedStudentForLifecycle.section})
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-[#2E5BFF] border border-blue-100">
+                      Active Candidate
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                      <input
+                        type="text"
+                        placeholder="Search student by name or roll number from current session..."
+                        value={lifecycleStudentSearch}
+                        onChange={(e) => setLifecycleStudentSearch(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-800 outline-none focus:border-[#2E5BFF]"
+                      />
+                    </div>
+                    <div className="max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl divide-y divide-slate-100 shadow-2xs">
+                      {studentsState
+                        .filter(s => 
+                          !lifecycleStudentSearch ||
+                          s.name.toLowerCase().includes(lifecycleStudentSearch.toLowerCase()) ||
+                          s.rollNo?.toString().includes(lifecycleStudentSearch)
+                        )
+                        .slice(0, 8)
+                        .map(s => (
+                          <div
+                            key={s.id}
+                            onClick={() => setSelectedStudentForLifecycle(s)}
+                            className="p-3 hover:bg-slate-50 flex justify-between items-center cursor-pointer transition-colors"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-700">
+                                {s.name[0]}
+                              </div>
+                              <div>
+                                <div className="text-xs font-bold text-slate-800">{s.name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  {s.class} - {s.section} • Roll: {s.rollNo || '—'}
+                                </div>
+                              </div>
+                            </div>
+                            <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">
+                              Select
+                            </span>
+                          </div>
+                        ))}
+                      {studentsState.length === 0 && (
+                        <div className="p-4 text-center text-xs text-slate-400 italic">
+                          No active students found in current selection.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Reason & Effective Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Reason / Departure Cause
+                  </label>
+                  <select
+                    value={lifecycleReason}
+                    onChange={(e) => setLifecycleReason(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                  >
+                    {lifecycleActionType === 'LEFT' && (
+                      <>
+                        <option value="Left School">Left School (General)</option>
+                        <option value="Relocated to another city">Relocated to another city</option>
+                        <option value="Financial difficulties">Financial difficulties</option>
+                        <option value="Personal reasons">Personal reasons</option>
+                        <option value="Other">Other</option>
+                      </>
+                    )}
+                    {lifecycleActionType === 'TRANSFERRED' && (
+                      <>
+                        <option value="Transferred to another school">Transferred to another school</option>
+                        <option value="Parent job transfer">Parent job transfer</option>
+                        <option value="Board syllabus switch (CBSE / ICSE / State)">Board syllabus switch</option>
+                        <option value="Moving to boarding school">Moving to boarding school</option>
+                        <option value="Other">Other</option>
+                      </>
+                    )}
+                    {lifecycleActionType === 'WITHDRAWN' && (
+                      <>
+                        <option value="Parent withdrawal request">Parent withdrawal request</option>
+                        <option value="Medical reasons">Medical reasons</option>
+                        <option value="Disciplinary withdrawal">Disciplinary withdrawal</option>
+                        <option value="Long absence without leave">Long absence without leave</option>
+                        <option value="Other">Other</option>
+                      </>
+                    )}
+                    {lifecycleActionType === 'GRADUATED' && (
+                      <>
+                        <option value="Completed Secondary Education (Class 10)">Completed Secondary Education (Class 10)</option>
+                        <option value="Higher Education College Enrollment">Higher Education College Enrollment</option>
+                        <option value="Graduated Senior Secondary (Class 12)">Graduated Senior Secondary (Class 12)</option>
+                        <option value="Vocational Career Transition">Vocational Career Transition</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Effective Date
+                  </label>
+                  <input
+                    type="date"
+                    value={lifecycleEffectiveDate}
+                    onChange={(e) => setLifecycleEffectiveDate(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                  />
+                </div>
+              </div>
+
+              {/* Administrative Remarks */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  Administrative Notes / Remarks
+                </label>
+                <textarea
+                  rows={3}
+                  value={lifecycleNotes}
+                  onChange={(e) => setLifecycleNotes(e.target.value)}
+                  placeholder="Add transfer certificate details, clearance notes, or graduation remarks..."
+                  className="w-full bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                />
+              </div>
+
+              {/* Notice Box */}
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs text-amber-800 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  Zero Data Deletion Policy
+                </div>
+                <p className="text-[11px] text-amber-700 leading-relaxed font-medium">
+                  Marking a student as {lifecycleActionType} removes them from active promotion batches and current class lists.
+                  All attendance records, past marks, invoices, and homework submissions remain permanently preserved in historical archives.
+                </p>
+              </div>
+
+              {/* Apply Button */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleApplyLifecycleStatus}
+                  disabled={lifecycleSubmitting || !selectedStudentForLifecycle}
+                  className={`w-full py-3.5 rounded-xl font-bold text-xs text-white bg-[#2E5BFF] hover:bg-blue-600 shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    lifecycleSubmitting || !selectedStudentForLifecycle ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg'
+                  }`}
+                >
+                  {lifecycleSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Applying Status...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Confirm & Mark Student as {lifecycleActionType}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: FORMER / HISTORICAL STUDENTS */}
+          {lifecycleTab === 'former' && (
+            <div className="p-6 space-y-4 flex-1 flex flex-col min-h-0">
+              {/* Search & Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
+                <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto">
+                  {['ALL', 'LEFT', 'TRANSFERRED', 'WITHDRAWN', 'GRADUATED', 'ACTIVE'].map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setHistoricalStatusFilter(st)}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        historicalStatusFilter === st
+                          ? 'bg-white text-slate-900 shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {st === 'ALL' ? 'All' : st}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search by student, roll no, parent phone..."
+                    value={historicalSearchQuery}
+                    onChange={(e) => setHistoricalSearchQuery(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs outline-none focus:border-[#2E5BFF]"
+                  />
+                </div>
+              </div>
+
+              {/* Former Students Table */}
+              <div className="flex-1 overflow-y-auto bg-white rounded-2xl border border-slate-200 shadow-2xs">
+                {loadingHistorical ? (
+                  <div className="flex flex-col items-center justify-center py-24 space-y-2">
+                    <Loader2 className="w-8 h-8 text-[#2E5BFF] animate-spin" />
+                    <p className="text-xs text-slate-400 font-semibold">Loading historical student records...</p>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        <th className="py-3 px-4">Student</th>
+                        <th className="py-3 px-3">Lifecycle Status</th>
+                        <th className="py-3 px-3">Last Class</th>
+                        <th className="py-3 px-3">Effective Date</th>
+                        <th className="py-3 px-3">Reason</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {historicalStudents
+                        .filter(s =>
+                          !historicalSearchQuery ||
+                          s.name.toLowerCase().includes(historicalSearchQuery.toLowerCase()) ||
+                          s.rollNo?.toLowerCase().includes(historicalSearchQuery.toLowerCase()) ||
+                          s.parentPhone?.includes(historicalSearchQuery)
+                        )
+                        .map((s) => (
+                          <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-700">
+                                  {s.name[0]}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-slate-800">{s.name}</div>
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    Roll: {s.rollNo} • Phone: {s.parentPhone}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                                s.lifecycleStatus === 'GRADUATED' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                                s.lifecycleStatus === 'TRANSFERRED' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                s.lifecycleStatus === 'WITHDRAWN' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                s.lifecycleStatus === 'LEFT' ? 'bg-slate-100 text-slate-700 border-slate-300' :
+                                'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}>
+                                {s.lifecycleStatus}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-medium text-slate-600">
+                              {s.lastClass} - {s.lastSection}
+                            </td>
+                            <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
+                              {s.effectiveDate ? new Date(s.effectiveDate).toLocaleDateString() : '—'}
+                            </td>
+                            <td className="py-3 px-3 text-slate-600 truncate max-w-[140px]">
+                              {s.reason || '—'}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => openCompleteStudentHistory(s.id)}
+                                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                                  title="View Complete History"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>History</span>
+                                </button>
+                                {!s.isActive && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setStudentToReEnroll(s);
+                                      setLifecycleTab('reenroll');
+                                      if (academicYears.length > 0) {
+                                        const curActive = academicYears.find(y => y.isActive);
+                                        if (curActive) setReEnrollYearId(curActive.id);
+                                      }
+                                    }}
+                                    className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#2E5BFF] border border-blue-200 rounded-lg font-bold text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="Re-enroll returning student"
+                                  >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    <span>Re-enroll</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      {historicalStudents.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-16 text-center text-slate-400 italic">
+                            No student lifecycle records found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: RE-ENROLL RETURNING STUDENT */}
+          {lifecycleTab === 'reenroll' && (
+            <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-xs text-blue-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <RefreshCw className="w-4 h-4 text-blue-600" />
+                  Re-enrollment Architecture
+                </div>
+                <p className="text-[11px] text-blue-700 leading-relaxed font-medium">
+                  When a former student returns, their original student profile and admission history are reused. No duplicate records are created, and their entire previous academic, attendance, and fee history is preserved.
+                </p>
+              </div>
+
+              {/* Student Selection */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  Select Former Student
+                </label>
+                {studentToReEnroll ? (
+                  <div className="bg-white p-4 rounded-2xl border border-blue-200 shadow-xs flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#2E5BFF] flex items-center justify-center font-bold">
+                        {studentToReEnroll.name[0]}
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-800 text-sm">{studentToReEnroll.name}</div>
+                        <div className="text-xs text-slate-500 font-mono">
+                          Former: {studentToReEnroll.lifecycleStatus} • Last Class: {studentToReEnroll.lastClass} - {studentToReEnroll.lastSection}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStudentToReEnroll(null)}
+                      className="text-xs text-blue-600 hover:underline font-bold cursor-pointer"
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    onChange={(e) => {
+                      const found = historicalStudents.find(s => s.id === e.target.value);
+                      if (found) setStudentToReEnroll(found);
+                    }}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                  >
+                    <option value="">-- Choose from Former Students --</option>
+                    {historicalStudents
+                      .filter(s => !s.isActive)
+                      .map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.lifecycleStatus} from {s.lastClass}-{s.lastSection})
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Target Enrollment Information */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Target Academic Year
+                  </label>
+                  <select
+                    value={reEnrollYearId || targetYear || sourceYear}
+                    onChange={(e) => setReEnrollYearId(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                  >
+                    {academicYears.map(y => (
+                      <option key={y.id} value={y.id}>{y.name} {y.isActive ? '(Active)' : ''}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Target Class
+                  </label>
+                  <select
+                    value={reEnrollClassId}
+                    onChange={(e) => setReEnrollClassId(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                  >
+                    <option value="">-- Select Class --</option>
+                    {dbClasses.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Target Section
+                  </label>
+                  <select
+                    value={reEnrollSectionId}
+                    onChange={(e) => setReEnrollSectionId(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                  >
+                    <option value="">-- Select Section --</option>
+                    {dbSections.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Roll Number & Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Roll Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Auto-assigned if blank"
+                    value={reEnrollRollNo}
+                    onChange={(e) => setReEnrollRollNo(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                    Re-enrollment Notes
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Reason for return, previous clearing certificates, remarks..."
+                    value={reEnrollNotes}
+                    onChange={(e) => setReEnrollNotes(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-[#2E5BFF]"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Re-enrollment */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleReEnrollSubmit}
+                  disabled={reEnrollSubmitting || !studentToReEnroll || !reEnrollClassId || !reEnrollSectionId}
+                  className={`w-full py-3.5 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    reEnrollSubmitting || !studentToReEnroll || !reEnrollClassId || !reEnrollSectionId
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'hover:shadow-lg'
+                  }`}
+                >
+                  {reEnrollSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Re-enrolling Student...
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="w-4 h-4" />
+                      Re-enroll & Activate Student in New Class
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Drawer>
+
+      {/* ────────────────────────────────────────────────────────────────────────── */}
+      {/* ── COMPLETE 360° STUDENT HISTORY MODAL ─────────────────────────────────── */}
+      {/* ────────────────────────────────────────────────────────────────────────── */}
+      {isHistoryModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 text-[#2E5BFF] flex items-center justify-center font-black text-sm">
+                  {studentHistoryData?.profile?.name ? studentHistoryData.profile.name[0] : 'S'}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900 leading-tight">
+                      {studentHistoryData?.profile?.name || 'Loading Student...'}
+                    </h3>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
+                      studentHistoryData?.profile?.isActive
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {studentHistoryData?.profile?.isActive ? 'Active' : 'Former'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    Roll: {studentHistoryData?.profile?.rollNo} • Current/Last: {studentHistoryData?.profile?.currentClass}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsHistoryModalOpen(false)}
+                className="p-2 rounded-xl hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Sub-tabs header */}
+            <div className="flex border-b border-slate-200 bg-white px-6 overflow-x-auto gap-4 text-xs font-bold">
+              {[
+                { id: 'overview', label: 'Overview' },
+                { id: 'timeline', label: 'Lifecycle Timeline' },
+                { id: 'attendance', label: 'Attendance' },
+                { id: 'exams', label: 'Exams & Marks' },
+                { id: 'homework', label: 'Homework' },
+                { id: 'fees', label: 'Fees & Invoices' },
+                { id: 'complaints', label: 'Complaints' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setHistoryActiveTab(tab.id as any)}
+                  className={`py-3 transition-colors cursor-pointer border-b-2 whitespace-nowrap ${
+                    historyActiveTab === tab.id
+                      ? 'border-[#2E5BFF] text-[#2E5BFF]'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+              {loadingStudentHistory ? (
+                <div className="py-24 flex flex-col items-center justify-center space-y-2">
+                  <Loader2 className="w-8 h-8 text-[#2E5BFF] animate-spin" />
+                  <p className="text-xs text-slate-400 font-semibold">Retrieving full 360° database records...</p>
+                </div>
+              ) : studentHistoryData ? (
+                <>
+                  {/* TAB: OVERVIEW */}
+                  {historyActiveTab === 'overview' && (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Parent Details</span>
+                          <div className="text-xs text-slate-700 font-semibold">
+                            <div>Father: {studentHistoryData.profile.fatherName}</div>
+                            <div>Mother: {studentHistoryData.profile.motherName}</div>
+                            <div>Phone: {studentHistoryData.profile.fatherPhone || studentHistoryData.profile.motherPhone}</div>
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Attendance Rate</span>
+                          <div className="text-2xl font-black text-slate-800">
+                            {studentHistoryData.attendance?.attendancePercentage}%
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            {studentHistoryData.attendance?.presentSessions} present / {studentHistoryData.attendance?.totalSessions} sessions
+                          </p>
+                        </div>
+
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Exams Completed</span>
+                          <div className="text-2xl font-black text-slate-800">
+                            {studentHistoryData.examMarks?.length || 0}
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-medium">Recorded subjects & tests</p>
+                        </div>
+                      </div>
+
+                      {/* Academic Year Enrollments */}
+                      <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Academic Year History</h4>
+                        <div className="divide-y divide-slate-100 text-xs">
+                          {studentHistoryData.academicHistory?.map((ah: any) => (
+                            <div key={ah.id} className="py-2.5 flex justify-between items-center">
+                              <span className="font-bold text-slate-700">{ah.academicYear}</span>
+                              <span className="text-slate-500 font-mono">Stage: {ah.stage}</span>
+                              <span className="font-bold text-slate-800">Total Fees: ₹{ah.totalFees?.toLocaleString()}</span>
+                            </div>
+                          ))}
+                          {(!studentHistoryData.academicHistory || studentHistoryData.academicHistory.length === 0) && (
+                            <div className="py-4 text-center text-slate-400 italic">No previous year opportunities recorded.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB: TIMELINE */}
+                  {historyActiveTab === 'timeline' && (
+                    <div className="space-y-3">
+                      <div className="bg-white p-4 rounded-2xl border border-slate-200 divide-y divide-slate-100">
+                        {studentHistoryData.lifecycleHistories?.map((lh: any) => (
+                          <div key={lh.id} className="py-3 flex items-start gap-3">
+                            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 mt-1.5 shrink-0" />
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-bold text-slate-800">
+                                  Status updated to <span className="text-blue-600">{lh.currentStatus}</span>
+                                </span>
+                                <span className="text-slate-400 font-mono text-[10px]">
+                                  {new Date(lh.date).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500">
+                                Reason: {lh.details?.reason || '—'} {lh.details?.lastClass && `(From ${lh.details.lastClass})`}
+                              </div>
+                              {lh.details?.notes && (
+                                <div className="text-[10px] text-slate-400 italic">Notes: {lh.details.notes}</div>
+                              )}
+                              <div className="text-[9px] text-slate-400">Updated by: {lh.updatedBy}</div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {studentHistoryData.activityLogs?.map((al: any) => (
+                          <div key={al.id} className="py-3 flex items-start gap-3">
+                            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                            <div className="flex-1 space-y-0.5">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-bold text-slate-800">{al.action}</span>
+                                <span className="text-slate-400 font-mono text-[10px]">
+                                  {new Date(al.date).toLocaleString()}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500">{al.details}</div>
+                            </div>
+                          </div>
+                        ))}
+
+                        {(!studentHistoryData.lifecycleHistories?.length && !studentHistoryData.activityLogs?.length) && (
+                          <div className="py-8 text-center text-xs text-slate-400 italic">
+                            No lifecycle transitions recorded yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB: ATTENDANCE */}
+                  {historyActiveTab === 'attendance' && (
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase">
+                            <th className="py-2.5 px-4">Date</th>
+                            <th className="py-2.5 px-3">Status</th>
+                            <th className="py-2.5 px-3">Reason / Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {studentHistoryData.attendance?.recentRecords?.map((att: any) => (
+                            <tr key={att.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-4 font-mono">{new Date(att.date).toLocaleDateString()}</td>
+                              <td className="py-2.5 px-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  att.status === 'PRESENT' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                                }`}>
+                                  {att.status}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-500">{att.reason || '—'}</td>
+                            </tr>
+                          ))}
+                          {(!studentHistoryData.attendance?.recentRecords?.length) && (
+                            <tr>
+                              <td colSpan={3} className="py-8 text-center text-slate-400 italic">No attendance records found.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* TAB: EXAMS & MARKS */}
+                  {historyActiveTab === 'exams' && (
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase">
+                            <th className="py-2.5 px-4">Exam</th>
+                            <th className="py-2.5 px-3">Subject</th>
+                            <th className="py-2.5 px-3">Type</th>
+                            <th className="py-2.5 px-3">Marks Obtained</th>
+                            <th className="py-2.5 px-3">Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {studentHistoryData.examMarks?.map((em: any) => (
+                            <tr key={em.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-4 font-bold text-slate-800">{em.examName}</td>
+                              <td className="py-2.5 px-3">{em.subjectName}</td>
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">{em.subjectType}</td>
+                              <td className="py-2.5 px-3 font-black text-blue-600">{em.marksObtained}</td>
+                              <td className="py-2.5 px-3 text-slate-500">{em.remarks}</td>
+                            </tr>
+                          ))}
+                          {(!studentHistoryData.examMarks?.length) && (
+                            <tr>
+                              <td colSpan={5} className="py-8 text-center text-slate-400 italic">No exam records found.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* TAB: HOMEWORK */}
+                  {historyActiveTab === 'homework' && (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Submitted Homework</h4>
+                      <div className="divide-y divide-slate-100 text-xs">
+                        {studentHistoryData.homeworkSubmissions?.map((hw: any) => (
+                          <div key={hw.id} className="py-2.5 flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-[#2E5BFF]" />
+                              <span className="font-bold text-slate-700">{hw.fileName}</span>
+                            </div>
+                            <span className="text-slate-400 font-mono text-[10px]">
+                              {new Date(hw.submittedAt).toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                        {(!studentHistoryData.homeworkSubmissions?.length) && (
+                          <div className="py-8 text-center text-slate-400 italic">No homework submissions found.</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB: FEES & INVOICES */}
+                  {historyActiveTab === 'fees' && (
+                    <div className="space-y-4">
+                      {studentHistoryData.feeInvoices?.map((inv: any) => (
+                        <div key={inv.id} className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+                          <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                            <div>
+                              <span className="font-bold text-slate-800 text-xs">Invoice #{inv.id.substring(0, 8)}</span>
+                              <span className="text-slate-400 text-[10px] ml-2 font-mono">Session: {inv.academicYear}</span>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              inv.status === 'PAID' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                              {inv.status}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>Total: <strong>₹{inv.totalAmount.toLocaleString()}</strong></div>
+                            <div>Paid: <strong className="text-emerald-600">₹{inv.paidAmount.toLocaleString()}</strong></div>
+                            <div>Due: <strong className="text-amber-600">₹{inv.remainingBalance.toLocaleString()}</strong></div>
+                          </div>
+                        </div>
+                      ))}
+                      {(!studentHistoryData.feeInvoices?.length) && (
+                        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400 italic text-xs">
+                          No fee invoices on record.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB: COMPLAINTS */}
+                  {historyActiveTab === 'complaints' && (
+                    <div className="space-y-3">
+                      {studentHistoryData.complaints?.map((c: any) => (
+                        <div key={c.id} className="bg-white p-4 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
+                          <div className="flex justify-between items-center">
+                            <h5 className="font-bold text-slate-800">{c.title}</h5>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">
+                              {c.status}
+                            </span>
+                          </div>
+                          <p className="text-slate-500 text-[11px]">{c.description}</p>
+                          {c.adminReply && (
+                            <div className="bg-slate-50 p-2 rounded-xl text-[10px] text-slate-600 italic">
+                              Reply: {c.adminReply}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {(!studentHistoryData.complaints?.length) && (
+                        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-400 italic text-xs">
+                          No complaints recorded for this student.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
       )}

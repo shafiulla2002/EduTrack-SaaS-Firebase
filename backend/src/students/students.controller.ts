@@ -72,6 +72,48 @@ export class StudentsController {
     return this.studentsService.getParents();
   }
 
+  // ── Student Lifecycle Endpoints ──
+
+  @Post('lifecycle/status')
+  async updateLifecycleStatus(@Req() req: any, @Body() body: any) {
+    const actorUserId = req.user.id || req.user.sub;
+    return this.studentsService.updateStudentLifecycleStatus(actorUserId, body);
+  }
+
+  @Post('lifecycle/bulk-status')
+  async bulkUpdateLifecycleStatus(@Req() req: any, @Body() body: any) {
+    const actorUserId = req.user.id || req.user.sub;
+    return this.studentsService.bulkUpdateStudentLifecycleStatus(actorUserId, body);
+  }
+
+  @Get('lifecycle/historical')
+  async getHistoricalStudents(
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('academicYearId') academicYearId?: string,
+    @Query('className') className?: string,
+    @Query('sectionName') sectionName?: string,
+  ) {
+    return this.studentsService.getHistoricalStudents({
+      status,
+      search,
+      academicYearId,
+      className,
+      sectionName,
+    });
+  }
+
+  @Post('lifecycle/re-enroll')
+  async reEnrollStudent(@Req() req: any, @Body() body: any) {
+    const actorUserId = req.user.id || req.user.sub;
+    return this.studentsService.reEnrollStudent(actorUserId, body);
+  }
+
+  @Get(':id/complete-history')
+  async getCompleteStudentHistory(@Param('id') id: string) {
+    return this.studentsService.getCompleteStudentHistory(id);
+  }
+
   @Get(':id')
   async getDetails(
     @Param('id') id: string,

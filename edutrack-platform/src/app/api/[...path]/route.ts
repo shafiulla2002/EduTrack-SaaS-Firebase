@@ -495,7 +495,7 @@ async function handleRoute(request: NextRequest, pathSegments: string[], method:
   // 9. Subscription Plans List (/api/super-admin/plans)
   if (path === 'super-admin/plans' && method === 'GET') {
     return NextResponse.json([
-      { id: '1', name: 'BASIC', price: 11999 },
+      { id: '1', name: 'BASIC', price: 2 },
     ]);
   }
 

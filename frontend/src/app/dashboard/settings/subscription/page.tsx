@@ -21,18 +21,13 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-// ─── Pricing Configuration ────────────────────────────────────────────────
-const PLAN_PRICING: Record<string, Record<string, number>> = {
+// ─── Pricing Configuration (Single Source of Truth Default) ───────────────
+const DEFAULT_PLAN_PRICING: Record<string, Record<number, number>> = {
   BASIC: { 6: 1, 12: 2 },
-};
-const PLAN_SAVINGS: Record<string, Record<string, number>> = {
-  BASIC: { 6: 0, 12: 0 },
 };
 
 const VALID_COUPONS: Record<string, { type: 'percent' | 'flat'; value: number; label: string }> = {
   WELCOME50: { type: 'percent', value: 50, label: '50% OFF' },
-  FLAT2000: { type: 'flat', value: 2000, label: '₹2,000 OFF' },
-  FLAT1000: { type: 'flat', value: 1000, label: '₹1,000 OFF' },
 };
 
 // ─── Load Razorpay Script ─────────────────────────────────────────────────
@@ -57,6 +52,9 @@ export default function SubscriptionPage() {
   const [loading, setLoading] = useState(true);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
+  // Dynamic Plans Pricing (Authoritative fallback: 6M = ₹1, 12M = ₹2)
+  const [planPricing, setPlanPricing] = useState<Record<string, Record<number, number>>>(DEFAULT_PLAN_PRICING);
+
   // Selected Billing Duration (6 or 12 months)
   const [billingMonths, setBillingMonths] = useState<6 | 12>(12);
 
@@ -76,8 +74,9 @@ export default function SubscriptionPage() {
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
 
   // ─── Real-Time Pricing Calculation ───────────────────────────────────────
-  const basePrice = PLAN_PRICING.BASIC[billingMonths] ?? 11999;
-  const savings = PLAN_SAVINGS.BASIC[billingMonths] ?? 0;
+  const price6Months = planPricing.BASIC?.[6] ?? 1;
+  const price12Months = planPricing.BASIC?.[12] ?? 2;
+  const basePrice = billingMonths === 6 ? price6Months : price12Months;
 
   const { discountAmount, taxableAmount, gstAmount, finalPayable } = useMemo(() => {
     let discount = 0;
@@ -96,14 +95,38 @@ export default function SubscriptionPage() {
     };
   }, [basePrice, appliedCoupon]);
 
-  // ─── Fetch Subscription Data ──────────────────────────────────────────────
+  // ─── Fetch Subscription & Authoritative Plans Data ───────────────────────
   const fetchStats = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/tenant/subscription');
-      setStats(res.data);
-      if (res.data?.invoices) setInvoices(res.data.invoices);
-      if (res.data?.payments) setPayments(res.data.payments);
+      const [subRes, plansRes] = await Promise.allSettled([
+        api.get('/tenant/subscription'),
+        api.get('/tenant/subscription/plans'),
+      ]);
+
+      if (subRes.status === 'fulfilled') {
+        setStats(subRes.value.data);
+        if (subRes.value.data?.invoices) setInvoices(subRes.value.data.invoices);
+        if (subRes.value.data?.payments) setPayments(subRes.value.data.payments);
+      }
+
+      if (plansRes.status === 'fulfilled' && Array.isArray(plansRes.value.data)) {
+        const pricingMap: Record<number, number> = {};
+        plansRes.value.data.forEach((p: any) => {
+          if (p.durationMonths && typeof p.priceInINR === 'number') {
+            pricingMap[p.durationMonths] = p.priceInINR;
+          }
+        });
+        if (pricingMap[6] !== undefined || pricingMap[12] !== undefined) {
+          setPlanPricing(prev => ({
+            ...prev,
+            BASIC: {
+              6: pricingMap[6] ?? 1,
+              12: pricingMap[12] ?? 2,
+            }
+          }));
+        }
+      }
     } catch {
       // ignore
     } finally {
@@ -477,7 +500,7 @@ export default function SubscriptionPage() {
               <div>
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Billing Duration: 6 Months</span>
                 <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-3xl font-black text-slate-900">₹5,999</span>
+                  <span className="text-3xl font-black text-slate-900">₹{price6Months}</span>
                   <span className="text-xs text-slate-400 font-medium">/ 6 months</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">Includes all core school management modules</p>
@@ -510,7 +533,7 @@ export default function SubscriptionPage() {
               className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-extrabold text-sm transition-all shadow-lg shadow-blue-600/30 cursor-pointer flex items-center justify-center gap-2"
             >
               <CreditCard className="w-4 h-4" />
-              <span>Proceed to Payment (₹5,999)</span>
+              <span>Proceed to Payment (₹{price6Months})</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -526,7 +549,7 @@ export default function SubscriptionPage() {
           >
             {/* Top Ribbon Badge */}
             <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
-              <Sparkles className="w-3 h-3" /> BEST VALUE — SAVE ₹999
+              <Sparkles className="w-3 h-3" /> BEST VALUE — ANNUAL PLAN
             </div>
 
             <div className="space-y-4">
@@ -549,11 +572,8 @@ export default function SubscriptionPage() {
               <div>
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Billing Duration: 12 Months</span>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-3xl font-black text-slate-900">₹11,999</span>
+                  <span className="text-3xl font-black text-slate-900">₹{price12Months}</span>
                   <span className="text-xs text-slate-400 font-medium">/ 12 months</span>
-                  <span className="text-xs bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-md">
-                    Save ₹999
-                  </span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">Best value annual plan for full academic year support</p>
               </div>
@@ -585,7 +605,7 @@ export default function SubscriptionPage() {
               className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-extrabold text-sm transition-all shadow-lg shadow-blue-600/30 cursor-pointer flex items-center justify-center gap-2"
             >
               <CreditCard className="w-4 h-4" />
-              <span>Proceed to Payment (₹11,999)</span>
+              <span>Proceed to Payment (₹{price12Months})</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -727,7 +747,7 @@ export default function SubscriptionPage() {
                       </div>
                       <span className="text-xs font-bold text-slate-300">{m} Months</span>
                     </div>
-                    <div className="text-lg font-black text-white mt-1">₹{PLAN_PRICING.BASIC[m].toLocaleString('en-IN')}</div>
+                    <div className="text-lg font-black text-white mt-1">₹{(planPricing.BASIC?.[m] ?? (m === 6 ? 1 : 2)).toLocaleString('en-IN')}</div>
                   </button>
                 ))}
               </div>

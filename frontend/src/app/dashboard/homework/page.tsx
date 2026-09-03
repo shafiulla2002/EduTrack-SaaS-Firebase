@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '@/lib/api';
-import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search } from 'lucide-react';
+import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search, Users, Clock, Download, CheckSquare } from 'lucide-react';
 import Drawer from '@/components/Drawer';
 import DatePickerInput from '@/components/DatePickerInput';
 import { formatDateDDMMYYYY } from '@/lib/date';
@@ -31,6 +31,18 @@ export default function HomeworkPage() {
   const [shareSearchTerm, setShareSearchTerm] = useState('');
   const [sendingState, setSendingState] = useState<'idle' | 'sending' | 'completed'>('idle');
   const [sendResult, setSendResult] = useState<any | null>(null);
+
+  // Submission Status Drawer state
+  const [isStatusDrawerOpen, setIsStatusDrawerOpen] = useState(false);
+  const [selectedHwForStatus, setSelectedHwForStatus] = useState<any | null>(null);
+  const [submissionsData, setSubmissionsData] = useState<any | null>(null);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'COMPLETED' | 'INCOMPLETE'>('ALL');
+  const [statusSearchTerm, setStatusSearchTerm] = useState('');
+
+  // Attachment preview in modal
+  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
+  const [previewAttachmentName, setPreviewAttachmentName] = useState<string>('Attachment Preview');
 
   // Form states
   const [title, setTitle] = useState('');
@@ -206,6 +218,35 @@ export default function HomeworkPage() {
     }
   };
 
+  const openSubmissionsDrawer = async (hw: any) => {
+    setSelectedHwForStatus(hw);
+    setIsStatusDrawerOpen(true);
+    setLoadingSubmissions(true);
+    setStatusFilter('ALL');
+    setStatusSearchTerm('');
+    try {
+      const res = await api.get(`/teacher-portal/homework/${hw.id}/submissions`);
+      setSubmissionsData(res.data);
+    } catch (err) {
+      console.error('Failed to load homework submissions:', err);
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  };
+
+  const handleDownloadAttachment = (url: string, name: string) => {
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name || 'homework_attachment';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Failed to download attachment:', err);
+    }
+  };
+
   const triggerSendConfirm = (hw: any) => {
     openShareModal(hw);
   };
@@ -337,6 +378,13 @@ Thank you.`;
                   </span>
                   <div className="flex gap-2">
                     <button
+                      onClick={() => openSubmissionsDrawer(hw)}
+                      className="text-slate-400 hover:text-[#2E5BFF] transition-colors p-1 cursor-pointer"
+                      title="Submission Status"
+                    >
+                      <Users className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => triggerSendConfirm(hw)}
                       className="text-slate-400 hover:text-emerald-500 transition-colors p-1 cursor-pointer"
                       title="Send to Parents"
@@ -358,11 +406,19 @@ Thank you.`;
                 <p className="text-xs text-slate-500 font-light leading-relaxed truncate-3-lines">{hw.description}</p>
               </div>
 
-              <div className="border-t border-slate-100 pt-3 flex flex-wrap gap-y-2 justify-between items-center text-[11px] text-slate-400 font-semibold">
+              <div className="border-t border-slate-100 pt-3 flex flex-wrap gap-2 justify-between items-center text-[11px] text-slate-400 font-semibold">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   Due: {formatDateDDMMYYYY(hw.dueDate)}
                 </span>
+                <button
+                  onClick={() => openSubmissionsDrawer(hw)}
+                  className="px-2.5 py-1 rounded-xl bg-blue-50/80 hover:bg-blue-100 text-[#2E5BFF] border border-blue-200/60 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs"
+                  title="View Student Status"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Submission Status</span>
+                </button>
                 <span className="bg-slate-50 border border-slate-200/50 px-2 py-0.5 rounded text-slate-500 font-mono">
                   {hw.classSection.class.name} - {hw.classSection.section.name} • {hw.subject.name}
                 </span>
@@ -879,6 +935,306 @@ Thank you.`;
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Student Submission Status Drawer */}
+      <Drawer
+        open={isStatusDrawerOpen}
+        onClose={() => {
+          setIsStatusDrawerOpen(false);
+          setSelectedHwForStatus(null);
+          setSubmissionsData(null);
+        }}
+        title="Student Submission Status"
+        subtitle={
+          selectedHwForStatus ? (
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+              <span className="font-bold text-slate-700">{selectedHwForStatus.title}</span>
+              <span>•</span>
+              <span className="bg-slate-100 px-2 py-0.5 rounded font-mono text-[11px] text-slate-600">
+                {selectedHwForStatus.classSection?.class?.name} - {selectedHwForStatus.classSection?.section?.name}
+              </span>
+              <span>•</span>
+              <span className="text-slate-600">{selectedHwForStatus.subject?.name}</span>
+            </div>
+          ) : undefined
+        }
+        size="lg"
+      >
+        <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-slate-800">
+          {loadingSubmissions ? (
+            <div className="flex flex-col items-center justify-center py-24 space-y-3">
+              <Loader2 className="w-8 h-8 text-[#2E5BFF] animate-spin" />
+              <p className="text-xs text-slate-400 font-semibold">Loading student submission records...</p>
+            </div>
+          ) : submissionsData ? (
+            <>
+              {/* Summary Stats Cards */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center text-center">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Students</span>
+                    <span className="text-xl font-black text-slate-800 dark:text-white mt-1">
+                      {submissionsData.summary?.totalStudents ?? 0}
+                    </span>
+                  </div>
+                  <div className="bg-emerald-50/70 dark:bg-emerald-950/30 p-3.5 rounded-2xl border border-emerald-200/60 dark:border-emerald-800/50 shadow-xs flex flex-col items-center text-center">
+                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Completed
+                    </span>
+                    <span className="text-xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
+                      {submissionsData.summary?.completed ?? 0}
+                    </span>
+                  </div>
+                  <div className="bg-amber-50/70 dark:bg-amber-950/30 p-3.5 rounded-2xl border border-amber-200/60 dark:border-amber-800/50 shadow-xs flex flex-col items-center text-center">
+                    <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" /> Incomplete
+                    </span>
+                    <span className="text-xl font-black text-amber-700 dark:text-amber-300 mt-1">
+                      {submissionsData.summary?.incomplete ?? 0}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase">
+                    <span>Completion Rate</span>
+                    <span className="text-slate-600 dark:text-slate-300 font-mono">
+                      {submissionsData.summary?.completionRate ?? 0}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${submissionsData.summary?.completionRate ?? 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Filtering and Search Toolbar */}
+              <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex gap-1.5 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('ALL')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      statusFilter === 'ALL'
+                        ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    All ({submissionsData.summary?.totalStudents ?? 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('COMPLETED')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      statusFilter === 'COMPLETED'
+                        ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 shadow-xs'
+                        : 'text-slate-500 hover:text-emerald-600'
+                    }`}
+                  >
+                    Completed ({submissionsData.summary?.completed ?? 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('INCOMPLETE')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      statusFilter === 'INCOMPLETE'
+                        ? 'bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 shadow-xs'
+                        : 'text-slate-500 hover:text-amber-600'
+                    }`}
+                  >
+                    Incomplete ({submissionsData.summary?.incomplete ?? 0})
+                  </button>
+                </div>
+
+                <div className="relative flex-1 min-w-[200px] flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 focus-within:border-[#2E5BFF]">
+                  <Search className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0" />
+                  <input
+                    type="text"
+                    placeholder="Search by student or roll no..."
+                    value={statusSearchTerm}
+                    onChange={(e) => setStatusSearchTerm(e.target.value)}
+                    className="bg-transparent border-none text-xs text-slate-800 dark:text-slate-200 outline-none w-full placeholder-slate-400"
+                  />
+                </div>
+              </div>
+
+              {/* Student Submission Table */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {(() => {
+                  const filtered = (submissionsData.students || []).filter((s: any) => {
+                    const matchStatus =
+                      statusFilter === 'ALL' ||
+                      (statusFilter === 'COMPLETED' && s.submitted) ||
+                      (statusFilter === 'INCOMPLETE' && !s.submitted);
+
+                    const matchSearch =
+                      !statusSearchTerm ||
+                      s.name.toLowerCase().includes(statusSearchTerm.toLowerCase()) ||
+                      (s.rollNo && s.rollNo.toString().toLowerCase().includes(statusSearchTerm.toLowerCase())) ||
+                      (s.parentName && s.parentName.toLowerCase().includes(statusSearchTerm.toLowerCase()));
+
+                    return matchStatus && matchSearch;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-center py-16 text-slate-400 text-xs italic font-medium">
+                        No student records match the selected filter.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-2xs">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                            <th className="py-2.5 px-3">Roll</th>
+                            <th className="py-2.5 px-3">Student Name</th>
+                            <th className="py-2.5 px-3">Status</th>
+                            <th className="py-2.5 px-3">Submitted At</th>
+                            <th className="py-2.5 px-3 text-right">Work / File</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/60 text-xs">
+                          {filtered.map((s: any) => (
+                            <tr key={s.studentId} className="hover:bg-slate-50/80 dark:hover:bg-slate-750 transition-colors">
+                              <td className="py-3 px-3 font-mono text-slate-500 font-bold">{s.rollNo}</td>
+                              <td className="py-3 px-3">
+                                <div className="flex items-center gap-2.5">
+                                  {s.avatarUrl ? (
+                                    <img src={s.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+                                  ) : (
+                                    <div className="w-7 h-7 rounded-full bg-blue-50 dark:bg-slate-700 text-[#2E5BFF] flex items-center justify-center font-bold text-xs shrink-0">
+                                      {s.name ? s.name[0] : 'S'}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-slate-800 dark:text-slate-100 truncate">{s.name}</div>
+                                    <div className="text-[10px] text-slate-400 truncate">
+                                      Parent: {s.parentName} {s.parentPhone !== 'N/A' && `• ${s.parentPhone}`}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">
+                                {s.submitted ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    {s.submission?.isResubmitted ? 'Resubmitted' : 'Completed'}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    Incomplete
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-slate-500 dark:text-slate-400 font-medium">
+                                {s.submission?.submittedAt ? (
+                                  <span>
+                                    {new Date(s.submission.submittedAt).toLocaleString(undefined, {
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      hour12: true,
+                                    })}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 dark:text-slate-600 font-mono">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                {s.submission?.fileUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPreviewAttachmentUrl(s.submission.fileUrl);
+                                      setPreviewAttachmentName(s.submission.fileName || `${s.name} - Homework Submission`);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-[#2E5BFF] border border-blue-200/60 dark:border-blue-800 text-[11px] font-bold transition-all cursor-pointer"
+                                    title="View Submitted Work"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span className="truncate max-w-[110px]">{s.submission.fileName || 'View Work'}</span>
+                                  </button>
+                                ) : s.submitted ? (
+                                  <span className="text-[11px] text-slate-400 italic">No file attached</span>
+                                ) : (
+                                  <span className="text-slate-300 dark:text-slate-600 font-mono">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-20 text-slate-400 text-xs italic font-medium">
+              No submission data available.
+            </div>
+          )}
+        </div>
+      </Drawer>
+
+      {/* In-Page Attachment Preview Modal */}
+      {previewAttachmentUrl && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-5 h-5 text-[#2E5BFF] shrink-0" />
+                <h4 className="text-sm font-bold text-slate-800 dark:text-white truncate">{previewAttachmentName}</h4>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadAttachment(previewAttachmentUrl, previewAttachmentName)}
+                  className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachmentUrl(null)}
+                  className="p-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-slate-100 dark:bg-slate-900/50 min-h-[300px]">
+              {previewAttachmentUrl.startsWith('data:image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(previewAttachmentUrl) ? (
+                <img src={previewAttachmentUrl} alt="Submission" className="max-w-full max-h-[65vh] object-contain rounded-xl shadow-xs" />
+              ) : previewAttachmentUrl.startsWith('data:application/pdf') || previewAttachmentUrl.endsWith('.pdf') ? (
+                <iframe src={previewAttachmentUrl} className="w-full h-[65vh] rounded-xl border border-slate-200 dark:border-slate-700 bg-white" title="PDF Preview" />
+              ) : (
+                <div className="text-center p-8 space-y-3">
+                  <FileText className="w-12 h-12 text-slate-400 mx-auto" />
+                  <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold">{previewAttachmentName}</p>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadAttachment(previewAttachmentUrl, previewAttachmentName)}
+                    className="px-4 py-2 bg-[#2E5BFF] text-white rounded-xl text-xs font-bold shadow-xs hover:bg-blue-600"
+                  >
+                    Download File
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

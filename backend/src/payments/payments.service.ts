@@ -59,8 +59,21 @@ export class PaymentsService {
       throw new BadRequestException('Invalid Razorpay signature');
     }
 
-    const tenantId = paymentEntity?.notes?.tenantId || payload?.tenantId;
-    const planId = paymentEntity?.notes?.planId || payload?.planId;
+    let tenantId = paymentEntity?.notes?.tenantId || payload?.tenantId;
+    let planCode = paymentEntity?.notes?.planCode || payload?.planId;
+    let durationMonths = paymentEntity?.notes?.billingMonths ? Number(paymentEntity.notes.billingMonths) : 12;
+
+    if (!tenantId && paymentEntity?.order_id) {
+      const pendingPayment = await this.prisma.subscriptionPayment.findFirst({
+        where: { gatewayReference: paymentEntity.order_id },
+      });
+      if (pendingPayment) {
+        tenantId = pendingPayment.tenantId;
+        durationMonths = pendingPayment.billingDurationMonths || 12;
+        planCode = pendingPayment.planId || planCode;
+      }
+    }
+
     const amountCents = paymentEntity?.amount || (payload?.amount ? payload.amount * 100 : 0);
 
     if (!tenantId) {
@@ -78,6 +91,8 @@ export class PaymentsService {
         eventId,
         amountCents,
         amount: amountCents / 100,
+        billingDurationMonths: durationMonths,
+        planId: planCode || 'BASIC',
         transactionId: gatewayReference,
         status: SaaSPaymentStatus.SUCCESS,
         signatureVerified: isVerified,
@@ -93,14 +108,21 @@ export class PaymentsService {
     });
 
     // 4. Activate / Renew Tenant Subscription
-    if (planId) {
-      await this.subscriptionService.activateOrRenew(tenantId, planId, 12);
+    let planRecord = await this.prisma.subscriptionPlan.findFirst({
+      where: { isActive: true, name: 'BASIC' },
+    });
+    if (!planRecord) {
+      planRecord = await this.prisma.subscriptionPlan.findFirst({ where: { isActive: true } });
+    }
+
+    if (tenantId && planRecord) {
+      await this.subscriptionService.activateOrRenew(tenantId, planRecord.id, durationMonths);
     }
 
     // 5. Generate Billing Invoice Record
-    await this.billingService.createInvoice(tenantId, planId, amountCents);
+    await this.billingService.createInvoice(tenantId, planRecord?.id || 'BASIC', amountCents);
 
-    this.logger.log(`Payment '${gatewayReference}' processed successfully for tenant '${tenantId}'.`);
+    this.logger.log(`Payment '${gatewayReference}' processed successfully for tenant '${tenantId}' (Amount: ₹${amountCents / 100}).`);
 
     return {
       success: true,

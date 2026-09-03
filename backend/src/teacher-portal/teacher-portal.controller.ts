@@ -128,6 +128,12 @@ export class TeacherPortalController {
     return this.portalService.deleteHomework(req.user.sub, req.user.tenantId, id);
   }
 
+  @Get('homework/:id/submissions')
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  async getHomeworkSubmissions(@Req() req: any, @Param('id') id: string) {
+    return this.portalService.getHomeworkSubmissions(req.user.sub, req.user.tenantId, id);
+  }
+
   @Post('homework/:id/send-to-parents')
   @Roles(Role.TEACHER)
   async sendHomeworkToParents(@Req() req: any, @Param('id') id: string) {
