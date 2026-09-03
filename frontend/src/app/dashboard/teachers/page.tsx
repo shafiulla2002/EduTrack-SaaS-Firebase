@@ -548,91 +548,80 @@ export default function TeacherClassManagement() {
   const loadWorkloadDashboard = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [summaryRes, teachersRes, classesRes, subjectsRes, yearsRes, sectionsRes, timingsRes] = await Promise.all([
-        api.get('/timetable/workload/summary'),
-        api.get('/timetable/workload/teachers'),
-        api.get('/timetable/workload/classes'),
-        api.get('/timetable/subjects'),
-        api.get('/academics/academic-years'),
-        api.get('/academics/sections'),
-        api.get('/timetable/period-timings')
-      ]);
+      const res = await api.get('/timetable/workload/dashboard');
+      const data = res.data;
 
-      setWorkloadSummary({
-        totalTeachers: summaryRes.data?.totalTeachers || 0,
-        totalClasses: summaryRes.data?.totalClassSections || 0,
-        totalAssignments: summaryRes.data?.totalAssignments || 0,
-        avgLoadPercent: summaryRes.data?.avgLoadPercent || 0
-      });
+      if (data) {
+        setWorkloadSummary(data.summary || {
+          totalTeachers: 0,
+          totalClasses: 0,
+          totalAssignments: 0,
+          avgLoadPercent: 0
+        });
 
-      const mappedTeachers: Teacher[] = (teachersRes.data || []).map((t: any, idx: number) => ({
-        id: t.teacherId,
-        name: t.teacherName || 'Unknown Teacher',
-        initials: (t.teacherName || 'TT').split(' ').map((n: string) => n[0] || '').join('').substring(0, 2).toUpperCase(),
-        subjects: t.subjectsTaught || [],
-        classCount: t.classCount || 0,
-        loadPercent: Math.min(100, t.loadPercent || 0),
-        gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
-      }));
-      setTeachers(mappedTeachers);
+        const mappedTeachers: Teacher[] = (data.teachers || []).map((t: any, idx: number) => ({
+          id: t.teacherId,
+          name: t.teacherName || 'Unknown Teacher',
+          initials: (t.teacherName || 'TT').split(' ').map((n: string) => n[0] || '').join('').substring(0, 2).toUpperCase(),
+          subjects: t.subjectsTaught || [],
+          classCount: t.classCount || 0,
+          loadPercent: Math.min(100, t.loadPercent || 0),
+          gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
+        }));
+        setTeachers(mappedTeachers);
 
-      const mappedClasses: ClassSection[] = (classesRes.data || []).map((c: any) => ({
-        id: c.classSectionId,
-        classId: c.classId,
-        name: c.name || 'Unknown Class',
-        academicYear: c.academicYear || '2026-2027',
-        subjectCount: c.subjectCount || 0,
-        staffedCount: c.staffedCount || 0,
-        loadPercent: c.loadPercent || 0
-      }));
-      setClasses(mappedClasses);
+        const mappedClasses: ClassSection[] = (data.classes || []).map((c: any) => ({
+          id: c.classSectionId,
+          classId: c.classId,
+          name: c.name || 'Unknown Class',
+          academicYear: c.academicYear || '2026-2027',
+          subjectCount: c.subjectCount || 0,
+          staffedCount: c.staffedCount || 0,
+          loadPercent: c.loadPercent || 0
+        }));
+        setClasses(mappedClasses);
 
-      const rawTimings = timingsRes.data || [];
-      const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
-      let displayCount = 1;
-      const mappedTimings = sortedTimings.map((pt: any) => {
-        const isBreak = pt.isBreak ?? false;
-        const displayLabel = isBreak ? (pt.name || 'Break') : `Period ${displayCount}`;
-        const displayNum = isBreak ? null : displayCount;
-        if (!isBreak) {
-          displayCount++;
+        const rawTimings = data.periodTimings || [];
+        const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
+        let displayCount = 1;
+        const mappedTimings = sortedTimings.map((pt: any) => {
+          const isBreak = pt.isBreak ?? false;
+          const displayLabel = isBreak ? (pt.name || 'Break') : `Period ${displayCount}`;
+          const displayNum = isBreak ? null : displayCount;
+          if (!isBreak) {
+            displayCount++;
+          }
+          return {
+            ...pt,
+            id: pt.id,
+            num: pt.periodNumber ?? pt.num,
+            label: displayLabel,
+            displayPeriodNumber: displayNum,
+            startTime: pt.startTime,
+            endTime: pt.endTime,
+            isBreak
+          };
+        });
+        setTimings(mappedTimings);
+
+        setAllSubjects(data.subjects || []);
+        setAcademicYears(data.academicYears || []);
+        setAvailableSections(data.sections || []);
+
+        if (data.config) {
+          setWorkingDays(data.config.workingDays || []);
+          setSchoolStartTime(data.config.schoolStartTime);
+          setSchoolEndTime(data.config.schoolEndTime);
+          setPeriodDuration(data.config.periodDuration);
+          setAutoGenerate(data.config.autoGenerate);
+          setNumPeriods(data.config.numPeriods);
         }
-        return {
-          ...pt,
-          id: pt.id,
-          num: pt.periodNumber ?? pt.num,
-          label: displayLabel,
-          displayPeriodNumber: displayNum,
-          startTime: pt.startTime,
-          endTime: pt.endTime,
-          isBreak
-        };
-      });
-      setTimings(mappedTimings);
 
-      setAllSubjects(subjectsRes.data || []);
-      setAcademicYears(yearsRes.data || []);
-      setAvailableSections(sectionsRes.data || []);
-      
-      // Load Timetable Configuration
-      try {
-        const configRes = await api.get('/timetable/config');
-        if (configRes.data) {
-          setWorkingDays(configRes.data.workingDays || []);
-          setSchoolStartTime(configRes.data.schoolStartTime);
-          setSchoolEndTime(configRes.data.schoolEndTime);
-          setPeriodDuration(configRes.data.periodDuration);
-          setAutoGenerate(configRes.data.autoGenerate);
-          setNumPeriods(configRes.data.numPeriods);
+        const activeYear = (data.academicYears || []).find((y: any) => y.isActive) || data.academicYears?.[0];
+        if (activeYear) {
+          setSelectedAcademicYear(activeYear.id);
+          setTtSelectedAcademicYear(activeYear.id);
         }
-      } catch (err) {
-        console.error('Failed to load timetable config:', err);
-      }
-      
-      const activeYear = yearsRes.data.find((y: any) => y.isActive) || yearsRes.data[0];
-      if (activeYear) {
-        setSelectedAcademicYear(activeYear.id);
-        setTtSelectedAcademicYear(activeYear.id);
       }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
@@ -1699,13 +1688,10 @@ export default function TeacherClassManagement() {
   return (
     <div className="teacher-class-mgmt-container space-y-6">
       
-      {/* ── LOADER OVERLAY ── */}
+      {/* ── TOP LOADING BAR ── */}
       {isLoading && (
-        <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-[9999] flex items-center justify-center">
-          <div className="bg-white p-5 rounded-2xl shadow-xl flex items-center gap-3 border border-slate-100">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            <span className="text-xs font-bold text-slate-700">Syncing and building org registry...</span>
-          </div>
+        <div className="fixed top-0 left-0 right-0 h-1 bg-blue-100 z-[9999] overflow-hidden">
+          <div className="h-full bg-blue-600 animate-pulse w-full"></div>
         </div>
       )}
 

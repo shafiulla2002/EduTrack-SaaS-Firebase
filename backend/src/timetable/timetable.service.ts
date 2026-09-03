@@ -632,6 +632,128 @@ export class TimetableService {
   }
 
   // ---------- Workload & Assignments (implemented) ----------
+  async getWorkloadDashboardData() {
+    const tenantId = this.getTenantId();
+
+    const teacherWhere: any = {
+      tenantId,
+      OR: [
+        { user: { role: 'TEACHER' } },
+        { designation: { contains: 'Teacher', mode: 'insensitive' } },
+        { teacherSkills: { some: {} } },
+      ],
+    };
+
+    const [
+      totalClassSections,
+      totalTeachers,
+      totalAssignments,
+      teachersList,
+      classSections,
+      subjects,
+      academicYears,
+      sections,
+      periodTimings,
+      config,
+    ] = await Promise.all([
+      this.prisma.classSection.count({ where: { tenantId } }),
+      this.prisma.staffProfile.count({ where: teacherWhere }),
+      this.prisma.teacherAssignment.count({ where: { tenantId } }),
+      this.prisma.staffProfile.findMany({
+        where: teacherWhere,
+        include: {
+          user: true,
+          teacherAssignments: {
+            select: {
+              subjectId: true,
+              classSectionId: true,
+              periodsPerWeek: true,
+            },
+          },
+          teacherSkills: {
+            include: {
+              subject: true,
+            },
+          },
+        },
+      }),
+      this.prisma.classSection.findMany({
+        where: { tenantId },
+        include: {
+          class: {
+            include: {
+              academicYear: true,
+            },
+          },
+          section: true,
+          classSubjects: true,
+          teacherAssigns: true,
+        },
+      }),
+      this.prisma.subject.findMany({ where: { tenantId }, orderBy: { name: 'asc' } }),
+      this.prisma.academicYear.findMany({ where: { tenantId }, orderBy: { startDate: 'desc' } }),
+      this.prisma.section.findMany({ where: { tenantId }, orderBy: { name: 'asc' } }),
+      this.prisma.periodTiming.findMany({ where: { tenantId }, orderBy: { periodNumber: 'asc' } }),
+      this.prisma.timetableConfig.findFirst({ where: { tenantId } }),
+    ]);
+
+    let totalLoad = 0;
+    for (const t of teachersList) {
+      totalLoad += Math.min(100, (t.teacherAssignments?.length || 0) * 15);
+    }
+    const avgLoadPercent = teachersList.length > 0 ? Math.round(totalLoad / teachersList.length) : 0;
+
+    const mappedTeachers = teachersList.map(t => {
+      const uniqueSubjects = new Set(t.teacherAssignments.map(a => a.subjectId));
+      const uniqueClasses = new Set(t.teacherAssignments.map(a => a.classSectionId));
+      const totalPeriods = t.teacherAssignments.reduce((sum, a) => sum + (a.periodsPerWeek || 0), 0);
+      const loadPercent = Math.min(100, t.teacherAssignments.length * 15);
+      const subjectsTaught = t.teacherSkills.map(sk => sk.subject?.name).filter(Boolean);
+
+      return {
+        teacherId: t.id,
+        teacherName: t.user?.name || 'Unknown Teacher',
+        subjectCount: uniqueSubjects.size,
+        classCount: uniqueClasses.size,
+        totalPeriods,
+        loadPercent,
+        subjectsTaught,
+      };
+    });
+
+    const mappedClassSections = classSections.map(cs => {
+      const subjectCount = cs.classSubjects.length;
+      const staffedCount = cs.teacherAssigns.length;
+      const loadPercent = subjectCount > 0 ? Math.round((staffedCount / subjectCount) * 100) : 0;
+
+      return {
+        classSectionId: cs.id,
+        classId: cs.classId,
+        name: `${cs.class.name} - ${cs.section.name}`,
+        academicYear: cs.class.academicYear?.name || '2026-2027',
+        subjectCount,
+        staffedCount,
+        loadPercent,
+      };
+    });
+
+    return {
+      summary: {
+        totalClassSections,
+        totalTeachers,
+        totalAssignments,
+        avgLoadPercent,
+      },
+      teachers: mappedTeachers,
+      classes: mappedClassSections,
+      subjects,
+      academicYears,
+      sections,
+      periodTimings,
+      config,
+    };
+  }
+
   async getWorkloadSummary(academicYearId: string) {
     const tenantId = this.getTenantId();
     

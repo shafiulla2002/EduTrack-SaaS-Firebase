@@ -120,6 +120,11 @@ export class TimetableController {
     return this.timetableService.bulkCreateTeachers(dto.teachers);
   }
 
+  @Get('workload/dashboard')
+  getWorkloadDashboardData() {
+    return this.timetableService.getWorkloadDashboardData();
+  }
+
   @Get('workload/summary')
   getWorkloadSummary(@Query('academicYearId') academicYearId: string) {
     return this.timetableService.getWorkloadSummary(academicYearId);
