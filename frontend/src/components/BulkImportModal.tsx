@@ -187,8 +187,8 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
     let totalSuccess = 0;
     const accumulatedErrors: string[] = [];
 
-    // Process in batches of 50 records. This guarantees zero timeouts even with 2,000+ records!
-    const BATCH_SIZE = 50;
+    // Process in batches of 200 records. Backend handles each batch with concurrent transactions.
+    const BATCH_SIZE = 200;
     const totalBatches = Math.ceil(parsedData.length / BATCH_SIZE);
 
     for (let b = 0; b < totalBatches; b++) {

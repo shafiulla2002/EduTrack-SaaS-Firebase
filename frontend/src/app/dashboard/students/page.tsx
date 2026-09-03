@@ -661,7 +661,7 @@ export default function StudentsDirectory() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="px-2.5 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold">
+                            <span className="px-2.5 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold whitespace-nowrap">
                               {student.class} - {student.section.replace('Section ', '')}
                             </span>
                           </td>

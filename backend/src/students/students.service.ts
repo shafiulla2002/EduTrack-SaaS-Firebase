@@ -736,6 +736,9 @@ export class StudentsService implements OnModuleInit {
     const priceBookCache = new Map<string, { classPriceBook: any; pbes: any[] }>();
     const rollNoTracker = new Map<string, { nextRoll: number; existingRolls: Set<string> }>();
 
+    // Concurrent transaction promises - all DB writes run in parallel for speed
+    const txPromises: Promise<void>[] = [];
+
     for (let i = 0; i < studentRows.length; i++) {
       const row = studentRows[i];
       try {
@@ -915,66 +918,76 @@ export class StudentsService implements OnModuleInit {
         rollInfo.existingRolls.add(finalRollNo);
 
         // Perform user creation transaction with 30s timeout and fast execution
-        await this.prisma.$transaction(async (tx) => {
-          const user = await tx.user.create({
-            data: {
-              email: emailLower,
-              name: `${firstName || ''} ${lastName}`.trim(),
-              passwordHash,
-              role: Role.STUDENT,
-              phone: finalPhone,
-              tenantId,
-            }
-          });
+        // Defer transaction to concurrent execution array
+        txPromises.push((async () => {
+          try {
+            await this.prisma.$transaction(async (tx) => {
+              const user = await tx.user.create({
+                data: {
+                  email: emailLower,
+                  name: `${firstName || ''} ${lastName}`.trim(),
+                  passwordHash,
+                  role: Role.STUDENT,
+                  phone: finalPhone,
+                  tenantId,
+                }
+              });
 
-          const profile = await tx.studentProfile.create({
-            data: {
-              userId: user.id,
-              rollNo: finalRollNo || null,
-              fatherName,
-              motherName,
-              aadharNo: aadharNo ? String(aadharNo) : null,
-              classSectionId: matchedClassSection.id,
-              tenantId,
-            }
-          });
+              const profile = await tx.studentProfile.create({
+                data: {
+                  userId: user.id,
+                  rollNo: finalRollNo || null,
+                  fatherName,
+                  motherName,
+                  aadharNo: aadharNo ? String(aadharNo) : null,
+                  classSectionId: matchedClassSection.id,
+                  tenantId,
+                }
+              });
 
-          if (pbInfo.classPriceBook && pbInfo.pbes.length > 0) {
-            const opp = await tx.opportunity.create({
-              data: {
-                name: `${firstName || ''} ${lastName} - Admission ${matchedAY?.name || ''}`.trim(),
-                studentId: profile.id,
-                stageName: 'Prospecting',
-                closeDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-                classId: matchedClass.id,
-                sectionId: matchedSection.id,
-                academicYearId: matchedAY?.id || null,
-                totalPaidAmount: 0,
-                tenantId,
-              },
-            });
+              if (pbInfo.classPriceBook && pbInfo.pbes.length > 0) {
+                const opp = await tx.opportunity.create({
+                  data: {
+                    name: `${firstName || ''} ${lastName} - Admission ${matchedAY?.name || ''}`.trim(),
+                    studentId: profile.id,
+                    stageName: 'Prospecting',
+                    closeDate: new Date(new Date().setDate(new Date().getDate() + 30)),
+                    classId: matchedClass.id,
+                    sectionId: matchedSection.id,
+                    academicYearId: matchedAY?.id || null,
+                    totalPaidAmount: 0,
+                    tenantId,
+                  },
+                });
 
-            const olis = pbInfo.pbes.map(pbe => ({
-              opportunityId: opp.id,
-              pricebookEntryId: pbe.id,
-              productId: pbe.productId,
-              quantity: 1,
-              unitPrice: pbe.unitPrice,
-              discount: 0,
-              tenantId,
-            }));
+                const olis = pbInfo.pbes.map((pbe: any) => ({
+                  opportunityId: opp.id,
+                  pricebookEntryId: pbe.id,
+                  productId: pbe.productId,
+                  quantity: 1,
+                  unitPrice: pbe.unitPrice,
+                  discount: 0,
+                  tenantId,
+                }));
 
-            await tx.opportunityLineItem.createMany({
-              data: olis,
-            });
+                await tx.opportunityLineItem.createMany({
+                  data: olis,
+                });
+              }
+            }, { timeout: 30000 });
+            successCount++;
+          } catch (err: any) {
+            errors.push(`Row ${i + 1} Error: ${err.message}`);
           }
-        }, { timeout: 30000 });
-
-        successCount++;
+        })());
       } catch (err: any) {
         errors.push(`Row ${i + 1} Error: ${err.message}`);
       }
     }
+
+    // Await all concurrent transactions
+    await Promise.all(txPromises);
+
 
     // Post-import sync: update section strengths
     for (const csId of affectedClassSectionIds) {
