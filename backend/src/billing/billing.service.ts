@@ -1756,7 +1756,11 @@ export class BillingService {
 
     const activeEntries = pricebook.pricebookEntries.filter(e => e.product.isActive);
 
-    // 2. Find all student profiles currently enrolled in this class
+    // 2. Fetch academic year and class details once
+    const ay = await db.academicYear.findUnique({ where: { id: academicYearId } });
+    const classRecord = await db.class.findUnique({ where: { id: classId } });
+
+    // 3. Find all student profiles currently enrolled in this class
     const students = await db.studentProfile.findMany({
       where: {
         tenantId,
@@ -1777,162 +1781,158 @@ export class BillingService {
       }
     });
 
-    for (const student of students) {
-      // Find or create Opportunity for this student for this academic year
-      let opp = student.opportunities[0];
-      if (!opp) {
-        const ay = await db.academicYear.findUnique({ where: { id: academicYearId } });
-        const classRecord = await db.class.findUnique({ where: { id: classId } });
-        const sectionId = student.classSection?.sectionId || null;
-
-        const oppName = `${student.user.name} - Admission ${ay?.name || ''}`.trim();
-        opp = await db.opportunity.create({
-          data: {
-            name: oppName,
-            studentId: student.id,
-            stageName: 'Prospecting',
-            closeDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-            classId,
-            sectionId,
-            academicYearId,
-            totalPaidAmount: 0,
-            tenantId
-          },
-          include: {
-            opportunityLineItems: {
-              include: { product: true }
-            }
-          }
-        });
-      }
-
-      const currentOlis = opp.opportunityLineItems || [];
-
-      // A. Update or create line items for active pricebook entries
-      for (const entry of activeEntries) {
-        const existingOli = currentOlis.find(oli => oli.productId === entry.productId);
-
-        if (existingOli) {
-          // Update unitPrice if it has changed
-          if (Number(existingOli.unitPrice) !== Number(entry.unitPrice)) {
-            await db.opportunityLineItem.update({
-              where: { id: existingOli.id },
-              data: { unitPrice: entry.unitPrice }
+    // 4. Process students in concurrent batches of 50 for fast execution
+    const CHUNK_SIZE = 50;
+    for (let c = 0; c < students.length; c += CHUNK_SIZE) {
+      const studentChunk = students.slice(c, c + CHUNK_SIZE);
+      await Promise.all(studentChunk.map(async (student) => {
+        try {
+          // Find or create Opportunity for this student for this academic year
+          let opp = student.opportunities[0];
+          if (!opp) {
+            const sectionId = student.classSection?.sectionId || null;
+            const oppName = `${student.user.name} - Admission ${ay?.name || ''}`.trim();
+            opp = await db.opportunity.create({
+              data: {
+                name: oppName,
+                studentId: student.id,
+                stageName: 'Prospecting',
+                closeDate: new Date(new Date().setDate(new Date().getDate() + 30)),
+                classId,
+                sectionId,
+                academicYearId,
+                totalPaidAmount: 0,
+                tenantId
+              },
+              include: {
+                opportunityLineItems: {
+                  include: { product: true }
+                }
+              }
             });
           }
-        } else {
-          // Create new line item
-          await db.opportunityLineItem.create({
-            data: {
-              opportunityId: opp.id,
-              pricebookEntryId: entry.id,
-              productId: entry.productId,
-              quantity: 1,
-              unitPrice: entry.unitPrice,
-              discount: 0,
-              tenantId
+
+          const currentOlis = opp.opportunityLineItems || [];
+
+          // A. Update or create line items for active pricebook entries
+          for (const entry of activeEntries) {
+            const existingOli = currentOlis.find(oli => oli.productId === entry.productId);
+
+            if (existingOli) {
+              if (Number(existingOli.unitPrice) !== Number(entry.unitPrice)) {
+                await db.opportunityLineItem.update({
+                  where: { id: existingOli.id },
+                  data: { unitPrice: entry.unitPrice }
+                });
+              }
+            } else {
+              await db.opportunityLineItem.create({
+                data: {
+                  opportunityId: opp.id,
+                  pricebookEntryId: entry.id,
+                  productId: entry.productId,
+                  quantity: 1,
+                  unitPrice: entry.unitPrice,
+                  discount: 0,
+                  tenantId
+                }
+              });
             }
-          });
-        }
-      }
+          }
 
-      // B. Remove line items that are no longer assigned in the Price Book (only if they have no payment history)
-      for (const oli of currentOlis) {
-        // Skip meta-products
-        if (oli.product.productCode === 'PREV_DUES' || oli.product.name.includes('Previous Year')) {
-          continue;
-        }
+          // B. Remove line items that are no longer in Price Book (if no payment history)
+          for (const oli of currentOlis) {
+            if (oli.product.productCode === 'PREV_DUES' || oli.product.name.includes('Previous Year')) {
+              continue;
+            }
 
-        const inPricebook = activeEntries.some(e => e.productId === oli.productId);
-        if (!inPricebook) {
-          // Check if this OLI has any non-voided payment history
-          const invoiceItems = await db.invoiceItem.findMany({
-            where: {
-              opportunityLineItemId: oli.id,
-              tenantId,
-              invoice: {
-                status: { in: [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID] }
+            const inPricebook = activeEntries.some(e => e.productId === oli.productId);
+            if (!inPricebook) {
+              const invoiceItems = await db.invoiceItem.findMany({
+                where: {
+                  opportunityLineItemId: oli.id,
+                  tenantId,
+                  invoice: {
+                    status: { in: [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID] }
+                  }
+                }
+              });
+
+              if (invoiceItems.length === 0) {
+                await db.opportunityLineItem.delete({
+                  where: { id: oli.id }
+                });
               }
             }
+          }
+
+          // C. Recalculate pending/unpaid invoices for this opportunity
+          const unpaidInvoices = await db.invoice.findMany({
+            where: {
+              opportunityId: opp.id,
+              studentId: student.id,
+              tenantId,
+              status: { in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID] }
+            },
+            include: {
+              invoiceItems: true
+            }
           });
 
-          if (invoiceItems.length === 0) {
-            // Delete the line item
-            await db.opportunityLineItem.delete({
-              where: { id: oli.id }
+          for (const inv of unpaidInvoices) {
+            const updatedOlis = await db.opportunityLineItem.findMany({
+              where: { opportunityId: opp.id, tenantId },
+              include: { product: true }
+            });
+
+            await db.invoiceItem.deleteMany({
+              where: { invoiceId: inv.id }
+            });
+
+            const newInvoiceItems = updatedOlis.map(oli => {
+              const totalAmount = Number(oli.unitPrice) * Number(oli.quantity);
+              const discountPercent = Number(oli.discount);
+              const discountAmount = (totalAmount * discountPercent) / 100;
+              const netAmount = totalAmount - discountAmount;
+
+              return {
+                invoiceId: inv.id,
+                opportunityLineItemId: oli.id,
+                productId: oli.productId,
+                name: oli.product.name,
+                amount: netAmount,
+                tenantId
+              };
+            });
+
+            await db.invoiceItem.createMany({
+              data: newInvoiceItems
+            });
+
+            const totalInvoiceAmount = newInvoiceItems.reduce((sum, item) => sum + item.amount, 0);
+            const paidInvoiceAmount = Number(inv.paidAmount);
+            const remainingBalance = Math.max(0, totalInvoiceAmount - paidInvoiceAmount);
+            const newStatus = remainingBalance <= 0 
+              ? PaymentStatus.PAID 
+              : paidInvoiceAmount > 0 
+                ? PaymentStatus.PARTIALLY_PAID 
+                : PaymentStatus.UNPAID;
+
+            await db.invoice.update({
+              where: { id: inv.id },
+              data: {
+                totalAmount: totalInvoiceAmount,
+                remainingBalance,
+                status: newStatus
+              }
             });
           }
+
+          await this.recalculatePaidAmount(opp.id, db);
+        } catch (studentErr) {
+          console.warn(`[syncPriceBookToStudents] Error syncing student ${student.id}:`, studentErr);
         }
-      }
-
-      // C. Recalculate pending/unpaid invoices for this opportunity
-      const unpaidInvoices = await db.invoice.findMany({
-        where: {
-          opportunityId: opp.id,
-          studentId: student.id,
-          tenantId,
-          status: { in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID] }
-        },
-        include: {
-          invoiceItems: true
-        }
-      });
-
-      for (const inv of unpaidInvoices) {
-        // Fetch latest OLIs for this opportunity to rebuild invoice items
-        const updatedOlis = await db.opportunityLineItem.findMany({
-          where: { opportunityId: opp.id, tenantId },
-          include: { product: true }
-        });
-
-        // Delete existing items for this invoice
-        await db.invoiceItem.deleteMany({
-          where: { invoiceId: inv.id }
-        });
-
-        // Recreate new items
-        const newInvoiceItems = updatedOlis.map(oli => {
-          const totalAmount = Number(oli.unitPrice) * Number(oli.quantity);
-          const discountPercent = Number(oli.discount);
-          const discountAmount = (totalAmount * discountPercent) / 100;
-          const netAmount = totalAmount - discountAmount;
-
-          return {
-            invoiceId: inv.id,
-            opportunityLineItemId: oli.id,
-            productId: oli.productId,
-            name: oli.product.name,
-            amount: netAmount,
-            tenantId
-          };
-        });
-
-        await db.invoiceItem.createMany({
-          data: newInvoiceItems
-        });
-
-        // Update the invoice total amount and remaining balance
-        const totalInvoiceAmount = newInvoiceItems.reduce((sum, item) => sum + item.amount, 0);
-        const paidInvoiceAmount = Number(inv.paidAmount);
-        const remainingBalance = Math.max(0, totalInvoiceAmount - paidInvoiceAmount);
-        const newStatus = remainingBalance <= 0 
-          ? PaymentStatus.PAID 
-          : paidInvoiceAmount > 0 
-            ? PaymentStatus.PARTIALLY_PAID 
-            : PaymentStatus.UNPAID;
-
-        await db.invoice.update({
-          where: { id: inv.id },
-          data: {
-            totalAmount: totalInvoiceAmount,
-            remainingBalance,
-            status: newStatus
-          }
-        });
-      }
-
-      // Recalculate opportunity paid amount
-      await this.recalculatePaidAmount(opp.id, db);
+      }));
     }
   }
 

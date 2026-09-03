@@ -1004,15 +1004,6 @@ export class StudentsService implements OnModuleInit {
       }
     }
 
-    // Post-import sync: sync pricebook once per affected class outside per-student transactions
-    for (const [classId, ayId] of affectedClasses.entries()) {
-      try {
-        await this.billingService.syncPriceBookToStudents(classId, ayId);
-      } catch (e) {
-        console.warn(`Post-import pricebook sync skipped for class ${classId}:`, e);
-      }
-    }
-
     return {
       totalRows: studentRows.length,
       successCount,
