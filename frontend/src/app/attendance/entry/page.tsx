@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
-import { toLocalDateString, isBefore } from '@/lib/date';
+import { toLocalDateString, isBefore, formatTimeOnly } from '@/lib/date';
 
 interface Teacher {
   id: string;
@@ -207,8 +207,10 @@ function AttendanceEntryContent() {
 
         if (hasSession) {
           setSubmittedTeacherName(sessionData.data.teacherName || '');
-          setSubmittedTime(sessionData.data.createdTime || '');
-          setLastUpdatedTime(sessionData.data.lastUpdatedTime || '');
+          const cTime = sessionData.data.createdAt ? formatTimeOnly(sessionData.data.createdAt) : (sessionData.data.createdTime || '');
+          const uTime = sessionData.data.updatedAt ? formatTimeOnly(sessionData.data.updatedAt) : (sessionData.data.lastUpdatedTime || '');
+          setSubmittedTime(cTime);
+          setLastUpdatedTime(uTime);
         }
 
         const absentIds = sessionData.data.absentIds || [];
@@ -360,8 +362,10 @@ function AttendanceEntryContent() {
 
       if (res.data) {
         setSubmittedTeacherName(res.data.teacherName || (selectedTeacher ? selectedTeacher.name : ''));
-        setSubmittedTime(res.data.createdTime || '');
-        setLastUpdatedTime(res.data.lastUpdatedTime || '');
+        const cTime = res.data.createdAt ? formatTimeOnly(res.data.createdAt) : (res.data.createdTime || '');
+        const uTime = res.data.updatedAt ? formatTimeOnly(res.data.updatedAt) : (res.data.lastUpdatedTime || '');
+        setSubmittedTime(cTime);
+        setLastUpdatedTime(uTime);
         setSessionExists(res.data.sessionExists);
         setIsSuccess(true);
         fetchRecentSubmissions();

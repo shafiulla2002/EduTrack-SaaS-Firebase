@@ -26,14 +26,12 @@ export class AttendanceService {
   }
 
   private formatTime(date: Date): string {
-    let hours = date.getHours();
-    const minutes = date.getMinutes();
-    const ampm = hours >= 12 ? 'pm' : 'am';
-    hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
-    const minutesStr = minutes < 10 ? '0' + minutes : minutes;
-    const hoursStr = hours < 10 ? '0' + hours : hours;
-    return `${hoursStr}:${minutesStr} ${ampm}`;
+    return date.toLocaleTimeString('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).toLowerCase();
   }
 
   // Salesforce parity: get classes associated with tenant

@@ -78,9 +78,28 @@ export function formatDateTimeDDMMYYYY(dateInput: any): string {
 }
 
 /**
+ * Formats time only as HH:MM am/pm in the user's local timezone.
+ * Example: 05:56 pm
+ */
+export function formatTimeOnly(dateInput: any): string {
+  if (!dateInput) return '';
+  const dateObj = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(dateObj.getTime())) return String(dateInput);
+  
+  let hours = dateObj.getHours();
+  const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const hoursStr = String(hours).padStart(2, '0');
+  return `${hoursStr}:${minutes} ${ampm}`;
+}
+
+/**
  * Timezone-safe comparison of date strings (YYYY-MM-DD).
  * Returns true if dateStr1 is chronologically before dateStr2.
  */
 export function isBefore(dateStr1: string, dateStr2: string): boolean {
   return dateStr1 < dateStr2;
 }
+
