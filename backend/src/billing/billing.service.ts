@@ -462,6 +462,14 @@ export class BillingService {
         totalPaid = openOpp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
       }
 
+      if (totalFee === 0 && student.classSection?.classId) {
+        const activeProducts = await this.getActiveProducts(
+          student.classSection.classId,
+          student.classSection.class?.academicYearId || undefined
+        );
+        totalFee = activeProducts.reduce((sum, p) => sum + p.unitPrice, 0);
+      }
+
       // Calculate previous years unpaid balances
       let currentYearStart = new Date(0);
       if (openOpp && openOpp.academicYearId) {
@@ -550,7 +558,7 @@ export class BillingService {
       throw new NotFoundException('Student not found.');
     }
 
-    // Fallback if no active opportunity matches the filter
+    // Fallback if no active opportunity matches the filter or line items are missing
     let openOpp = student.opportunities[0];
     if (!openOpp && !academicYearId) {
       // Fallback to the latest opportunity overall
@@ -576,6 +584,32 @@ export class BillingService {
       }
     }
 
+    // ── AUTO-SYNC: If opportunity is missing or has no line items, sync class pricebook on the fly ──
+    const targetClassId = student.classSection?.classId;
+    const targetAyId = academicYearId || student.classSection?.class?.academicYearId;
+    if ((!openOpp || !openOpp.opportunityLineItems || openOpp.opportunityLineItems.length === 0) && targetClassId && targetAyId) {
+      try {
+        await this.syncPriceBookToStudents(targetClassId, targetAyId, undefined, tenantId);
+        const syncedOpp = await this.prisma.opportunity.findFirst({
+          where: { studentId, tenantId, academicYearId: targetAyId },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            academicYear: true,
+            opportunityLineItems: { include: { product: true } },
+            invoices: {
+              where: { tenantId, status: { not: PaymentStatus.VOIDED } },
+              include: { invoiceItems: true }
+            }
+          }
+        });
+        if (syncedOpp) {
+          openOpp = syncedOpp;
+        }
+      } catch (err: any) {
+        console.error(`[getStudentById] Auto-sync pricebook on-the-fly failed for student ${studentId}:`, err?.message || err);
+      }
+    }
+
     let totalFee = 0;
     let totalPaid = 0;
 
@@ -588,8 +622,7 @@ export class BillingService {
 
       totalPaid = openOpp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
 
-      // ── FALLBACK: If the opportunity has no line items (e.g. promotion without a matching pricebook),
-      //    compute the fee total from the class pricebook so the summary cards show correct numbers.
+      // ── FALLBACK: If the opportunity has no line items, compute the fee total from class pricebook
       if (totalFee === 0 && openOpp.classId) {
         const pricebookProducts = await this.getActiveProducts(
           openOpp.classId,
