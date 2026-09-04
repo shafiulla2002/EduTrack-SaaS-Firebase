@@ -511,6 +511,15 @@ export class ExamsService {
 
     if (!exam) return [];
 
+    // Pre-fetch all exam subjects for this exam to avoid N+1 queries in the loop
+    const examSubjects = await this.prisma.examSubject.findMany({
+      where: { tenantId, examId: exam.id },
+    });
+    const examSubjectMap = new Map<string, any>();
+    for (const es of examSubjects) {
+      examSubjectMap.set(`${es.subjectId}_${es.subjectType}`, es);
+    }
+
     const marks = await this.prisma.examMark.findMany({
       where: {
         tenantId,
@@ -554,16 +563,22 @@ export class ExamsService {
       const record = studentGrades.get(m.studentId)!;
       const score = Number(m.marksObtained);
       
-      const examSub = await this.examConfigService.getOrInitializeExamSubject(exam.id, m.subjectId, m.subjectType, tenantId);
+      const key = `${m.subjectId}_${m.subjectType}`;
+      let examSub = examSubjectMap.get(key);
+      if (!examSub) {
+        examSub = await this.examConfigService.getOrInitializeExamSubject(exam.id, m.subjectId, m.subjectType, tenantId);
+        examSubjectMap.set(key, examSub);
+      }
+      const maxMarks = examSub ? examSub.maxMarks : 100;
       
       record.scores[`${m.subject.name} (${m.subjectType})`] = score;
       record.totalMarks += score;
-      record.totalMaxMarks += examSub.maxMarks;
+      record.totalMaxMarks += maxMarks;
       record.subjectsList.push({
         name: m.subject.name,
         type: m.subjectType,
         score,
-        max: examSub.maxMarks,
+        max: maxMarks,
       });
     }
 
