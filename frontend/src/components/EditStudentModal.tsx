@@ -98,7 +98,15 @@ export default function EditStudentModal({ student, onClose, onSave }: EditStude
             <div>
               <label className="block text-[11px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5">Section</label>
               <input
-                value={student.section.replace('Section ', '')}
+                value={(() => {
+                  const sec = student.section || '';
+                  if (sec.startsWith('Section-')) return sec;
+                  if (sec.toLowerCase().startsWith('section')) {
+                    const rest = sec.substring(7).replace(/^[\s\-_]+/, '').trim();
+                    return `Section-${rest.toUpperCase() || 'A'}`;
+                  }
+                  return `Section-${sec.toUpperCase()}`;
+                })()}
                 disabled
                 className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-xl px-3.5 py-2 text-xs font-semibold cursor-not-allowed"
               />

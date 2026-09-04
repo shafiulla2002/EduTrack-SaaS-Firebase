@@ -812,11 +812,27 @@ export class StudentsService implements OnModuleInit {
         }
 
         // Resolve section name
-        let matchedSection = sections.find(s => s.name.toLowerCase() === sectionName.toLowerCase().trim());
+        const rawSectionName = (row['Section'] || row['section'] || 'A').toString().trim();
+        let formattedSectionName = rawSectionName;
+        if (formattedSectionName.toLowerCase().startsWith('section')) {
+          const rest = formattedSectionName.substring(7).replace(/^[\s\-_]+/, '').trim();
+          formattedSectionName = `Section-${rest.toUpperCase() || 'A'}`;
+        } else if (formattedSectionName.toLowerCase().startsWith('sec')) {
+          const rest = formattedSectionName.substring(3).replace(/^[\s\-_]+/, '').trim();
+          formattedSectionName = `Section-${rest.toUpperCase() || 'A'}`;
+        } else if (/^[A-Za-z0-9]+$/.test(formattedSectionName)) {
+          formattedSectionName = `Section-${formattedSectionName.toUpperCase()}`;
+        }
+
+        let matchedSection = sections.find(s =>
+          s.name.toLowerCase() === formattedSectionName.toLowerCase() ||
+          s.name.toLowerCase() === rawSectionName.toLowerCase() ||
+          s.name.replace(/^section[\s\-_]*/i, '').toLowerCase() === formattedSectionName.replace('section-', '').toLowerCase()
+        );
         if (!matchedSection) {
           matchedSection = await this.prisma.section.create({
             data: {
-              name: sectionName.trim(),
+              name: formattedSectionName,
               tenantId
             }
           });

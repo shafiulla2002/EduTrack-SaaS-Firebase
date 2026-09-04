@@ -669,7 +669,15 @@ export default function StudentsDirectory() {
                           </td>
                           <td className="px-6 py-4">
                             <span className="px-2.5 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold whitespace-nowrap">
-                              {student.class} - {student.section.replace('Section ', '')}
+                              {student.class} - {(() => {
+                                const sec = student.section || '';
+                                if (sec.startsWith('Section-')) return sec;
+                                if (sec.toLowerCase().startsWith('section')) {
+                                  const rest = sec.substring(7).replace(/^[\s\-_]+/, '').trim();
+                                  return `Section-${rest.toUpperCase() || 'A'}`;
+                                }
+                                return `Section-${sec.toUpperCase()}`;
+                              })()}
                             </span>
                           </td>
                           <td className="px-6 py-4">

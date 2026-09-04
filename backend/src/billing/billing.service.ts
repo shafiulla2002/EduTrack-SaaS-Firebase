@@ -1386,17 +1386,51 @@ export class BillingService {
         }
 
         const matchedClass = classes.find(c => c.name.toLowerCase() === classStr.toLowerCase().trim());
-        const matchedSection = sections.find(s => s.name.toLowerCase() === sectionStr.toLowerCase().trim());
 
-        if (!matchedClass || !matchedSection) {
-          errors.push(`Row ${i + 1}: Class "${classStr}" or Section "${sectionStr}" not found`);
+        let formattedSectionName = sectionStr;
+        if (formattedSectionName.toLowerCase().startsWith('section')) {
+          const rest = formattedSectionName.substring(7).replace(/^[\s\-_]+/, '').trim();
+          formattedSectionName = `Section-${rest.toUpperCase() || 'A'}`;
+        } else if (formattedSectionName.toLowerCase().startsWith('sec')) {
+          const rest = formattedSectionName.substring(3).replace(/^[\s\-_]+/, '').trim();
+          formattedSectionName = `Section-${rest.toUpperCase() || 'A'}`;
+        } else if (/^[A-Za-z0-9]+$/.test(formattedSectionName)) {
+          formattedSectionName = `Section-${formattedSectionName.toUpperCase()}`;
+        }
+
+        let matchedSection = sections.find(s =>
+          s.name.toLowerCase() === formattedSectionName.toLowerCase() ||
+          s.name.toLowerCase() === sectionStr.toLowerCase() ||
+          s.name.replace(/^section[\s\-_]*/i, '').toLowerCase() === formattedSectionName.replace('section-', '').toLowerCase()
+        );
+
+        if (!matchedSection) {
+          matchedSection = await this.prisma.section.create({
+            data: {
+              name: formattedSectionName,
+              tenantId
+            }
+          });
+          sections.push(matchedSection);
+        }
+
+        if (!matchedClass) {
+          errors.push(`Row ${i + 1}: Class "${classStr}" not found`);
           continue;
         }
 
-        const matchedCS = classSections.find(cs => cs.classId === matchedClass.id && cs.sectionId === matchedSection.id);
+        let matchedCS = classSections.find(cs => cs.classId === matchedClass.id && cs.sectionId === matchedSection.id);
         if (!matchedCS) {
-          errors.push(`Row ${i + 1}: Junction mapping between Class and Section not found`);
-          continue;
+          matchedCS = await this.prisma.classSection.create({
+            data: {
+              classId: matchedClass.id,
+              sectionId: matchedSection.id,
+              tenantId,
+              strength: 0
+            },
+            include: { class: true, section: true }
+          });
+          classSections.push(matchedCS);
         }
 
         const matchedAY = ays.find(ay => ay.name.toLowerCase() === (ayStr || '').toLowerCase().trim()) || ays.find(ay => ay.isActive);
