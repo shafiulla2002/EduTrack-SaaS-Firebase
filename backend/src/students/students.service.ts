@@ -1549,6 +1549,8 @@ export class StudentsService implements OnModuleInit {
         userUpdates.email = emailLower;
       }
 
+      const profileUpdates: any = {};
+
       if (data.phone) {
         const normalizedPhone = data.phone.replace(/\D/g, '').slice(-10);
         if (normalizedPhone) {
@@ -1573,13 +1575,11 @@ export class StudentsService implements OnModuleInit {
         await tx.user.update({ where: { id: profile.userId }, data: userUpdates });
       }
 
-      // Prepare student profile updates
-      const profileUpdatesPayload: any = { ...profileUpdates };
-      if (data.fatherName !== undefined) profileUpdatesPayload.fatherName = data.fatherName;
-      if (data.motherName !== undefined) profileUpdatesPayload.motherName = data.motherName;
-      if (data.aadharNo !== undefined) profileUpdatesPayload.aadharNo = data.aadharNo;
-      if (data.rollNo !== undefined) profileUpdatesPayload.rollNo = data.rollNo;
-      if (data.classSectionId !== undefined) profileUpdatesPayload.classSectionId = data.classSectionId;
+      if (data.fatherName !== undefined) profileUpdates.fatherName = data.fatherName;
+      if (data.motherName !== undefined) profileUpdates.motherName = data.motherName;
+      if (data.aadharNo !== undefined) profileUpdates.aadharNo = data.aadharNo;
+      if (data.rollNo !== undefined) profileUpdates.rollNo = data.rollNo;
+      if (data.classSectionId !== undefined) profileUpdates.classSectionId = data.classSectionId;
 
       if (data.profilePhotoUrl !== undefined) {
         if (data.profilePhotoUrl === null || data.profilePhotoUrl === '') {
@@ -1587,18 +1587,18 @@ export class StudentsService implements OnModuleInit {
           if (profile.profilePhotoUrl) {
             await this.storageService.deleteImage(profile.profilePhotoUrl);
           }
-          profileUpdatesPayload.profilePhotoUrl = null;
+          profileUpdates.profilePhotoUrl = null;
         } else if (data.profilePhotoUrl.startsWith('data:')) {
           // Delete old photo before uploading new one
           if (profile.profilePhotoUrl) {
             await this.storageService.deleteImage(profile.profilePhotoUrl);
           }
-          profileUpdatesPayload.profilePhotoUrl = await this.storageService.uploadImage(data.profilePhotoUrl, tenantId, profile.userId, `student-${profile.userId}`);
+          profileUpdates.profilePhotoUrl = await this.storageService.uploadImage(data.profilePhotoUrl, tenantId, profile.userId, `student-${profile.userId}`);
         }
       }
 
-      if (Object.keys(profileUpdatesPayload).length) {
-        await tx.studentProfile.update({ where: { id: studentId }, data: profileUpdatesPayload });
+      if (Object.keys(profileUpdates).length) {
+        await tx.studentProfile.update({ where: { id: studentId }, data: profileUpdates });
       }
     });
 
