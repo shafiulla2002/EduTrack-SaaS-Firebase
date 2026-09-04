@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Users, Plus, X, Search, Phone, Mail, Calendar,
-  ChevronRight, Edit2, Trash2, Clock, BookOpen, Check
+  ChevronRight, ChevronDown, Edit2, Trash2, Clock, BookOpen, Check
 } from 'lucide-react';
 import { formatDateDDMMYYYY } from '@/lib/date';
 
@@ -105,6 +105,21 @@ export default function SchoolStaffPage() {
     const now = new Date();
     return now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   });
+
+  const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
+  const monthDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (monthDropdownRef.current && !monthDropdownRef.current.contains(event.target as Node)) {
+        setIsMonthDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
@@ -630,15 +645,44 @@ export default function SchoolStaffPage() {
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-500 font-semibold">Month:</label>
-              <select
-                value={selectedPayrollMonth}
-                onChange={e => setSelectedPayrollMonth(e.target.value)}
-                className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none bg-white font-medium shadow-xs"
-              >
-                {payrollMonths.map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
+              <div className="relative" ref={monthDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsMonthDropdownOpen(prev => !prev)}
+                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs bg-white font-medium shadow-xs hover:border-slate-300 flex items-center justify-between gap-2 min-w-[110px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <span>{selectedPayrollMonth}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isMonthDropdownOpen ? 'rotate-180 text-blue-600' : ''}`} />
+                </button>
+
+                {isMonthDropdownOpen && (
+                  <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                    <div className="max-h-36 overflow-y-auto py-1 divide-y divide-slate-50">
+                      {payrollMonths.map(m => {
+                        const isSelected = m === selectedPayrollMonth;
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPayrollMonth(m);
+                              setIsMonthDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-blue-50 text-blue-600 font-semibold'
+                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                            }`}
+                          >
+                            <span>{m}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="hidden md:block overflow-x-auto">

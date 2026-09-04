@@ -605,129 +605,106 @@ export class AttendanceService {
   }
 
   // Salesforce parity: get bundled attendance data for reports
-  async getAttendanceData(startDateStr: string, endDateStr: string) {
+  async getAttendanceData(startDateStr?: string, endDateStr?: string) {
     const tenantId = this.getTenantId();
-    const startDate = parseAttendanceDate(startDateStr);
-    const endDate = parseAttendanceDate(endDateStr);
+    const now = new Date();
+    const defaultStart = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate()));
+    const defaultEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 30));
 
-    // 1. Fetch Students
-    const rawStudents = await this.prisma.studentProfile.findMany({
-      where: { tenantId },
-      include: {
-        user: { select: { name: true } },
-        classSection: {
-          include: {
-            class: true,
-            section: true,
-          },
-        },
-      },
-    });
+    const startDate = startDateStr ? parseAttendanceDate(startDateStr) : defaultStart;
+    const endDate = endDateStr ? parseAttendanceDate(endDateStr) : defaultEnd;
+
+    // Parallel high-performance raw SQL queries with tenant isolation
+    const [rawStudents, rawSessions, rawAbsents] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ id: string; rollNo: string | null; name: string; className: string | null; section: string | null }>>`
+        SELECT 
+          sp.id,
+          COALESCE(sp."rollNo", '') AS "rollNo",
+          u.name,
+          COALESCE(c.name, '') AS "className",
+          COALESCE(s.name, '') AS "section"
+        FROM "StudentProfile" sp
+        JOIN "User" u ON sp."userId" = u.id
+        LEFT JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+        LEFT JOIN "Class" c ON cs."classId" = c.id
+        LEFT JOIN "Section" s ON cs."sectionId" = s.id
+        WHERE sp."tenantId" = ${tenantId}
+        ORDER BY u.name ASC
+      `,
+      this.prisma.$queryRaw<Array<{ id: string; date: Date; totalStudents: number; presentCount: number; absentCount: number; classId: string | null; className: string | null; section: string | null }>>`
+        SELECT
+          ses.id,
+          ses.date,
+          ses."totalStudents",
+          ses."presentCount",
+          ses."absentCount",
+          COALESCE(c.id, '') AS "classId",
+          COALESCE(c.name, '') AS "className",
+          COALESCE(s.name, '') AS "section"
+        FROM "AttendanceSession" ses
+        LEFT JOIN "ClassSection" cs ON ses."classSectionId" = cs.id
+        LEFT JOIN "Class" c ON cs."classId" = c.id
+        LEFT JOIN "Section" s ON cs."sectionId" = s.id
+        WHERE ses."tenantId" = ${tenantId}
+          AND ses.date >= ${startDate}
+          AND ses.date <= ${endDate}
+        ORDER BY ses.date DESC
+      `,
+      this.prisma.$queryRaw<Array<{ id: string; studentId: string; attendanceDate: Date; className: string | null; section: string | null }>>`
+        SELECT
+          a.id,
+          a."studentId",
+          ses.date AS "attendanceDate",
+          COALESCE(c.name, '') AS "className",
+          COALESCE(s.name, '') AS "section"
+        FROM "Attendance" a
+        JOIN "AttendanceSession" ses ON a."attendanceSessionId" = ses.id
+        LEFT JOIN "ClassSection" cs ON ses."classSectionId" = cs.id
+        LEFT JOIN "Class" c ON cs."classId" = c.id
+        LEFT JOIN "Section" s ON cs."sectionId" = s.id
+        WHERE a."tenantId" = ${tenantId}
+          AND a.status = 'ABSENT'
+          AND ses.date >= ${startDate}
+          AND ses.date <= ${endDate}
+      `
+    ]);
 
     const students = rawStudents.map(s => ({
       id: s.id,
-      name: s.user.name,
+      name: s.name,
       rollNo: s.rollNo || '',
-      section: s.classSection?.section?.name || '',
-      classValue: s.classSection?.class?.name || '',
-      className: s.classSection?.class?.name || '',
+      section: s.section || '',
+      classValue: s.className || '',
+      className: s.className || '',
     }));
-
-    // 2. Fetch Attendance Records (Absent Only)
-    const rawAttendance = await this.prisma.attendance.findMany({
-      where: {
-        tenantId,
-        attendanceSession: {
-          date: {
-            gte: startDate,
-            lte: endDate,
-          },
-        },
-      },
-      include: {
-        student: {
-          select: {
-            rollNo: true,
-            user: { select: { name: true } },
-            classSection: {
-              include: {
-                class: true,
-                section: true,
-              },
-            },
-          },
-        },
-        attendanceSession: {
-          include: {
-            classSection: {
-              include: {
-                class: true,
-                section: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    const attendanceRecords = rawAttendance.map(a => {
-      const studentName = a.student?.user?.name || 'Unknown';
-      const rollNo = a.student?.rollNo || '';
-      const section = a.attendanceSession?.classSection?.section?.name || '';
-      const classValue = a.attendanceSession?.classSection?.class?.name || '';
-      return {
-        id: a.id,
-        studentId: a.studentId,
-        studentName,
-        rollNo,
-        section,
-        classValue,
-        className: classValue,
-        attendanceDate: formatAttendanceDate(a.attendanceSession.date),
-        status: a.status === AttendanceStatus.ABSENT ? 'Absent' : 'Present',
-      };
-    });
-
-    // 3. Fetch Classes
-    const uniqueClasses = Array.from(new Set(students.map(s => s.classValue).filter(Boolean)));
-
-    // 4. Fetch Sections
-    const uniqueSections = Array.from(new Set(students.map(s => s.section).filter(Boolean)));
-
-    // 5. Fetch Sessions
-    const rawSessions = await this.prisma.attendanceSession.findMany({
-      where: {
-        tenantId,
-        date: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      include: {
-        classSection: {
-          include: {
-            class: true,
-            section: true,
-          },
-        },
-      },
-    });
 
     const sessions = rawSessions.map(s => ({
       id: s.id,
-      classId: s.classSection?.class?.id || '',
-      className: s.classSection?.class?.name || '',
-      classValue: s.classSection?.class?.name || '',
+      classId: s.classId || '',
+      className: s.className || '',
+      classValue: s.className || '',
       attendanceDate: formatAttendanceDate(s.date),
-      section: s.classSection?.section?.name || '',
+      section: s.section || '',
       totalStudents: s.totalStudents,
       presentCount: s.presentCount,
       absentCount: s.absentCount,
     }));
 
-    // 6. Debug stats
-    const totalAcc = await this.prisma.studentProfile.count({ where: { tenantId } });
-    const debugStats = `Total StudentProfiles: ${totalAcc} | Matches: ${students.length}`;
+    const attendanceRecords = rawAbsents.map(a => ({
+      id: a.id,
+      studentId: a.studentId,
+      studentName: '',
+      rollNo: '',
+      section: a.section || '',
+      classValue: a.className || '',
+      className: a.className || '',
+      attendanceDate: formatAttendanceDate(a.attendanceDate),
+      status: 'Absent',
+    }));
+
+    // Fetch Classes & Sections
+    const uniqueClasses = Array.from(new Set(students.map(s => s.className).filter(Boolean)));
+    const uniqueSections = Array.from(new Set(students.map(s => s.section).filter(Boolean)));
 
     return {
       students,
@@ -735,7 +712,7 @@ export class AttendanceService {
       classes: uniqueClasses,
       sections: uniqueSections,
       sessions,
-      debugStats,
+      debugStats: `Total Students: ${students.length}`,
     };
   }
 
