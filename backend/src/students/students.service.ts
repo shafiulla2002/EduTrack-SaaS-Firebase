@@ -1553,7 +1553,20 @@ export class StudentsService implements OnModuleInit {
         const normalizedPhone = data.phone.replace(/\D/g, '').slice(-10);
         if (normalizedPhone) {
           userUpdates.phone = normalizedPhone;
+          profileUpdates.fatherPhone = normalizedPhone;
         }
+      }
+      if (data.fatherPhone !== undefined) {
+        const norm = (data.fatherPhone || '').replace(/\D/g, '').slice(-10);
+        profileUpdates.fatherPhone = norm || null;
+      }
+      if (data.motherPhone !== undefined) {
+        const norm = (data.motherPhone || '').replace(/\D/g, '').slice(-10);
+        profileUpdates.motherPhone = norm || null;
+      }
+      if (data.guardianPhone !== undefined) {
+        const norm = (data.guardianPhone || '').replace(/\D/g, '').slice(-10);
+        profileUpdates.guardianPhone = norm || null;
       }
 
       if (Object.keys(userUpdates).length) {
@@ -1561,12 +1574,12 @@ export class StudentsService implements OnModuleInit {
       }
 
       // Prepare student profile updates
-      const profileUpdates: any = {};
-      if (data.fatherName !== undefined) profileUpdates.fatherName = data.fatherName;
-      if (data.motherName !== undefined) profileUpdates.motherName = data.motherName;
-      if (data.aadharNo !== undefined) profileUpdates.aadharNo = data.aadharNo;
-      if (data.rollNo !== undefined) profileUpdates.rollNo = data.rollNo;
-      if (data.classSectionId !== undefined) profileUpdates.classSectionId = data.classSectionId;
+      const profileUpdatesPayload: any = { ...profileUpdates };
+      if (data.fatherName !== undefined) profileUpdatesPayload.fatherName = data.fatherName;
+      if (data.motherName !== undefined) profileUpdatesPayload.motherName = data.motherName;
+      if (data.aadharNo !== undefined) profileUpdatesPayload.aadharNo = data.aadharNo;
+      if (data.rollNo !== undefined) profileUpdatesPayload.rollNo = data.rollNo;
+      if (data.classSectionId !== undefined) profileUpdatesPayload.classSectionId = data.classSectionId;
 
       if (data.profilePhotoUrl !== undefined) {
         if (data.profilePhotoUrl === null || data.profilePhotoUrl === '') {
@@ -1574,18 +1587,18 @@ export class StudentsService implements OnModuleInit {
           if (profile.profilePhotoUrl) {
             await this.storageService.deleteImage(profile.profilePhotoUrl);
           }
-          profileUpdates.profilePhotoUrl = null;
+          profileUpdatesPayload.profilePhotoUrl = null;
         } else if (data.profilePhotoUrl.startsWith('data:')) {
           // Delete old photo before uploading new one
           if (profile.profilePhotoUrl) {
             await this.storageService.deleteImage(profile.profilePhotoUrl);
           }
-          profileUpdates.profilePhotoUrl = await this.storageService.uploadImage(data.profilePhotoUrl, tenantId, profile.userId, `student-${profile.userId}`);
+          profileUpdatesPayload.profilePhotoUrl = await this.storageService.uploadImage(data.profilePhotoUrl, tenantId, profile.userId, `student-${profile.userId}`);
         }
       }
 
-      if (Object.keys(profileUpdates).length) {
-        await tx.studentProfile.update({ where: { id: studentId }, data: profileUpdates });
+      if (Object.keys(profileUpdatesPayload).length) {
+        await tx.studentProfile.update({ where: { id: studentId }, data: profileUpdatesPayload });
       }
     });
 

@@ -180,7 +180,7 @@ export default function StudentsDirectory() {
           name: s.user?.name || 'Unknown Student',
           email: s.user?.email || 'N/A',
           phone: (() => {
-            const rawPhone = s.fatherPhone || s.guardianPhone || s.user?.phone || s.motherPhone || '';
+            const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
             if (!rawPhone) return 'N/A';
             return rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone;
           })(),

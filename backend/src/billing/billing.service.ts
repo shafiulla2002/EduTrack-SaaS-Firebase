@@ -305,11 +305,17 @@ export class BillingService {
         },
       });
 
-      if (selectedPricebookEntryIds && selectedPricebookEntryIds.length > 0) {
+      let entryIdsToApply = selectedPricebookEntryIds || [];
+      if (entryIdsToApply.length === 0 && studentData.selectedClass && studentData.academicYear) {
+        const activeProducts = await this.getActiveProducts(studentData.selectedClass, studentData.academicYear);
+        entryIdsToApply = activeProducts.map(p => p.id);
+      }
+
+      if (entryIdsToApply && entryIdsToApply.length > 0) {
         // Fetch pricebook entries
         const pbes = await tx.pricebookEntry.findMany({
           where: {
-            id: { in: selectedPricebookEntryIds },
+            id: { in: entryIdsToApply },
             tenantId,
           },
         });
@@ -1724,12 +1730,11 @@ export class BillingService {
       };
     }, { timeout: 15000 });
 
-    // Stage 2: Synchronize all students OUTSIDE the transaction (can be large for big classes)
-    // tenantId captured NOW while still in the request async context (AsyncLocalStorage will be gone after response)
-    // Run asynchronously so the API response returns immediately; errors are logged not thrown
-    this.syncPriceBookToStudents(classId, academicYearId, undefined, tenantId).catch((err) => {
-      console.error(`[savePriceBook] Background sync failed for class ${classId}:`, err?.message || err);
-    });
+    try {
+      await this.syncPriceBookToStudents(classId, academicYearId, undefined, tenantId);
+    } catch (err: any) {
+      console.error(`[savePriceBook] Sync failed for class ${classId}:`, err?.message || err);
+    }
 
     return result;
   }
@@ -1739,8 +1744,13 @@ export class BillingService {
     const tenantId = explicitTenantId || this.getTenantId();
     const db = tx || this.prisma;
 
-    // 1. Find the active pricebook for the class and academic year
-    const pricebook = await db.pricebook.findFirst({
+    // 1. Fetch academic year and class details
+    const ay = await db.academicYear.findUnique({ where: { id: academicYearId } });
+    const classRecord = await db.class.findUnique({ where: { id: classId } });
+    const className = classRecord?.name;
+
+    // 2. Find the active pricebook for the class and academic year
+    let pricebook = await db.pricebook.findFirst({
       where: { tenantId, classId, academicYearId, isActive: true },
       include: {
         pricebookEntries: {
@@ -1750,22 +1760,47 @@ export class BillingService {
       }
     });
 
-    if (!pricebook) {
+    if (!pricebook && className) {
+      const normalizedName = className.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+      const hyphenName = className.replace(/\s+/g, '-');
+      pricebook = await db.pricebook.findFirst({
+        where: {
+          tenantId,
+          isActive: true,
+          ...(academicYearId ? { academicYearId } : {}),
+          OR: [
+            { name: { equals: normalizedName, mode: 'insensitive' } },
+            { name: { equals: hyphenName, mode: 'insensitive' } },
+            { name: { startsWith: normalizedName, mode: 'insensitive' } },
+            { class: { name: { equals: className, mode: 'insensitive' }, academicYearId } }
+          ]
+        },
+        include: {
+          pricebookEntries: {
+            where: { isActive: true },
+            include: { product: true }
+          }
+        }
+      });
+    }
+
+    if (!pricebook || !pricebook.pricebookEntries.length) {
       return;
     }
 
     const activeEntries = pricebook.pricebookEntries.filter(e => e.product.isActive);
 
-    // 2. Fetch academic year and class details once
-    const ay = await db.academicYear.findUnique({ where: { id: academicYearId } });
-    const classRecord = await db.class.findUnique({ where: { id: classId } });
-
-    // 3. Find all student profiles currently enrolled in this class
+    // 3. Find all student profiles currently enrolled in this class (across all sections)
     const students = await db.studentProfile.findMany({
       where: {
         tenantId,
-        classSection: { classId },
-        user: { isActive: true }
+        user: { isActive: true },
+        OR: [
+          { classSection: { classId } },
+          ...(className ? [
+            { classSection: { class: { name: { equals: className, mode: 'insensitive' }, ...(academicYearId ? { academicYearId } : {}) } } }
+          ] : [])
+        ]
       },
       include: {
         user: true,
@@ -1960,6 +1995,50 @@ export class BillingService {
                 status: newStatus
               }
             });
+          }
+
+          // D. If no invoice exists for this opportunity and active OLIs exist, create a default UNPAID invoice
+          const existingInvoices = await db.invoice.findMany({
+            where: { opportunityId: opp.id, tenantId, status: { not: PaymentStatus.VOIDED } }
+          });
+          if (existingInvoices.length === 0) {
+            const updatedOlis = await db.opportunityLineItem.findMany({
+              where: { opportunityId: opp.id, tenantId },
+              include: { product: true }
+            });
+            if (updatedOlis.length > 0) {
+              const totalAmount = updatedOlis.reduce((sum, oli) => {
+                const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
+                const discountAmount = (itemTotal * Number(oli.discount)) / 100;
+                return sum + (itemTotal - discountAmount);
+              }, 0);
+
+              const newInvoice = await db.invoice.create({
+                data: {
+                  opportunityId: opp.id,
+                  studentId: student.id,
+                  invoiceDate: new Date(),
+                  dueDate: new Date(new Date().setDate(new Date().getDate() + 30)),
+                  totalAmount,
+                  paidAmount: 0,
+                  remainingBalance: totalAmount,
+                  status: PaymentStatus.UNPAID,
+                  description: `Fees Invoice — ${ay?.name || ''}`,
+                  tenantId
+                }
+              });
+
+              await db.invoiceItem.createMany({
+                data: updatedOlis.map(oli => ({
+                  invoiceId: newInvoice.id,
+                  opportunityLineItemId: oli.id,
+                  productId: oli.productId,
+                  name: oli.product.name,
+                  amount: Number(oli.unitPrice) * Number(oli.quantity) - ((Number(oli.unitPrice) * Number(oli.quantity) * Number(oli.discount)) / 100),
+                  tenantId
+                }))
+              });
+            }
           }
 
           await this.recalculatePaidAmount(opp.id, db);
