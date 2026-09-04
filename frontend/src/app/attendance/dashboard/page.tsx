@@ -121,9 +121,13 @@ function AttendanceDashboardContent() {
       const startDateStr = toLocalDateString(start);
       const endDateStr = toLocalDateString(end);
 
-      const res = await api.get('/attendance/report-data', {
-        params: { startDate: startDateStr, endDate: endDateStr }
-      });
+      const [res, classesRes, sectionsRes] = await Promise.all([
+        api.get('/attendance/report-data', {
+          params: { startDate: startDateStr, endDate: endDateStr }
+        }),
+        api.get('/academics/classes').catch(() => ({ data: [] })),
+        api.get('/academics/sections').catch(() => ({ data: [] })),
+      ]);
 
       const data = res.data;
       if (data) {
@@ -132,9 +136,9 @@ function AttendanceDashboardContent() {
             id: student.id,
             name: student.name,
             rollNo: student.rollNo || '',
-            classValue: student.classValue || '',
-            className: (student.className || student.classValue || '').replace(/^Class-?/i, '').trim(),
-            section: (student.section || '').replace(/^Section\s+/i, '').trim(),
+            classValue: student.classValue || student.className || '',
+            className: student.className || student.classValue || '',
+            section: student.section || '',
             initial: student.name ? student.name.charAt(0).toUpperCase() : ''
           })).sort((a: any, b: any) => a.name.localeCompare(b.name))
         );
@@ -145,22 +149,28 @@ function AttendanceDashboardContent() {
             studentId: record.studentId,
             studentName: record.studentName || 'Unknown',
             rollNo: record.rollNo || '',
-            section: (record.section || '').replace(/^Section\s+/i, '').trim(),
-            classValue: record.classValue || '',
-            className: (record.className || record.classValue || '').replace(/^Class-?/i, '').trim(),
+            section: record.section || '',
+            classValue: record.classValue || record.className || '',
+            className: record.className || record.classValue || '',
             attendanceDate: record.attendanceDate,
             status: record.status || 'Present'
           }))
         );
 
-        setClasses(data.classes || []);
-        setSections(data.sections || []);
+        const fetchedClassNames = (classesRes.data || []).map((c: any) => c.name).filter(Boolean);
+        const fetchedSectionNames = (sectionsRes.data || []).map((s: any) => s.name).filter(Boolean);
+
+        const mergedClasses = Array.from(new Set([...(data.classes || []), ...fetchedClassNames]));
+        const mergedSections = Array.from(new Set([...(data.sections || []), ...fetchedSectionNames]));
+
+        setClasses(mergedClasses);
+        setSections(mergedSections);
         
         setSessions(
           (data.sessions || []).map((session: any) => ({
             ...session,
-            className: (session.className || session.classValue || '').replace(/^Class-?/i, '').trim(),
-            section: (session.section || '').replace(/^Section\s+/i, '').trim()
+            className: session.className || session.classValue || '',
+            section: session.section || ''
           }))
         );
       }
@@ -210,18 +220,40 @@ function AttendanceDashboardContent() {
 
   // Filters Options
   const classOptions = useMemo(() => {
+    const set = new Set<string>();
+    classes.forEach(c => c && set.add(c));
+    students.forEach(s => s.className && set.add(s.className));
+    const sorted = Array.from(set).sort((a, b) => {
+      const getNum = (str: string) => {
+        const match = str.match(/\d+/);
+        return match ? parseInt(match[0], 10) : 0;
+      };
+      return getNum(a) - getNum(b);
+    });
+
     return [
       { label: 'All Classes', value: 'all' },
-      ...classes.map(c => ({ label: `Class ${c.replace(/^Class-?/i, '')}`, value: c.replace(/^Class-?/i, '').trim() }))
+      ...sorted.map(c => ({
+        label: c.startsWith('Class-') ? c.replace('Class-', 'Class ') : c,
+        value: c
+      }))
     ];
-  }, [classes]);
+  }, [classes, students]);
 
   const sectionOptions = useMemo(() => {
+    const set = new Set<string>();
+    sections.forEach(s => s && set.add(s));
+    students.forEach(s => s.section && set.add(s.section));
+    const sorted = Array.from(set).sort();
+
     return [
       { label: 'All Sections', value: 'all' },
-      ...sections.map(s => ({ label: `Section ${s.replace(/^Section\s+/i, '')}`, value: s.replace(/^Section\s+/i, '').trim() }))
+      ...sorted.map(s => ({
+        label: s.startsWith('Section-') ? s.replace('Section-', 'Section ') : s,
+        value: s
+      }))
     ];
-  }, [sections]);
+  }, [sections, students]);
 
   // Apply Global Filters to Students list
   const filteredStudents = useMemo(() => {
@@ -288,8 +320,8 @@ function AttendanceDashboardContent() {
   }, [currentDate]);
 
   // Header button labels
-  const classLabelText = selectedClass === 'all' ? 'All Classes' : `Class ${selectedClass}`;
-  const sectionLabelText = selectedSection === 'all' ? 'All Sections' : `Section ${selectedSection}`;
+  const classLabelText = selectedClass === 'all' ? 'All Classes' : (selectedClass.startsWith('Class-') ? selectedClass.replace('Class-', 'Class ') : selectedClass);
+  const sectionLabelText = selectedSection === 'all' ? 'All Sections' : (selectedSection.startsWith('Section-') ? selectedSection.replace('Section-', 'Section ') : selectedSection);
 
   // ─── DAILY REPORT VIEW STATISTICS ──────────────────────────────────────────────────
   const classSectionSummary = useMemo(() => {

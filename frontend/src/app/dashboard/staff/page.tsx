@@ -87,8 +87,23 @@ export default function SchoolStaffPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'teaching' | 'non-teaching' | 'salary'>('all');
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [selectedPayrollMonth, setSelectedPayrollMonth] = useState('Jun 2026');
+  const payrollMonths = useMemo(() => {
+    const list: string[] = [];
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    for (let year = currentYear + 1; year >= currentYear - 2; year--) {
+      for (let month = 11; month >= 0; month--) {
+        const d = new Date(year, month, 1);
+        list.push(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+      }
+    }
+    return list;
+  }, []);
+
+  const [selectedPayrollMonth, setSelectedPayrollMonth] = useState(() => {
+    const now = new Date();
+    return now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  });
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
@@ -617,9 +632,11 @@ export default function SchoolStaffPage() {
               <select
                 value={selectedPayrollMonth}
                 onChange={e => setSelectedPayrollMonth(e.target.value)}
-                className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none bg-white"
+                className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none bg-white font-medium shadow-xs"
               >
-                {['Jun 2026','May 2026','Apr 2026','Mar 2026'].map(m => <option key={m}>{m}</option>)}
+                {payrollMonths.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
               </select>
             </div>
           </div>
