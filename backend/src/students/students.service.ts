@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
-import { Role, PaymentStatus } from '@prisma/client';
+import { Role, PaymentStatus, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { StorageService } from '../common/storage.service';
 import { BillingService } from '../billing/billing.service';
@@ -1030,76 +1030,89 @@ export class StudentsService implements OnModuleInit {
     };
   }
 
-  async getPromotionCandidates(sourceYearId: string, className?: string, sectionName?: string) {
+  async getPromotionCandidates(sourceYearId?: string, className?: string, sectionName?: string) {
     const tenantId = this.getTenantId();
 
-    const students = await this.prisma.studentProfile.findMany({
-      where: {
-        user: { tenantId, isActive: true },
-        classSection: {
-          class: {
-            academicYearId: sourceYearId,
-            name: className && className !== 'ALL' ? className : undefined,
-          },
-          section: {
-            name: sectionName ? sectionName : undefined,
-          }
-        }
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-          }
-        },
-        classSection: {
-          include: {
-            class: true,
-            section: true,
-          }
-        },
-        invoices: {
-          where: { tenantId },
-          select: {
-            totalAmount: true,
-            paidAmount: true,
-            remainingBalance: true,
-            status: true,
-          }
-        }
-      },
-      orderBy: {
-        user: { name: 'asc' }
-      }
-    });
+    const whereYear = (sourceYearId && sourceYearId !== 'ALL')
+      ? Prisma.sql`AND c."academicYearId" = ${sourceYearId}`
+      : Prisma.empty;
 
-    return Promise.all(students.map(async s => {
-      const billingInfo = await this.billingService.getStudentById(s.id);
+    const whereClass = (className && className !== 'ALL' && className !== '')
+      ? Prisma.sql`AND LOWER(TRIM(c.name)) = LOWER(TRIM(${className}))`
+      : Prisma.empty;
+
+    const normalizedSection = (sectionName || '').trim();
+    const cleanSectionNum = normalizedSection.replace(/^Section[-\s]*/i, '').trim();
+
+    const whereSection = (normalizedSection && normalizedSection !== 'ALL' && normalizedSection !== '')
+      ? Prisma.sql`AND (
+          LOWER(TRIM(s.name)) = LOWER(TRIM(${normalizedSection}))
+          OR LOWER(TRIM(s.name)) = LOWER(TRIM(${'Section-' + cleanSectionNum}))
+          OR LOWER(TRIM(s.name)) = LOWER(TRIM(${'Section ' + cleanSectionNum}))
+          OR LOWER(TRIM(REPLACE(REPLACE(s.name, 'Section-', ''), 'Section ', ''))) = LOWER(TRIM(${cleanSectionNum}))
+        )`
+      : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<Array<any>>`
+      SELECT 
+        sp.id,
+        COALESCE(sp."rollNo", '') AS "rollNo",
+        COALESCE(sp."fatherName", '') AS "fatherName",
+        COALESCE(sp."motherName", '') AS "motherName",
+        COALESCE(sp."aadharNo", '') AS "aadharNo",
+        sp."profilePhotoUrl",
+        u.name,
+        u.email,
+        COALESCE(u.phone, '') AS phone,
+        COALESCE(c.name, '') AS "className",
+        COALESCE(s.name, '') AS "sectionName",
+        COALESCE(SUM(inv."totalAmount"), 0)::numeric AS "totalFees",
+        COALESCE(SUM(inv."paidAmount"), 0)::numeric AS "paidAmount",
+        COALESCE(SUM(inv."remainingBalance"), 0)::numeric AS "balanceDue"
+      FROM "StudentProfile" sp
+      JOIN "User" u ON sp."userId" = u.id
+      JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+      JOIN "Class" c ON cs."classId" = c.id
+      JOIN "Section" s ON cs."sectionId" = s.id
+      LEFT JOIN "Invoice" inv ON sp.id = inv."studentId" AND inv."tenantId" = ${tenantId}
+      WHERE sp."tenantId" = ${tenantId}
+        AND u."isActive" = true
+        ${whereYear}
+        ${whereClass}
+        ${whereSection}
+      GROUP BY sp.id, u.id, c.id, s.id
+      ORDER BY u.name ASC
+    `;
+
+    return rows.map(r => {
+      const totalFees = Number(r.totalFees || 0);
+      const paidAmount = Number(r.paidAmount || 0);
+      const balanceDue = Number(r.balanceDue || 0);
+      const paidPercentage = totalFees > 0 ? Math.round((paidAmount / totalFees) * 100) : 100;
+      const pendingPercentage = 100 - paidPercentage;
+      const financialStatus = balanceDue === 0 ? 'CLEARED' : (paidAmount > 0 ? 'PARTIAL' : 'DUE');
 
       return {
-        id: s.id,
-        name: s.user.name,
-        email: s.user.email,
-        rollNo: s.rollNo || '',
-        class: s.classSection?.class.name || '',
-        section: s.classSection?.section.name || '',
-        fatherName: s.fatherName || '',
-        motherName: s.motherName || '',
-        aadharNo: s.aadharNo || '',
-        phone: s.user.phone || '',
-        balanceDue: billingInfo.totalPendingBalance,
-        paidAmount: billingInfo.paidAmount,
-        totalFees: billingInfo.totalFees,
-        pendingPercentage: billingInfo.pendingPercentage,
-        paidPercentage: billingInfo.paidPercentage,
-        financialStatus: billingInfo.financialStatus,
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        rollNo: r.rollNo,
+        class: r.className,
+        section: r.sectionName,
+        fatherName: r.fatherName,
+        motherName: r.motherName,
+        aadharNo: r.aadharNo,
+        phone: r.phone,
+        balanceDue,
+        paidAmount,
+        totalFees,
+        pendingPercentage,
+        paidPercentage,
+        financialStatus,
         parentEmail: '',
-        profilePhotoUrl: s.profilePhotoUrl || null,
+        profilePhotoUrl: r.profilePhotoUrl || null,
       };
-    }));
+    });
   }
 
   async promoteStudents(payload: {

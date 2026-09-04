@@ -138,15 +138,15 @@ export default function StudentPromotionPage() {
         if (res.data.length > 0) {
           const active = res.data.find((y: any) => y.isActive);
           const inactive = res.data.find((y: any) => !y.isActive);
-          if (inactive) {
-            setSourceYear(inactive.id);
+          if (active) {
+            setSourceYear(active.id);
           } else {
             setSourceYear(res.data[0].id);
           }
-          if (active) {
-            setTargetYear(active.id);
+          if (inactive) {
+            setTargetYear(inactive.id);
           } else {
-            setTargetYear(res.data[0].id);
+            setTargetYear(res.data[res.data.length - 1].id);
           }
         }
       } catch (err) {
@@ -325,6 +325,29 @@ export default function StudentPromotionPage() {
     }
   }, [sourceYear, academicYears]);
 
+  // Flexible class & section matching helpers
+  const isSectionMatch = (studentSection: string, filterSection: string) => {
+    if (!filterSection || filterSection === 'ALL') return true;
+    if (!studentSection) return false;
+    const cleanStudent = studentSection.replace(/^Section[-\s]*/i, '').trim().toLowerCase();
+    const cleanFilter = filterSection.replace(/^Section[-\s]*/i, '').trim().toLowerCase();
+    return cleanStudent === cleanFilter || studentSection.toLowerCase() === filterSection.toLowerCase();
+  };
+
+  const isClassMatch = (studentClass: string, filterClass: string) => {
+    if (!filterClass || filterClass === 'ALL') return true;
+    if (!studentClass) return false;
+    return studentClass.toLowerCase().trim() === filterClass.toLowerCase().trim();
+  };
+
+  // Dynamically resolved sections from DB and loaded students
+  const availableSections = React.useMemo(() => {
+    const set = new Set<string>();
+    (dbSections || []).forEach(s => s.name && set.add(s.name));
+    (studentsState || []).forEach(s => s.section && set.add(s.section));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [dbSections, studentsState]);
+
   // Sync target class when source class changes
   useEffect(() => {
     if (sourceClass === 'ALL') {
@@ -333,6 +356,7 @@ export default function StudentPromotionPage() {
     } else if (sourceClass) {
       const nextCls = getNextClass(sourceClass);
       setTargetClass(nextCls);
+      setIsDrilldown(true);
     } else {
       setTargetClass('');
     }
@@ -343,7 +367,6 @@ export default function StudentPromotionPage() {
     const counts: Record<string, number> = {};
     
     studentsState.forEach(student => {
-      // For demo, we count students who match their current class
       const key = `${student.class}:${student.section}`;
       counts[key] = (counts[key] || 0) + 1;
     });
@@ -356,10 +379,10 @@ export default function StudentPromotionPage() {
 
   const summaries = getClassSummaries();
 
-  // Filter summaries based on section chip selection
-  const filteredSourceSummary = sourceSection
-    ? summaries.filter(item => item.section === sourceSection)
-    : summaries;
+  // Filter summaries based on section chip selection & class
+  const filteredSourceSummary = summaries.filter(item => {
+    return isClassMatch(item.className, sourceClass) && isSectionMatch(item.section, sourceSection);
+  });
 
   // Projection Map for Right Card
   const filteredTargetSummary = (() => {
@@ -387,8 +410,8 @@ export default function StudentPromotionPage() {
 
   // Filtered Students for Drilldown view
   const currentStudentsList = studentsState.filter(s => {
-    const matchesClass = s.class === sourceClass;
-    const matchesSection = !sourceSection || s.section === sourceSection;
+    const matchesClass = isClassMatch(s.class, sourceClass);
+    const matchesSection = isSectionMatch(s.section, sourceSection);
     const matchesSearch = !searchQuery || 
       s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
       s.rollNo.includes(searchQuery);
@@ -418,7 +441,7 @@ export default function StudentPromotionPage() {
       });
       setSelectedStudentIds(initialSel);
     }
-  }, [isDrilldown, sourceClass, sourceSection]);
+  }, [isDrilldown, sourceClass, sourceSection, currentStudentsList.length]);
 
   const handleStudentToggle = (studentId: string) => {
     setSelectedStudentIds(prev => ({
@@ -649,26 +672,42 @@ export default function StudentPromotionPage() {
               </select>
             </div>
 
-            {/* Section Filter Chips */}
+            {/* Dynamic Section Filter Chips */}
             <div className="space-y-2">
               <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#8B5CF6]" />
                 Section Filter
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {['', 'Section A', 'Section B'].map((sec) => (
-                  <button
-                    key={sec}
-                    onClick={() => setSourceSection(sec)}
-                    className={`py-2 text-[11px] font-bold rounded-xl border text-center transition-all select-none cursor-pointer ${
-                      sourceSection === sec 
-                        ? 'bg-blue-50/70 border-blue-500 text-blue-600 shadow-sm' 
-                        : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-blue-500 hover:border-blue-200'
-                    }`}
-                  >
-                    {sec ? sec.replace('Section ', '') : 'ALL'}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSourceSection('')}
+                  className={`flex-1 min-w-[50px] py-2 text-[11px] font-bold rounded-xl border text-center transition-all select-none cursor-pointer ${
+                    !sourceSection 
+                      ? 'bg-blue-50/70 border-blue-500 text-blue-600 shadow-xs' 
+                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-blue-500 hover:border-blue-200'
+                  }`}
+                >
+                  ALL
+                </button>
+                {availableSections.map((sec) => {
+                  const isSelected = isSectionMatch(sec, sourceSection);
+                  const displayLabel = sec.replace(/^Section[-\s]*/i, '');
+                  return (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setSourceSection(isSelected ? '' : sec)}
+                      className={`flex-1 min-w-[50px] py-2 text-[11px] font-bold rounded-xl border text-center transition-all select-none cursor-pointer ${
+                        isSelected 
+                          ? 'bg-blue-50/70 border-blue-500 text-blue-600 shadow-xs' 
+                          : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-blue-500 hover:border-blue-200'
+                      }`}
+                    >
+                      {displayLabel}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
