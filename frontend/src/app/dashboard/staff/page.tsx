@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Plus, X, Search, Phone, Mail, Calendar,
   ChevronRight, Edit2, Trash2, Clock, BookOpen, Check
@@ -87,6 +87,7 @@ export default function SchoolStaffPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'teaching' | 'non-teaching' | 'salary'>('all');
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const payrollMonths = useMemo(() => {
     const list: string[] = [];
     const now = new Date();
