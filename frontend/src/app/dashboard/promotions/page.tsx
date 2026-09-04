@@ -683,24 +683,26 @@ export default function StudentPromotionPage() {
                   type="button"
                   onClick={() => setSourceSection('')}
                   className={`flex-1 min-w-[50px] py-2 text-[11px] font-bold rounded-xl border text-center transition-all select-none cursor-pointer ${
-                    !sourceSection 
-                      ? 'bg-blue-50/70 border-blue-500 text-blue-600 shadow-xs' 
+                    !sourceSection || sourceSection === 'ALL'
+                      ? 'bg-blue-50/70 border-blue-500 text-blue-600 shadow-xs ring-1 ring-blue-500' 
                       : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-blue-500 hover:border-blue-200'
                   }`}
                 >
                   ALL
                 </button>
                 {availableSections.map((sec) => {
-                  const isSelected = isSectionMatch(sec, sourceSection);
+                  const cleanSec = sec.replace(/^Section[-\s]*/i, '').trim().toLowerCase();
+                  const cleanSource = (sourceSection || '').replace(/^Section[-\s]*/i, '').trim().toLowerCase();
+                  const isChipSelected = Boolean(sourceSection) && (cleanSec === cleanSource || sec.toLowerCase() === sourceSection.toLowerCase());
                   const displayLabel = sec.replace(/^Section[-\s]*/i, '');
                   return (
                     <button
                       key={sec}
                       type="button"
-                      onClick={() => setSourceSection(isSelected ? '' : sec)}
+                      onClick={() => setSourceSection(isChipSelected ? '' : sec)}
                       className={`flex-1 min-w-[50px] py-2 text-[11px] font-bold rounded-xl border text-center transition-all select-none cursor-pointer ${
-                        isSelected 
-                          ? 'bg-blue-50/70 border-blue-500 text-blue-600 shadow-xs' 
+                        isChipSelected 
+                          ? 'bg-blue-50/70 border-blue-500 text-blue-600 shadow-xs ring-1 ring-blue-500' 
                           : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-blue-500 hover:border-blue-200'
                       }`}
                     >
@@ -899,7 +901,9 @@ export default function StudentPromotionPage() {
                 {isDrilldown && (
                   <>
                     <div className="flex justify-between items-center mb-3">
-                      <h5 className="text-xs font-bold text-slate-500">{sourceClass} - {sourceSection} Enrollment</h5>
+                      <h5 className="text-xs font-bold text-slate-700">
+                        {sourceClass} {sourceSection ? `- ${sourceSection.replace(/^Section[-\s]*/i, 'Section ')}` : ''} Enrollment
+                      </h5>
                       <div className="flex gap-2">
                         <button onClick={handleSelectAll} className="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer">Select All</button>
                         <span className="text-slate-300 text-[10px]">|</span>
