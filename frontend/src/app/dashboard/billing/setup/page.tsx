@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, RefreshCw, CheckCircle, Package, Tag } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, cachedGet } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { useSchoolSetupUpdate, dispatchSchoolSetupUpdated } from '@/lib/events';
 
@@ -68,8 +68,8 @@ export default function FeeSetupPage() {
   const loadDropdownData = useCallback(async (academicYearId?: string) => {
     try {
       const [classesRes, yearsRes, productsRes] = await Promise.all([
-        api.get('/academics/classes', { params: academicYearId ? { academicYearId } : {} }),
-        api.get('/academics/academic-years'),
+        cachedGet('/academics/classes', { params: academicYearId ? { academicYearId } : {} }, 60000),
+        cachedGet('/academics/academic-years', undefined, 60000),
         api.get('/billing/products'),
       ]);
       setClassesList(classesRes.data || []);

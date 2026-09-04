@@ -200,6 +200,7 @@ model User {
   @@index([tenantId])
   @@index([name])
   @@index([phone])
+  @@index([tenantId, name, isActive])
 }
 
 model StaffProfile {

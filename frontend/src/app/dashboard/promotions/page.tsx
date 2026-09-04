@@ -9,7 +9,7 @@ import {
   FileText, ChevronRight, Loader2, BookOpen, AlertTriangle, ExternalLink, ArrowUpRight, Eye
 } from 'lucide-react';
 import Drawer from '@/components/Drawer';
-import { api } from '@/lib/api';
+import { api, cachedGet } from '@/lib/api';
 
 const CLASS_ORDER = [
   'Nursery', 'LKG', 'UKG',
@@ -129,34 +129,34 @@ export default function StudentPromotionPage() {
   const [loadingStudentHistory, setLoadingStudentHistory] = useState(false);
   const [historyActiveTab, setHistoryActiveTab] = useState<'overview' | 'timeline' | 'attendance' | 'exams' | 'homework' | 'fees' | 'complaints'>('overview');
 
-  // Load Academic Years & Classes & Sections
+  // Load Academic Years & Classes & Sections in parallel with shared cache
   useEffect(() => {
-    const fetchYears = async () => {
+    const fetchInitData = async () => {
       try {
-        const res = await api.get('/academics/academic-years');
-        setAcademicYears(res.data);
-        if (res.data.length > 0) {
-          const active = res.data.find((y: any) => y.isActive);
-          const inactive = res.data.find((y: any) => !y.isActive);
+        const [yearsRes, classesRes, sectionsRes] = await Promise.all([
+          cachedGet('/academics/academic-years', undefined, 60000),
+          cachedGet('/academics/classes', undefined, 60000),
+          cachedGet('/academics/sections', undefined, 60000),
+        ]);
+
+        const yearsData = yearsRes.data || [];
+        setAcademicYears(yearsData);
+        if (yearsData.length > 0) {
+          const active = yearsData.find((y: any) => y.isActive);
+          const inactive = yearsData.find((y: any) => !y.isActive);
           if (active) {
             setSourceYear(active.id);
           } else {
-            setSourceYear(res.data[0].id);
+            setSourceYear(yearsData[0].id);
           }
           if (inactive) {
             setTargetYear(inactive.id);
           } else {
-            setTargetYear(res.data[res.data.length - 1].id);
+            setTargetYear(yearsData[yearsData.length - 1].id);
           }
         }
-      } catch (err) {
-        console.error('Error fetching academic years:', err);
-      }
-    };
-    const fetchClasses = async () => {
-      try {
-        const res = await api.get('/academics/classes');
-        const sorted = (res.data || []).sort((a: any, b: any) => {
+
+        const sorted = (classesRes.data || []).sort((a: any, b: any) => {
           const idxA = CLASS_ORDER.indexOf(a.name);
           const idxB = CLASS_ORDER.indexOf(b.name);
           if (idxA >= 0 && idxB >= 0) return idxA - idxB;
@@ -165,21 +165,13 @@ export default function StudentPromotionPage() {
           return a.name.localeCompare(b.name);
         });
         setDbClasses(sorted);
+
+        setDbSections(sectionsRes.data || []);
       } catch (err) {
-        console.error('Error fetching classes:', err);
+        console.error('Error fetching promotion initial data:', err);
       }
     };
-    const fetchSections = async () => {
-      try {
-        const res = await api.get('/academics/sections');
-        setDbSections(res.data || []);
-      } catch (err) {
-        console.error('Error fetching sections:', err);
-      }
-    };
-    fetchYears();
-    fetchClasses();
-    fetchSections();
+    fetchInitData();
   }, []);
 
   const fetchHistoricalStudents = async () => {

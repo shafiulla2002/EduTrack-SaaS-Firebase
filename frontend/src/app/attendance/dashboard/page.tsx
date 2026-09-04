@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, cachedGet } from '@/lib/api';
 import { 
   Calendar as CalendarIcon, CheckCircle, AlertCircle, RefreshCw, 
   Search, ChevronLeft, ChevronRight, UserCheck, Info, TrendingUp, Plus 
@@ -125,8 +125,8 @@ function AttendanceDashboardContent() {
         api.get('/attendance/report-data', {
           params: { startDate: startDateStr, endDate: endDateStr }
         }),
-        api.get('/academics/classes').catch(() => ({ data: [] })),
-        api.get('/academics/sections').catch(() => ({ data: [] })),
+        cachedGet('/academics/classes', undefined, 60000).catch(() => ({ data: [] })),
+        cachedGet('/academics/sections', undefined, 60000).catch(() => ({ data: [] })),
       ]);
 
       const data = res.data;

@@ -85,21 +85,21 @@ export class TenantController {
   async getSetupStatus(@Req() req: any) {
     const tenantId = req.user?.tenantId;
 
-    const currentUser = await this.prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        avatarUrl: true,
-        staffProfile: {
-          select: { id: true, staffRole: true, designation: true, staffCategory: true }
-        }
-      },
-    });
-
     if (!tenantId) {
+      const currentUser = await this.prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          avatarUrl: true,
+          staffProfile: {
+            select: { id: true, staffRole: true, designation: true, staffCategory: true }
+          }
+        },
+      });
+
       return {
         setupCompleted: false,
         completionPercentage: 0,
@@ -112,10 +112,61 @@ export class TenantController {
       };
     }
 
-    const setup = await this.prisma.schoolSetup.findUnique({
-      where: { tenantId },
-      include: { tenant: true },
-    });
+    const [
+      currentUser,
+      setup,
+      classesCount,
+      teachersCount,
+      studentsCount,
+      subscription
+    ] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          avatarUrl: true,
+          staffProfile: {
+            select: { id: true, staffRole: true, designation: true, staffCategory: true }
+          }
+        },
+      }),
+      this.prisma.schoolSetup.findUnique({
+        where: { tenantId },
+        include: { tenant: true },
+      }),
+      this.prisma.classSection.count({
+        where: {
+          tenantId,
+          class: {
+            isActive: true,
+          },
+        },
+      }),
+      this.prisma.staffProfile.count({
+        where: {
+          user: {
+            tenantId,
+            isActive: true,
+            role: { in: ['TEACHER', 'STAFF'] },
+          },
+        },
+      }),
+      this.prisma.studentProfile.count({
+        where: {
+          user: {
+            tenantId,
+            isActive: true,
+          },
+        },
+      }),
+      this.prisma.tenantSubscription.findUnique({
+        where: { tenantId },
+        include: { plan: true },
+      })
+    ]);
 
     if (!setup) {
       const tenant = await this.prisma.tenant.findUnique({
@@ -156,6 +207,14 @@ export class TenantController {
           isCompleted: false,
         } : null,
         currentUser,
+        subscription: subscription ? {
+          plan: subscription.plan?.name || 'TRIAL',
+          status: subscription.status,
+          expiryDate: subscription.expiryDate,
+          studentLimit: subscription.plan?.studentLimit || 500,
+          teacherLimit: subscription.plan?.teacherLimit || 50,
+          features: subscription.plan?.features || [],
+        } : null,
       };
     }
 
@@ -168,35 +227,6 @@ export class TenantController {
     
     const filledCount = fields.filter(val => val && String(val).trim() !== '').length;
     const completionPercentage = Math.round((filledCount / fields.length) * 100);
-
-    // Entity counts for setup progress metrics
-    const classesCount = await this.prisma.classSection.count({
-      where: {
-        tenantId,
-        class: {
-          isActive: true,
-        },
-      },
-    });
-
-    const teachersCount = await this.prisma.staffProfile.count({
-      where: {
-        user: {
-          tenantId,
-          isActive: true,
-          role: { in: ['TEACHER', 'STAFF'] },
-        },
-      },
-    });
-
-    const studentsCount = await this.prisma.studentProfile.count({
-      where: {
-        user: {
-          tenantId,
-          isActive: true,
-        },
-      },
-    });
 
     // Identify missing optional setup fields
     const missingFields: string[] = [];
@@ -215,11 +245,6 @@ export class TenantController {
         missingFields.push(key);
       }
     }
-
-    const subscription = await this.prisma.tenantSubscription.findUnique({
-      where: { tenantId },
-      include: { plan: true },
-    });
 
     return {
       setupCompleted: setup.isCompleted,

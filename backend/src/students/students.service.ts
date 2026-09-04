@@ -269,37 +269,67 @@ export class StudentsService implements OnModuleInit {
   async getStudentsBillingInfoBatch(studentIds: string[], tenantId: string, academicYearId?: string) {
     if (studentIds.length === 0) return {};
 
-    // 1. Fetch all opportunities for all matching students
-    const allOpps = await this.prisma.opportunity.findMany({
-      where: {
-        studentId: { in: studentIds },
-        tenantId,
-      },
-      include: {
-        academicYear: true,
-        opportunityLineItems: {
-          include: { product: true }
+    // 1. Concurrently fetch opportunities and orphan invoices with targeted selects
+    const [allOpps, allOrphanInvoices, targetAcademicYear] = await Promise.all([
+      this.prisma.opportunity.findMany({
+        where: {
+          studentId: { in: studentIds },
+          tenantId,
         },
-        invoices: {
-          where: {
-            tenantId,
-            status: { not: 'VOIDED' }
+        select: {
+          id: true,
+          studentId: true,
+          stageName: true,
+          academicYearId: true,
+          classId: true,
+          createdAt: true,
+          academicYear: {
+            select: {
+              id: true,
+              name: true,
+              startDate: true,
+            },
           },
-          include: { invoiceItems: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    // 2. Fetch all standalone/orphan invoices for these students
-    const allOrphanInvoices = await this.prisma.invoice.findMany({
-      where: {
-        studentId: { in: studentIds },
-        tenantId,
-        opportunityId: null,
-        status: { in: ['UNPAID', 'PARTIALLY_PAID'] }
-      }
-    });
+          opportunityLineItems: {
+            select: {
+              unitPrice: true,
+              quantity: true,
+              discount: true,
+            },
+          },
+          invoices: {
+            where: {
+              tenantId,
+              status: { not: 'VOIDED' },
+            },
+            select: {
+              paidAmount: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.invoice.findMany({
+        where: {
+          studentId: { in: studentIds },
+          tenantId,
+          opportunityId: null,
+          status: { in: ['UNPAID', 'PARTIALLY_PAID'] },
+        },
+        select: {
+          id: true,
+          studentId: true,
+          remainingBalance: true,
+          invoiceDate: true,
+        },
+      }),
+      academicYearId
+        ? this.prisma.academicYear.findUnique({
+            where: { id: academicYearId },
+            select: { id: true, startDate: true },
+          })
+        : Promise.resolve(null),
+    ]);
 
     // Map to group opportunities by studentId
     const oppsByStudent = new Map<string, typeof allOpps>();
@@ -307,7 +337,7 @@ export class StudentsService implements OnModuleInit {
       if (!oppsByStudent.has(opp.studentId)) {
         oppsByStudent.set(opp.studentId, []);
       }
-      oppsByStudent.get(opp.studentId).push(opp);
+      oppsByStudent.get(opp.studentId)!.push(opp);
     }
 
     // Map to group orphan invoices by studentId
@@ -316,7 +346,7 @@ export class StudentsService implements OnModuleInit {
       if (!orphansByStudent.has(inv.studentId)) {
         orphansByStudent.set(inv.studentId, []);
       }
-      orphansByStudent.get(inv.studentId).push(inv);
+      orphansByStudent.get(inv.studentId)!.push(inv);
     }
 
     const billingMap: Record<string, any> = {};
@@ -324,7 +354,7 @@ export class StudentsService implements OnModuleInit {
     const getActiveProductsCached = async (classId: string, ayId?: string) => {
       const cacheKey = `${classId}-${ayId || 'default'}`;
       if (activeProductsCache.has(cacheKey)) {
-        return activeProductsCache.get(cacheKey);
+        return activeProductsCache.get(cacheKey)!;
       }
       const products = await this.billingService.getActiveProducts(classId, ayId);
       activeProductsCache.set(cacheKey, products);
@@ -376,13 +406,8 @@ export class StudentsService implements OnModuleInit {
         const cy = openOpp?.academicYearId === academicYearId ? openOpp.academicYear : allOpps.find(opp => opp.academicYearId === academicYearId)?.academicYear;
         if (cy) {
           currentYearStart = cy.startDate;
-        } else {
-          const academicYearRecord = await this.prisma.academicYear.findUnique({
-            where: { id: academicYearId }
-          });
-          if (academicYearRecord) {
-            currentYearStart = academicYearRecord.startDate;
-          }
+        } else if (targetAcademicYear) {
+          currentYearStart = targetAcademicYear.startDate;
         }
       } else if (openOpp && openOpp.academicYear) {
         currentYearStart = openOpp.academicYear.startDate;
@@ -524,61 +549,62 @@ export class StudentsService implements OnModuleInit {
     const skip = isPaginated ? (page - 1) * limit : undefined;
     const take = isPaginated ? limit : undefined;
 
-    const total = isPaginated
-      ? await this.prisma.studentProfile.count({ where })
-      : 0;
-
-    const students = await this.prisma.studentProfile.findMany({
-      where,
-      select: {
-        id: true,
-        rollNo: true,
-        fatherName: true,
-        motherName: true,
-        fatherPhone: true,
-        motherPhone: true,
-        guardianPhone: true,
-        aadharNo: true,
-        profilePhotoUrl: true,
-        classSectionId: true,
-        tenantId: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-          }
-        },
-        classSection: {
-          select: {
-            id: true,
-            classId: true,
-            sectionId: true,
-            class: {
-              select: {
-                id: true,
-                name: true,
-                academicYearId: true,
-              }
-            },
-            section: {
-              select: {
-                id: true,
-                name: true,
+    const [total, students] = await Promise.all([
+      isPaginated
+        ? this.prisma.studentProfile.count({ where })
+        : Promise.resolve(0),
+      this.prisma.studentProfile.findMany({
+        where,
+        select: {
+          id: true,
+          rollNo: true,
+          fatherName: true,
+          motherName: true,
+          fatherPhone: true,
+          motherPhone: true,
+          guardianPhone: true,
+          aadharNo: true,
+          profilePhotoUrl: true,
+          classSectionId: true,
+          tenantId: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            }
+          },
+          classSection: {
+            select: {
+              id: true,
+              classId: true,
+              sectionId: true,
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  academicYearId: true,
+                }
+              },
+              section: {
+                select: {
+                  id: true,
+                  name: true,
+                }
               }
             }
           }
-        }
-      },
-      orderBy: {
-        user: {
-          name: 'asc'
-        }
-      },
-      skip,
-      take,
-    });
+        },
+        orderBy: {
+          user: {
+            name: 'asc'
+          }
+        },
+        skip,
+        take,
+      }),
+    ]);
 
     const studentIds = students.map(s => s.id);
     const billingMap = await this.getStudentsBillingInfoBatch(studentIds, tenantId, academicYearId);

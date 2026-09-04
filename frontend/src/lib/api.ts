@@ -183,3 +183,62 @@ api.interceptors.response.use(
   }
 );
 export const updateStudent = (id: string, data: Partial<any>) => api.patch(`/students/${id}`, data);
+
+// ── In-Flight Request Deduplication & Tenant-Scoped Lookup Cache ─────────────
+const inFlightRequests = new Map<string, Promise<any>>();
+const lookupCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateLookupCache(tenantId?: string) {
+  if (tenantId) {
+    lookupCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        lookupCache.delete(key);
+      }
+    });
+  } else {
+    lookupCache.clear();
+  }
+}
+
+/**
+ * Perform a GET request with in-flight deduplication and tenant-scoped caching for static lookup data.
+ */
+export async function cachedGet<T = any>(
+  url: string,
+  config?: any,
+  ttlMs = 0
+): Promise<{ data: T }> {
+  const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
+  const paramStr = config?.params ? JSON.stringify(config.params) : '';
+  const cacheKey = `${tenantId}:${url}:${paramStr}`;
+
+  if (ttlMs > 0) {
+    const cached = lookupCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { data: cached.data };
+    }
+  }
+
+  // Deduplicate simultaneous in-flight requests
+  const flightKey = `${tenantId}:flight:${url}:${paramStr}`;
+  if (inFlightRequests.has(flightKey)) {
+    return inFlightRequests.get(flightKey)!;
+  }
+
+  const promise = api.get<T>(url, config)
+    .then((res) => {
+      if (ttlMs > 0) {
+        lookupCache.set(cacheKey, {
+          data: res.data,
+          expiresAt: Date.now() + ttlMs,
+        });
+      }
+      return res;
+    })
+    .finally(() => {
+      inFlightRequests.delete(flightKey);
+    });
+
+  inFlightRequests.set(flightKey, promise);
+  return promise;
+}

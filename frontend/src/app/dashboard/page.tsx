@@ -9,11 +9,12 @@ import { useTenant } from '../providers/TenantContext';
 import { BookOpen } from 'lucide-react';
 
 function AdminDashboardOverview() {
+  const { setupStats } = useTenant();
   const [admissionsLimit, setAdmissionsLimit] = useState(5);
   const [paymentsLimit, setPaymentsLimit] = useState(5);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [setupStatus, setSetupStatus] = useState<any>(null);
   const [showBanner, setShowBanner] = useState(true);
+  const setupStatus = setupStats;
   
   const [stats, setStats] = useState({
     studentsCount: 0,
@@ -40,12 +41,8 @@ function AdminDashboardOverview() {
 
   const loadDashboardData = useCallback(async () => {
     try {
-      const [setupRes, summaryRes] = await Promise.all([
-        api.get('/tenant/setup-status'),
-        api.get('/dashboard/summary')
-      ]);
+      const summaryRes = await api.get('/dashboard/summary');
 
-      setSetupStatus(setupRes.data);
       setStats(summaryRes.data.stats);
       setRecentAdmissions(summaryRes.data.recentAdmissions);
       setRecentPayments(summaryRes.data.recentPayments);

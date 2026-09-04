@@ -6,6 +6,17 @@ import { TenantContext } from '../tenants/tenant.context';
 export class AcademicsService {
   constructor(private prisma: PrismaService) {}
 
+  private academicCache = new Map<string, { data: any; expiresAt: number }>();
+
+  invalidateCache(tenantId: string) {
+    if (!tenantId) return;
+    for (const key of this.academicCache.keys()) {
+      if (key.startsWith(`${tenantId}:`)) {
+        this.academicCache.delete(key);
+      }
+    }
+  }
+
   private getTenantId(): string {
     const tenantId = TenantContext.getTenantId();
     if (!tenantId) {
@@ -18,6 +29,7 @@ export class AcademicsService {
 
   async createAcademicYear(name: string, startDate: Date, endDate: Date, isActive: boolean) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
 
     if (isActive) {
       // Limit of up to 2 active academic years. Deactivate older active year if limit is exceeded.
@@ -46,6 +58,14 @@ export class AcademicsService {
 
   async getAcademicYears() {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:academic-years`;
+    const cached = this.academicCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     let years = await this.prisma.academicYear.findMany({
       where: { tenantId },
       orderBy: { startDate: 'desc' },
@@ -63,11 +83,15 @@ export class AcademicsService {
       });
       years = [defaultYear];
     }
+
+    this.academicCache.set(cacheKey, { data: years, expiresAt: now + 60000 });
     return years;
   }
 
   async toggleAcademicYearActive(id: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
+
     const ay = await this.prisma.academicYear.findUnique({
       where: { id },
     });
@@ -100,6 +124,7 @@ export class AcademicsService {
 
   async createClass(name: string, academicYearId: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     return this.prisma.class.create({
       data: {
         name,
@@ -111,7 +136,15 @@ export class AcademicsService {
 
   async getClasses(academicYearId?: string) {
     const tenantId = this.getTenantId();
-    return this.prisma.class.findMany({
+    const cacheKey = `${tenantId}:classes:${academicYearId || 'all'}`;
+    const cached = this.academicCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const classes = await this.prisma.class.findMany({
       where: {
         tenantId,
         isActive: true,
@@ -120,6 +153,9 @@ export class AcademicsService {
       include: { academicYear: true },
       orderBy: { name: 'asc' },
     });
+
+    this.academicCache.set(cacheKey, { data: classes, expiresAt: now + 60000 });
+    return classes;
   }
 
   async getClassStudentCount(id: string) {
@@ -142,6 +178,7 @@ export class AcademicsService {
 
   async deleteClass(id: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
 
     // ── 1. Tenant-isolation check ────────────────────────────────────────────
     const classRecord = await this.prisma.class.findFirst({
@@ -237,6 +274,7 @@ export class AcademicsService {
 
   async createSection(name: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     return this.prisma.section.create({
       data: {
         name,
@@ -247,16 +285,28 @@ export class AcademicsService {
 
   async getSections() {
     const tenantId = this.getTenantId();
-    return this.prisma.section.findMany({
+    const cacheKey = `${tenantId}:sections`;
+    const cached = this.academicCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const sections = await this.prisma.section.findMany({
       where: { tenantId },
       orderBy: { name: 'asc' },
     });
+
+    this.academicCache.set(cacheKey, { data: sections, expiresAt: now + 60000 });
+    return sections;
   }
 
   // ── CLASS-SECTION JUNCTION SERVICES ─────────────────────────────────────────
 
   async createClassSection(classId: string, sectionId: string, teacherId?: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     return this.prisma.classSection.create({
       data: {
         classId,
@@ -269,7 +319,15 @@ export class AcademicsService {
 
   async getClassSections() {
     const tenantId = this.getTenantId();
-    return this.prisma.classSection.findMany({
+    const cacheKey = `${tenantId}:class-sections`;
+    const cached = this.academicCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const classSections = await this.prisma.classSection.findMany({
       where: { tenantId },
       include: {
         class: true,
@@ -286,6 +344,9 @@ export class AcademicsService {
         },
       },
     });
+
+    this.academicCache.set(cacheKey, { data: classSections, expiresAt: now + 60000 });
+    return classSections;
   }
 
   // ── SUBJECT SERVICES ────────────────────────────────────────────────────────
