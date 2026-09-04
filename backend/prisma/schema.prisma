@@ -499,15 +499,15 @@ model ExamMark {
   student       StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
   subjectId     String
   subject       Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  subjectType   String         @default("Theory")
+  subjectType   String         @default("Theory") @db.VarChar(20)
   marksObtained Decimal        @db.Decimal(5, 2)
   remarks       String?
   tenantId      String
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([examId, studentId, subjectId, subjectType])
-  @@index([tenantId])
-  @@index([studentId])
+  @@index([tenantId, studentId])
+  @@index([tenantId, examId])
 }
 
 model Invoice {

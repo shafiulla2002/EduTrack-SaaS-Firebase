@@ -12,6 +12,8 @@ build
 *.tsbuildinfo
 # Firebase credentials
 *firebase-service-account*.json
+# Scratch backups
+backend/scratch/
 # Vercel
 .vercel
 .env.vercel.*

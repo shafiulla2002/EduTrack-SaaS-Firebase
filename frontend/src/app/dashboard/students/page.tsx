@@ -179,7 +179,14 @@ export default function StudentsDirectory() {
           rollNo: s.rollNo || 'N/A',
           name: s.user?.name || 'Unknown Student',
           email: s.user?.email || 'N/A',
-          phone: s.user?.phone ? (s.user.phone.includes('-') ? s.user.phone.split('-').pop() || s.user.phone : s.user.phone) : 'N/A',
+          phone: (() => {
+            const rawPhone = s.fatherPhone || s.guardianPhone || s.user?.phone || s.motherPhone || '';
+            if (!rawPhone) return 'N/A';
+            return rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone;
+          })(),
+          fatherPhone: s.fatherPhone || 'N/A',
+          motherPhone: s.motherPhone || 'N/A',
+          guardianPhone: s.guardianPhone || 'N/A',
           class: s.classSection?.class?.name || 'N/A',
           section: s.classSection?.section?.name || 'N/A',
           fatherName: s.fatherName || 'N/A',
