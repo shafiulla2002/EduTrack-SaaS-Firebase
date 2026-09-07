@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTenant } from '../providers/TenantContext';
 import { useTheme } from '../providers/ThemeContext';
 import ToastProvider from '@/components/Toast';
-import { clearStoredAuth, api } from '@/lib/api';
+import { clearStoredAuth, api, fastGet } from '@/lib/api';
 import { SubscriptionExpiryBanner } from '@/components/SubscriptionExpiryBanner';
 import { SubscriptionExpiredPortalLock } from '@/components/SubscriptionExpiredPortalLock';
 
@@ -48,7 +48,7 @@ export default function DashboardLayout({
   const fetchUnreadAnnouncements = async () => {
     if (currentUser?.role !== 'TEACHER') return;
     try {
-      const res = await api.get('/teacher-portal/announcements');
+      const res = await fastGet('/teacher-portal/announcements', undefined, { ttlMs: 30000 });
       const list = res.data || [];
       const unread = list.filter((ann: any) => {
         const readStatus = Array.isArray(ann.readStatus) ? ann.readStatus : [];
@@ -61,8 +61,9 @@ export default function DashboardLayout({
   };
 
   useEffect(() => {
+    if (currentUser?.role !== 'TEACHER') return;
     fetchUnreadAnnouncements();
-    const interval = setInterval(fetchUnreadAnnouncements, 15000);
+    const interval = setInterval(fetchUnreadAnnouncements, 60000);
     return () => clearInterval(interval);
   }, [currentUser?.id]);
 
@@ -633,6 +634,12 @@ export default function DashboardLayout({
                     <Link
                       key={item.name}
                       href={isLocked ? '#' : item.href}
+                      prefetch={true}
+                      onMouseEnter={() => {
+                        if (!isLocked && item.href && item.href !== '#') {
+                          router.prefetch(item.href);
+                        }
+                      }}
                       onClick={(e) => {
                         if (isLocked) {
                           e.preventDefault();
@@ -895,6 +902,7 @@ export default function DashboardLayout({
                         <Link
                           key={item.name}
                           href={isLocked ? '#' : item.href}
+                          prefetch={true}
                           onClick={(e) => {
                             setMobileOpen(false);
                             if (isLocked) {

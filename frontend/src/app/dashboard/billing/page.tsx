@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '@/app/providers/TenantContext';
 import { formatDateDDMMYYYY } from '@/lib/date';
@@ -40,6 +40,8 @@ interface InvoicePDFData {
   studentDob: string;
   addressVillage: string;
   totalAmount: number;
+  parentPhone?: string;
+  remainingBalance?: number;
   items: { particulars: string; amount: number }[];
 }
 
@@ -92,8 +94,8 @@ export default function FeesBillingPage() {
     const fetchInit = async () => {
       try {
         const [yRes, txRes] = await Promise.all([
-          api.get('/billing/options/years'),
-          api.get('/billing/invoices/recent')
+          fastGet('/billing/options/years', undefined, { ttlMs: 60000 }),
+          fastGet('/billing/invoices/recent', undefined, { ttlMs: 15000 })
         ]);
         setAcademicYears(yRes.data);
         if (yRes.data.length > 0) {
@@ -343,7 +345,11 @@ export default function FeesBillingPage() {
       setErrorModalOpen(true);
     } finally {
       setIsSubmittingPayment(false);
-      setIsLoading(fal  const generateInvoicePDFInstance = async (invoiceId: string) => {
+      setIsLoading(false);
+    }
+  };
+
+  const generateInvoicePDFInstance = async (invoiceId: string) => {
     const res = await api.get(`/billing/invoices/${invoiceId}/pdf`);
     const data: InvoicePDFData = res.data;
 
@@ -540,7 +546,7 @@ export default function FeesBillingPage() {
       setIsSharingWhatsApp(true);
       const { pdf, data, filename } = await generateInvoicePDFInstance(invoiceId);
 
-      // Convert jsPDF instance to binary Blob and File
+      // Convert jsPDF instance to binary Blob and File for native share support
       const pdfBlob = pdf.output('blob');
       const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
 
@@ -549,71 +555,66 @@ export default function FeesBillingPage() {
       const rawPhone = (data.parentPhone || selectedStudent?.fatherPhone || selectedStudent?.motherPhone || acc.phone || selectedStudent?.phone || '').replace(/\D/g, '');
       const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
 
-      // Prepare official live online receipt URL for direct download and online verification
-      const receiptUrl = typeof window !== 'undefined' 
+      // Build absolute receipt URL for online viewing/download
+      const receiptUrl = typeof window !== 'undefined'
         ? `${window.location.origin}/dashboard/billing/invoices/${invoiceId}`
         : `/dashboard/billing/invoices/${invoiceId}`;
 
-      const shareText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n` +
-        `🏫 *School:* ${data.schoolName || schoolName || 'EduTrack School Portal'}\n` +
-        `📄 *Receipt No:* ${data.invoiceNo || invoiceId}\n` +
-        `👤 *Student:* ${data.studentName || lastPaidStudentName} (${data.className || ''} ${data.sectionName || ''})\n` +
-        `📅 *Date & Time:* ${data.invoiceDate || successPaymentDate}\n\n` +
-        `----------------------------------------\n` +
-        `💳 *Amount Paid:* ₹${(data.totalAmount || lastPaidAmount).toLocaleString('en-IN')}\n` +
-        `⏳ *Remaining Balance:* ₹${(data.remainingBalance !== undefined ? data.remainingBalance : successRemainingBalance).toLocaleString('en-IN')}\n` +
-        `----------------------------------------\n\n` +
-        `📎 *View & Download Official PDF Receipt:* \n${receiptUrl}\n\n` +
-        `Thank you for your payment!`;
+      // Compose share message with receipt details and link
+      const shareText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n`
+        + `🏫 *School:* ${data.schoolName || schoolName || 'EduTrack School Portal'}\n`
+        + `📄 *Receipt No:* ${data.invoiceNo || invoiceId}\n`
+        + `👤 *Student:* ${data.studentName || lastPaidStudentName} (${data.className || ''} ${data.sectionName || ''})\n`
+        + `📅 *Date & Time:* ${data.invoiceDate || successPaymentDate}\n\n`
+        + `----------------------------------------\n`
+        + `💳 *Amount Paid:* ₹${(data.totalAmount || lastPaidAmount).toLocaleString('en-IN')}\n`
+        + `⏳ *Remaining Balance:* ₹${(data.remainingBalance !== undefined ? data.remainingBalance : successRemainingBalance).toLocaleString('en-IN')}\n`
+        + `----------------------------------------\n\n`
+        + `📎 *View & Download Official PDF Receipt:* ${receiptUrl}\n\n`
+        + `Thank you for your payment!`;
 
-      // 1. Try Web Share API with attached PDF file (Supported on Android Chrome, iOS Safari, Mac, etc.)
+      // 1. Attempt native share with PDF attachment (mobile browsers supporting Web Share API)
       if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
         try {
           await navigator.share({
             files: [pdfFile],
             title: `Fee Receipt - ${data.invoiceNo || invoiceId}`,
-            text: shareText
+            text: shareText,
           });
-          return;
+          return; // Successful native share, no further action needed
         } catch (shareErr: any) {
-          if (shareErr.name === 'AbortError') return; // User closed the native share dialog
-          console.warn('Native share failed or dismissed, falling back to direct download + WhatsApp Web:', shareErr);
+          if (shareErr.name === 'AbortError') return; // User cancelled the native share dialog
+          console.warn('Native share failed, falling back to download + WhatsApp link:', shareErr);
         }
       }
 
-      // 2. Fallback for Desktop Browsers / Systems without Web Share file support:
-      // Trigger automatic high-res PDF file download locally
+      // 2. Fallback for desktop or unsupported browsers: download PDF then open WhatsApp with link
       pdf.save(filename);
-
-      // Open WhatsApp chat directly with receipt details & direct online PDF link
-      const whatsappUrl = phoneClean 
-        ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(shareText)}`
-        : `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
-
+      const whatsappBase = phoneClean ? `https://wa.me/${phoneClean}` : 'https://api.whatsapp.com/send';
+      const whatsappUrl = `${whatsappBase}?text=${encodeURIComponent(shareText)}`;
       window.open(whatsappUrl, '_blank');
     } catch (err: any) {
       console.error('Failed to share PDF via WhatsApp:', err);
-      // Fallback text share if PDF rendering encountered an error
+      // Fallback: send minimal text message with receipt link if PDF generation fails
       const acc = selectedStudent?.account || {};
       const rawPhone = (selectedStudent?.fatherPhone || selectedStudent?.motherPhone || acc.phone || selectedStudent?.phone || '').replace(/\D/g, '');
       const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
-      const receiptUrl = typeof window !== 'undefined' 
+      const receiptUrl = typeof window !== 'undefined'
         ? `${window.location.origin}/dashboard/billing/invoices/${invoiceId}`
         : `/dashboard/billing/invoices/${invoiceId}`;
-      const fallbackText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n` +
-        `🏫 *School:* ${schoolName || 'EduTrack School Portal'}\n` +
-        `📄 *Receipt No:* ${invoiceId}\n` +
-        `👤 *Student:* ${lastPaidStudentName}\n` +
-        `📅 *Date & Time:* ${successPaymentDate}\n\n` +
-        `----------------------------------------\n` +
-        `💳 *Amount Paid:* ₹${lastPaidAmount.toLocaleString('en-IN')}\n` +
-        `⏳ *Remaining Balance:* ₹${successRemainingBalance.toLocaleString('en-IN')}\n` +
-        `----------------------------------------\n\n` +
-        `📎 *Online PDF Receipt:* ${receiptUrl}\n\n` +
-        `Thank you for your payment!`;
-      const whatsappUrl = phoneClean 
-        ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(fallbackText)}`
-        : `https://api.whatsapp.com/send?text=${encodeURIComponent(fallbackText)}`;
+      const fallbackText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n`
+        + `🏫 *School:* ${schoolName || 'EduTrack School Portal'}\n`
+        + `📄 *Receipt No:* ${invoiceId}\n`
+        + `👤 *Student:* ${lastPaidStudentName}\n`
+        + `📅 *Date & Time:* ${successPaymentDate}\n\n`
+        + `----------------------------------------\n`
+        + `💳 *Amount Paid:* ₹${lastPaidAmount.toLocaleString('en-IN')}\n`
+        + `⏳ *Remaining Balance:* ₹${successRemainingBalance.toLocaleString('en-IN')}\n`
+        + `----------------------------------------\n\n`
+        + `📎 *Online PDF Receipt:* ${receiptUrl}\n\n`
+        + `Thank you for your payment!`;
+      const whatsappBase = phoneClean ? `https://wa.me/${phoneClean}` : 'https://api.whatsapp.com/send';
+      const whatsappUrl = `${whatsappBase}?text=${encodeURIComponent(fallbackText)}`;
       window.open(whatsappUrl, '_blank');
     } finally {
       setIsSharingWhatsApp(false);

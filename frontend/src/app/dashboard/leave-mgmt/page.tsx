@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import {
   CalendarDays, Plus, Trash2, X, AlertCircle, CheckCircle,
   FileText, Filter, Eye, Check, Clock, User, ShieldAlert, Paperclip, MessageSquare,
@@ -142,7 +142,7 @@ function LeaveMgmtContent() {
   // Load Lookup Data
   useEffect(() => {
     if (isAdmin) {
-      api.get('/academics/academic-years')
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 })
         .then(res => setAcademicYears(res.data || []))
         .catch(err => console.error('Failed to load academic years:', err));
     }
@@ -167,7 +167,7 @@ function LeaveMgmtContent() {
         };
         const [leavesRes, statsRes] = await Promise.all([
           api.get('/leave-management', { params }),
-          api.get('/leave-management/stats')
+          fastGet('/leave-management/stats', undefined, { ttlMs: 15000 })
         ]);
         setLeaves(leavesRes.data.data || []);
         setTotalPages(leavesRes.data.totalPages || 1);

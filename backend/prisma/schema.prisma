@@ -456,6 +456,7 @@ model AttendanceSession {
   @@index([tenantId])
   @@index([classSectionId])
   @@index([date])
+  @@index([tenantId, classSectionId, date])
 }
 
 model Attendance {
@@ -539,6 +540,8 @@ model Invoice {
   @@index([studentId])
   @@index([status])
   @@index([invoiceDate])
+  @@index([tenantId, studentId])
+  @@index([tenantId, status, invoiceDate])
 }
 
 model InvoiceItem {
@@ -938,6 +941,7 @@ model Homework {
   @@index([teacherId])
   @@index([classSectionId])
   @@index([dueDate])
+  @@index([tenantId, classSectionId])
 }
 
 model LeaveRequest {

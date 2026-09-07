@@ -51,7 +51,7 @@ interface StaffMember {
   avatarUrl?: string;
 }
 
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { resizeAndCompressImage } from '@/lib/image';
@@ -200,62 +200,79 @@ export default function SchoolStaffPage() {
     ifsc: ''
   });
 
+  const mapAndSetStaff = (data: any[]) => {
+    setStaff(data.map((t: any, idx: number) => {
+      const nameParts = t.user?.name ? t.user.name.split(' ') : ['Teacher'];
+      const firstName = nameParts[0] || 'Teacher';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      return {
+        id: t.id,
+        firstName,
+        lastName,
+        name: t.user?.name || 'Unknown Teacher',
+        initials: (firstName[0] || '') + (lastName[0] || ''),
+        email: t.user?.email || '',
+        phone: t.user?.phone || '',
+        avatarUrl: t.user?.avatarUrl || null,
+        employeeId: t.employeeId || `EMP-T-${t.id.substring(0, 4).toUpperCase()}`,
+        designation: t.designation || 'Teacher',
+        department: (t.subjectsTaught && t.subjectsTaught.length > 0) ? t.subjectsTaught[0] : (
+                    t.designation?.toLowerCase().includes('teacher') ? 'Science' : 
+                    t.designation?.toLowerCase().includes('driver') ? 'Transport' : 
+                    t.designation?.toLowerCase().includes('librarian') ? 'Library' :
+                    t.designation?.toLowerCase().includes('account') ? 'Finance' : 
+                    t.designation?.toLowerCase().includes('security') ? 'Security' : 'Administration'
+        ),
+        staffType: (t.user?.role === 'STAFF' || t.user?.role === 'DRIVER') ? 'Non-Teaching' : 'Teaching',
+        subject: t.subjectsTaught?.[0] || 'General',
+        basicSalary: Number(t.basicSalary) || 25000,
+        hra: Number(t.allowances) || 0,
+        da: 0,
+        pf: Number(t.pfDeduction) || 0,
+        joiningDate: t.joiningDate ? new Date(t.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        qualification: t.qualification || '',
+        gender: 'General',
+        dob: '',
+        address: '',
+        status: t.status || 'Active',
+        accountNumber: '',
+        ifsc: '',
+        skills: t.teacherSkills?.length > 0
+          ? t.teacherSkills.map((sk: any) => ({
+              subject: sk.subject?.name || sk.subjectId || 'Unknown',
+              level: sk.skillLevel || 'Expert',
+              exp: sk.yearsOfExperience ?? 0,
+            }))
+          : (t.subjectsTaught?.map((sub: string) => ({ subject: sub, level: 'Expert', exp: 5 })) || []),
+        salaryStatus: 'Pending',
+        gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
+      };
+    }));
+  };
+
   const loadStaff = async () => {
     try {
-      setLoading(true);
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (deptFilter) params.append('department', deptFilter);
       if (statusFilter) params.append('status', statusFilter);
 
-      const res = await api.get(`/teachers?${params.toString()}`);
-      setStaff(res.data.map((t: any, idx: number) => {
-        const nameParts = t.user?.name ? t.user.name.split(' ') : ['Teacher'];
-        const firstName = nameParts[0] || 'Teacher';
-        const lastName = nameParts.slice(1).join(' ') || '';
-        return {
-          id: t.id,
-          firstName,
-          lastName,
-          name: t.user?.name || 'Unknown Teacher',
-          initials: (firstName[0] || '') + (lastName[0] || ''),
-          email: t.user?.email || '',
-          phone: t.user?.phone || '',
-          avatarUrl: t.user?.avatarUrl || null,
-          employeeId: t.employeeId || `EMP-T-${t.id.substring(0, 4).toUpperCase()}`,
-          designation: t.designation || 'Teacher',
-          department: (t.subjectsTaught && t.subjectsTaught.length > 0) ? t.subjectsTaught[0] : (
-                      t.designation?.toLowerCase().includes('teacher') ? 'Science' : 
-                      t.designation?.toLowerCase().includes('driver') ? 'Transport' : 
-                      t.designation?.toLowerCase().includes('librarian') ? 'Library' :
-                      t.designation?.toLowerCase().includes('account') ? 'Finance' : 
-                      t.designation?.toLowerCase().includes('security') ? 'Security' : 'Administration'
-          ),
-          staffType: (t.user?.role === 'STAFF' || t.user?.role === 'DRIVER') ? 'Non-Teaching' : 'Teaching',
-          subject: t.subjectsTaught?.[0] || 'General',
-          basicSalary: Number(t.basicSalary) || 25000,
-          hra: Number(t.allowances) || 0,
-          da: 0,
-          pf: Number(t.pfDeduction) || 0,
-          joiningDate: t.joiningDate ? new Date(t.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          qualification: t.qualification || '',
-          gender: 'General',
-          dob: '',
-          address: '',
-          status: t.status || 'Active',
-          accountNumber: '',
-          ifsc: '',
-          skills: t.teacherSkills?.length > 0
-            ? t.teacherSkills.map((sk: any) => ({
-                subject: sk.subject?.name || sk.subjectId || 'Unknown',
-                level: sk.skillLevel || 'Expert',
-                exp: sk.yearsOfExperience ?? 0,
-              }))
-            : (t.subjectsTaught?.map((sub: string) => ({ subject: sub, level: 'Expert', exp: 5 })) || []),
-          salaryStatus: 'Pending',
-          gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
-        };
-      }));
+      const res = await fastGet(`/teachers?${params.toString()}`, undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (fresh && Array.isArray(fresh)) {
+            mapAndSetStaff(fresh);
+          }
+        }
+      });
+
+      if (!res.isFromCache) {
+        setLoading(false);
+      }
+
+      if (res.data && Array.isArray(res.data)) {
+        mapAndSetStaff(res.data);
+      }
     } catch (err) {
       console.error('Failed to load staff list:', err);
     } finally {

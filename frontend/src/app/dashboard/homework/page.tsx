@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search, Users, Clock, Download, CheckSquare } from 'lucide-react';
 import Drawer from '@/components/Drawer';
 import DatePickerInput from '@/components/DatePickerInput';
@@ -57,8 +57,8 @@ export default function HomeworkPage() {
   async function loadData() {
     try {
       const [hwRes, clsRes] = await Promise.all([
-        api.get('/teacher-portal/homework'),
-        api.get('/teacher-portal/classes'),
+        fastGet('/teacher-portal/homework', undefined, { ttlMs: 15000 }),
+        fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }),
       ]);
       setHomeworks(hwRes.data);
       setClasses(clsRes.data);

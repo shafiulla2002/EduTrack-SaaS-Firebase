@@ -6,7 +6,7 @@ import {
   Award, FileText, CheckCircle, Save, Plus, ArrowRight, X,
   PlusCircle, MinusCircle, Info, TrendingUp, Sparkles, RefreshCw, Settings, AlertTriangle
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 
 type ClassSectionOption = {
@@ -146,19 +146,24 @@ export default function ExamsAndMarksPage() {
 
   const fetchMetadata = async () => {
     try {
-      const classRes = await api.get('/exams/classes');
+      // Fetch all independent metadata in parallel with caching
+      const [classRes, subRes, compRes, typeRes] = await Promise.all([
+        fastGet('/exams/classes', undefined, { ttlMs: 60000 }),
+        fastGet('/exams/subjects', undefined, { ttlMs: 60000 }),
+        fastGet('/exam-config/components', undefined, { ttlMs: 60000 }),
+        fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }),
+      ]);
+
       setClasses(classRes.data);
       if (classRes.data.length > 0) {
         setSelectedClassSectionId(classRes.data[0].value);
       }
 
-      const subRes = await api.get('/exams/subjects');
       setSubjects(subRes.data);
       if (subRes.data.length > 0) {
         setSelectedSubjectId(subRes.data[0].id);
       }
 
-      const compRes = await api.get('/exam-config/components');
       setComponents(compRes.data);
       if (compRes.data.length > 0) {
         setSelectedSubjectType(compRes.data[0].name);
@@ -166,11 +171,10 @@ export default function ExamsAndMarksPage() {
         setSelectedSubjectType('Theory');
       }
 
-      const typeRes = await api.get('/exams/exam-types');
       setExamTypes(typeRes.data);
       if (typeRes.data.length > 0) {
         setSelectedExamName(typeRes.data[0]);
-        // Fetch config for first exam type
+        // Fetch config for first exam type (depends on typeRes)
         try {
           const cfgRes = await api.get(`/exam-config/resolve?examType=${encodeURIComponent(typeRes.data[0])}`);
           setExamConfig({ passingPercentage: cfgRes.data.passingPercentage, maxMarks: cfgRes.data.maxMarks });

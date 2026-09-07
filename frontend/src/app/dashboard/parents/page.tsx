@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Users, Mail, Phone, Search, Bell, Send, CheckCircle2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 
 interface Parent {
   id: string;
@@ -22,7 +22,7 @@ export default function ParentsDirectory() {
   const loadParents = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/students/parents/all');
+      const res = await fastGet('/students/parents/all', undefined, { ttlMs: 30000 });
       setParents(res.data.map((p: any) => ({
         id: p.id,
         name: p.user?.name || 'Unknown Parent',

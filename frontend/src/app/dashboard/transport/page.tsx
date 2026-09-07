@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 
 const LiveBusMap = dynamic(() => import('@/components/LiveBusMap'), {
   ssr: false,
@@ -98,12 +98,12 @@ export default function SchoolAdminTransportPage() {
     setLoading(true);
     try {
       const [dashRes, busesRes, driversRes, routesRes, studentsRes, historyRes] = await Promise.all([
-        api.get('/transport/admin/dashboard').catch(() => ({ data: null })),
-        api.get('/transport/buses').catch(() => ({ data: [] })),
-        api.get('/transport/drivers').catch(() => ({ data: [] })),
-        api.get('/transport/routes').catch(() => ({ data: [] })),
-        api.get('/transport/students/assignments').catch(() => ({ data: [] })),
-        api.get('/transport/trip-history').catch(() => ({ data: [] })),
+        fastGet('/transport/admin/dashboard', undefined, { ttlMs: 30000 }).catch(() => ({ data: null })),
+        fastGet('/transport/buses', undefined, { ttlMs: 30000 }).catch(() => ({ data: [] })),
+        fastGet('/transport/drivers', undefined, { ttlMs: 30000 }).catch(() => ({ data: [] })),
+        fastGet('/transport/routes', undefined, { ttlMs: 30000 }).catch(() => ({ data: [] })),
+        fastGet('/transport/students/assignments', undefined, { ttlMs: 30000 }).catch(() => ({ data: [] })),
+        fastGet('/transport/trip-history', undefined, { ttlMs: 30000 }).catch(() => ({ data: [] })),
       ]);
 
       setDashboardData(dashRes.data);
@@ -122,8 +122,8 @@ export default function SchoolAdminTransportPage() {
   useEffect(() => {
     fetchAllData();
     const interval = setInterval(() => {
-      api.get('/transport/admin/dashboard').then((res) => setDashboardData(res.data)).catch(() => {});
-    }, 10000); // 10s auto refresh for admin
+      fastGet('/transport/admin/dashboard', undefined, { ttlMs: 15000 }).then((res) => setDashboardData(res.data)).catch(() => {});
+    }, 30000); // 30s auto refresh for admin
     return () => clearInterval(interval);
   }, []);
 

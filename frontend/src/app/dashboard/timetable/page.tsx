@@ -8,7 +8,7 @@ import {
   ArrowLeftRight, UserCheck, RefreshCw, Upload,
   Users, BarChart3, Layers, Settings, X
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 
 type ClassSection = {
@@ -159,21 +159,28 @@ export default function TimetablePage() {
 
   const fetchMetadata = async () => {
     try {
+      // Fetch all reference data in parallel with caching
+      const [ayRes, cRes, sRes, csRes, tRes, subRes, ptRes] = await Promise.all([
+        fastGet('/timetable/academic-years', undefined, { ttlMs: 60000 }),
+        fastGet('/timetable/classes', undefined, { ttlMs: 60000 }),
+        fastGet('/timetable/sections', undefined, { ttlMs: 60000 }),
+        fastGet('/timetable/class-sections', undefined, { ttlMs: 60000 }),
+        fastGet('/timetable/teachers', undefined, { ttlMs: 60000 }),
+        fastGet('/timetable/subjects', undefined, { ttlMs: 60000 }),
+        fastGet('/timetable/period-timings', undefined, { ttlMs: 60000 }),
+      ]);
+
       // Academic Years
-      const ayRes = await api.get('/timetable/academic-years');
       setAcademicYears(ayRes.data);
       if (ayRes.data.length > 0) setSelectedAcademicYearId(ayRes.data[0].id);
 
       // Classes
-      const cRes = await api.get('/timetable/classes');
       setClasses(cRes.data);
 
       // Sections
-      const sRes = await api.get('/timetable/sections');
       setSections(sRes.data);
 
       // Class Sections
-      const csRes = await api.get('/timetable/class-sections');
       const mappedClassSections = (csRes.data || []).map((cs: any) => ({
         Id: cs.id,
         Name: cs.class && cs.section ? `${cs.class.name} - ${cs.section.name}` : cs.id,
@@ -185,7 +192,6 @@ export default function TimetablePage() {
       if (mappedClassSections.length > 0) setSelectedClassSectionId(mappedClassSections[0].Id);
 
       // Teachers
-      const tRes = await api.get('/timetable/teachers');
       const mappedTeachers = (tRes.data || []).map((t: any) => ({
         Id: t.id,
         Name: `${t.firstName || ''} ${t.lastName || ''}`.trim()
@@ -193,11 +199,9 @@ export default function TimetablePage() {
       setTeachers(mappedTeachers);
 
       // Subjects
-      const subRes = await api.get('/timetable/subjects');
       setSubjects(subRes.data);
 
       // Period Timings
-      const ptRes = await api.get('/timetable/period-timings');
       const rawTimings = ptRes.data || [];
       const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
       let displayCount = 1;
@@ -239,13 +243,13 @@ export default function TimetablePage() {
 
   const fetchWorkloads = async () => {
     try {
-      const summaryRes = await api.get('/timetable/workload/summary');
+      const [summaryRes, tWorkRes, cWorkRes] = await Promise.all([
+        fastGet('/timetable/workload/summary', undefined, { ttlMs: 30000 }),
+        fastGet('/timetable/workload/teachers', undefined, { ttlMs: 30000 }),
+        fastGet('/timetable/workload/classes', undefined, { ttlMs: 30000 }),
+      ]);
       setWorkloadSummary(summaryRes.data);
-
-      const tWorkRes = await api.get('/timetable/workload/teachers');
       setTeacherWorkloads(tWorkRes.data);
-
-      const cWorkRes = await api.get('/timetable/workload/classes');
       setClassWorkloads(cWorkRes.data);
     } catch (err) {
       console.error('Error fetching workloads:', err);

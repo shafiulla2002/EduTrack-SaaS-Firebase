@@ -7,7 +7,7 @@ import {
   MapPin, Calendar as CalendarIcon, DollarSign, BookOpen, ShieldAlert,
   Percent, Trash2
 } from 'lucide-react';
-import { api, cachedGet } from '@/lib/api';
+import { api, cachedGet, fastGet } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
 import { useSchoolSetupUpdate } from '@/lib/events';
 import { useToast } from '@/components/Toast';
@@ -115,12 +115,50 @@ export default function StudentsDirectory() {
   const [tempDiscount, setTempDiscount] = useState<number>(0);
   const [appliedDiscountPercent, setAppliedDiscountPercent] = useState<number>(0);
 
+  const mapAndSetStudents = (data: any[], serverTotal: number, serverTotalPages: number, pageNumber: number) => {
+    setStudents(data.map((s: any) => {
+      const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
+      const due = s.balanceDue !== undefined ? Number(s.balanceDue) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
+      return {
+        id: s.id,
+        rollNo: s.rollNo || 'N/A',
+        name: s.user?.name || 'Unknown Student',
+        email: s.user?.email || 'N/A',
+        phone: (() => {
+          const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
+          if (!rawPhone) return 'N/A';
+          return rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone;
+        })(),
+        fatherPhone: s.fatherPhone || 'N/A',
+        motherPhone: s.motherPhone || 'N/A',
+        guardianPhone: s.guardianPhone || 'N/A',
+        class: s.classSection?.class?.name || 'N/A',
+        section: s.classSection?.section?.name || 'N/A',
+        fatherName: s.fatherName || 'N/A',
+        motherName: s.motherName || 'N/A',
+        aadharNo: s.aadharNo || 'N/A',
+        paidAmount: paid,
+        balanceDue: due,
+        totalFees: s.totalFees,
+        pendingPercentage: s.pendingPercentage,
+        paidPercentage: s.paidPercentage,
+        financialStatus: s.financialStatus,
+        academicYearId: s.classSection?.class?.academicYearId || '',
+        profilePhotoUrl: s.profilePhotoUrl || null,
+      };
+    }));
+
+    setTotal(serverTotal);
+    setTotalPages(serverTotalPages);
+    setPage(pageNumber);
+  };
+
   const loadFilterOptions = async () => {
     try {
       const [ayRes, classRes, secRes] = await Promise.all([
-        cachedGet('/academics/academic-years', undefined, 60000),
-        cachedGet('/academics/classes', undefined, 60000),
-        cachedGet('/academics/sections', undefined, 60000),
+        fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
       ]);
       setAcademicYears(ayRes.data || []);
       setClasses(classRes.data || []);
@@ -138,13 +176,11 @@ export default function StudentsDirectory() {
     abortControllerRef.current = controller;
 
     try {
-      setLoading(true);
-
       const classId = selectedClass === 'All' ? undefined : classes.find(c => c.name === selectedClass)?.id;
       const sectionId = selectedSection === 'All' ? undefined : sections.find(s => s.name === selectedSection)?.id;
       const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
 
-      const res = await api.get('/students', {
+      const res = await fastGet('/students', {
         params: {
           page: pageNumber,
           limit,
@@ -154,45 +190,23 @@ export default function StudentsDirectory() {
           academicYearId
         },
         signal: controller.signal
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (fresh && fresh.data) {
+            mapAndSetStudents(fresh.data, fresh.total, fresh.totalPages, pageNumber);
+          }
+        }
       });
 
-      const { data, total: serverTotal, totalPages: serverTotalPages } = res.data;
+      if (!res.isFromCache) {
+        setLoading(false);
+      }
 
-      setStudents(data.map((s: any) => {
-        const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
-        const due = s.balanceDue !== undefined ? Number(s.balanceDue) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
-        return {
-          id: s.id,
-          rollNo: s.rollNo || 'N/A',
-          name: s.user?.name || 'Unknown Student',
-          email: s.user?.email || 'N/A',
-          phone: (() => {
-            const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
-            if (!rawPhone) return 'N/A';
-            return rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone;
-          })(),
-          fatherPhone: s.fatherPhone || 'N/A',
-          motherPhone: s.motherPhone || 'N/A',
-          guardianPhone: s.guardianPhone || 'N/A',
-          class: s.classSection?.class?.name || 'N/A',
-          section: s.classSection?.section?.name || 'N/A',
-          fatherName: s.fatherName || 'N/A',
-          motherName: s.motherName || 'N/A',
-          aadharNo: s.aadharNo || 'N/A',
-          paidAmount: paid,
-          balanceDue: due,
-          totalFees: s.totalFees,
-          pendingPercentage: s.pendingPercentage,
-          paidPercentage: s.paidPercentage,
-          financialStatus: s.financialStatus,
-          academicYearId: s.classSection?.class?.academicYearId || '',
-          profilePhotoUrl: s.profilePhotoUrl || null,
-        };
-      }));
-
-      setTotal(serverTotal);
-      setTotalPages(serverTotalPages);
-      setPage(pageNumber);
+      if (res.data) {
+        const { data, total: serverTotal, totalPages: serverTotalPages } = res.data;
+        mapAndSetStudents(data, serverTotal, serverTotalPages, pageNumber);
+      }
     } catch (err: any) {
       if (err.name === 'CanceledError' || err.name === 'AbortError' || axios.isCancel?.(err)) {
         return;

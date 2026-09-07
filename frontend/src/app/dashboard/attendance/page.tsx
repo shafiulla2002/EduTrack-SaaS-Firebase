@@ -5,7 +5,7 @@ import {
   Save, CheckCircle, Clock, X, UserX, UserCheck, Search,
   Calendar, ChevronDown, RotateCcw, BarChart3, Eye, RefreshCw
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import Link from 'next/link';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { toLocalDateString, isBefore, formatDateDDMMYYYY } from '@/lib/date';
@@ -68,8 +68,8 @@ export default function AttendancePage() {
       try {
         setLoading(true);
         const [teachersRes, classSectionsRes] = await Promise.all([
-          api.get('/complaint-box/teachers'), // returns staff profiles with user details
-          api.get('/academics/class-sections'),
+          fastGet('/complaint-box/teachers', undefined, { ttlMs: 60000 }),
+          fastGet('/academics/class-sections', undefined, { ttlMs: 60000 }),
         ]);
 
         setTeachers(teachersRes.data);

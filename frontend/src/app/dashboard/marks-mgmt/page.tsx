@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Award, FileText, CheckCircle2, AlertTriangle, RefreshCcw, Save } from 'lucide-react';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
 
@@ -40,10 +40,10 @@ export default function MarksMgmtPage() {
     async function loadData() {
       try {
         const [clsRes, subRes, examRes, compRes] = await Promise.all([
-          api.get('/teacher-portal/classes'),
-          api.get('/exams/subjects'),
-          api.get('/exams/exam-types'),
-          api.get('/exam-config/components'),
+          fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }),
+          fastGet('/exams/subjects', undefined, { ttlMs: 60000 }),
+          fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }),
+          fastGet('/exam-config/components', undefined, { ttlMs: 60000 }),
         ]);
         setClasses(clsRes.data);
         setSubjects(subRes.data);

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Pin, BookOpen, Clock, Tag } from 'lucide-react';
 
 export default function CalendarPage() {
@@ -17,7 +17,7 @@ export default function CalendarPage() {
     async function loadEvents() {
       setLoading(true);
       try {
-        const res = await api.get(`/teacher-portal/calendar?month=${month + 1}&year=${year}`);
+        const res = await fastGet(`/teacher-portal/calendar?month=${month + 1}&year=${year}`, undefined, { ttlMs: 30000 });
         setEvents(res.data);
       } catch (err) {
         console.error('Failed to load calendar events:', err);
