@@ -1047,7 +1047,10 @@ export class BillingService {
     const invoices = await this.prisma.invoice.findMany({
       where: {
         tenantId,
-        status: { not: PaymentStatus.VOIDED },
+        OR: [
+          { status: { in: [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID] }, paidAmount: { gt: 0 } },
+          { status: PaymentStatus.VOIDED }
+        ],
         ...(studentId ? { studentId } : {}),
       },
       include: {
@@ -1058,16 +1061,22 @@ export class BillingService {
         },
       },
       orderBy: { invoiceDate: 'desc' },
-      take: 10,
+      take: 20,
     });
 
     return (invoices as any[]).map(inv => ({
       id: inv.id,
-      name: inv.student.user.name,
-      rollNo: inv.student.rollNo || '',
-      dateStr: inv.invoiceDate.toISOString().split('T')[0],
-      status: inv.status === PaymentStatus.VOIDED ? 'Cancelled' : 'Paid',
-      totalAmount: Number(inv.totalAmount),
+      name: inv.student?.user?.name || 'Student',
+      rollNo: inv.student?.rollNo || '',
+      dateStr: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().split('T')[0] : '',
+      status: inv.status === PaymentStatus.VOIDED 
+        ? 'Cancelled' 
+        : inv.status === PaymentStatus.PAID 
+          ? 'Paid' 
+          : inv.status === PaymentStatus.PARTIALLY_PAID 
+            ? 'Partially Paid' 
+            : 'Unpaid',
+      totalAmount: Number(inv.paidAmount) > 0 ? Number(inv.paidAmount) : Number(inv.totalAmount),
       paymentMethod: inv.paymentMethod || 'CASH',
     }));
   }

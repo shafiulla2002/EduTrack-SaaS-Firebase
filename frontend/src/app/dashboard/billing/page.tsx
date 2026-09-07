@@ -1006,6 +1006,7 @@ export default function FeesBillingPage() {
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-650 font-semibold">
                   {transactions.map((t) => {
                     const isCancelled = t.status === 'Cancelled';
+                    const isPartiallyPaid = t.status === 'Partially Paid';
                     return (
                       <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 font-mono font-bold text-slate-800">{t.id.slice(0, 8)}...</td>
@@ -1020,7 +1021,9 @@ export default function FeesBillingPage() {
                           <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
                             isCancelled 
                               ? 'bg-rose-50 text-rose-600 border-rose-100'
-                              : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                              : isPartiallyPaid
+                                ? 'bg-amber-50 text-amber-600 border-amber-150'
+                                : 'bg-emerald-50 text-emerald-600 border-emerald-100'
                           }`}>
                             {t.status}
                           </span>
@@ -1054,6 +1057,7 @@ export default function FeesBillingPage() {
             <div className="sm:hidden space-y-2.5">
               {transactions.map((t) => {
                 const isCancelled = t.status === 'Cancelled';
+                const isPartiallyPaid = t.status === 'Partially Paid';
                 return (
                   <div key={t.id} className="border border-slate-200 rounded-xl p-3 space-y-2 bg-white">
                     {/* Row 1: Student + Amount */}
@@ -1075,7 +1079,9 @@ export default function FeesBillingPage() {
                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
                         isCancelled 
                           ? 'bg-rose-50 text-rose-600 border-rose-100'
-                          : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                          : isPartiallyPaid
+                            ? 'bg-amber-50 text-amber-600 border-amber-150'
+                            : 'bg-emerald-50 text-emerald-600 border-emerald-100'
                       }`}>
                         {t.status}
                       </span>
