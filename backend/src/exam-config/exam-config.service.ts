@@ -256,7 +256,9 @@ export class ExamConfigService {
               subjectType: s.subjectType || 'Theory',
               maxMarks: s.maxMarks,
               passingPercentage: s.passingPercentage,
-              passMarks: s.passMarks ?? Math.round((s.passingPercentage / 100) * s.maxMarks),
+              passMarks: s.passMarks !== null && s.passMarks !== undefined
+                ? Number(s.passMarks)
+                : Number(((s.passingPercentage / 100) * s.maxMarks).toFixed(2)),
               remarks: s.remarks,
             }))
           });
