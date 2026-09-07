@@ -4,9 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Award, FileText, CheckCircle, Save, Plus, ArrowRight, X,
-  PlusCircle, MinusCircle, Info, TrendingUp, Sparkles, RefreshCw, Settings
+  PlusCircle, MinusCircle, Info, TrendingUp, Sparkles, RefreshCw, Settings, AlertTriangle
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 
 type ClassSectionOption = {
   value: string;
@@ -33,6 +34,7 @@ type StudentMarkRow = {
 
 export default function ExamsAndMarksPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   // Metadata options
   const [classes, setClasses] = useState<ClassSectionOption[]>([]);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
@@ -50,6 +52,17 @@ export default function ExamsAndMarksPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [popupAlert, setPopupAlert] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    maxMarks?: number;
+    enteredValue?: number;
+  }>({
+    show: false,
+    title: '',
+    message: '',
+  });
 
   // Manage Exam Types State
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
@@ -230,11 +243,29 @@ export default function ExamsAndMarksPage() {
     const valNum = Number(valStr);
     if (isNaN(valNum)) return;
     if (valNum < 0) {
-      setErrorMsg('Marks cannot be negative.');
+      const msg = 'Marks cannot be negative.';
+      setErrorMsg(msg);
+      showToast(msg, 'error');
+      setPopupAlert({
+        show: true,
+        title: 'Invalid Marks',
+        message: `Marks cannot be negative. Please enter a score between 0 and ${examConfig.maxMarks}.`,
+        maxMarks: examConfig.maxMarks,
+        enteredValue: valNum,
+      });
       return;
     }
     if (valNum > examConfig.maxMarks) {
-      setErrorMsg(`Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`);
+      const msg = `Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`;
+      setErrorMsg(msg);
+      showToast(msg, 'error');
+      setPopupAlert({
+        show: true,
+        title: 'Maximum Marks Limit Exceeded',
+        message: `The entered mark (${valNum}) exceeds the configured maximum of ${examConfig.maxMarks} marks for this exam.`,
+        maxMarks: examConfig.maxMarks,
+        enteredValue: valNum,
+      });
       return;
     }
     
@@ -252,7 +283,16 @@ export default function ExamsAndMarksPage() {
         if (item.studentId === studentId) {
           const cur = item.marksObtained === null ? 0 : item.marksObtained;
           if (cur + 1 > examConfig.maxMarks) {
-            setErrorMsg(`Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`);
+            const msg = `Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`;
+            setErrorMsg(msg);
+            showToast(msg, 'error');
+            setPopupAlert({
+              show: true,
+              title: 'Maximum Marks Limit Exceeded',
+              message: `Increasing marks (${cur + 1}) exceeds the configured maximum limit of ${examConfig.maxMarks} marks for this exam.`,
+              maxMarks: examConfig.maxMarks,
+              enteredValue: cur + 1,
+            });
             return item;
           }
           return { ...item, marksObtained: cur + 1 };
@@ -283,11 +323,29 @@ export default function ExamsAndMarksPage() {
     for (const item of roster) {
       if (item.marksObtained !== null && item.marksObtained !== undefined) {
         if (item.marksObtained < 0) {
-          setErrorMsg('Marks cannot be negative.');
+          const msg = 'Marks cannot be negative.';
+          setErrorMsg(msg);
+          showToast(msg, 'error');
+          setPopupAlert({
+            show: true,
+            title: 'Invalid Marks Found',
+            message: `Student "${item.name}" (Roll: ${item.rollNo}) has negative marks (${item.marksObtained}). Marks cannot be negative.`,
+            maxMarks: examConfig.maxMarks,
+            enteredValue: item.marksObtained,
+          });
           return;
         }
         if (item.marksObtained > examConfig.maxMarks) {
-          setErrorMsg(`Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`);
+          const msg = `Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`;
+          setErrorMsg(msg);
+          showToast(msg, 'error');
+          setPopupAlert({
+            show: true,
+            title: 'Maximum Marks Exceeded',
+            message: `Marks entered for "${item.name}" (Roll: ${item.rollNo}) (${item.marksObtained}) exceed the configured maximum limit of ${examConfig.maxMarks}.`,
+            maxMarks: examConfig.maxMarks,
+            enteredValue: item.marksObtained,
+          });
           return;
         }
       }
@@ -309,6 +367,7 @@ export default function ExamsAndMarksPage() {
       });
 
       setSaveSuccess(true);
+      showToast('Scoresheet updated. Ranks and average matrices compiled successfully.', 'success');
       fetchRoster();
       setTimeout(() => {
         setSaveSuccess(false);
@@ -317,9 +376,13 @@ export default function ExamsAndMarksPage() {
       console.error('Error saving marks:', err);
       const backendMsg = err.response?.data?.message;
       if (backendMsg === 'Exam not found' || err.response?.status === 404) {
-        setErrorMsg('No exam has been configured for the selected Class, Subject, and Exam Term. Please create or configure the exam before entering marks.');
+        const msg = 'No exam has been configured for the selected Class, Subject, and Exam Term. Please create or configure the exam before entering marks.';
+        setErrorMsg(msg);
+        showToast(msg, 'error');
       } else {
-        setErrorMsg(backendMsg || 'Failed to save scoresheet.');
+        const msg = backendMsg || 'Failed to save scoresheet.';
+        setErrorMsg(msg);
+        showToast(msg, 'error');
       }
     }
   };
@@ -701,6 +764,80 @@ export default function ExamsAndMarksPage() {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Validation Error Popup Modal */}
+      {popupAlert.show && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-white border border-rose-200 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 text-slate-800">
+            {/* Header */}
+            <div className="p-6 pb-4 flex items-start justify-between gap-4 border-b border-rose-100 bg-rose-50/60">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0 shadow-xs">
+                  <AlertTriangle className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-[16px] font-bold text-rose-900 leading-tight">
+                    {popupAlert.title || 'Validation Alert'}
+                  </h3>
+                  <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">
+                    Score Limit Exceeded
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setPopupAlert(prev => ({ ...prev, show: false }))}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-white/80 transition-colors cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              <p className="text-xs font-semibold text-slate-650 leading-relaxed">
+                {popupAlert.message}
+              </p>
+
+              <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2.5 text-xs font-semibold">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500">Configured Maximum Marks:</span>
+                  <span className="font-extrabold text-slate-900 bg-slate-200/80 px-2.5 py-0.5 rounded-lg text-xs font-mono">
+                    {popupAlert.maxMarks ?? examConfig.maxMarks}
+                  </span>
+                </div>
+                {popupAlert.enteredValue !== undefined && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-rose-600 font-bold">Entered Marks:</span>
+                    <span className="font-extrabold text-rose-700 bg-rose-100 border border-rose-200 px-2.5 py-0.5 rounded-lg text-xs font-mono">
+                      {popupAlert.enteredValue}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                  <span className="text-slate-500">Passing Threshold:</span>
+                  <span className="font-bold text-slate-700">
+                    {examConfig.passMarks !== undefined
+                      ? `${examConfig.passMarks} / ${popupAlert.maxMarks ?? examConfig.maxMarks} (${examConfig.passingPercentage}%)`
+                      : `${((examConfig.passingPercentage / 100) * examConfig.maxMarks).toFixed(1)} / ${examConfig.maxMarks} (${examConfig.passingPercentage}%)`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPopupAlert(prev => ({ ...prev, show: false }))}
+                className="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer text-center"
+              >
+                Understood, Fix Marks
+              </button>
             </div>
           </div>
         </div>
