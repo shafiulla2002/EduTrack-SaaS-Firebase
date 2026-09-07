@@ -18,10 +18,27 @@ interface GradeRecord {
   classSectionId: string;
   score: number;
   average: number;
+  overallPercentage?: number;
   grade: string;
   gpa: number;
   rank: number;
-  subjectsList: { name: string; score: number; max: number }[];
+  isPassed?: boolean;
+  overallResult?: string;
+  hasFailedSubject?: boolean;
+  totalMarks?: number;
+  totalMaxMarks?: number;
+  passingPercentage?: number;
+  subjectsList: {
+    name: string;
+    type?: string;
+    score: number;
+    max: number;
+    passMarks?: number;
+    passingPercentage?: number;
+    isPassed?: boolean;
+    grade?: string;
+    gpa?: number;
+  }[];
 }
 
 type ClassSectionOption = {
@@ -156,13 +173,13 @@ export default function GradesMarksPage() {
     );
   });
 
-  // KPI Calculations
+  // KPI Calculations based on exact result from backend
   const totalStudents = filteredRecords.length;
   const averageScore = totalStudents > 0
     ? Math.round(filteredRecords.reduce((sum, r) => sum + r.score, 0) / totalStudents)
     : 0;
-  const passedCount = filteredRecords.filter(r => r.score >= 45).length;
-  const failedCount = filteredRecords.filter(r => r.score < 45).length;
+  const passedCount = filteredRecords.filter(r => r.overallResult === 'PASSED' || r.isPassed === true).length;
+  const failedCount = filteredRecords.filter(r => r.overallResult === 'FAILED' || r.isPassed === false).length;
   const passRate = totalStudents > 0 ? Math.round((passedCount / totalStudents) * 100) : 0;
 
   // Top Scorer
@@ -477,7 +494,7 @@ export default function GradesMarksPage() {
                       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
                         <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Total Marks</span>
                         <span className="text-sm font-extrabold text-slate-800 block mt-1">
-                          {activeReportStudent.subjectsList.reduce((sum, s) => sum + s.score, 0)} / {activeReportStudent.subjectsList.length * 100}
+                          {activeReportStudent.totalMarks ?? activeReportStudent.subjectsList.reduce((sum, s) => sum + s.score, 0)} / {activeReportStudent.totalMaxMarks ?? activeReportStudent.subjectsList.reduce((sum, s) => sum + (s.max || 100), 0)}
                         </span>
                       </div>
                       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
@@ -489,15 +506,15 @@ export default function GradesMarksPage() {
                         <span className="text-sm font-extrabold text-purple-600 block mt-1">{activeReportStudent.grade}</span>
                       </div>
                       <div className={`border rounded-2xl p-4 text-center shadow-xs ${
-                        activeReportStudent.score >= 45
+                        (activeReportStudent.overallResult === 'PASSED' || activeReportStudent.isPassed === true)
                           ? 'bg-emerald-50 border-emerald-100'
                           : 'bg-rose-50 border-rose-100'
                       }`}>
                         <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Final Result</span>
                         <span className={`text-sm font-extrabold block mt-1 ${
-                          activeReportStudent.score >= 45 ? 'text-emerald-600' : 'text-rose-600'
+                          (activeReportStudent.overallResult === 'PASSED' || activeReportStudent.isPassed === true) ? 'text-emerald-600' : 'text-rose-600'
                         }`}>
-                          {activeReportStudent.score >= 45 ? 'PASSED' : 'FAILED'}
+                          {activeReportStudent.overallResult || (activeReportStudent.isPassed ? 'PASSED' : 'FAILED')}
                         </span>
                       </div>
                     </div>
@@ -508,9 +525,12 @@ export default function GradesMarksPage() {
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Subject Wise Marks</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
                       {activeReportStudent.subjectsList.map((subj, idx) => {
-                        const isPass = subj.score >= 45;
-                        const letter = getSubjectGrade(subj.score);
-                        const pct = Math.round((subj.score / subj.max) * 100);
+                        const passMarks = subj.passMarks !== undefined
+                          ? subj.passMarks
+                          : Number((((subj.passingPercentage || 35) / 100) * subj.max).toFixed(2));
+                        const isPass = subj.isPassed !== undefined ? subj.isPassed : subj.score >= passMarks;
+                        const letter = subj.grade || getSubjectGrade(subj.max > 0 ? (subj.score / subj.max) * 100 : subj.score);
+                        const pct = subj.max > 0 ? Math.round((subj.score / subj.max) * 100) : 0;
                         return (
                           <div key={idx} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '80px', breakInside: 'avoid' }}>
                             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.5rem', gap: '0.5rem' }}>

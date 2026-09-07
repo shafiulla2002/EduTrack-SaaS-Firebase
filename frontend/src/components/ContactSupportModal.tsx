@@ -124,9 +124,9 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Row 1: Full Name & School Name */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 truncate">
                 Full Name <span className="text-[#2E5BFF]">*</span>
               </label>
               <input
@@ -136,12 +136,12 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
                 onChange={handleChange}
                 placeholder="John Doe"
                 disabled={loading || success}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#2E5BFF] disabled:opacity-40"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs font-semibold focus:outline-none focus:border-[#2E5BFF] disabled:opacity-40"
                 required
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 truncate">
                 School Name <span className="text-[#2E5BFF]">*</span>
               </label>
               <input
@@ -151,16 +151,16 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
                 onChange={handleChange}
                 placeholder="Oakridge High"
                 disabled={loading || success}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#2E5BFF] disabled:opacity-40"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs font-semibold focus:outline-none focus:border-[#2E5BFF] disabled:opacity-40"
                 required
               />
             </div>
           </div>
 
           {/* Row 2: Email Address & Phone Number */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 truncate">
                 Email Address <span className="text-[#2E5BFF]">*</span>
               </label>
               <input
@@ -170,12 +170,12 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
                 onChange={handleChange}
                 placeholder="email@example.com"
                 disabled={loading || success}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#2E5BFF] disabled:opacity-40"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs font-semibold focus:outline-none focus:border-[#2E5BFF] disabled:opacity-40"
                 required
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 truncate">
                 Mobile Number <span className="text-[#2E5BFF]">*</span>
               </label>
               <input
@@ -183,9 +183,9 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
                 type="text"
                 value={formData.phone}
                 onChange={handleChange}
-                placeholder="e.g. 9876543210 (digits only)"
+                placeholder="e.g. 9876543210"
                 disabled={loading || success}
-                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3.5 py-2.5 text-xs font-semibold focus:outline-none focus:border-[#2E5BFF] disabled:opacity-40"
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs font-semibold focus:outline-none focus:border-[#2E5BFF] disabled:opacity-40"
                 required
               />
             </div>

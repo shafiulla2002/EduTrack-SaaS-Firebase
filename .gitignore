@@ -3,8 +3,12 @@ node_modules
 dist
 build
 .env
+.env.*
+*.env
 .env.local
 .env.*.local
+.env.production
+.env.*.production
 *.log
 *.zip
 *.7z

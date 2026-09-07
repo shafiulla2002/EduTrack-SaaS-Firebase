@@ -828,7 +828,7 @@ export default function DashboardLayout({
         onClick={() => setMobileOpen(false)}
       >
         <div
-          className={`w-[280px] bg-white h-full py-6 pb-24 select-none overflow-y-auto flex flex-col justify-between transition-transform duration-300 ease-in-out transform ${
+          className={`w-[280px] bg-white h-full py-6 pb-6 select-none overflow-y-auto flex flex-col justify-start transition-transform duration-300 ease-in-out transform ${
             mobileOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
           onClick={(e) => e.stopPropagation()}
@@ -933,7 +933,7 @@ export default function DashboardLayout({
             </nav>
           </div>
           {/* Mobile Logout Button */}
-          <div className="px-6 pt-4 pb-20 border-t border-slate-100">
+          <div className="px-4 pt-4 mt-6 border-t border-slate-100">
             <button
               onClick={() => {
                 clearStoredAuth();

@@ -80,24 +80,24 @@ export default function LandingPage() {
         </div>
 
         {/* Roles Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl mt-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-6 w-full max-w-4xl mt-4">
           {roles.map((role, idx) => {
             const Icon = role.icon;
             return (
               <Link
                 key={idx}
                 href={`/auth/login?portal=${role.portal}`}
-                className="glass-card p-6 rounded-2xl text-left flex gap-5 cursor-pointer relative group"
+                className="glass-card p-3.5 sm:p-6 rounded-2xl text-left flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5 cursor-pointer relative group"
               >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-tr ${role.color} flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform`}>
-                  <Icon className="w-6 h-6" />
+                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr ${role.color} flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform`}>
+                  <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg text-slate-200 group-hover:text-white transition-colors flex items-center gap-1.5">
-                    {role.title}
-                    <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-sm sm:text-lg text-slate-200 group-hover:text-white transition-colors flex items-center gap-1">
+                    <span className="truncate">{role.title}</span>
+                    <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all shrink-0" />
                   </h3>
-                  <p className="text-slate-400 text-sm mt-1.5 font-light leading-relaxed">
+                  <p className="text-slate-400 text-xs sm:text-sm mt-1 font-light leading-snug line-clamp-2 sm:line-clamp-none">
                     {role.description}
                   </p>
                 </div>

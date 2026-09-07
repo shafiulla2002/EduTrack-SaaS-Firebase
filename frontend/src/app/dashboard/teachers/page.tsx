@@ -84,6 +84,7 @@ export default function TeacherClassManagement() {
   const [classDetail, setClassDetail] = useState<any | null>(null);
   const [classDetailLoading, setClassDetailLoading] = useState(false);
   const [isClassTodayExpanded, setIsClassTodayExpanded] = useState(true);
+  const [isClassSubjectsExpanded, setIsClassSubjectsExpanded] = useState(false);
   
   // ── WORKLOAD SUMMARY ──
   const [workloadSummary, setWorkloadSummary] = useState({
@@ -580,6 +581,19 @@ export default function TeacherClassManagement() {
           loadPercent: c.loadPercent || 0
         }));
         setClasses(mappedClasses);
+
+        const totalClassesCount = (data.summary?.totalClasses !== undefined && data.summary?.totalClasses !== null && Number(data.summary?.totalClasses) > 0)
+          ? Number(data.summary.totalClasses)
+          : (data.summary?.totalClassSections !== undefined && data.summary?.totalClassSections !== null && Number(data.summary?.totalClassSections) > 0
+              ? Number(data.summary.totalClassSections)
+              : mappedClasses.length);
+
+        setWorkloadSummary({
+          totalTeachers: data.summary?.totalTeachers ?? data.teachers?.length ?? 0,
+          totalClasses: totalClassesCount,
+          totalAssignments: data.summary?.totalAssignments ?? 0,
+          avgLoadPercent: data.summary?.avgLoadPercent ?? 0
+        });
 
         const rawTimings = data.periodTimings || [];
         const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
@@ -1521,7 +1535,8 @@ export default function TeacherClassManagement() {
 
   const handleStep2Next = async () => {
     if (selectedSubjects.size === 0) {
-      showToast('Please choose at least one subject to link.', 'error');
+      setTeacherAssignments([]);
+      setCurrentStep(3);
       return;
     }
     setIsLoading(true);
@@ -1593,26 +1608,19 @@ export default function TeacherClassManagement() {
   };
 
   const handleWizardSubmit = async () => {
-    let err = false;
-    const assignmentsCopy = teacherAssignments.map(a => {
-      const valid = a.teachers.some((t: any) => t.selectedTeacherId);
-      if (!valid) err = true;
-      return { ...a, hasError: !valid };
-    });
-    setTeacherAssignments(assignmentsCopy);
-
-    if (err) {
-      showToast('Please assign at least one teacher to all checked subjects.', 'error');
-      return;
-    }
-
     const subjectTeacherMap: Record<string, string[]> = {};
     const subjectPeriodsMap: Record<string, number[]> = {};
 
     teacherAssignments.forEach(a => {
       const assigned = a.teachers.filter((t: any) => t.selectedTeacherId);
-      subjectTeacherMap[a.subjectId] = assigned.map((t: any) => t.selectedTeacherId);
-      subjectPeriodsMap[a.subjectId] = assigned.map((t: any) => Number(t.periodsPerWeek || 5));
+      if (assigned.length > 0) {
+        subjectTeacherMap[a.subjectId] = assigned.map((t: any) => t.selectedTeacherId);
+        subjectPeriodsMap[a.subjectId] = assigned.map((t: any) => Number(t.periodsPerWeek || 5));
+      } else {
+        // Register subject link for this section with zero assigned teachers
+        subjectTeacherMap[a.subjectId] = [];
+        subjectPeriodsMap[a.subjectId] = [];
+      }
     });
 
     try {
@@ -1626,7 +1634,7 @@ export default function TeacherClassManagement() {
         subjectPeriodsMap
       });
 
-      setSuccessMessage(`Created Class Section and mapped assignments successfully.`);
+      setSuccessMessage(`Class Section created successfully.`);
       setShowSuccessModal(true);
     } catch (err: any) {
       console.error('Wizard submit failed:', err);
@@ -1769,7 +1777,7 @@ export default function TeacherClassManagement() {
                   <Grid3X3 className="w-4 h-4 text-emerald-600" />
                 </div>
                 <div className="kpi-data">
-                  <span className="kpi-val">{workloadSummary.totalClasses}</span>
+                  <span className="kpi-val">{workloadSummary.totalClasses || classes.length}</span>
                   <span className="kpi-label">Class Sections</span>
                 </div>
               </div>
@@ -2121,69 +2129,88 @@ export default function TeacherClassManagement() {
                                   </div>
                                 </div>
 
-                                {/* Subject Blocks */}
-                                <div className="space-y-3">
-                                  {classDetail.subjects.map((subj: any) => (
-                                    <div key={subj.subjectId} className="cd-subj-block border border-slate-200 rounded-xl overflow-hidden bg-white">
-                                      <div className="cd-subj-header flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50/50">
-                                        <div className="flex items-center gap-2">
-                                          <span className="w-2 h-2 rounded-full" style={{ background: getLoadColor(subj.loadPercent) }}></span>
-                                          <span className="text-xs font-extrabold text-slate-800">{subj.subjectName}</span>
-                                        </div>
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold border ${subj.hasTeacher ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-rose-50 text-rose-600 border-rose-200'}`}>
-                                          {subj.hasTeacher ? 'Assigned' : 'Open'}
-                                        </span>
-                                      </div>
-
-                                      <div className="p-3">
-                                        {subj.hasTeacher ? (
-                                          subj.teachers.map((t: any) => (
-                                            <div key={t.id} className="flex items-center justify-between text-xs py-1">
-                                              <div className="flex items-center gap-2">
-                                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: AVATAR_GRADIENTS[Math.floor(Math.random() * 8)] }}>
-                                                  {t.initials}
-                                                </div>
-                                                <span className="font-semibold text-slate-700">{t.name}</span>
-                                              </div>
-                                              <div className="flex items-center gap-3">
-                                                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold text-[10px]">{t.periodsPerWeek} p/wk</span>
-                                                <div className="flex gap-1.5">
-                                                  <button 
-                                                    onClick={(e) => handleOpenReassign(e, t.assignmentId, subj.subjectId, subj.subjectName, t.id, t.name, t.periodsPerWeek)}
-                                                    className="p-1 rounded bg-slate-50 hover:bg-blue-50 text-slate-500 hover:text-blue-600"
-                                                    title="Reassign Teacher"
-                                                  >
-                                                    <Edit2 className="w-3.5 h-3.5" />
-                                                  </button>
-                                                  <button 
-                                                    onClick={(e) => handleDeleteAssignment(e, t.assignmentId)}
-                                                    className="p-1 rounded bg-slate-50 hover:bg-rose-50 text-slate-500 hover:text-rose-600"
-                                                    title="Remove Assignment"
-                                                  >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          ))
-                                        ) : (
-                                          <div className="text-xs text-slate-400 italic py-1">No teacher assigned yet.</div>
-                                        )}
-                                      </div>
+                                {/* Accordion: Class Subjects & Mapped Teachers */}
+                                <div className="border border-slate-200/60 dark:border-slate-700/60 rounded-xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
+                                  <div 
+                                    onClick={() => setIsClassSubjectsExpanded(!isClassSubjectsExpanded)}
+                                    className="flex justify-between items-center px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer border-b border-slate-200/60 dark:border-slate-700/60"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <BookOpen className="w-4 h-4 text-emerald-500" />
+                                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Class Subjects &amp; Teachers ({classDetail.subjects.length})</span>
                                     </div>
-                                  ))}
+                                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isClassSubjectsExpanded ? 'rotate-180' : ''}`} />
+                                  </div>
+
+                                  {isClassSubjectsExpanded && (
+                                    <div className="p-4 space-y-3">
+                                      {classDetail.subjects.length === 0 ? (
+                                        <div className="text-xs text-slate-400 italic text-center py-2">No subjects linked to this class section yet.</div>
+                                      ) : (
+                                        classDetail.subjects.map((subj: any) => (
+                                          <div key={subj.subjectId} className="cd-subj-block border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-850">
+                                            <div className="cd-subj-header flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+                                              <div className="flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full" style={{ background: getLoadColor(subj.loadPercent) }}></span>
+                                                <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">{subj.subjectName}</span>
+                                              </div>
+                                              <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold border ${subj.hasTeacher ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800' : 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800'}`}>
+                                                {subj.hasTeacher ? 'Assigned' : 'Open'}
+                                              </span>
+                                            </div>
+
+                                            <div className="p-3">
+                                              {subj.hasTeacher ? (
+                                                subj.teachers.map((t: any) => (
+                                                  <div key={t.id} className="flex items-center justify-between text-xs py-1">
+                                                    <div className="flex items-center gap-2">
+                                                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: AVATAR_GRADIENTS[Math.floor(Math.random() * 8)] }}>
+                                                        {t.initials}
+                                                      </div>
+                                                      <span className="font-semibold text-slate-700 dark:text-slate-200">{t.name}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                      <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-semibold text-[10px]">{t.periodsPerWeek} p/wk</span>
+                                                      <div className="flex gap-1.5">
+                                                        <button 
+                                                          onClick={(e) => handleOpenReassign(e, t.assignmentId, subj.subjectId, subj.subjectName, t.id, t.name, t.periodsPerWeek)}
+                                                          className="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-500 hover:text-blue-600"
+                                                          title="Reassign Teacher"
+                                                        >
+                                                          <Edit2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <button 
+                                                          onClick={(e) => handleDeleteAssignment(e, t.assignmentId)}
+                                                          className="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600"
+                                                          title="Remove Assignment"
+                                                        >
+                                                          <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                ))
+                                              ) : (
+                                                <div className="text-xs text-slate-400 italic py-1">No teacher assigned yet.</div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Inline Subject & Direct Assignments Manager */}
-                                <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-sm">
-                                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                    <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Class Subjects &amp; Staff Assignments</h4>
-                                    <form onSubmit={handleAddSubjectToClass} className="flex gap-2 items-center">
+                                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 sm:p-4 space-y-3 shadow-sm">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">
+                                    <h4 className="font-extrabold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">Class Subjects &amp; Staff Assignments</h4>
+                                    <form onSubmit={handleAddSubjectToClass} className="flex gap-2 items-center w-full sm:w-auto">
                                       <select
                                         value={assignSubjectId}
                                         onChange={e => setAssignSubjectId(e.target.value)}
                                         required
-                                        className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs outline-none text-slate-700"
+                                        className="flex-1 sm:flex-initial bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs outline-none text-slate-700 dark:text-slate-200 min-w-0"
                                       >
                                         <option value="">Link Subject...</option>
                                         {allSubjects
@@ -2195,28 +2222,28 @@ export default function TeacherClassManagement() {
                                       </select>
                                       <button
                                         type="submit"
-                                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer"
+                                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shrink-0"
                                       >
                                         + Link
                                       </button>
                                     </form>
                                   </div>
 
-                                  <div className="divide-y divide-slate-100">
+                                  <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
                                     {classDetail.subjects.map((sub: any) => {
                                       const assignedTeacherId = sub.teachers && sub.teachers.length > 0 ? sub.teachers[0].id : '';
                                       const assignmentId = sub.teachers && sub.teachers.length > 0 ? sub.teachers[0].assignmentId : '';
                                       return (
-                                        <div key={sub.subjectId} className="flex items-center justify-between py-2 text-xs">
-                                          <div className="font-semibold text-slate-700">{sub.subjectName}</div>
-                                          <div className="flex items-center gap-3">
+                                        <div key={sub.subjectId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 text-xs border-b border-slate-100 dark:border-slate-700/60 last:border-0">
+                                          <div className="font-bold text-slate-800 dark:text-slate-200 min-w-0 truncate">{sub.subjectName}</div>
+                                          <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                                             <select
                                               value={assignedTeacherId}
                                               onChange={async (e) => {
                                                 const newTId = e.target.value;
                                                 await handleAssignTeacherDirect(sub.subjectId, newTId, assignmentId);
                                               }}
-                                              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs outline-none text-slate-700"
+                                              className="flex-1 sm:flex-initial bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-700 dark:text-slate-200 min-w-0"
                                             >
                                               <option value="">Unassigned</option>
                                               {teachers.map(t => (
@@ -2230,7 +2257,7 @@ export default function TeacherClassManagement() {
                                                 }
                                               }}
                                               type="button"
-                                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 cursor-pointer flex items-center justify-center"
+                                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer flex items-center justify-center shrink-0"
                                               title="Unlink Subject"
                                             >
                                               <Trash2 className="w-4 h-4 text-rose-500" />

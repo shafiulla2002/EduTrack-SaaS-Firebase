@@ -26,6 +26,7 @@ interface InvoicePDFData {
   studentDob: string;
   addressVillage: string;
   totalAmount: number;
+  paidAmount?: number;
   remainingBalance?: number;
   parentPhone?: string;
   items: { particulars: string; amount: number }[];
@@ -231,7 +232,7 @@ export default function InvoicePrintPage() {
             <div style={{ backgroundColor: '#1a365d', color: '#ffffff', borderRadius: '0.5rem', padding: '0.85rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', minWidth: '240px' }}>
               <span style={{ fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#cbd5e1' }}>Paid Amount</span>
               <span style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: '#ffffff' }}>
-                ₹{invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                ₹{(invoiceData.paidAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
             </div>
             <div style={{ backgroundColor: (invoiceData.remainingBalance ?? 0) > 0 ? '#fff1f2' : '#f0fdf4', color: (invoiceData.remainingBalance ?? 0) > 0 ? '#9f1239' : '#166534', border: `1px solid ${(invoiceData.remainingBalance ?? 0) > 0 ? '#fecdd3' : '#bbf7d0'}`, borderRadius: '0.5rem', padding: '0.85rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', minWidth: '240px' }}>

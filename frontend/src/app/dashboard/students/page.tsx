@@ -758,23 +758,23 @@ export default function StudentsDirectory() {
                   const financialStatus = student.financialStatus || (hasDue ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
                   return (
                     <div key={student.id} className="p-4 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-3">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                           <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
-                          <div>
+                          <div className="min-w-0 flex-1">
                             <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold font-mono">
                               Roll: {student.rollNo}
                             </span>
-                            <h4 className="text-sm font-bold text-slate-800 mt-1">{student.name}</h4>
-                            <p className="text-xs text-slate-400 font-medium mt-0.5">{student.email}</p>
+                            <h4 className="text-sm font-bold text-slate-800 mt-1 truncate">{student.name}</h4>
+                            <p className="text-xs text-slate-400 font-medium mt-0.5 truncate">{student.email}</p>
                           </div>
                         </div>
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 ${
+                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                           hasDue 
                             ? 'bg-amber-50 text-amber-600 border border-amber-200' 
                             : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
                         }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                           {financialStatus}
                         </span>
                       </div>
@@ -888,23 +888,26 @@ export default function StudentsDirectory() {
 
           {/* Floating Bulk Actions Bar */}
           {(selectedIds.length > 0 || selectedClass !== 'All' || selectedSection !== 'All' || selectedYear !== 'All' || search !== '') && filteredStudents.length > 0 && (
-            <div ref={barRef} className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-3 sm:gap-4 z-40 border border-slate-800 animate-slide-up max-w-[90%] sm:max-w-max">
-              <div className="flex items-center gap-3">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-                <span className="text-xs font-semibold text-slate-300">
+            <div 
+              ref={barRef} 
+              className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md text-white px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-xl shadow-2xl flex flex-row items-center justify-between gap-2.5 sm:gap-4 z-40 border border-slate-800/80 animate-slide-up w-[92%] sm:w-auto max-w-lg"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                <span className="text-[11px] sm:text-xs font-semibold text-slate-300 truncate">
                   {selectedIds.length > 0 ? (
                     <span>
-                      <strong className="text-white font-bold">{selectedIds.length}</strong> student(s) selected
+                      <strong className="text-white font-bold">{selectedIds.length}</strong> selected
                     </span>
                   ) : (
                     <span>
-                      <strong className="text-white font-bold">{filteredStudents.length}</strong> student(s) match filters
+                      <strong className="text-white font-bold">{filteredStudents.length}</strong> match filters
                     </span>
                   )}
                 </span>
               </div>
-              <div className="h-4 w-px bg-slate-800 hidden sm:block" />
-              <div className="flex gap-3">
+              <div className="h-4 w-px bg-slate-800 hidden sm:block shrink-0" />
+              <div className="flex items-center gap-2 shrink-0">
                 {selectedIds.length > 0 && (
                   <button
                     onClick={() => setDeleteConfirm({
@@ -915,10 +918,10 @@ export default function StudentsDirectory() {
                       className: selectedClass !== 'All' ? selectedClass : undefined,
                       sectionName: selectedSection !== 'All' ? selectedSection : undefined
                     })}
-                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs shadow-md transition-all cursor-pointer min-h-[38px] flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-[11px] sm:text-xs shadow-xs transition-all cursor-pointer min-h-[32px] flex items-center gap-1 whitespace-nowrap"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Delete Selected ({selectedIds.length})
+                    <Trash2 className="w-3 h-3" />
+                    <span>Delete Selected ({selectedIds.length})</span>
                   </button>
                 )}
                 <button
@@ -933,10 +936,10 @@ export default function StudentsDirectory() {
                       sectionName: selectedSection !== 'All' ? selectedSection : undefined
                     });
                   }}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:text-white font-semibold text-xs transition-all cursor-pointer min-h-[38px] flex items-center gap-1.5"
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:text-white font-medium text-[11px] sm:text-xs transition-all cursor-pointer min-h-[32px] flex items-center gap-1 whitespace-nowrap"
                 >
-                  <Trash2 className="w-3.5 h-3.5 text-slate-400" />
-                  Delete All Filtered ({filteredStudents.length})
+                  <Trash2 className="w-3 h-3 text-slate-400" />
+                  <span>Delete All Filtered ({filteredStudents.length})</span>
                 </button>
               </div>
             </div>

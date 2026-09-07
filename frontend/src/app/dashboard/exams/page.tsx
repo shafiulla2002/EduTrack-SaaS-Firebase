@@ -60,9 +60,9 @@ export default function ExamsAndMarksPage() {
   const [isSavingType, setIsSavingType] = useState(false);
   const [typeError, setTypeError] = useState('');
 
-  // Exam configuration (pass % from ExamConfigService)
-  const [examConfig, setExamConfig] = useState<{ passingPercentage: number; maxMarks: number }>(
-    { passingPercentage: 35, maxMarks: 100 },
+  // Exam configuration (pass % and max marks from ExamConfigService)
+  const [examConfig, setExamConfig] = useState<{ passingPercentage: number; maxMarks: number; passMarks?: number }>(
+    { passingPercentage: 35, maxMarks: 100, passMarks: 35 },
   );
 
   // Fetch types for management modal
@@ -177,7 +177,11 @@ export default function ExamsAndMarksPage() {
     if (selectedSubjectId) params.subjectId = selectedSubjectId;
     if (selectedSubjectType) params.subjectType = selectedSubjectType;
     api.get('/exam-config/resolve', { params })
-      .then(res => setExamConfig({ passingPercentage: res.data.passingPercentage, maxMarks: res.data.maxMarks }))
+      .then(res => setExamConfig({
+        passingPercentage: res.data.passingPercentage,
+        maxMarks: res.data.maxMarks,
+        passMarks: res.data.passMarks,
+      }))
       .catch(() => {});
   }, [selectedExamName, selectedClassSectionId, selectedSubjectId, selectedSubjectType]);
 
@@ -214,22 +218,44 @@ export default function ExamsAndMarksPage() {
   };
 
   const handleScoreChange = (studentId: string, valStr: string) => {
-    const valNum = valStr === '' ? null : Number(valStr);
-    const val = valNum === null ? null : isNaN(valNum) ? 0 : Math.min(examConfig.maxMarks, Math.max(0, valNum));
+    setErrorMsg('');
+    if (valStr === '') {
+      setRoster(prev =>
+        prev.map(item =>
+          item.studentId === studentId ? { ...item, marksObtained: null } : item
+        )
+      );
+      return;
+    }
+    const valNum = Number(valStr);
+    if (isNaN(valNum)) return;
+    if (valNum < 0) {
+      setErrorMsg('Marks cannot be negative.');
+      return;
+    }
+    if (valNum > examConfig.maxMarks) {
+      setErrorMsg(`Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`);
+      return;
+    }
     
     setRoster(prev =>
       prev.map(item =>
-        item.studentId === studentId ? { ...item, marksObtained: val } : item
+        item.studentId === studentId ? { ...item, marksObtained: valNum } : item
       )
     );
   };
 
   const handleIncrement = (studentId: string) => {
+    setErrorMsg('');
     setRoster(prev =>
       prev.map(item => {
         if (item.studentId === studentId) {
           const cur = item.marksObtained === null ? 0 : item.marksObtained;
-          return { ...item, marksObtained: Math.min(examConfig.maxMarks, cur + 1) };
+          if (cur + 1 > examConfig.maxMarks) {
+            setErrorMsg(`Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`);
+            return item;
+          }
+          return { ...item, marksObtained: cur + 1 };
         }
         return item;
       })
@@ -237,6 +263,7 @@ export default function ExamsAndMarksPage() {
   };
 
   const handleDecrement = (studentId: string) => {
+    setErrorMsg('');
     setRoster(prev =>
       prev.map(item => {
         if (item.studentId === studentId) {
@@ -251,6 +278,21 @@ export default function ExamsAndMarksPage() {
   const handleSaveMarks = async () => {
     setErrorMsg('');
     setSaveSuccess(false);
+
+    // Frontend validation before submission
+    for (const item of roster) {
+      if (item.marksObtained !== null && item.marksObtained !== undefined) {
+        if (item.marksObtained < 0) {
+          setErrorMsg('Marks cannot be negative.');
+          return;
+        }
+        if (item.marksObtained > examConfig.maxMarks) {
+          setErrorMsg(`Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`);
+          return;
+        }
+      }
+    }
+
     try {
       const marksPayload = roster.map(item => ({
         studentId: item.studentId,
@@ -282,13 +324,15 @@ export default function ExamsAndMarksPage() {
     }
   };
 
-  // Grade badge – uses configured pass percentage
+  // Grade badge – uses configured pass marks & percentages
   const getGradeInfo = (score: number | null) => {
     if (score === null) return { letter: '—', color: 'bg-slate-50 text-slate-400 border-slate-200', result: null };
-    const passPct = examConfig.passingPercentage;
+    const passMarks = examConfig.passMarks !== undefined
+      ? examConfig.passMarks
+      : Number(((examConfig.passingPercentage / 100) * examConfig.maxMarks).toFixed(2));
     const maxM = examConfig.maxMarks;
     const pct = maxM > 0 ? (score / maxM) * 100 : score;
-    const pass = pct >= passPct;
+    const pass = score >= passMarks;
     if (pct >= 90) return { letter: 'A+', color: 'bg-emerald-50 text-emerald-600 border-emerald-100', result: pass };
     if (pct >= 80) return { letter: 'A',  color: 'bg-emerald-50 text-emerald-500 border-emerald-100', result: pass };
     if (pct >= 70) return { letter: 'B+', color: 'bg-blue-50 text-[#2E5BFF] border-blue-100',         result: pass };
@@ -444,7 +488,9 @@ export default function ExamsAndMarksPage() {
           <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-extrabold text-sm">{examConfig.passingPercentage}%</div>
           <div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pass Threshold</span>
-            <span className="text-sm font-extrabold text-slate-850 block mt-0.5">{examConfig.passingPercentage}% of {examConfig.maxMarks}</span>
+            <span className="text-sm font-extrabold text-slate-850 block mt-0.5">
+              {examConfig.passMarks !== undefined ? examConfig.passMarks : ((examConfig.passingPercentage / 100) * examConfig.maxMarks).toFixed(1)} / {examConfig.maxMarks} ({examConfig.passingPercentage}%)
+            </span>
           </div>
         </div>
       </div>
@@ -453,7 +499,7 @@ export default function ExamsAndMarksPage() {
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <h3 className="text-sm font-bold text-slate-700">
-            Scoring Matrix: {subjects.find(s => s.id === selectedSubjectId)?.name || 'Subject'} — Max Marks: 100
+            Scoring Matrix: {subjects.find(s => s.id === selectedSubjectId)?.name || 'Subject'} — Max Marks: {examConfig.maxMarks}
           </h3>
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
             {classes.find(c => c.value === selectedClassSectionId)?.label || ''} · {selectedExamName}

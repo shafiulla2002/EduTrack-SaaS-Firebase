@@ -2888,6 +2888,11 @@ body {
     .premium-container { padding: 14px; }
     .dual-panel { grid-template-columns: 1fr; }
     .kpi-strip  { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .kpi-card   { padding: 12px 10px; gap: 8px; min-width: 0; }
+    .kpi-icon-wrap { width: 34px; height: 34px; border-radius: var(--r-sm); flex-shrink: 0; }
+    .kpi-data   { min-width: 0; flex: 1; overflow: hidden; }
+    .kpi-val    { font-size: 20px; line-height: 1.1; }
+    .kpi-label  { font-size: 10px; letter-spacing: 0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .form-grid  { grid-template-columns: 1fr; }
     .skill-fields { grid-template-columns: 1fr; }
     .rm-fields  { grid-template-columns: 1fr; }
