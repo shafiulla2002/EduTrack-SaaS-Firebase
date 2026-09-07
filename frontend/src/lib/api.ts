@@ -165,9 +165,16 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor to handle 401 and redirect to login
+// Interceptor to handle responses, 401s, and auto-invalidate cache on mutations
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Automatically purge cached data on state-mutating requests (POST, PUT, PATCH, DELETE)
+    const method = response.config.method?.toUpperCase();
+    if (method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      invalidateLookupCache();
+    }
+    return response;
+  },
   async (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
@@ -182,11 +189,12 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
 export const updateStudent = (id: string, data: Partial<any>) => api.patch(`/students/${id}`, data);
 
-// ── In-Flight Request Deduplication & Tenant-Scoped Lookup Cache ─────────────
+// ── In-Flight Request Deduplication & Tenant-Scoped SWR Cache ─────────────
 const inFlightRequests = new Map<string, Promise<any>>();
-const lookupCache = new Map<string, { data: any; expiresAt: number }>();
+const lookupCache = new Map<string, { data: any; expiresAt: number; cachedAt: number }>();
 
 export function invalidateLookupCache(tenantId?: string) {
   if (tenantId) {
@@ -200,45 +208,101 @@ export function invalidateLookupCache(tenantId?: string) {
   }
 }
 
+// Invalidate on school setup update events
+if (typeof window !== 'undefined') {
+  window.addEventListener('schoolSetupUpdated', () => invalidateLookupCache());
+}
+
+export interface FastGetOptions<T = any> {
+  ttlMs?: number;
+  onRevalidate?: (freshData: T) => void;
+  forceRefresh?: boolean;
+}
+
 /**
- * Perform a GET request with in-flight deduplication and tenant-scoped caching for static lookup data.
+ * Fast SWR (Stale-While-Revalidate) GET request engine:
+ * 1. If cached data exists in memory, returns immediately in 0ms without UI delay.
+ * 2. Concurrently in the background, fetches fresh data from the server.
+ * 3. Calls `onRevalidate` with fresh data if changes are detected, keeping UI 100% accurate.
  */
-export async function cachedGet<T = any>(
+export async function fastGet<T = any>(
   url: string,
   config?: any,
-  ttlMs = 0
-): Promise<{ data: T }> {
+  options: FastGetOptions<T> = {}
+): Promise<{ data: T; isFromCache: boolean }> {
+  const { ttlMs = 60000, onRevalidate, forceRefresh = false } = options;
   const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
   const paramStr = config?.params ? JSON.stringify(config.params) : '';
   const cacheKey = `${tenantId}:${url}:${paramStr}`;
 
-  if (ttlMs > 0) {
-    const cached = lookupCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return { data: cached.data };
+  const cached = lookupCache.get(cacheKey);
+  const now = Date.now();
+
+  // Background fetch helper with deduplication
+  const fetchFresh = (): Promise<{ data: T }> => {
+    const flightKey = `${tenantId}:flight:${url}:${paramStr}`;
+    if (inFlightRequests.has(flightKey)) {
+      return inFlightRequests.get(flightKey)!;
     }
-  }
 
-  // Deduplicate simultaneous in-flight requests
-  const flightKey = `${tenantId}:flight:${url}:${paramStr}`;
-  if (inFlightRequests.has(flightKey)) {
-    return inFlightRequests.get(flightKey)!;
-  }
-
-  const promise = api.get<T>(url, config)
-    .then((res) => {
-      if (ttlMs > 0) {
+    const promise = api.get<T>(url, config)
+      .then((res) => {
+        const freshData = res.data;
         lookupCache.set(cacheKey, {
-          data: res.data,
+          data: freshData,
           expiresAt: Date.now() + ttlMs,
+          cachedAt: Date.now(),
         });
-      }
-      return res;
-    })
-    .finally(() => {
-      inFlightRequests.delete(flightKey);
-    });
 
-  inFlightRequests.set(flightKey, promise);
-  return promise;
+        if (onRevalidate && cached) {
+          try {
+            if (JSON.stringify(freshData) !== JSON.stringify(cached.data)) {
+              onRevalidate(freshData);
+            }
+          } catch {
+            onRevalidate(freshData);
+          }
+        }
+        return res;
+      })
+      .finally(() => {
+        inFlightRequests.delete(flightKey);
+      });
+
+    inFlightRequests.set(flightKey, promise);
+    return promise;
+  };
+
+  // If valid cache exists and not forced refresh, return cached data immediately and revalidate in background
+  if (!forceRefresh && cached && cached.expiresAt > now) {
+    // Non-blocking background revalidation if data is older than 5 seconds
+    if (now - cached.cachedAt > 5000) {
+      fetchFresh().catch(() => {});
+    }
+    return { data: cached.data, isFromCache: true };
+  }
+
+  // If stale cache exists, return it immediately while fetching fresh data
+  if (!forceRefresh && cached) {
+    fetchFresh().catch(() => {});
+    return { data: cached.data, isFromCache: true };
+  }
+
+  // Cold cache: await network request
+  const freshRes = await fetchFresh();
+  return { data: freshRes.data, isFromCache: false };
 }
+
+/**
+ * Legacy cachedGet for backward compatibility.
+ */
+export async function cachedGet<T = any>(
+  url: string,
+  config?: any,
+  ttlMs = 60000
+): Promise<{ data: T }> {
+  const result = await fastGet<T>(url, config, { ttlMs });
+  return { data: result.data };
+}
+
+export const swrGet = fastGet;

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import BulkImportModal from '@/components/BulkImportModal';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { useSchoolSetupUpdate, dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '../providers/TenantContext';
 import { BookOpen } from 'lucide-react';
@@ -41,12 +41,24 @@ function AdminDashboardOverview() {
 
   const loadDashboardData = useCallback(async () => {
     try {
-      const summaryRes = await api.get('/dashboard/summary');
+      const summaryRes = await fastGet('/dashboard/summary', undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (fresh) {
+            setStats(fresh.stats);
+            setRecentAdmissions(fresh.recentAdmissions);
+            setRecentPayments(fresh.recentPayments);
+            setChartData(fresh.chartData);
+          }
+        }
+      });
 
-      setStats(summaryRes.data.stats);
-      setRecentAdmissions(summaryRes.data.recentAdmissions);
-      setRecentPayments(summaryRes.data.recentPayments);
-      setChartData(summaryRes.data.chartData);
+      if (summaryRes.data) {
+        setStats(summaryRes.data.stats);
+        setRecentAdmissions(summaryRes.data.recentAdmissions);
+        setRecentPayments(summaryRes.data.recentPayments);
+        setChartData(summaryRes.data.chartData);
+      }
     } catch (err) {
       console.error('Failed to load dashboard data', err);
     }

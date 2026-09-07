@@ -80,6 +80,20 @@ export class TenantController {
     };
   }
 
+  private static setupStatusCache = new Map<string, { data: any; expiresAt: number }>();
+
+  public static invalidateCache(tenantId?: string) {
+    if (tenantId) {
+      this.setupStatusCache.forEach((_, key) => {
+        if (key.startsWith(`${tenantId}:`)) {
+          this.setupStatusCache.delete(key);
+        }
+      });
+    } else {
+      this.setupStatusCache.clear();
+    }
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('setup-status')
   async getSetupStatus(@Req() req: any) {
@@ -110,6 +124,13 @@ export class TenantController {
         currentUser,
         subscription: null,
       };
+    }
+
+    const cacheKey = `${tenantId}:${req.user.id}`;
+    const cached = TenantController.setupStatusCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
     }
 
     const [
@@ -246,7 +267,7 @@ export class TenantController {
       }
     }
 
-    return {
+    const statusResult = {
       setupCompleted: setup.isCompleted,
       completionPercentage,
       classesCount,
@@ -264,6 +285,13 @@ export class TenantController {
         features: subscription.plan.features,
       } : null,
     };
+
+    TenantController.setupStatusCache.set(cacheKey, {
+      data: statusResult,
+      expiresAt: Date.now() + 20000 // 20s in-memory TTL
+    });
+
+    return statusResult;
   }
 
   @UseGuards(JwtAuthGuard)
