@@ -91,27 +91,81 @@ export default function InvoicePrintPage() {
     }
   };
 
-  const handleShareWhatsApp = () => {
+  const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
+
+  const handleShareWhatsApp = async () => {
     if (!invoiceData) return;
-    const rawPhone = (invoiceData.parentPhone || '').replace(/\D/g, '');
-    const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
+    setIsSharingWhatsApp(true);
+    try {
+      const element = document.getElementById('invoice-pdf-element');
+      const safeInvoiceNo = invoiceData.invoiceNo.replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `fee_receipt_${safeInvoiceNo}.pdf`;
 
-    const text = `*OFFICIAL STUDENT FEE RECEIPT*\n` +
-      `🏫 *School:* ${invoiceData.schoolName}\n` +
-      `📄 *Receipt No:* ${invoiceData.invoiceNo}\n` +
-      `📅 *Date:* ${invoiceData.invoiceDate}\n` +
-      `👤 *Student:* ${invoiceData.studentName} (${invoiceData.className} - ${invoiceData.sectionName})\n\n` +
-      `----------------------------------------\n` +
-      `💳 *Amount Paid:* ₹${invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
-      `⏳ *Remaining Balance:* ₹${(invoiceData.remainingBalance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
-      `----------------------------------------\n\n` +
-      `Thank you for your payment!`;
+      const rawPhone = (invoiceData.parentPhone || '').replace(/\D/g, '');
+      const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
 
-    const whatsappUrl = phoneClean 
-      ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(text)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+      const receiptUrl = typeof window !== 'undefined' 
+        ? window.location.href 
+        : `/dashboard/billing/invoices/${id}`;
 
-    window.open(whatsappUrl, '_blank');
+      const text = `*OFFICIAL STUDENT FEE RECEIPT*\n` +
+        `🏫 *School:* ${invoiceData.schoolName}\n` +
+        `📄 *Receipt No:* ${invoiceData.invoiceNo}\n` +
+        `📅 *Date:* ${invoiceData.invoiceDate}\n` +
+        `👤 *Student:* ${invoiceData.studentName} (${invoiceData.className} - ${invoiceData.sectionName})\n\n` +
+        `----------------------------------------\n` +
+        `💳 *Amount Paid:* ₹${invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+        `⏳ *Remaining Balance:* ₹${(invoiceData.remainingBalance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+        `----------------------------------------\n\n` +
+        `📎 *View & Download Official PDF Receipt:* \n${receiptUrl}\n\n` +
+        `Thank you for your payment!`;
+
+      if (element) {
+        const pdf = await PDFService.generatePDF({
+          element,
+          filename,
+          documentType: 'receipt',
+          metadata: {
+            title: `Fee Receipt - ${invoiceData.invoiceNo}`,
+            author: invoiceData.schoolName,
+            subject: 'Student Fee Payment Invoice Receipt',
+            keywords: 'Invoice, Fee Receipt, Student, Billing',
+          },
+        });
+
+        const pdfBlob = pdf.output('blob');
+        const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+        // 1. If Web Share API with files is supported (Mobile / Tablet / Safari / Chrome Mobile)
+        if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+          try {
+            await navigator.share({
+              files: [pdfFile],
+              title: `Fee Receipt - ${invoiceData.invoiceNo}`,
+              text
+            });
+            return;
+          } catch (shareErr: any) {
+            if (shareErr.name === 'AbortError') return;
+            console.warn('Native share failed or dismissed, falling back to download + WhatsApp Web:', shareErr);
+          }
+        }
+
+        // 2. On desktop browsers / fallback: Auto-download the high-res PDF
+        pdf.save(filename);
+      }
+
+      // 3. Open WhatsApp with full breakdown + direct receipt link
+      const whatsappUrl = phoneClean 
+        ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(text)}`
+        : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+
+      window.open(whatsappUrl, '_blank');
+    } catch (err: any) {
+      console.error('Failed to share PDF via WhatsApp:', err);
+    } finally {
+      setIsSharingWhatsApp(false);
+    }
   };
 
   if (isLoading) {
@@ -151,10 +205,15 @@ export default function InvoicePrintPage() {
         <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
           <button
             onClick={handleShareWhatsApp}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[13px] flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer border-none"
+            disabled={isSharingWhatsApp}
+            className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-white font-semibold text-[13px] flex items-center justify-center gap-2 transition-all shadow-sm border-none ${
+              isSharingWhatsApp 
+                ? 'bg-emerald-400 cursor-not-allowed' 
+                : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
+            }`}
           >
             <MessageCircle className="w-4 h-4" />
-            Share WhatsApp
+            {isSharingWhatsApp ? 'Preparing PDF...' : 'Share WhatsApp'}
           </button>
           <button
             onClick={handlePrint}

@@ -79,9 +79,9 @@ export class PDFService {
   }
 
   /**
-   * Generates a direct PDF download from a DOM element using high DPI rendering and A4 slicing.
+   * Generates a jsPDF instance from a DOM element using high DPI rendering and A4 slicing.
    */
-  static async export(options: ExportPDFOptions): Promise<void> {
+  static async generatePDF(options: ExportPDFOptions): Promise<jsPDF> {
     const {
       element,
       filename,
@@ -262,11 +262,19 @@ export class PDFService {
         pageCount++;
       }
 
-      pdf.save(`${filename}.pdf`);
+      return pdf;
     } catch (err) {
       console.error('PDF Service Export Error:', err);
       throw err;
     }
+  }
+
+  /**
+   * Generates and triggers a direct PDF download.
+   */
+  static async export(options: ExportPDFOptions): Promise<void> {
+    const pdf = await this.generatePDF(options);
+    pdf.save(`${options.filename}.pdf`);
   }
 
   /**
