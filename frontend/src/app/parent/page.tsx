@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from './ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import Link from 'next/link';
 import {
   Users,
@@ -36,9 +36,11 @@ export default function ParentDashboard() {
 
   const fetchStats = async () => {
     try {
-      const tenantId = localStorage.getItem('parent_tenantId') || 'demo-school';
-      const res = await api.get('/parent-portal/dashboard');
-      setStats(res.data);
+      const res = await fastGet('/parent-portal/dashboard', undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setStats(fresh); },
+      });
+      if (res?.data) setStats(res.data);
     } catch (err) {
       console.error('Failed to fetch parent dashboard stats:', err);
     }
@@ -46,9 +48,11 @@ export default function ParentDashboard() {
 
   const fetchChildDashboard = async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/dashboard`);
-      setChildDashboard(res.data);
+      const res = await fastGet(`/parent-portal/children/${childId}/dashboard`, undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setChildDashboard(fresh); },
+      });
+      if (res?.data) setChildDashboard(res.data);
     } catch (err) {
       console.error('Failed to fetch child dashboard:', err);
     } finally {

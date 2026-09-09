@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet, invalidateCachePrefix } from '@/lib/api';
 import {
   BookOpen,
   Calendar,
@@ -228,9 +228,13 @@ export default function HomeworkPage() {
 
   const fetchHomework = async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/homework`);
-      setHomeworkList(res.data || []);
+      const res = await fastGet(`/parent-portal/children/${childId}/homework`, {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setHomeworkList(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setHomeworkList(res.data);
     } catch (err) {
       console.error('Failed to fetch homework:', err);
     } finally {
@@ -269,6 +273,7 @@ export default function HomeworkPage() {
             base64File,
             fileName: uploadFile.name,
           });
+          invalidateCachePrefix(`/parent-portal/children/${selectedChild.id}/homework`);
           setMessage('Assignment submitted successfully!');
           fetchHomework(selectedChild.id);
           setTimeout(() => {
@@ -311,7 +316,7 @@ export default function HomeworkPage() {
     );
   }
 
-  if (loading) {
+  if (loading && homeworkList.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin"></div>

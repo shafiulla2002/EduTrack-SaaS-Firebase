@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { formatDateDDMMYYYY } from '@/lib/date';
 import {
@@ -32,7 +32,7 @@ function inr(n: number) {
 export default function FeesPage() {
   const { selectedChild } = useParent();
   const [feesData, setFeesData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   /**
    * itemPayAmounts: Map<itemId, customAmount>
@@ -44,9 +44,10 @@ export default function FeesPage() {
   /** Per-item validation error messages */
   const [itemErrors, setItemErrors] = useState<Map<string, string>>(new Map());
 
-  // Pay modal
+  // Payment form
   const [activeInvoice, setActiveInvoice] = useState<any>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'GPAY' | 'PHONEPE' | 'BANK'>('GPAY');
+  const [payAmount, setPayAmount] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('Online');
   const [payLoading, setPayLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -57,9 +58,13 @@ export default function FeesPage() {
   // ── Data fetching ─────────────────────────────────────────────────────────
   const fetchFees = useCallback(async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/fees`);
-      setFeesData(res.data);
+      const res = await fastGet(`/parent-portal/children/${childId}/fees`, undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setFeesData(fresh); },
+      });
+      if (res?.data) {
+        setFeesData(res.data);
+      }
       setItemPayAmounts(new Map());
       setItemErrors(new Map());
     } catch (err) {

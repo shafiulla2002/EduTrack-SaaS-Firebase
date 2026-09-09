@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Clock, BookOpen, MapPin, CalendarDays, ChevronRight } from 'lucide-react';
 
 export default function MyTimetablePage() {
@@ -14,8 +14,13 @@ export default function MyTimetablePage() {
   useEffect(() => {
     async function loadTimetable() {
       try {
-        const res = await api.get('/teacher-portal/timetable');
-        setPeriods(res.data);
+        const res = await fastGet('/teacher-portal/timetable', {
+          ttlMs: 60000,
+          onRevalidate: (fresh: any) => {
+            if (fresh) setPeriods(fresh?.data || fresh);
+          },
+        });
+        if (res?.data) setPeriods(res.data);
       } catch (err) {
         console.error('Failed to load timetable:', err);
       } finally {
@@ -55,7 +60,7 @@ export default function MyTimetablePage() {
 
       {/* Periods list */}
       <div className="space-y-3">
-        {loading ? (
+        {loading && periods.length === 0 ? (
           Array.from({ length: 4 }).map((_, idx) => (
             <div key={idx} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex justify-between items-center animate-pulse">
               <div className="flex items-start gap-4 w-full">

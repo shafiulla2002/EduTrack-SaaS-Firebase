@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet, invalidateCachePrefix } from '@/lib/api';
 import {
   FileText, CheckCircle, Clock, Upload, X, ShieldAlert, Loader2,
   Paperclip, Eye, User, Calendar, Download
@@ -34,8 +34,13 @@ export default function LeavePage() {
 
   const fetchLeaves = async (childId: string) => {
     try {
-      const res = await api.get(`/parent-portal/children/${childId}/leave`);
-      setLeavesList(res.data || []);
+      const res = await fastGet(`/parent-portal/children/${childId}/leave`, {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setLeavesList(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setLeavesList(res.data);
     } catch (err) {
       console.error('Failed to fetch leaves:', err);
     } finally {
@@ -45,9 +50,8 @@ export default function LeavePage() {
 
   useEffect(() => {
     if (selectedChild) {
-      setHistoryLoading(true);
       fetchLeaves(selectedChild.id);
-      const interval = setInterval(() => fetchLeaves(selectedChild.id), 10000);
+      const interval = setInterval(() => fetchLeaves(selectedChild.id), 15000);
       return () => clearInterval(interval);
     }
   }, [selectedChild]);

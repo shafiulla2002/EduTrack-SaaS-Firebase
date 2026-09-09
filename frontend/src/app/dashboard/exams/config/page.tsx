@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet, invalidateCachePrefix } from '@/lib/api';
 import {
   Settings2, Plus, Trash2, Save, CheckCircle, AlertCircle,
   GraduationCap, ChevronRight, X, Edit3, Layers, BookOpen, Clock
@@ -70,21 +70,21 @@ export default function ExamConfigPage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      setLoading(true);
       const [cfgRes, typeRes, compRes, ayRes, classRes, subRes] = await Promise.all([
-        api.get('/exam-config'),
-        api.get('/exams/exam-types'),
-        api.get('/exam-config/components'),
-        api.get('/academics/academic-years'),
-        api.get('/academics/classes'),
-        api.get('/academics/subjects'),
+        fastGet('/exam-config', { ttlMs: 60000, onRevalidate: (fresh: any) => { if (fresh) setConfigs(fresh?.data || fresh); } }),
+        fastGet('/exams/exam-types', { ttlMs: 60000, onRevalidate: (fresh: any) => { if (fresh) setExamTypes(fresh?.data || fresh); } }),
+        fastGet('/exam-config/components', { ttlMs: 60000, onRevalidate: (fresh: any) => { if (fresh) setComponents(fresh?.data || fresh); } }),
+        fastGet('/academics/academic-years', { ttlMs: 60000, onRevalidate: (fresh: any) => { if (fresh) setAcademicYears(fresh?.data || fresh); } }),
+        fastGet('/academics/classes', { ttlMs: 60000, onRevalidate: (fresh: any) => { if (fresh) setClasses(fresh?.data || fresh); } }),
+        fastGet('/academics/subjects', { ttlMs: 60000, onRevalidate: (fresh: any) => { if (fresh) setSubjects(fresh?.data || fresh); } }),
       ]);
-      setConfigs(cfgRes.data);
-      setExamTypes(typeRes.data);
-      setComponents(compRes.data);
-      setAcademicYears(ayRes.data);
-      setClasses(classRes.data);
-      setSubjects(subRes.data);
+
+      if (cfgRes?.data) setConfigs(cfgRes.data);
+      if (typeRes?.data) setExamTypes(typeRes.data);
+      if (compRes?.data) setComponents(compRes.data);
+      if (ayRes?.data) setAcademicYears(ayRes.data);
+      if (classRes?.data) setClasses(classRes.data);
+      if (subRes?.data) setSubjects(subRes.data);
     } catch (err) {
       console.error('Failed to load exam config:', err);
     } finally {
@@ -167,6 +167,7 @@ export default function ExamConfigPage() {
     if (!newComponent.trim()) return;
     try {
       await api.post('/exam-config/components', { name: newComponent.trim() });
+      invalidateCachePrefix('/exam-config');
       setNewComponent('');
       await fetchAll();
     } catch (err: any) {
@@ -178,6 +179,7 @@ export default function ExamConfigPage() {
     if (!confirm('Delete this subject component type?')) return;
     try {
       await api.delete(`/exam-config/components/${id}`);
+      invalidateCachePrefix('/exam-config');
       await fetchAll();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to delete component');
@@ -188,6 +190,7 @@ export default function ExamConfigPage() {
     if (!confirm('Delete this configuration?')) return;
     try {
       await api.delete(`/exam-config/${id}`);
+      invalidateCachePrefix('/exam-config');
       await fetchAll();
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to delete config');
@@ -210,6 +213,7 @@ export default function ExamConfigPage() {
         academicYearId: overrideData.academicYearId || undefined,
         subjectConfigs: overrideData.subjectConfigs,
       });
+      invalidateCachePrefix('/exam-config');
       setShowAddOverride(false);
       setEditingConfig(null);
       setOverrideData({

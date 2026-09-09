@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { User, Shield, Info, Heart, Briefcase, Mail, Phone } from 'lucide-react';
 
 const cleanPhoneNumber = (phone: string | null | undefined): string => {
@@ -24,9 +24,13 @@ export default function StudentProfilePage() {
 
   const fetchProfile = async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/dashboard`);
-      setProfileData(res.data);
+      const res = await fastGet(`/parent-portal/children/${childId}/dashboard`, {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setProfileData(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setProfileData(res.data);
     } catch (err) {
       console.error('Failed to fetch student profile:', err);
     } finally {
@@ -57,7 +61,7 @@ export default function StudentProfilePage() {
     );
   }
 
-  if (loading) {
+  if (loading && !profileData) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin"></div>

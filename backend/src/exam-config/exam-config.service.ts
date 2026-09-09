@@ -40,6 +40,20 @@ function parseGradeRanges(raw: Prisma.JsonValue | null): GradeRange[] {
 export class ExamConfigService {
   constructor(private prisma: PrismaService) {}
 
+  private configCache = new Map<string, { data: any; expiresAt: number }>();
+
+  invalidateCache(tenantId?: string) {
+    if (!tenantId) {
+      this.configCache.clear();
+      return;
+    }
+    for (const key of this.configCache.keys()) {
+      if (key.startsWith(`${tenantId}:`)) {
+        this.configCache.delete(key);
+      }
+    }
+  }
+
   private getTenantId(): string {
     const tenantId = TenantContext.getTenantId();
     if (!tenantId) throw new BadRequestException('No active school tenant context found');
@@ -229,6 +243,13 @@ export class ExamConfigService {
   // ── List all configs for a tenant ─────────────────────────────────────────
   async listConfigs() {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:exam-configs`;
+    const cached = this.configCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const configs = await this.prisma.examConfig.findMany({
       where: { tenantId },
       include: {
@@ -237,7 +258,7 @@ export class ExamConfigService {
       },
       orderBy: { createdAt: 'asc' },
     });
-    return configs.map(c => ({
+    const mapped = configs.map(c => ({
       id: c.id,
       examTypeName: c.examTypeName === '__global__' ? null : c.examTypeName,
       isGlobal: c.examTypeName === '__global__',
@@ -254,6 +275,9 @@ export class ExamConfigService {
       })),
       updatedAt: c.updatedAt,
     }));
+
+    this.configCache.set(cacheKey, { data: mapped, expiresAt: now + 60000 });
+    return mapped;
   }
 
   // ── Upsert (create or update) ──────────────────────────────────────────────
@@ -274,6 +298,7 @@ export class ExamConfigService {
     }[];
   }) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
 
     if (dto.passingPercentage < 0 || dto.passingPercentage > 100) {
       throw new BadRequestException('Passing percentage must be between 0 and 100');
@@ -350,6 +375,7 @@ export class ExamConfigService {
   // ── Delete a specific config ───────────────────────────────────────────────
   async deleteConfig(id: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     const record = await this.prisma.examConfig.findUnique({ where: { id } });
     if (!record || record.tenantId !== tenantId) {
       throw new BadRequestException('Exam config not found');
@@ -365,14 +391,24 @@ export class ExamConfigService {
   // ── Subject Component Management ──────────────────────────────────────────
   async listComponents() {
     const tenantId = this.getTenantId();
-    return this.prisma.subjectComponent.findMany({
+    const cacheKey = `${tenantId}:subject-components`;
+    const cached = this.configCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const comps = await this.prisma.subjectComponent.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'asc' },
     });
+    this.configCache.set(cacheKey, { data: comps, expiresAt: now + 60000 });
+    return comps;
   }
 
   async createComponent(name: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     if (!name || name.trim() === '') throw new BadRequestException('Component name cannot be empty');
     const existing = await this.prisma.subjectComponent.findUnique({
       where: { name_tenantId: { name: name.trim(), tenantId } },
@@ -385,6 +421,7 @@ export class ExamConfigService {
 
   async deleteComponent(id: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     const comp = await this.prisma.subjectComponent.findUnique({ where: { id } });
     if (!comp || comp.tenantId !== tenantId) throw new NotFoundException('Component not found');
     return this.prisma.subjectComponent.delete({ where: { id } });

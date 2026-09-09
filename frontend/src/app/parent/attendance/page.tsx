@@ -2,19 +2,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Calendar as CalendarIcon, CheckCircle, AlertCircle, Clock, Info } from 'lucide-react';
 
 export default function AttendancePage() {
   const { selectedChild } = useParent();
   const [attendance, setAttendance] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const fetchAttendance = async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/attendance`);
-      setAttendance(res.data);
+      const res = await fastGet(`/parent-portal/children/${childId}/attendance`, undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setAttendance(fresh); },
+      });
+      if (res?.data) setAttendance(res.data);
     } catch (err) {
       console.error('Failed to fetch attendance records:', err);
     } finally {

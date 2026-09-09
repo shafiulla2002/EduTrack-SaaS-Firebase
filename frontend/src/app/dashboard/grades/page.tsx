@@ -162,11 +162,10 @@ export default function GradesMarksPage() {
         `/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(
           targetExamName
         )}`,
-        undefined,
         {
           ttlMs: 30000,
-          onRevalidate: (fresh) => {
-            if (fresh) setRecords(fresh);
+          onRevalidate: (fresh: any) => {
+            if (fresh) setRecords(fresh?.data || fresh);
           }
         }
       );

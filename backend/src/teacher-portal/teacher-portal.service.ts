@@ -13,6 +13,21 @@ export class TeacherPortalService {
     private examsService: ExamsService,
   ) {}
 
+  private teacherCache = new Map<string, { data: any; expiresAt: number }>();
+
+  invalidateCache(tenantId?: string, userId?: string) {
+    if (!tenantId) {
+      this.teacherCache.clear();
+      return;
+    }
+    const prefix = userId ? `${tenantId}:${userId}:` : `${tenantId}:`;
+    for (const key of this.teacherCache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.teacherCache.delete(key);
+      }
+    }
+  }
+
   // Centralized helper to get teacher staff profile by userId and ensure multi-tenant safety
   async getStaffProfile(userId: string, tenantId: string) {
     const staff = await this.prisma.staffProfile.findFirst({
@@ -78,6 +93,13 @@ export class TeacherPortalService {
 
   // 1. Dashboard Stats
   async getDashboardStats(userId: string, tenantId: string) {
+    const cacheKey = `${tenantId}:${userId}:dashboard`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const staff = await this.getStaffProfile(userId, tenantId);
 
     // Dynamic days names
@@ -158,25 +180,28 @@ export class TeacherPortalService {
         where: {
           tenantId,
           priority: 'High',
-          expiryDate: { gte: todayStart },
+          createdAt: { gte: todayStart },
         },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-      })
+        take: 3,
+      }),
     ]);
 
-    const classSectionIds = [
-      ...assignments.map(a => a.classSectionId),
-      ...weeklyPeriods.map(p => p.classSectionId),
-    ];
-    const uniqueClassSectionIds = Array.from(new Set(classSectionIds));
-    const uniqueSubjectIds = Array.from(new Set([
-      ...assignments.map(a => a.subjectId),
-      ...weeklyPeriods.map(p => p.subjectId),
-    ]));
+    // Unique class-section and subject IDs for bulk queries
+    const uniqueClassSectionIds = Array.from(
+      new Set([
+        ...assignments.map(a => a.classSectionId),
+        ...weeklyPeriods.map(p => p.classSectionId),
+      ])
+    );
+    const uniqueSubjectIds = Array.from(
+      new Set([
+        ...assignments.map(a => a.subjectId),
+        ...weeklyPeriods.map(p => p.subjectId),
+      ])
+    );
     const totalSubjects = uniqueSubjectIds.length;
 
-    // Execute section-dependent queries concurrently
+    // Execute bulk queries concurrently across class-sections
     const [
       totalStudents,
       todaySessions,
@@ -235,9 +260,7 @@ export class TeacherPortalService {
 
     const pendingMarksCount = examsInClassSections.filter(e => e.examMarks.length === 0).length;
 
-
-
-    return {
+    const result = {
       today: {
         classes: todayClasses.map(p => ({
           id: p.id,
@@ -267,10 +290,20 @@ export class TeacherPortalService {
         announcementsSent,
       },
     };
+
+    this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   // 2. Profile Management
   async getProfile(userId: string, tenantId: string) {
+    const cacheKey = `${tenantId}:${userId}:profile`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const staff = await this.prisma.staffProfile.findFirst({
       where: { userId, tenantId },
       include: {
@@ -295,10 +328,12 @@ export class TeacherPortalService {
     if (!staff) {
       throw new NotFoundException('Teacher profile not found.');
     }
+    this.teacherCache.set(cacheKey, { data: staff, expiresAt: now + 60000 });
     return staff;
   }
 
   async updateProfile(userId: string, tenantId: string, data: any) {
+    this.invalidateCache(tenantId, userId);
     const staff = await this.getStaffProfile(userId, tenantId);
 
     return this.prisma.$transaction(async (tx) => {
@@ -351,6 +386,13 @@ export class TeacherPortalService {
 
   // 3. Classes and Students
   async getAssignedClasses(userId: string, tenantId: string) {
+    const cacheKey = `${tenantId}:${userId}:classes`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) return [];
 
@@ -366,13 +408,15 @@ export class TeacherPortalService {
         },
         orderBy: { class: { name: 'asc' } }
       });
-      return classSections.map(cs => ({
+      const result = classSections.map(cs => ({
         classSectionId: cs.id,
         className: `${cs.class.name} - ${cs.section.name}`,
         classOnlyName: cs.class.name,
         sectionOnlyName: cs.section.name,
         strength: cs._count.students
       }));
+      this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+      return result;
     }
 
     const staff = await this.getStaffProfile(userId, tenantId);
@@ -445,6 +489,7 @@ export class TeacherPortalService {
 
     const merged = Array.from(uniqueAssignments.values());
     merged.sort((x, y) => x.className.localeCompare(y.className));
+    this.teacherCache.set(cacheKey, { data: merged, expiresAt: now + 60000 });
     return merged;
   }
 
@@ -590,6 +635,7 @@ export class TeacherPortalService {
     // Inject the teacher staff profile ID
     data.teacherId = staff.id;
     const result = await this.attendanceService.saveAttendance(data);
+    this.invalidateCache(tenantId, userId);
     await this.logAction(userId, tenantId, 'RECORD_CREATE', 'AttendanceSession', result.sessionId, data);
     return result;
   }
@@ -651,7 +697,7 @@ export class TeacherPortalService {
       include: { academicYear: true }
     });
     if (!cls || !cls.academicYear || !cls.academicYear.isActive) {
-      throw new BadRequestException('The selected class belongs to an inactive or invalid Academic Year.');
+      throw new BadRequestException('The academic year for this class is not currently active.');
     }
 
     // 5. Verify Exam exists
@@ -711,6 +757,7 @@ export class TeacherPortalService {
     }
 
     const result = await this.examsService.saveMarks(data.marks, data.examName, data.classSectionId, data.subjectId, userId, Role.TEACHER, data.subjectType);
+    this.invalidateCache(tenantId, userId);
     await this.logAction(userId, tenantId, 'RECORD_UPDATE', 'ExamMark', undefined, {
       examName: data.examName,
       classSectionId: data.classSectionId,
@@ -721,6 +768,13 @@ export class TeacherPortalService {
 
   // 6. Timetable Schedule
   async getTeacherWeeklySchedule(userId: string, tenantId: string) {
+    const cacheKey = `${tenantId}:${userId}:timetable`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const staff = await this.getStaffProfile(userId, tenantId);
 
     // 1. Fetch all teaching periods for the teacher
@@ -822,6 +876,7 @@ export class TeacherPortalService {
       mergedList.push(...combined);
     });
 
+    this.teacherCache.set(cacheKey, { data: mergedList, expiresAt: now + 60000 });
     return mergedList;
   }
 

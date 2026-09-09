@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 
 export interface Child {
@@ -29,16 +29,45 @@ interface ParentContextType {
 const ParentContext = createContext<ParentContextType | undefined>(undefined);
 
 export function ParentProvider({ children }: { children: React.ReactNode }) {
-  const [childrenList, setChildrenList] = useState<Child[]>([]);
-  const [selectedChildId, setSelectedChildId] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [childrenList, setChildrenList] = useState<Child[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem('parent_cached_children');
+        return stored ? JSON.parse(stored) : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [selectedChildId, setSelectedChildId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('parent_selected_child_id') || '';
+    }
+    return '';
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('parent_cached_children');
+      return !stored;
+    }
+    return true;
+  });
 
   const fetchChildren = async () => {
     try {
-      setLoading(true);
-      const res = await api.get('/parent-portal/children');
+      const res = await fastGet<Child[]>('/parent-portal/children', undefined, {
+        ttlMs: 60000,
+        onRevalidate: (fresh) => {
+          if (fresh && Array.isArray(fresh)) {
+            setChildrenList(fresh);
+            localStorage.setItem('parent_cached_children', JSON.stringify(fresh));
+          }
+        },
+      });
       const list = res.data || [];
       setChildrenList(list);
+      localStorage.setItem('parent_cached_children', JSON.stringify(list));
       
       if (list.length > 0) {
         const cached = localStorage.getItem('parent_selected_child_id');

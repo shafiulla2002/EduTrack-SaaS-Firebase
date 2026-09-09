@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Bell, Info, AlertTriangle, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 function sanitizeAnnouncementContent(content: string): string {
@@ -22,9 +22,13 @@ export default function AnnouncementsPage() {
 
   const fetchAnnouncements = async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/announcements`);
-      setAnnouncements(res.data || []);
+      const res = await fastGet(`/parent-portal/children/${childId}/announcements`, {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setAnnouncements(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setAnnouncements(res.data);
     } catch (err) {
       console.error('Failed to fetch announcements:', err);
     } finally {
@@ -65,7 +69,7 @@ export default function AnnouncementsPage() {
     );
   }
 
-  if (loading) {
+  if (loading && announcements.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin"></div>

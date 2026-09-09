@@ -27,6 +27,19 @@ export class ParentPortalPaymentProcessor {
 @Injectable()
 export class ParentPortalService {
   private paymentProcessor = new ParentPortalPaymentProcessor();
+  private parentCache = new Map<string, { data: any; expiresAt: number }>();
+
+  invalidateCache(userId?: string) {
+    if (!userId) {
+      this.parentCache.clear();
+      return;
+    }
+    for (const key of this.parentCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        this.parentCache.delete(key);
+      }
+    }
+  }
 
   constructor(
     private prisma: PrismaService,
@@ -36,12 +49,7 @@ export class ParentPortalService {
   ) {}
 
   private async verifyOwnership(userId: string, studentId: string): Promise<any> {
-    const parent = await this.prisma.parentProfile.findUnique({
-      where: { userId },
-    });
-    if (!parent) {
-      throw new NotFoundException('Parent profile not found');
-    }
+    const parent = await this.getParentProfile(userId);
 
     const link = await this.prisma.parentStudent.findUnique({
       where: {
@@ -97,6 +105,13 @@ export class ParentPortalService {
   }
 
   async getParentProfile(userId: string) {
+    const cacheKey = `${userId}:profile`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const parent = await this.prisma.parentProfile.findUnique({
       where: { userId },
       include: { user: true },
@@ -104,10 +119,18 @@ export class ParentPortalService {
     if (!parent) {
       throw new NotFoundException('Parent profile not found');
     }
+    this.parentCache.set(cacheKey, { data: parent, expiresAt: now + 60000 });
     return parent;
   }
 
   async getChildren(userId: string) {
+    const cacheKey = `${userId}:children`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const parent = await this.getParentProfile(userId);
     const links = await this.prisma.parentStudent.findMany({
       where: { parentId: parent.id },
@@ -126,7 +149,7 @@ export class ParentPortalService {
       },
     });
 
-    return links.map(l => ({
+    const result = links.map(l => ({
       id: l.student.id,
       name: l.student.user.name,
       rollNo: l.student.rollNo || 'N/A',
@@ -139,6 +162,9 @@ export class ParentPortalService {
       fatherName: l.student.fatherName || 'N/A',
       motherName: l.student.motherName || 'N/A',
     }));
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getDashboardStats(userId: string, tenantId: string) {

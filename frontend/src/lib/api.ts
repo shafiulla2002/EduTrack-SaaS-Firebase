@@ -456,7 +456,7 @@ if (typeof window !== 'undefined') {
 
 export interface FastGetOptions<T = any> {
   ttlMs?: number;
-  onRevalidate?: (freshData: T) => void;
+  onRevalidate?: (fresh: any) => void;
   forceRefresh?: boolean;
 }
 
@@ -469,9 +469,28 @@ export interface FastGetOptions<T = any> {
  */
 export async function fastGet<T = any>(
   url: string,
-  config?: any,
-  options: FastGetOptions<T> = {}
+  configOrOptions?: any,
+  maybeOptions?: FastGetOptions<T>
 ): Promise<{ data: T; isFromCache: boolean }> {
+  let config: any = undefined;
+  let options: FastGetOptions<T> = {};
+
+  if (maybeOptions) {
+    config = configOrOptions;
+    options = maybeOptions;
+  } else if (configOrOptions) {
+    if (
+      'ttlMs' in configOrOptions ||
+      'onRevalidate' in configOrOptions ||
+      'forceRefresh' in configOrOptions
+    ) {
+      options = configOrOptions;
+      config = undefined;
+    } else {
+      config = configOrOptions;
+    }
+  }
+
   const { ttlMs = 60000, onRevalidate, forceRefresh = false } = options;
   const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
   const paramStr = config?.params ? JSON.stringify(config.params) : '';

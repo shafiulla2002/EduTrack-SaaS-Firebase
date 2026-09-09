@@ -67,13 +67,13 @@ export default function AnnouncementsMgmtPage() {
   async function loadData() {
     try {
       const [annRes, clsRes] = await Promise.all([
-        fastGet('/teacher-portal/announcements', undefined, {
+        fastGet('/teacher-portal/announcements', {
           ttlMs: 30000,
-          onRevalidate: (fresh) => {
-            if (fresh) setAnnouncements(fresh);
+          onRevalidate: (fresh: any) => {
+            if (fresh) setAnnouncements(fresh?.data || fresh);
           }
         }),
-        fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }),
+        fastGet('/teacher-portal/classes', { ttlMs: 60000 }),
       ]);
       if (!annRes.isFromCache) {
         setLoading(false);

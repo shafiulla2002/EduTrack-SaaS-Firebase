@@ -14,6 +14,20 @@ export class ExamsService {
     private examConfigService: ExamConfigService,
   ) {}
 
+  private examsCache = new Map<string, { data: any; expiresAt: number }>();
+
+  invalidateCache(tenantId?: string) {
+    if (!tenantId) {
+      this.examsCache.clear();
+      return;
+    }
+    for (const key of this.examsCache.keys()) {
+      if (key.startsWith(`${tenantId}:`)) {
+        this.examsCache.delete(key);
+      }
+    }
+  }
+
   private getTenantId(): string {
     const tenantId = TenantContext.getTenantId();
     if (!tenantId) {
@@ -65,12 +79,21 @@ export class ExamsService {
 
   async getClasses(userId?: string, role?: string, academicYearId?: string) {
     const tenantId = this.getTenantId();
+    const isTeacher = this.roleFilterHelper.isTeacher(role);
+    const cacheKey = `${tenantId}:classes:${isTeacher ? userId : 'admin'}:${academicYearId || 'all'}`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const classWhere: any = {};
     if (academicYearId && academicYearId !== 'All') {
       classWhere.academicYearId = academicYearId;
     }
 
-    if (this.roleFilterHelper.isTeacher(role)) {
+    let result: any[] = [];
+    if (isTeacher) {
       const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
       if (scope.assignedClassSectionIds.length === 0) return [];
       const sections = await this.prisma.classSection.findMany({
@@ -82,7 +105,26 @@ export class ExamsService {
         include: { class: true, section: true },
         orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
       });
-      return sections
+      result = sections
+        .filter(s => s.class && s.section)
+        .map(s => ({
+          value: s.id,
+          label: `${s.class.name} - ${s.section.name}`,
+          displayName: `${s.class.name} - ${s.section.name}`,
+          classId: s.classId,
+          sectionId: s.sectionId,
+        }));
+    } else {
+      // Admin: all class-sections
+      const sections = await this.prisma.classSection.findMany({
+        where: {
+          tenantId,
+          ...(Object.keys(classWhere).length > 0 ? { class: classWhere } : {}),
+        },
+        include: { class: true, section: true },
+        orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
+      });
+      result = sections
         .filter(s => s.class && s.section)
         .map(s => ({
           value: s.id,
@@ -93,29 +135,22 @@ export class ExamsService {
         }));
     }
 
-    // Admin: all class-sections
-    const sections = await this.prisma.classSection.findMany({
-      where: {
-        tenantId,
-        ...(Object.keys(classWhere).length > 0 ? { class: classWhere } : {}),
-      },
-      include: { class: true, section: true },
-      orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
-    });
-    return sections
-      .filter(s => s.class && s.section)
-      .map(s => ({
-        value: s.id,
-        label: `${s.class.name} - ${s.section.name}`,
-        displayName: `${s.class.name} - ${s.section.name}`,
-        classId: s.classId,
-        sectionId: s.sectionId,
-      }));
+    this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getSubjects(userId?: string, role?: string, classSectionId?: string) {
     const tenantId = this.getTenantId();
-    if (this.roleFilterHelper.isTeacher(role)) {
+    const isTeacher = this.roleFilterHelper.isTeacher(role);
+    const cacheKey = `${tenantId}:subjects:${isTeacher ? userId : 'admin'}:${classSectionId || 'all'}`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    let result: any[] = [];
+    if (isTeacher) {
       const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
       if (scope.assignedSubjectIds.length === 0) return [];
 
@@ -134,49 +169,59 @@ export class ExamsService {
         where: { id: { in: targetSubjectIds }, tenantId, isActive: true },
         orderBy: { name: 'asc' },
       });
-      return subjects.map(s => ({
+      result = subjects.map(s => ({
         id: s.id,
         name: s.name,
         maxMarks: 100,
         icon: s.name.substring(0, 1).toUpperCase(),
       }));
-    }
-
-    // Admin
-    if (classSectionId) {
-      const classSubjects = await this.prisma.classSubject.findMany({
-        where: { classSectionId, tenantId },
-        include: { subject: true },
-        orderBy: { subject: { name: 'asc' } },
-      });
-      if (classSubjects.length > 0) {
-        return classSubjects
-          .filter(cs => cs.subject && cs.subject.isActive)
-          .map(cs => ({
-            id: cs.subject.id,
-            name: cs.subject.name,
-            maxMarks: 100,
-            icon: cs.subject.name.substring(0, 1).toUpperCase(),
-          }));
+    } else {
+      // Admin
+      if (classSectionId) {
+        const classSubjects = await this.prisma.classSubject.findMany({
+          where: { classSectionId, tenantId },
+          include: { subject: true },
+          orderBy: { subject: { name: 'asc' } },
+        });
+        if (classSubjects.length > 0) {
+          result = classSubjects
+            .filter(cs => cs.subject && cs.subject.isActive)
+            .map(cs => ({
+              id: cs.subject.id,
+              name: cs.subject.name,
+              maxMarks: 100,
+              icon: cs.subject.name.substring(0, 1).toUpperCase(),
+            }));
+        }
       }
-      // If no class-specific mappings configured yet for this section,
-      // fallback to tenant-wide active subjects so scheduling is not blocked.
+
+      if (result.length === 0) {
+        const subjects = await this.prisma.subject.findMany({
+          where: { tenantId, isActive: true },
+          orderBy: { name: 'asc' },
+        });
+        result = subjects.map(s => ({
+          id: s.id,
+          name: s.name,
+          maxMarks: 100,
+          icon: s.name.substring(0, 1).toUpperCase(),
+        }));
+      }
     }
 
-    const subjects = await this.prisma.subject.findMany({
-      where: { tenantId, isActive: true },
-      orderBy: { name: 'asc' },
-    });
-    return subjects.map(s => ({
-      id: s.id,
-      name: s.name,
-      maxMarks: 100,
-      icon: s.name.substring(0, 1).toUpperCase(),
-    }));
+    this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getExamTypes() {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:exam-types`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     let types = await this.prisma.examType.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'asc' },
@@ -200,11 +245,20 @@ export class ExamsService {
       });
     }
 
-    return types.map(t => t.name);
+    const result = types.map(t => t.name);
+    this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getExamTypesManage() {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:exam-types-manage`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     let types = await this.prisma.examType.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'asc' },
@@ -228,11 +282,13 @@ export class ExamsService {
       });
     }
 
+    this.examsCache.set(cacheKey, { data: types, expiresAt: now + 60000 });
     return types;
   }
 
   async createExamType(name: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     const trimmed = name.trim();
     if (!trimmed) {
       throw new BadRequestException('Exam type name cannot be empty');
@@ -250,6 +306,7 @@ export class ExamsService {
 
   async updateExamType(id: string, name: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     const trimmed = name.trim();
     if (!trimmed) {
       throw new BadRequestException('Exam type name cannot be empty');
@@ -272,6 +329,7 @@ export class ExamsService {
 
   async deleteExamType(id: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     const examType = await this.prisma.examType.findUnique({ where: { id } });
     if (!examType || examType.tenantId !== tenantId) {
       throw new BadRequestException('Exam type not found');

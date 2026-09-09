@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Users, Search, BookOpen, GraduationCap, X, ChevronRight } from 'lucide-react';
 import Drawer from '@/components/Drawer';
 
@@ -16,8 +16,13 @@ export default function MyClassesPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await api.get('/teacher-portal/classes');
-        setClasses(res.data);
+        const res = await fastGet('/teacher-portal/classes', {
+          ttlMs: 60000,
+          onRevalidate: (fresh: any) => {
+            if (fresh) setClasses(fresh?.data || fresh);
+          },
+        });
+        if (res?.data) setClasses(res.data);
       } catch (err) {
         console.error('Failed to load classes:', err);
       } finally {
@@ -27,15 +32,18 @@ export default function MyClassesPage() {
     loadData();
   }, []);
 
-
-
   const handleClassClick = async (cls: any) => {
     setSelectedClass(cls);
     setLoadingStudents(true);
     setSearchTerm('');
     try {
-      const res = await api.get(`/teacher-portal/classes/${cls.classSectionId}/students`);
-      setStudents(res.data);
+      const res = await fastGet(`/teacher-portal/classes/${cls.classSectionId}/students`, {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setStudents(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setStudents(res.data);
     } catch (err) {
       console.error('Failed to load class students:', err);
       setStudents([]);
@@ -57,11 +65,11 @@ export default function MyClassesPage() {
           My Assigned Classes
         </h2>
         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2.5 py-1 rounded-lg">
-          {loading ? 'Loading...' : `${classes.length} Total`}
+          {loading && classes.length === 0 ? 'Loading...' : `${classes.length} Total`}
         </span>
       </div>
 
-      {loading ? (
+      {loading && classes.length === 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, idx) => (
             <div key={idx} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs flex justify-between items-center animate-pulse">
