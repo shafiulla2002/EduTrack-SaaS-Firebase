@@ -377,22 +377,11 @@ export class ExamsService {
         : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
     } else {
       const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
-      maxMarks = cfg.maxMarks;
-      passingPercentage = cfg.passingPercentage;
-      passMarks = Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-
-      if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
-        const sc = cfg.subjectConfigs.find(
-          s => s.subjectId === subjectId && (subjectType ? s.subjectType.toLowerCase() === subjectType.toLowerCase() : true)
-        );
-        if (sc) {
-          maxMarks = sc.maxMarks;
-          passingPercentage = Number(sc.passingPercentage);
-          passMarks = sc.passMarks !== null && sc.passMarks !== undefined
-            ? Number(sc.passMarks)
-            : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-        }
-      }
+      const subRec = await this.prisma.subject.findUnique({ where: { id: subjectId } });
+      const resolved = this.examConfigService.resolveSubjectConfig(cfg, subjectId, subjectType, subRec?.name);
+      maxMarks = resolved.maxMarks;
+      passingPercentage = resolved.passingPercentage;
+      passMarks = resolved.passMarks;
     }
 
     return {

@@ -190,6 +190,9 @@ export default function ExamsAndMarksPage() {
     if (selectedClassSectionId) params.classSectionId = selectedClassSectionId;
     if (selectedSubjectId) params.subjectId = selectedSubjectId;
     if (selectedSubjectType) params.subjectType = selectedSubjectType;
+    const subObj = subjects.find(s => s.id === selectedSubjectId);
+    if (subObj?.name) params.subjectName = subObj.name;
+    
     fastGet('/exam-config/resolve', { params }, { ttlMs: 60000 })
       .then(res => {
         if (res.data) {
@@ -201,7 +204,7 @@ export default function ExamsAndMarksPage() {
         }
       })
       .catch(() => {});
-  }, [selectedExamName, selectedClassSectionId, selectedSubjectId, selectedSubjectType]);
+  }, [selectedExamName, selectedClassSectionId, selectedSubjectId, selectedSubjectType, subjects]);
 
   useEffect(() => {
     if (selectedClassSectionId && selectedSubjectId && selectedExamName && selectedSubjectType) {
