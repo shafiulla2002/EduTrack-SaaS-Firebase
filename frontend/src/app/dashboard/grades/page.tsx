@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Award, Search, Calendar, RefreshCw, X, ChevronRight,
   TrendingUp, CheckCircle, AlertTriangle, Trophy, BookOpen,
@@ -49,6 +50,8 @@ type ClassSectionOption = {
 };
 
 export default function GradesMarksPage() {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   const [search, setSearch] = useState('');
   const { schoolName } = useTenant();
   
@@ -453,7 +456,7 @@ export default function GradesMarksPage() {
         )}
       </div>
             {/* REPORT CARD MODAL */}
-      {activeReportStudent && (
+      {isMounted && activeReportStudent && createPortal(
         <>
           <div 
             className="fixed inset-0 z-[99998] bg-slate-900/60 backdrop-blur-sm print:hidden"
@@ -461,11 +464,11 @@ export default function GradesMarksPage() {
           />
           {/* Modal Container */}
           <div 
-            className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-5xl bg-white shadow-2xl z-[99999] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col transform transition-all animate-in zoom-in-95 print:relative print:inset-auto print:translate-x-0 print:h-auto print:max-h-none print:shadow-none print:border-none print:overflow-visible print:w-full"
+            className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-5xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 transform transition-all animate-in zoom-in-95 print:relative print:inset-auto print:translate-x-0 print:h-auto print:max-h-none print:shadow-none print:border-none print:overflow-visible print:w-full"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sticky Header */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 shrink-0 print:hidden bg-white rounded-t-2xl">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 shrink-0 print:hidden bg-white">
               <div className="flex items-center gap-2.5 min-w-0">
                 <Trophy className="w-5 h-5 text-purple-600 shrink-0" />
                 <div className="min-w-0">
@@ -600,7 +603,7 @@ export default function GradesMarksPage() {
             </div>
 
             {/* Sticky Footer – always visible */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 shrink-0 bg-white sm:rounded-b-2xl print:hidden">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 shrink-0 bg-white print:hidden">
               <button
                 onClick={() => setActiveReportStudent(null)}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-semibold text-sm transition-colors cursor-pointer"
@@ -622,7 +625,8 @@ export default function GradesMarksPage() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Users, Plus, X, Search, Phone, Mail, Calendar,
   ChevronRight, ChevronDown, Edit2, Trash2, Clock, BookOpen, Check
@@ -58,6 +59,8 @@ import { resizeAndCompressImage } from '@/lib/image';
 
 export default function SchoolStaffPage() {
   const { showToast } = useToast();
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     show: boolean;
@@ -877,10 +880,10 @@ export default function SchoolStaffPage() {
       )}
 
       {/* ── STAFF PROFILE MODAL ── */}
-      {selectedStaff && (
+      {isMounted && selectedStaff && createPortal(
         <>
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50" onClick={() => setSelectedStaff(null)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setSelectedStaff(null)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
             {/* Modal Header Banner */}
             <div className="p-5 shrink-0" style={{ background: selectedStaff.gradient }}>
               <div className="flex items-start justify-between">
@@ -1151,14 +1154,15 @@ export default function SchoolStaffPage() {
               </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── EDIT STAFF MODAL (Salesforce Design) ── */}
-      {editingStaff && (
+      {isMounted && editingStaff && createPortal(
         <>
-          <div className="fixed inset-0 bg-slate-900/60 z-50" onClick={() => setEditingStaff(null)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setEditingStaff(null)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-lg">Edit Staff Member</h3>
               <button onClick={() => setEditingStaff(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5" /></button>
@@ -1352,14 +1356,15 @@ export default function SchoolStaffPage() {
               </div>
             </form>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── ADD STAFF MODAL ── */}
-      {showAddModal && (
+      {isMounted && showAddModal && createPortal(
         <>
-          <div className="fixed inset-0 bg-slate-900/60 z-50" onClick={() => setShowAddModal(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setShowAddModal(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-lg">Add New Staff Member</h3>
               <button onClick={() => setShowAddModal(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5" /></button>
@@ -1484,14 +1489,15 @@ export default function SchoolStaffPage() {
               </div>
             </form>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── CUSTOM DELETE CONFIRMATION MODAL ── */}
-      {deleteConfirm.show && (
+      {isMounted && deleteConfirm.show && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-50 animate-fade-in" onClick={() => setDeleteConfirm(prev => ({ ...prev, show: false }))} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-50 p-6 animate-scale-in">
+          <div className="fixed inset-0 bg-black/50 z-[99998] animate-fade-in" onClick={() => setDeleteConfirm(prev => ({ ...prev, show: false }))} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-[99999] p-6 animate-scale-in">
             <div className="text-center py-2">
               <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-xl mx-auto mb-3">
                 ⚠️
@@ -1517,7 +1523,8 @@ export default function SchoolStaffPage() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

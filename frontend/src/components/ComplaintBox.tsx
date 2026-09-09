@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   AlertCircle, CheckCircle, Search, User, Filter, Plus, 
   ShieldAlert, Award, Calendar, ChevronRight, BookOpen, Clock, 
@@ -95,6 +96,8 @@ interface ComplaintBoxProps {
 
 export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) {
   const { currentUser } = useTenant();
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   const [activeTab, setActiveTab] = useState<'submit' | 'pending' | 'history' | 'parent-complaints'>('parent-complaints');
 
   // Parent complaints states
@@ -1443,10 +1446,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
       </div>
 
       {/* CASE DETAILS & EDIT MODAL */}
-      {selectedCase && (
+      {isMounted && selectedCase && createPortal(
         <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[999]" onClick={() => { setSelectedCase(null); setIsEditing(false); }} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[1000] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[99998]" onClick={() => { setSelectedCase(null); setIsEditing(false); }} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
             
             {/* Modal Header */}
             <div className={`p-6 text-white flex justify-between items-start shrink-0 ${
@@ -1693,14 +1696,15 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* PARENT COMPLAINT ACTION MODAL */}
-      {selectedParentComplaint && (
+      {isMounted && selectedParentComplaint && createPortal(
         <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[999]" onClick={() => setSelectedParentComplaint(null)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-[1000] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[99998]" onClick={() => setSelectedParentComplaint(null)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Parent Grievance Ticket</span>
@@ -1828,7 +1832,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Search, ArrowLeft, Check, CheckCircle, Plus, X, 
   ChevronLeft, User, Calendar, DollarSign, AlertCircle, 
@@ -60,6 +61,8 @@ interface ClassSummary {
 }
 
 export default function StudentPromotionPage() {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   const [academicYears, setAcademicYears] = useState<any[]>([]);
   const [dbClasses, setDbClasses] = useState<any[]>([]);
   const [studentsState, setStudentsState] = useState<any[]>([]);
@@ -1096,9 +1099,10 @@ export default function StudentPromotionPage() {
       </div>
 
       {/* Success Modal Overlay */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl border border-slate-100 animate-in flex flex-col items-center text-center max-h-[90vh] overflow-y-auto">
+      {isMounted && showSuccessModal && createPortal(
+        <>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={closeSuccessModal} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 p-8 animate-in text-center overflow-y-auto">
             <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-400 to-cyan-400 flex items-center justify-center text-white text-3xl shadow-lg shadow-emerald-500/20 mb-6 animate-bounce shrink-0">
               ✨
             </div>
@@ -1168,19 +1172,20 @@ export default function StudentPromotionPage() {
 
             <button
               onClick={closeSuccessModal}
-              className="w-full py-3 rounded-xl font-bold bg-[#2E5BFF] hover:bg-[#1E3FCC] text-white shadow-lg shadow-blue-500/10 transition-all cursor-pointer hover:-translate-y-0.5"
+              className="w-full py-3 rounded-xl font-bold bg-[#2E5BFF] hover:bg-[#1E3FCC] text-white shadow-lg shadow-blue-500/10 transition-all cursor-pointer hover:-translate-y-0.5 mt-auto shrink-0"
             >
               Continue
             </button>
           </div>
-        </div>
+        </>,
+        document.body
       )}
 
       {/* ── VALIDATION MODAL ── */}
-      {showValidationModal && validationData && (
+      {isMounted && showValidationModal && validationData && createPortal(
         <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50" onClick={() => setShowValidationModal(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col p-6">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setShowValidationModal(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 p-6">
             
             {/* Header */}
             <div className="flex items-start justify-between border-b border-slate-200 pb-4 mb-4">
@@ -1323,7 +1328,8 @@ export default function StudentPromotionPage() {
             </div>
 
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
@@ -1941,10 +1947,10 @@ export default function StudentPromotionPage() {
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* ── COMPLETE 360° STUDENT HISTORY MODAL ─────────────────────────────────── */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {isHistoryModalOpen && (
+      {isMounted && isHistoryModalOpen && createPortal(
         <>
-          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xs animate-fade-in" onClick={() => setIsHistoryModalOpen(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-4xl bg-white shadow-2xl z-[101] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col border border-slate-200">
+          <div className="fixed inset-0 z-[99998] bg-black/70 backdrop-blur-xs animate-fade-in" onClick={() => setIsHistoryModalOpen(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-4xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 border border-slate-200">
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
               <div className="flex items-center gap-3">
@@ -2268,7 +2274,8 @@ export default function StudentPromotionPage() {
               ) : null}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { api, fastGet } from '@/lib/api';
 import { useSchoolSetupUpdate } from '@/lib/events';
 import { 
@@ -57,6 +58,8 @@ interface ClassSection {
 
 export default function TeacherClassManagement() {
   const { showToast } = useToast();
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   
   // ── CORE STATE ──
   const [currentStep, setCurrentStep] = useState(0); // 0: Dashboard, 1: Step1, 2: Step2, 3: Step3
@@ -3248,8 +3251,8 @@ export default function TeacherClassManagement() {
       )}
 
       {/* ── TIMETABLE RESET WARNING MODAL ── */}
-      {showConfirmChangeConfigModal && (
-        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center animate-fade-in">
+      {isMounted && showConfirmChangeConfigModal && createPortal(
+        <div className="fixed inset-0 bg-black/60 z-[99999] flex items-center justify-center animate-fade-in">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full border border-slate-100 shadow-2xl text-center space-y-4">
             <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mx-auto">
               ⚠️
@@ -3275,16 +3278,15 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* ════════════════════════════════════════════════
-           WIZARD SUCCESS MODAL
-           ═══════════════════════════════════════════════�      {/* ── ADD NEW TEACHER MODAL (Single Creation) ── */}
-      {showTeacherForm && (
+      {/* ── ADD NEW TEACHER MODAL (Single Creation) ── */}
+      {isMounted && showTeacherForm && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-[90]" onClick={() => setShowTeacherForm(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[100] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col animate-in">
+          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowTeacherForm(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 animate-in">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-base">Add New Teacher</h3>
               <button onClick={() => setShowTeacherForm(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
@@ -3385,14 +3387,15 @@ export default function TeacherClassManagement() {
               </div>
             </form>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── REASSIGN TEACHER MODAL ── */}
-      {showReassignModal && (
+      {isMounted && showReassignModal && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-[120]" onClick={() => setShowReassignModal(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-[130] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col p-6 animate-in">
+          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowReassignModal(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in">
             <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Reassign Teacher</h3>
               <button onClick={() => setShowReassignModal(false)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4" /></button>
@@ -3439,14 +3442,15 @@ export default function TeacherClassManagement() {
               <button onClick={handleSaveReassign} className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold">Save Change</button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── DELETE CONFIRMATION MODAL ── */}
-      {deleteConfirm.show && (
+      {isMounted && deleteConfirm.show && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-[150]" onClick={() => setDeleteConfirm({ show: false, type: 'class', id: '', name: '' })} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-[160] p-6 text-center space-y-4 animate-in">
+          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setDeleteConfirm({ show: false, type: 'class', id: '', name: '' })} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-[99999] p-6 text-center space-y-4 animate-in">
             <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>
@@ -3467,14 +3471,15 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* ── SIMPLE MODALS (Subject, Class, Section) ── */}
-      {showAddSubject && (
+      {isMounted && showAddSubject && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowAddSubject(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col p-6 animate-in">
+          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowAddSubject(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Add Subjects Catalog</h3>
               <button onClick={() => setShowAddSubject(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
@@ -3537,13 +3542,14 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
-      {showCreateClass && (
+      {isMounted && showCreateClass && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCreateClass(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col p-6 animate-in">
+          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowCreateClass(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Create Class Names</h3>
               <button onClick={() => setShowCreateClass(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
@@ -3610,13 +3616,14 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
-      {showCreateSection && (
+      {isMounted && showCreateSection && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCreateSection(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col p-6 animate-in">
+          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowCreateSection(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Create Section Letters</h3>
               <button onClick={() => setShowCreateSection(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
@@ -3683,13 +3690,14 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
-      {isManageTypesOpen && (
+      {isMounted && isManageTypesOpen && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setIsManageTypesOpen(false)} />
-          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col p-6 animate-in text-slate-800">
+          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setIsManageTypesOpen(false)} />
+          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in text-slate-800">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
@@ -3793,7 +3801,8 @@ export default function TeacherClassManagement() {
               </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       <BulkTeacherImportModal

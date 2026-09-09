@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Search, ArrowLeft, Plus, X, Phone, Mail, Award, Receipt, 
   CheckCircle, AlertTriangle, ChevronDown, ChevronUp, User, 
@@ -38,6 +39,8 @@ interface Student {
 
 export default function StudentsDirectory() {
   const { showToast } = useToast();
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   const [search, setSearch] = useState('');
   const [searchVal, setSearchVal] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
@@ -1449,10 +1452,10 @@ export default function StudentsDirectory() {
         </div>
       )}
       {/* ── CUSTOM DELETE CONFIRMATION MODAL ── */}
-      {deleteConfirm.show && (
+      {isMounted && deleteConfirm.show && createPortal(
         <>
-          <div className="fixed inset-0 bg-black/50 z-50 animate-fade-in" onClick={() => setDeleteConfirm(prev => ({ ...prev, show: false }))} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-2xl shadow-2xl z-50 p-6 animate-scale-in">
+          <div className="fixed inset-0 bg-black/50 z-[99998] animate-fade-in" onClick={() => setDeleteConfirm(prev => ({ ...prev, show: false }))} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-2xl shadow-2xl z-[99999] p-6 animate-scale-in">
             <div className="text-center py-2">
               <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-xl mx-auto mb-3">
                 ⚠️
@@ -1509,7 +1512,8 @@ export default function StudentsDirectory() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
       {editingStudent && (
         <EditStudentModal
