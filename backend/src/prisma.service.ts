@@ -32,7 +32,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    // Lazily connect on first query to prevent bootup connection timeouts
+    try {
+      await this.$connect();
+      console.log('[PrismaService] Database connection pool established successfully');
+    } catch (err: any) {
+      console.warn('[PrismaService] Database lazy connection fallback:', err?.message || err);
+    }
   }
 
   async onModuleDestroy() {

@@ -193,12 +193,12 @@ export class TenantController {
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
       });
-      return {
+      const incompleteResult = {
         setupCompleted: false,
         completionPercentage: 0,
-        classesCount: 0,
-        teachersCount: 0,
-        studentsCount: 0,
+        classesCount,
+        teachersCount,
+        studentsCount,
         missingFields: [
           'schoolName',
           'schoolType',
@@ -237,6 +237,13 @@ export class TenantController {
           features: subscription.plan?.features || [],
         } : null,
       };
+
+      TenantController.setupStatusCache.set(cacheKey, {
+        data: incompleteResult,
+        expiresAt: Date.now() + 60000 // 60s in-memory TTL
+      });
+
+      return incompleteResult;
     }
 
     // Calculate profile completion percentage based on 13 total fields
@@ -277,18 +284,18 @@ export class TenantController {
       setup,
       currentUser,
       subscription: subscription ? {
-        plan: subscription.plan.name,
+        plan: subscription.plan?.name || 'TRIAL',
         status: subscription.status,
         expiryDate: subscription.expiryDate,
-        studentLimit: subscription.plan.studentLimit,
-        teacherLimit: subscription.plan.teacherLimit,
-        features: subscription.plan.features,
+        studentLimit: subscription.plan?.studentLimit || 500,
+        teacherLimit: subscription.plan?.teacherLimit || 50,
+        features: subscription.plan?.features || [],
       } : null,
     };
 
     TenantController.setupStatusCache.set(cacheKey, {
       data: statusResult,
-      expiresAt: Date.now() + 20000 // 20s in-memory TTL
+      expiresAt: Date.now() + 60000 // 60s in-memory TTL
     });
 
     return statusResult;

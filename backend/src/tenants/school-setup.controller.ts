@@ -1,6 +1,7 @@
 import { Controller, Put, Body, UseGuards, Req, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { TenantController } from './tenant.controller';
 
 @Controller('school-setup')
 export class SchoolSetupController {
@@ -138,6 +139,9 @@ export class SchoolSetupController {
         },
       });
     }
+
+    // Invalidate tenant setup status cache
+    TenantController.invalidateCache(tenantId);
 
     return {
       success: true,
