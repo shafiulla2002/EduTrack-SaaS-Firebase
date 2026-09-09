@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Calendar, Search, Users, Check, X, ShieldAlert, Sparkles, RefreshCw, Save } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
@@ -170,8 +170,8 @@ export default function AttendanceMgmtPage() {
     // Initial load of classes
     async function loadInitial() {
       try {
-        const clsRes = await api.get('/teacher-portal/attendance/classes');
-        setClasses(clsRes.data);
+        const clsRes = await fastGet('/teacher-portal/attendance/classes', undefined, { ttlMs: 60000 });
+        setClasses(clsRes.data || []);
       } catch (err) {
         console.error('Failed to load classes:', err);
       } finally {
@@ -201,8 +201,8 @@ export default function AttendanceMgmtPage() {
     }
     async function loadSections() {
       try {
-        const secRes = await api.get(`/teacher-portal/attendance/sections?classVal=${encodeURIComponent(selectedClass)}`);
-        setSections(secRes.data);
+        const secRes = await fastGet(`/teacher-portal/attendance/sections?classVal=${encodeURIComponent(selectedClass)}`, undefined, { ttlMs: 60000 });
+        setSections(secRes.data || []);
       } catch (err) {
         console.error('Failed to load sections:', err);
       }
@@ -220,25 +220,25 @@ export default function AttendanceMgmtPage() {
     setIsReadOnly(false);
 
     try {
-      // 1. Fetch students list
-      const rosterRes = await api.get(`/teacher-portal/attendance/students?classVal=${encodeURIComponent(selectedClass)}&sectionVal=${encodeURIComponent(selectedSection)}`);
+      // Fetch students list and existing session data concurrently in parallel
+      const [rosterRes, sessionRes] = await Promise.all([
+        api.get(`/teacher-portal/attendance/students?classVal=${encodeURIComponent(selectedClass)}&sectionVal=${encodeURIComponent(selectedSection)}`),
+        api.get(`/attendance/session-data?classVal=${encodeURIComponent(selectedClass)}&sectionVal=${encodeURIComponent(selectedSection)}&dateVal=${selectedDate}`)
+      ]);
       
-      // 2. Fetch existing session data if taken today
-      const sessionRes = await api.get(`/attendance/session-data?classVal=${encodeURIComponent(selectedClass)}&sectionVal=${encodeURIComponent(selectedSection)}&dateVal=${selectedDate}`);
-      
-      setStudents(rosterRes.data);
+      setStudents(rosterRes.data || []);
 
       const initialSheet: { [id: string]: string } = {};
-      const absentSet = new Set(sessionRes.data.absentIds || []);
+      const absentSet = new Set(sessionRes.data?.absentIds || []);
 
-      rosterRes.data.forEach((s: any) => {
+      (rosterRes.data || []).forEach((s: any) => {
         initialSheet[s.Id] = absentSet.has(s.Id) ? 'ABSENT' : 'PRESENT';
       });
 
       setSheet(initialSheet);
       setOriginalSheet(initialSheet);
 
-      if (sessionRes.data.sessionExists) {
+      if (sessionRes.data?.sessionExists) {
         setSessionExists(true);
         setSessionInfo(sessionRes.data);
         setIsReadOnly(true);

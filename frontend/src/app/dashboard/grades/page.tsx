@@ -119,19 +119,22 @@ export default function GradesMarksPage() {
   const fetchMetadata = async () => {
     try {
       const [classRes, typeRes] = await Promise.all([
-        fastGet('/exams/classes'),
-        fastGet('/exams/exam-types')
+        fastGet('/exams/classes', undefined, { ttlMs: 60000 }),
+        fastGet('/exams/exam-types', undefined, { ttlMs: 60000 })
       ]);
       const classList = classRes.data || [];
       const typeList = typeRes.data || [];
       setClasses(classList);
-      if (classList.length > 0) {
-        setSelectedClassSectionId(classList[0].value);
-      }
-
       setExamTypes(typeList);
-      if (typeList.length > 0) {
-        setSelectedExamName(typeList[0]);
+
+      const defaultClassId = classList.length > 0 ? classList[0].value : '';
+      const defaultExamName = typeList.length > 0 ? typeList[0] : '';
+
+      if (defaultClassId) setSelectedClassSectionId(defaultClassId);
+      if (defaultExamName) setSelectedExamName(defaultExamName);
+
+      if (defaultClassId && defaultExamName) {
+        fetchGrades(defaultClassId, defaultExamName);
       }
     } catch (err: any) {
       console.error('Error fetching grades metadata:', err);
@@ -141,16 +144,20 @@ export default function GradesMarksPage() {
 
   useEffect(() => {
     if (selectedClassSectionId && selectedExamName) {
-      fetchGrades();
+      fetchGrades(selectedClassSectionId, selectedExamName);
     }
   }, [selectedClassSectionId, selectedExamName]);
 
-  const fetchGrades = async () => {
+  const fetchGrades = async (classSectionId?: string, examName?: string) => {
+    const targetClassId = classSectionId || selectedClassSectionId;
+    const targetExamName = examName || selectedExamName;
+    if (!targetClassId || !targetExamName) return;
+
     setErrorMsg('');
     try {
       const res = await fastGet(
-        `/exams/grades-report?classSectionId=${selectedClassSectionId}&examName=${encodeURIComponent(
-          selectedExamName
+        `/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(
+          targetExamName
         )}`,
         undefined,
         {
@@ -235,7 +242,7 @@ export default function GradesMarksPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchGrades}
+            onClick={() => fetchGrades()}
             className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[13px] flex items-center gap-2 shadow-xs transition-colors"
           >
             <RefreshCw className="w-4 h-4 text-slate-500" />

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import PhotoUpload from '@/components/PhotoUpload';
 
@@ -75,19 +75,19 @@ export default function AdmissionsPage() {
     const fetchOptions = async () => {
       try {
         const [yRes, cRes] = await Promise.all([
-          api.get('/billing/options/years'),
-          api.get('/billing/options/classes')
+          fastGet('/billing/options/years', undefined, { ttlMs: 60000 }),
+          fastGet('/billing/options/classes', undefined, { ttlMs: 60000 })
         ]);
-        setAcademicYears(yRes.data);
-        setClasses(cRes.data);
+        setAcademicYears(yRes.data || []);
+        setClasses(cRes.data || []);
         
         let initialYear = '';
         let initialClass = '';
 
-        if (yRes.data.length > 0) {
+        if (yRes.data?.length > 0) {
           initialYear = yRes.data[0].value;
         }
-        if (cRes.data.length > 0) {
+        if (cRes.data?.length > 0) {
           initialClass = cRes.data[0].value;
         }
 

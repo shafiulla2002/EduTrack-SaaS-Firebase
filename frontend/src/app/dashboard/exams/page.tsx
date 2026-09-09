@@ -154,33 +154,28 @@ export default function ExamsAndMarksPage() {
         fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }),
       ]);
 
-      setClasses(classRes.data || []);
-      if (classRes.data?.length > 0) {
-        setSelectedClassSectionId(classRes.data[0].value);
-      }
+      const classList = classRes.data || [];
+      const subList = subRes.data || [];
+      const compList = compRes.data || [];
+      const typeList = typeRes.data || [];
 
-      setSubjects(subRes.data || []);
-      if (subRes.data?.length > 0) {
-        setSelectedSubjectId(subRes.data[0].id);
-      }
+      setClasses(classList);
+      setSubjects(subList);
+      setComponents(compList);
+      setExamTypes(typeList);
 
-      setComponents(compRes.data || []);
-      if (compRes.data?.length > 0) {
-        setSelectedSubjectType(compRes.data[0].name);
-      } else {
-        setSelectedSubjectType('Theory');
-      }
+      const defaultClassId = classList.length > 0 ? classList[0].value : '';
+      const defaultSubId = subList.length > 0 ? subList[0].id : '';
+      const defaultComp = compList.length > 0 ? compList[0].name : 'Theory';
+      const defaultExam = typeList.length > 0 ? typeList[0] : '';
 
-      setExamTypes(typeRes.data || []);
-      if (typeRes.data?.length > 0) {
-        setSelectedExamName(typeRes.data[0]);
-        // Fetch config for first exam type (depends on typeRes)
-        try {
-          const cfgRes = await fastGet(`/exam-config/resolve?examType=${encodeURIComponent(typeRes.data[0])}`, undefined, { ttlMs: 60000 });
-          if (cfgRes.data) {
-            setExamConfig({ passingPercentage: cfgRes.data.passingPercentage, maxMarks: cfgRes.data.maxMarks });
-          }
-        } catch {}
+      if (defaultClassId) setSelectedClassSectionId(defaultClassId);
+      if (defaultSubId) setSelectedSubjectId(defaultSubId);
+      if (defaultComp) setSelectedSubjectType(defaultComp);
+      if (defaultExam) setSelectedExamName(defaultExam);
+
+      if (defaultClassId && defaultSubId && defaultExam && defaultComp) {
+        fetchRoster(defaultClassId, defaultSubId, defaultExam, defaultComp);
       }
     } catch (err: any) {
       console.error('Error fetching exams metadata:', err);
@@ -210,17 +205,24 @@ export default function ExamsAndMarksPage() {
 
   useEffect(() => {
     if (selectedClassSectionId && selectedSubjectId && selectedExamName && selectedSubjectType) {
-      fetchRoster();
+      fetchRoster(selectedClassSectionId, selectedSubjectId, selectedExamName, selectedSubjectType);
     }
   }, [selectedClassSectionId, selectedSubjectId, selectedExamName, selectedSubjectType]);
 
-  const fetchRoster = async () => {
+  const fetchRoster = async (classSectionId?: string, subjectId?: string, examName?: string, subjectType?: string) => {
+    const targetClassId = classSectionId || selectedClassSectionId;
+    const targetSubId = subjectId || selectedSubjectId;
+    const targetExamName = examName || selectedExamName;
+    const targetSubType = subjectType || selectedSubjectType;
+
+    if (!targetClassId || !targetSubId || !targetExamName || !targetSubType) return;
+
     setErrorMsg('');
     try {
       const res = await fastGet(
-        `/exams/marks-entry?classSectionId=${selectedClassSectionId}&subjectId=${selectedSubjectId}&examName=${encodeURIComponent(
-          selectedExamName
-        )}&subjectType=${encodeURIComponent(selectedSubjectType)}`,
+        `/exams/marks-entry?classSectionId=${targetClassId}&subjectId=${targetSubId}&examName=${encodeURIComponent(
+          targetExamName
+        )}&subjectType=${encodeURIComponent(targetSubType)}`,
         undefined,
         {
           ttlMs: 30000,

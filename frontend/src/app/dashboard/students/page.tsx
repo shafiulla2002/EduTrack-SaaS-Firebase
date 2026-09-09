@@ -153,6 +153,17 @@ export default function StudentsDirectory() {
     setPage(pageNumber);
   };
 
+  const classesRef = useRef<any[]>([]);
+  const sectionsRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    classesRef.current = classes;
+  }, [classes]);
+
+  useEffect(() => {
+    sectionsRef.current = sections;
+  }, [sections]);
+
   const loadFilterOptions = async () => {
     try {
       const [ayRes, classRes, secRes] = await Promise.all([
@@ -160,9 +171,13 @@ export default function StudentsDirectory() {
         fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
         fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
       ]);
+      const loadedClasses = classRes.data || [];
+      const loadedSections = secRes.data || [];
+      classesRef.current = loadedClasses;
+      sectionsRef.current = loadedSections;
       setAcademicYears(ayRes.data || []);
-      setClasses(classRes.data || []);
-      setSections(secRes.data || []);
+      setClasses(loadedClasses);
+      setSections(loadedSections);
     } catch (err) {
       console.error('Failed to load filter options:', err);
     }
@@ -176,8 +191,8 @@ export default function StudentsDirectory() {
     abortControllerRef.current = controller;
 
     try {
-      const classId = selectedClass === 'All' ? undefined : classes.find(c => c.name === selectedClass)?.id;
-      const sectionId = selectedSection === 'All' ? undefined : sections.find(s => s.name === selectedSection)?.id;
+      const classId = selectedClass === 'All' ? undefined : (classesRef.current.find(c => c.name === selectedClass)?.id || classes.find(c => c.name === selectedClass)?.id);
+      const sectionId = selectedSection === 'All' ? undefined : (sectionsRef.current.find(s => s.name === selectedSection)?.id || sections.find(s => s.name === selectedSection)?.id);
       const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
 
       const res = await fastGet('/students', {
@@ -215,7 +230,7 @@ export default function StudentsDirectory() {
     } finally {
       setLoading(false);
     }
-  }, [search, selectedClass, selectedSection, selectedYear, classes, sections, limit]);
+  }, [search, selectedClass, selectedSection, selectedYear, limit]);
 
   useEffect(() => {
     loadFilterOptions();

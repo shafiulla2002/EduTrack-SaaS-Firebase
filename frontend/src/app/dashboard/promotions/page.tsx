@@ -9,7 +9,7 @@ import {
   FileText, ChevronRight, Loader2, BookOpen, AlertTriangle, ExternalLink, ArrowUpRight, Eye
 } from 'lucide-react';
 import Drawer from '@/components/Drawer';
-import { api, cachedGet } from '@/lib/api';
+import { api, fastGet, cachedGet } from '@/lib/api';
 
 const CLASS_ORDER = [
   'Nursery', 'LKG', 'UKG',
@@ -134,9 +134,9 @@ export default function StudentPromotionPage() {
     const fetchInitData = async () => {
       try {
         const [yearsRes, classesRes, sectionsRes] = await Promise.all([
-          cachedGet('/academics/academic-years', undefined, 60000),
-          cachedGet('/academics/classes', undefined, 60000),
-          cachedGet('/academics/sections', undefined, 60000),
+          fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
+          fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
+          fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
         ]);
 
         const yearsData = yearsRes.data || [];

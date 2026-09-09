@@ -178,6 +178,40 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     fetchTenantData();
   }, [token]);
 
+  // Non-blocking intelligent background prefetch of high-value static dropdown metadata (~3.5 KB)
+  // Primes the SWR cache so the first click to any module renders with 0ms metadata wait
+  useEffect(() => {
+    if (!token) return;
+
+    const prefetchMetadata = () => {
+      const prefetchUrls = [
+        '/academics/academic-years',
+        '/academics/classes',
+        '/academics/sections',
+        '/exams/exam-types',
+        '/exams/subjects',
+        '/billing/options/years',
+        '/billing/options/classes',
+      ];
+
+      prefetchUrls.forEach((url) => {
+        fastGet(url, undefined, { ttlMs: 120000 }).catch(() => {});
+      });
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const handle = (window as any).requestIdleCallback(prefetchMetadata, { timeout: 1000 });
+      return () => {
+        if ('cancelIdleCallback' in window) {
+          (window as any).cancelIdleCallback(handle);
+        }
+      };
+    } else {
+      const timer = setTimeout(prefetchMetadata, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [token]);
+
   // Background polling to sync data dynamically across multiple users
   useEffect(() => {
     if (!token) return;

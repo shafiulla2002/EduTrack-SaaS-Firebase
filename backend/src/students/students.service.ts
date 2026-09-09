@@ -361,6 +361,36 @@ export class StudentsService implements OnModuleInit {
       return products;
     };
 
+    // Pre-resolve required active products for all fallback candidates concurrently
+    const neededProductKeys = new Set<string>();
+    const neededLookups: { classId: string; ayId?: string }[] = [];
+
+    for (const studentId of studentIds) {
+      const studentOpps = oppsByStudent.get(studentId) || [];
+      let openOpp = academicYearId
+        ? studentOpps.find(opp => opp.academicYearId === academicYearId)
+        : studentOpps.find(opp => !['Closed Won', 'Closed Lost'].includes(opp.stageName));
+      if (!openOpp) openOpp = studentOpps[0] || null;
+
+      if (openOpp && openOpp.classId && (!openOpp.opportunityLineItems || openOpp.opportunityLineItems.length === 0)) {
+        const key = `${openOpp.classId}-${openOpp.academicYearId || 'default'}`;
+        if (!neededProductKeys.has(key)) {
+          neededProductKeys.add(key);
+          neededLookups.push({ classId: openOpp.classId, ayId: openOpp.academicYearId || undefined });
+        }
+      }
+    }
+
+    if (neededLookups.length > 0) {
+      const productResults = await Promise.all(
+        neededLookups.map(l => this.billingService.getActiveProducts(l.classId, l.ayId))
+      );
+      neededLookups.forEach((l, i) => {
+        const key = `${l.classId}-${l.ayId || 'default'}`;
+        activeProductsCache.set(key, productResults[i]);
+      });
+    }
+
     for (const studentId of studentIds) {
       const studentOpps = oppsByStudent.get(studentId) || [];
       const studentOrphans = orphansByStudent.get(studentId) || [];
