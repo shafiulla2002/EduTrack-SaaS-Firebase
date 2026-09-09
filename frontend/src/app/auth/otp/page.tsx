@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, setStoredAuth } from '@/lib/api';
 import { auth } from '@/lib/firebase';
 import { getConfirmationResult, setConfirmationResult } from '@/lib/firebaseAuthStore';
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
@@ -115,42 +115,26 @@ function OtpContent() {
         setSuccessMsg('Authenticated! Loading profile...');
         const role = data.user.role;
         if (role === 'TEACHER' || role === 'STAFF' || role === 'DRIVER') {
-          localStorage.setItem('teacher_token', data.access_token);
-          localStorage.setItem('teacher_tenantId', data.user.tenantId);
-          if (data.user.phone) {
-            localStorage.setItem('teacher_userPhone', data.user.phone);
-          }
+          setStoredAuth(role, data.access_token, data.user.tenantId, data.user.phone);
           if (role === 'DRIVER') {
-            sessionStorage.setItem('active_role', 'DRIVER');
             setSuccessMsg('Authenticated! Redirecting to Driver Transport Dashboard...');
             setTimeout(() => {
               router.push('/dashboard/transport-tracker');
             }, 500);
           } else {
-            sessionStorage.setItem('active_role', 'TEACHER');
             setSuccessMsg('Authenticated! Redirecting to Teacher Dashboard...');
             setTimeout(() => {
               router.push('/dashboard');
             }, 500);
           }
         } else if (role === 'PARENT') {
-          localStorage.setItem('parent_token', data.access_token);
-          localStorage.setItem('parent_tenantId', data.user.tenantId);
-          if (data.user.phone) {
-            localStorage.setItem('parent_userPhone', data.user.phone);
-          }
-          sessionStorage.setItem('active_role', 'PARENT');
+          setStoredAuth('PARENT', data.access_token, data.user.tenantId, data.user.phone);
           setSuccessMsg('Authenticated! Redirecting to Parent Portal...');
           setTimeout(() => {
             router.push('/parent');
           }, 500);
         } else {
-          localStorage.setItem('admin_token', data.access_token);
-          localStorage.setItem('admin_tenantId', data.user.tenantId);
-          if (data.user.phone) {
-            localStorage.setItem('admin_userPhone', data.user.phone);
-          }
-          sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+          setStoredAuth('SCHOOL_ADMIN', data.access_token, data.user.tenantId, data.user.phone);
           setSuccessMsg('Authenticated! Redirecting...');
           setTimeout(() => {
             router.push('/dashboard');

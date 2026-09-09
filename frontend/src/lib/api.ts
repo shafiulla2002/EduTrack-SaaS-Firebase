@@ -31,29 +31,46 @@ export function getActiveRole(): 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER
   return role;
 }
 
-let memoizedToken: { role: string; token: string | null } | null = null;
-let memoizedTenantId: { role: string; tenantId: string | null } | null = null;
+export function setStoredAuth(
+  role: 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' | 'SUPER_ADMIN' | 'STAFF' | string,
+  token: string,
+  tenantId?: string,
+  phone?: string
+) {
+  if (typeof window === 'undefined') return;
+
+  const normalizedRole = (role === 'STAFF' || role === 'TEACHER') ? 'TEACHER' :
+                         (role === 'DRIVER') ? 'DRIVER' :
+                         (role === 'PARENT') ? 'PARENT' : 'SCHOOL_ADMIN';
+
+  sessionStorage.setItem('active_role', normalizedRole);
+
+  if (normalizedRole === 'PARENT') {
+    localStorage.setItem('parent_token', token);
+    if (tenantId) localStorage.setItem('parent_tenantId', tenantId);
+    if (phone) localStorage.setItem('parent_userPhone', phone);
+  } else if (normalizedRole === 'TEACHER' || normalizedRole === 'DRIVER') {
+    localStorage.setItem('teacher_token', token);
+    if (tenantId) localStorage.setItem('teacher_tenantId', tenantId);
+    if (phone) localStorage.setItem('teacher_userPhone', phone);
+  } else {
+    localStorage.setItem('admin_token', token);
+    if (tenantId) localStorage.setItem('admin_tenantId', tenantId);
+    if (phone) localStorage.setItem('admin_userPhone', phone);
+  }
+}
 
 export function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null;
   const role = getActiveRole();
-  if (memoizedToken && memoizedToken.role === role) {
-    return memoizedToken.token;
-  }
-  let token: string | null = null;
-  if (role === 'PARENT') token = localStorage.getItem('parent_token');
-  else if (role === 'TEACHER' || role === 'DRIVER') token = localStorage.getItem('teacher_token');
-  else token = localStorage.getItem('admin_token');
-  memoizedToken = { role, token };
-  return token;
+  if (role === 'PARENT') return localStorage.getItem('parent_token');
+  if (role === 'TEACHER' || role === 'DRIVER') return localStorage.getItem('teacher_token');
+  return localStorage.getItem('admin_token');
 }
 
 export function getStoredTenantId(): string | null {
   if (typeof window === 'undefined') return null;
   const role = getActiveRole();
-  if (memoizedTenantId && memoizedTenantId.role === role) {
-    return memoizedTenantId.tenantId;
-  }
   let tid = role === 'PARENT' ? localStorage.getItem('parent_tenantId') :
             (role === 'TEACHER' || role === 'DRIVER') ? localStorage.getItem('teacher_tenantId') :
             localStorage.getItem('admin_tenantId');
@@ -77,7 +94,6 @@ export function getStoredTenantId(): string | null {
       } catch {}
     }
   }
-  memoizedTenantId = { role, tenantId: tid || null };
   return tid || null;
 }
 
@@ -91,8 +107,6 @@ export function getStoredUserPhone(): string | null {
 
 export function clearStoredAuth() {
   if (typeof window === 'undefined') return;
-  memoizedToken = null;
-  memoizedTenantId = null;
   const role = getActiveRole();
   if (role === 'PARENT') {
     localStorage.removeItem('parent_token');

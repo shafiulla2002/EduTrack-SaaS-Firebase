@@ -3,7 +3,7 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, setStoredAuth } from '@/lib/api';
 import { useTenant } from '../../providers/TenantContext';
 
 function CallbackContent() {
@@ -37,12 +37,7 @@ function CallbackContent() {
         const role = user.role;
 
         if (role === 'TEACHER' || role === 'STAFF' || role === 'DRIVER') {
-          localStorage.setItem('teacher_token', access_token);
-          localStorage.setItem('teacher_tenantId', user.tenantId);
-          if (user.phone) {
-            localStorage.setItem('teacher_userPhone', user.phone);
-          }
-          sessionStorage.setItem('active_role', role === 'DRIVER' ? 'DRIVER' : 'TEACHER');
+          setStoredAuth(role, access_token, user.tenantId, user.phone);
           
           try {
             await refresh();
@@ -59,12 +54,7 @@ function CallbackContent() {
             }
           }, 800);
         } else if (role === 'PARENT') {
-          localStorage.setItem('parent_token', access_token);
-          localStorage.setItem('parent_tenantId', user.tenantId);
-          if (user.phone) {
-            localStorage.setItem('parent_userPhone', user.phone);
-          }
-          sessionStorage.setItem('active_role', 'PARENT');
+          setStoredAuth('PARENT', access_token, user.tenantId, user.phone);
 
           try {
             await refresh();
@@ -77,12 +67,7 @@ function CallbackContent() {
             router.push('/parent');
           }, 800);
         } else {
-          localStorage.setItem('admin_token', access_token);
-          localStorage.setItem('admin_tenantId', user.tenantId);
-          if (user.phone) {
-            localStorage.setItem('admin_userPhone', user.phone);
-          }
-          sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+          setStoredAuth('SCHOOL_ADMIN', access_token, user.tenantId, user.phone);
 
           try {
             await refresh();
