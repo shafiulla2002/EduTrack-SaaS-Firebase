@@ -137,7 +137,16 @@ function AttendanceEntryContent() {
         setRecentSubmissions(recentRes.data);
       }
       if (teachersRes.data) {
-        setTeachers(teachersRes.data);
+        const nonTeachingKeywords = [
+          'driver', 'account', 'librar', 'secur', 'peon', 'clerk',
+          'clean', 'attend', 'coach', 'pet', 'sport', 'admin', 'bus'
+        ];
+        const validTeachingStaff = (teachersRes.data as Teacher[]).filter(t => {
+          const name = t.name.toLowerCase();
+          const sub = (t.subject || '').toLowerCase();
+          return !nonTeachingKeywords.some(kw => name.startsWith(kw) || sub.includes(kw));
+        });
+        setTeachers(validTeachingStaff);
       }
       if (classesRes.data) {
         setClassOptions(classesRes.data);
@@ -482,7 +491,7 @@ function AttendanceEntryContent() {
               </div>
             )}
 
-            <div className="field-label">👤 Select Teacher</div>
+            <div className="field-label">👤 Select Teaching Faculty</div>
 
             <div className="teacher-search-wrapper" data-id="teacher-search-container">
               <div className="search-wrap">
@@ -491,7 +500,7 @@ function AttendanceEntryContent() {
                   type="text" 
                   className={`search-input ${teacherSearchTerm ? 'has-value' : ''}`}
                   value={teacherSearchTerm}
-                  placeholder="Search your name…" 
+                  placeholder="Search teaching faculty name…" 
                   onFocus={() => {
                     if (!selectedTeacher) {
                       setIsTeacherDropdownOpen(true);
@@ -535,7 +544,7 @@ function AttendanceEntryContent() {
                     );
                   })}
                   {isTeacherDropdownOpen && filteredTeachers.length === 0 && (
-                    <div className="p-4 text-center text-slate-400 text-xs">No teacher found</div>
+                    <div className="p-4 text-center text-slate-400 text-xs">No teaching faculty found</div>
                   )}
                 </div>
               </div>
@@ -570,7 +579,7 @@ function AttendanceEntryContent() {
             </button>
 
             <div className="text-center text-[10px] text-slate-400 mt-4">
-              Only you can mark attendance for your class
+              Only authorized teaching faculty can mark attendance for classes
             </div>
           </div>
         </div>

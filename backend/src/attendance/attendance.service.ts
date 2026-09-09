@@ -101,16 +101,43 @@ export class AttendanceService {
     }));
   }
 
-  // Salesforce parity: get teachers associated with tenant
+  // Salesforce parity: get teachers associated with tenant (strictly teaching faculty only)
   async getTeachers() {
     const tenantId = this.getTenantId();
     const staff = await this.prisma.staffProfile.findMany({
       where: {
         tenantId,
         user: {
-          role: { in: [Role.TEACHER, Role.STAFF] },
+          role: Role.TEACHER,
           isActive: true,
         },
+        OR: [
+          { staffCategory: null },
+          { staffCategory: 'TEACHING' },
+        ],
+        NOT: [
+          { staffCategory: 'NON_TEACHING' },
+          { designation: { contains: 'driver', mode: 'insensitive' } },
+          { designation: { contains: 'account', mode: 'insensitive' } },
+          { designation: { contains: 'librarian', mode: 'insensitive' } },
+          { designation: { contains: 'security', mode: 'insensitive' } },
+          { designation: { contains: 'peon', mode: 'insensitive' } },
+          { designation: { contains: 'clerk', mode: 'insensitive' } },
+          { designation: { contains: 'cleaner', mode: 'insensitive' } },
+          { designation: { contains: 'attendant', mode: 'insensitive' } },
+          { designation: { contains: 'attender', mode: 'insensitive' } },
+          { designation: { contains: 'coach', mode: 'insensitive' } },
+          { designation: { contains: 'pet', mode: 'insensitive' } },
+          { designation: { contains: 'sports', mode: 'insensitive' } },
+          { staffRole: { contains: 'driver', mode: 'insensitive' } },
+          { staffRole: { contains: 'account', mode: 'insensitive' } },
+          { staffRole: { contains: 'librarian', mode: 'insensitive' } },
+          { staffRole: { contains: 'security', mode: 'insensitive' } },
+          { staffRole: { contains: 'peon', mode: 'insensitive' } },
+          { staffRole: { contains: 'clerk', mode: 'insensitive' } },
+          { staffRole: { contains: 'coach', mode: 'insensitive' } },
+          { staffRole: { contains: 'pet', mode: 'insensitive' } },
+        ],
       },
       include: {
         user: {
@@ -128,10 +155,29 @@ export class AttendanceService {
       take: 1000,
     });
 
-    return staff.map(s => ({
+    const nonTeachingKeywords = [
+      'driver', 'account', 'librar', 'secur', 'peon', 'clerk',
+      'clean', 'attend', 'coach', 'pet', 'sport', 'admin', 'bus'
+    ];
+
+    const teachingFaculty = staff.filter(s => {
+      const desig = (s.designation || '').toLowerCase();
+      const role = (s.staffRole || '').toLowerCase();
+      const cat = (s.staffCategory || '').toUpperCase();
+      const name = (s.user?.name || '').toLowerCase();
+      const sub = (s.subjectsTaught[0] || '').toLowerCase();
+
+      if (cat === 'NON_TEACHING') return false;
+      if (nonTeachingKeywords.some(kw => desig.includes(kw) || role.includes(kw) || sub.includes(kw) || name.startsWith(kw))) {
+        return false;
+      }
+      return true;
+    });
+
+    return teachingFaculty.map(s => ({
       id: s.id,
       name: s.user.name,
-      subject: s.subjectsTaught[0] || 'N/A',
+      subject: s.subjectsTaught[0] || s.designation || 'Faculty',
     }));
   }
 
@@ -487,29 +533,55 @@ export class AttendanceService {
         });
       }
 
-      // Resolve a valid teacher (StaffProfile ID) to avoid foreign key constraint crashes
+      // Resolve a valid teaching faculty (StaffProfile ID) to prevent non-teaching staff from taking attendance
+      const teachingFilter: any = {
+        tenantId,
+        user: { role: Role.TEACHER, isActive: true },
+        OR: [
+          { staffCategory: null },
+          { staffCategory: 'TEACHING' },
+        ],
+        NOT: [
+          { staffCategory: 'NON_TEACHING' },
+          { designation: { contains: 'driver', mode: 'insensitive' } },
+          { designation: { contains: 'account', mode: 'insensitive' } },
+          { designation: { contains: 'librarian', mode: 'insensitive' } },
+          { designation: { contains: 'security', mode: 'insensitive' } },
+          { designation: { contains: 'peon', mode: 'insensitive' } },
+          { designation: { contains: 'clerk', mode: 'insensitive' } },
+          { designation: { contains: 'cleaner', mode: 'insensitive' } },
+          { designation: { contains: 'attendant', mode: 'insensitive' } },
+          { designation: { contains: 'attender', mode: 'insensitive' } },
+          { designation: { contains: 'coach', mode: 'insensitive' } },
+          { designation: { contains: 'pet', mode: 'insensitive' } },
+        ],
+      };
+
       let finalTeacherId = teacherId;
       if (!finalTeacherId) {
         const firstStaff = await tx.staffProfile.findFirst({
-          where: { tenantId }
+          where: teachingFilter,
         });
         if (firstStaff) {
           finalTeacherId = firstStaff.id;
         } else {
-          throw new BadRequestException('No teacher/staff profile exists for this school. Please register a teacher first.');
+          throw new BadRequestException('No teaching faculty profile exists for this school. Please register a teacher first.');
         }
       } else {
-        const staffExists = await tx.staffProfile.findUnique({
-          where: { id: finalTeacherId }
+        const staffExists = await tx.staffProfile.findFirst({
+          where: {
+            id: finalTeacherId,
+            ...teachingFilter,
+          },
         });
         if (!staffExists) {
           const firstStaff = await tx.staffProfile.findFirst({
-            where: { tenantId }
+            where: teachingFilter,
           });
           if (firstStaff) {
             finalTeacherId = firstStaff.id;
           } else {
-            throw new BadRequestException('Teacher profile not found.');
+            throw new BadRequestException('Selected staff is not authorized to take attendance. Only teaching faculty can record attendance.');
           }
         }
       }

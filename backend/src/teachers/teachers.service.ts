@@ -43,8 +43,21 @@ export class TeachersService {
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
     // Determine role: Non-Teaching staff get STAFF role (or DRIVER if Driver designation), Teaching staff get TEACHER role
-    const isDriver = data.designation?.toLowerCase().includes('driver');
-    const userRole = data.staffType === 'Non-Teaching' 
+    const desigLower = (data.designation || '').toLowerCase();
+    const isDriver = desigLower.includes('driver');
+    const isNonTeaching = data.staffType === 'Non-Teaching' || 
+      desigLower.includes('driver') ||
+      desigLower.includes('account') ||
+      desigLower.includes('librar') ||
+      desigLower.includes('secur') ||
+      desigLower.includes('peon') ||
+      desigLower.includes('clerk') ||
+      desigLower.includes('clean') ||
+      desigLower.includes('attend') ||
+      desigLower.includes('coach') ||
+      desigLower.includes('pet');
+
+    const userRole = isNonTeaching 
       ? (isDriver ? Role.DRIVER : Role.STAFF) 
       : Role.TEACHER;
 
@@ -74,6 +87,8 @@ export class TeachersService {
           status: 'Active',
           qualification: data.qualification,
           subjectsTaught: data.subjectsTaught || [],
+          staffCategory: isNonTeaching ? 'NON_TEACHING' : 'TEACHING',
+          staffRole: isNonTeaching ? (data.designation || 'Staff') : undefined,
           tenantId,
         },
       });
@@ -439,7 +454,35 @@ export class TeachersService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      if (data.name !== undefined || data.phone !== undefined || data.email !== undefined || data.avatarUrl !== undefined) {
+      const desigLower = (data.designation || '').toLowerCase();
+      const isDriver = desigLower.includes('driver');
+      const isNonTeaching = data.staffType === 'Non-Teaching' || 
+        (data.designation && (
+          desigLower.includes('driver') ||
+          desigLower.includes('account') ||
+          desigLower.includes('librar') ||
+          desigLower.includes('secur') ||
+          desigLower.includes('peon') ||
+          desigLower.includes('clerk') ||
+          desigLower.includes('clean') ||
+          desigLower.includes('attend') ||
+          desigLower.includes('coach') ||
+          desigLower.includes('pet')
+        ));
+
+      let updatedRole: Role | undefined = undefined;
+      let updatedCategory: string | undefined = undefined;
+      if (data.staffType !== undefined || data.designation !== undefined) {
+        if (data.staffType === 'Non-Teaching' || isNonTeaching) {
+          updatedRole = isDriver ? Role.DRIVER : Role.STAFF;
+          updatedCategory = 'NON_TEACHING';
+        } else if (data.staffType === 'Teaching') {
+          updatedRole = Role.TEACHER;
+          updatedCategory = 'TEACHING';
+        }
+      }
+
+      if (data.name !== undefined || data.phone !== undefined || data.email !== undefined || data.avatarUrl !== undefined || updatedRole !== undefined) {
         const normalizedPhone = data.phone ? data.phone.replace(/\D/g, '').slice(-10) : data.phone;
         await tx.user.update({
           where: { id: profile.userId },
@@ -448,6 +491,7 @@ export class TeachersService {
             phone: data.phone !== undefined ? normalizedPhone : undefined,
             email: data.email !== undefined ? data.email.toLowerCase().trim() : undefined,
             avatarUrl: data.avatarUrl !== undefined ? data.avatarUrl : undefined,
+            role: updatedRole !== undefined ? updatedRole : undefined,
           }
         });
       }
@@ -464,6 +508,7 @@ export class TeachersService {
           status: data.status !== undefined ? data.status : undefined,
           qualification: data.qualification !== undefined ? data.qualification : undefined,
           subjectsTaught: data.subjectsTaught !== undefined ? data.subjectsTaught : undefined,
+          staffCategory: updatedCategory !== undefined ? updatedCategory : undefined,
         }
       });
 
