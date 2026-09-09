@@ -923,35 +923,37 @@ export default function StudentPromotionPage() {
                           onClick={() => handleStudentToggle(s.id)}
                           className={`flex justify-between items-center p-3 border rounded-2xl cursor-pointer transition-all select-none ${
                             isSelected 
-                              ? 'bg-blue-50/40 border-blue-500 shadow-sm' 
-                              : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                              ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 dark:border-blue-400 shadow-sm ring-1 ring-blue-500/20' 
+                              : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
                           }`}
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
                             <input
                               type="checkbox"
                               checked={isSelected}
                               readOnly
-                              className="accent-blue-600 cursor-pointer w-4 h-4 rounded-md"
+                              className="accent-blue-600 cursor-pointer w-4 h-4 rounded-md shrink-0"
                             />
-                            <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-700 text-xs font-extrabold">
+                            <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 text-xs font-extrabold shrink-0">
                               {s.name.split(' ').map((n: string) => n[0]).join('').substring(0,2)}
                             </div>
-                            <div>
-                              <h5 className="font-bold text-slate-800 text-xs">{s.name}</h5>
-                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">{s.rollNo}</p>
+                            <div className="min-w-0 truncate">
+                              <h5 className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate">{s.name}</h5>
+                              <p className="text-[10px] text-slate-400 dark:text-slate-400 font-mono mt-0.5">{s.rollNo}</p>
                             </div>
                           </div>
                           
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 shrink-0">
                             {/* Financial validation check */}
-                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border flex items-center gap-1.5 ${
+                            <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border flex items-center gap-1.5 shadow-xs transition-colors shrink-0 ${
                               hasDue 
-                                ? 'bg-amber-50 text-amber-600 border-amber-200' 
-                                : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-600' 
+                                : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-600'
                             }`}>
-                              <span className={`w-1 h-1 rounded-full ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                              {s.financialStatus || (hasDue ? `₹${s.balanceDue} Due` : 'Paid Clear')}
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                              <span className="font-bold tracking-wider">
+                                {s.financialStatus || (hasDue ? `₹${s.balanceDue} Due` : 'CLEARED')}
+                              </span>
                             </span>
                             <button
                               type="button"
@@ -961,7 +963,7 @@ export default function StudentPromotionPage() {
                                 setIsLifecycleDrawerOpen(true);
                                 setLifecycleTab('actions');
                               }}
-                              className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
                               title="Manage Student Lifecycle Status"
                             >
                               <Users className="w-3.5 h-3.5" />
@@ -1063,18 +1065,18 @@ export default function StudentPromotionPage() {
                     {selectedStudents.map(s => (
                       <div 
                         key={s.id}
-                        className="flex justify-between items-center p-3 border border-slate-200 bg-white rounded-2xl animate-fade-in"
+                        className="flex justify-between items-center p-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 rounded-2xl animate-fade-in shadow-xs"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-extrabold">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 flex items-center justify-center text-xs font-extrabold shrink-0">
                             {s.name.split(' ').map((n: string) => n[0]).join('').substring(0,2)}
                           </div>
-                          <div>
-                            <h5 className="font-bold text-slate-800 text-xs">{s.name}</h5>
+                          <div className="min-w-0 truncate">
+                            <h5 className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate">{s.name}</h5>
                             <p className="text-[10px] text-slate-400 font-medium mt-0.5">Target: {targetClass} ({targetSection || s.section})</p>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-600 shadow-xs shrink-0">
                           Ready
                         </span>
                       </div>
