@@ -8,6 +8,22 @@ import { useSchoolSetupUpdate, dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '../providers/TenantContext';
 import { BookOpen } from 'lucide-react';
 
+function getInitialDashboardSummaryCache() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const tid = typeof window !== 'undefined' ? (sessionStorage.getItem('admin_tenantId') || localStorage.getItem('admin_tenantId') || localStorage.getItem('teacher_tenantId')) : null;
+    const resolvedTid = tid || 'global';
+    const raw = sessionStorage.getItem(`edutrack_swr:${resolvedTid}:/dashboard/summary:`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.data) {
+        return parsed.data;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 function AdminDashboardOverview() {
   const { setupStats } = useTenant();
   const [admissionsLimit, setAdmissionsLimit] = useState(5);
@@ -16,28 +32,36 @@ function AdminDashboardOverview() {
   const [showBanner, setShowBanner] = useState(true);
   const setupStatus = setupStats;
   
-  const [stats, setStats] = useState({
-    studentsCount: 0,
-    teachersCount: 0,
-    classesCount: 0,
-    totalRevenue: 0,
-    totalExpenses: 0,
-    netIncome: 0,
-    attendanceRate: 0,
-    academicAverage: 0,
-    pendingLeaveRequests: 0,
-    approvedToday: 0,
-    rejectedToday: 0,
-    trends: {
-      students: { value: '0%', isUp: true },
-      revenue: { value: '0%', isUp: true },
-      attendance: { value: '1.5%', isUp: true },
-      academic: { value: '0.8%', isUp: false }
+  const [cachedSummary] = useState(() => getInitialDashboardSummaryCache());
+  const [isLoaded, setIsLoaded] = useState(() => !!cachedSummary);
+
+  const [stats, setStats] = useState(() => {
+    if (cachedSummary?.stats) {
+      return cachedSummary.stats;
     }
+    return {
+      studentsCount: setupStats?.studentsCount || 0,
+      teachersCount: setupStats?.teachersCount || 0,
+      classesCount: setupStats?.classesCount || 0,
+      totalRevenue: 0,
+      totalExpenses: 0,
+      netIncome: 0,
+      attendanceRate: 0,
+      academicAverage: 0,
+      pendingLeaveRequests: 0,
+      approvedToday: 0,
+      rejectedToday: 0,
+      trends: {
+        students: { value: '0%', isUp: true },
+        revenue: { value: '0%', isUp: true },
+        attendance: { value: '1.5%', isUp: true },
+        academic: { value: '0.8%', isUp: false }
+      }
+    };
   });
-  const [recentAdmissions, setRecentAdmissions] = useState<any[]>([]);
-  const [recentPayments, setRecentPayments] = useState<any[]>([]);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [recentAdmissions, setRecentAdmissions] = useState<any[]>(() => cachedSummary?.recentAdmissions || []);
+  const [recentPayments, setRecentPayments] = useState<any[]>(() => cachedSummary?.recentPayments || []);
+  const [chartData, setChartData] = useState<any[]>(() => cachedSummary?.chartData || []);
 
   const loadDashboardData = useCallback(async () => {
     try {
@@ -49,6 +73,7 @@ function AdminDashboardOverview() {
             setRecentAdmissions(fresh.recentAdmissions);
             setRecentPayments(fresh.recentPayments);
             setChartData(fresh.chartData);
+            setIsLoaded(true);
           }
         }
       });
@@ -58,6 +83,7 @@ function AdminDashboardOverview() {
         setRecentAdmissions(summaryRes.data.recentAdmissions);
         setRecentPayments(summaryRes.data.recentPayments);
         setChartData(summaryRes.data.chartData);
+        setIsLoaded(true);
       }
     } catch (err) {
       console.error('Failed to load dashboard data', err);
@@ -280,7 +306,13 @@ function AdminDashboardOverview() {
             </div>
           </div>
           <div>
-            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">{stats.studentsCount}</div>
+            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
+              {!isLoaded && !setupStats?.studentsCount && stats.studentsCount === 0 ? (
+                <span className="inline-block w-16 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              ) : (
+                stats.studentsCount
+              )}
+            </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Total Students</div>
           </div>
           <div className="border-t border-slate-100 pt-2 text-[10px] sm:text-[11px] text-slate-400 font-medium">
@@ -300,7 +332,13 @@ function AdminDashboardOverview() {
             <span className="text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 uppercase">Faculty</span>
           </div>
           <div>
-            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">{stats.teachersCount}</div>
+            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
+              {!isLoaded && !setupStats?.teachersCount && stats.teachersCount === 0 ? (
+                <span className="inline-block w-12 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              ) : (
+                stats.teachersCount
+              )}
+            </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Total Teachers</div>
           </div>
           <div className="border-t border-slate-100 pt-2 text-[10px] sm:text-[11px] text-slate-400 font-medium">
@@ -320,7 +358,13 @@ function AdminDashboardOverview() {
             <span className="text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 uppercase">Academics</span>
           </div>
           <div>
-            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">{stats.classesCount}</div>
+            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
+              {!isLoaded && !setupStats?.classesCount && stats.classesCount === 0 ? (
+                <span className="inline-block w-12 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              ) : (
+                stats.classesCount
+              )}
+            </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Total Classes</div>
           </div>
           <div className="border-t border-slate-100 pt-2 text-[10px] sm:text-[11px] text-slate-400 font-medium">
@@ -346,7 +390,13 @@ function AdminDashboardOverview() {
             </div>
           </div>
           <div>
-            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">{stats.attendanceRate}%</div>
+            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
+              {!isLoaded && stats.attendanceRate === 0 ? (
+                <span className="inline-block w-16 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              ) : (
+                `${stats.attendanceRate}%`
+              )}
+            </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Average Attendance</div>
           </div>
           <div className="border-t border-slate-100 pt-2 text-[10px] sm:text-[11px] text-slate-400 font-medium">
@@ -376,7 +426,11 @@ function AdminDashboardOverview() {
           </div>
           <div>
             <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
-              {stats.pendingLeaveRequests || 0}
+              {!isLoaded && stats.pendingLeaveRequests === 0 ? (
+                <span className="inline-block w-10 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              ) : (
+                stats.pendingLeaveRequests || 0
+              )}
             </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Pending Leaves</div>
           </div>
@@ -423,7 +477,19 @@ function AdminDashboardOverview() {
             </div>
 
             <div className="overflow-y-auto overflow-x-auto max-h-[320px] border border-slate-100 rounded-xl w-full">
-              {displayAdmissions.length === 0 ? (
+              {!isLoaded && displayAdmissions.length === 0 ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex items-center gap-4 animate-pulse">
+                      <div className="w-9 h-9 bg-slate-100 rounded-lg"></div>
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3.5 bg-slate-100 rounded w-1/3"></div>
+                        <div className="h-2.5 bg-slate-100 rounded w-1/4"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : displayAdmissions.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs italic">No recent admissions found.</div>
               ) : (
                 <table className="w-full border-collapse min-w-[500px]">
@@ -490,7 +556,19 @@ function AdminDashboardOverview() {
             </div>
 
             <div className="overflow-y-auto overflow-x-auto max-h-[320px] border border-slate-100 rounded-xl w-full">
-              {displayPayments.length === 0 ? (
+              {!isLoaded && displayPayments.length === 0 ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex items-center justify-between gap-4 animate-pulse">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-14 h-5 bg-slate-100 rounded"></div>
+                        <div className="h-3.5 bg-slate-100 rounded w-1/3"></div>
+                      </div>
+                      <div className="w-16 h-4 bg-slate-100 rounded"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : displayPayments.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs italic">No transactions found.</div>
               ) : (
                 <table className="w-full border-collapse min-w-[500px]">

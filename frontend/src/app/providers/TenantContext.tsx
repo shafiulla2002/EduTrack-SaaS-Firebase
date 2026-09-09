@@ -27,15 +27,33 @@ interface TenantContextType {
 
 const TenantContext = createContext<TenantContextType | undefined>(undefined);
 
+function getInitialTenantCache() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const tid = getStoredTenantId();
+    if (!tid) return null;
+    const raw = sessionStorage.getItem(`edutrack_swr:${tid}:/tenant/setup-status:`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.data && parsed.tenantId === tid) {
+        return parsed.data;
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export function TenantProvider({ children }: { children: React.ReactNode }) {
-  const [schoolName, setSchoolName] = useState('');
-  const [schoolType, setSchoolType] = useState('');
-  const [adminName, setAdminName] = useState('');
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [setupStats, setSetupStats] = useState<any>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [subscription, setSubscription] = useState<any>(null);
+  const [initialData] = useState(() => getInitialTenantCache());
+
+  const [schoolName, setSchoolName] = useState<string>(() => initialData?.setup?.schoolName || '');
+  const [schoolType, setSchoolType] = useState<string>(() => initialData?.setup?.schoolType || '');
+  const [adminName, setAdminName] = useState<string>(() => initialData?.setup?.adminName || '');
+  const [logoUrl, setLogoUrl] = useState<string | null>(() => initialData?.setup?.schoolLogo || null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [setupStats, setSetupStats] = useState<any>(() => initialData || null);
+  const [currentUser, setCurrentUser] = useState<any>(() => initialData?.currentUser || null);
+  const [subscription, setSubscription] = useState<any>(() => initialData?.subscription || null);
   const [token, setToken] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
       return getStoredToken();

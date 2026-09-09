@@ -108,6 +108,18 @@ export function clearStoredAuth() {
     localStorage.removeItem('admin_userPhone');
   }
   sessionStorage.removeItem('active_role');
+  
+  // Clean all persistent SWR cache entries on logout
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith('edutrack_swr:')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => sessionStorage.removeItem(k));
+  } catch {}
 }
 
 const PLATFORM_HOSTS = new Set([
@@ -198,6 +210,36 @@ api.interceptors.request.use(
 const inFlightRequests = new Map<string, Promise<any>>();
 const lookupCache = new Map<string, { data: any; expiresAt: number; cachedAt: number }>();
 
+function getPersistedSWR<T>(cacheKey: string, tenantId: string): { data: T; expiresAt: number; cachedAt: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(`edutrack_swr:${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Strict tenant verification: never serve cache if tenantId does not match
+    if (!parsed || parsed.tenantId !== tenantId) {
+      sessionStorage.removeItem(`edutrack_swr:${cacheKey}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function setPersistedSWR<T>(cacheKey: string, tenantId: string, data: T, ttlMs: number) {
+  if (typeof window === 'undefined') return;
+  try {
+    const entry = {
+      data,
+      expiresAt: Date.now() + ttlMs,
+      cachedAt: Date.now(),
+      tenantId,
+    };
+    sessionStorage.setItem(`edutrack_swr:${cacheKey}`, JSON.stringify(entry));
+  } catch {}
+}
+
 export function invalidateLookupCache(tenantId?: string, urlPrefix?: string) {
   const tid = tenantId || getTenantFromHostname() || getStoredTenantId() || '';
   if (urlPrefix) {
@@ -206,12 +248,38 @@ export function invalidateLookupCache(tenantId?: string, urlPrefix?: string) {
         lookupCache.delete(key);
       }
     });
+    // Invalidate matching sessionStorage keys
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith('edutrack_swr:') && (!tid || key.includes(`:${tid}:`)) && key.includes(urlPrefix)) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      } catch {}
+    }
   } else if (tid) {
     lookupCache.forEach((_, key) => {
       if (key.startsWith(`${tid}:`)) {
         lookupCache.delete(key);
       }
     });
+    // Invalidate all keys for this tenant in sessionStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith('edutrack_swr:') && key.includes(`:${tid}:`)) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      } catch {}
+    }
   } else {
     lookupCache.clear();
   }
@@ -298,9 +366,10 @@ export interface FastGetOptions<T = any> {
 
 /**
  * Fast SWR (Stale-While-Revalidate) GET request engine:
- * 1. If cached data exists in memory, returns immediately in 0ms without UI delay.
- * 2. Concurrently in the background, fetches fresh data from the server.
- * 3. Calls `onRevalidate` with fresh data if changes are detected, keeping UI 100% accurate.
+ * 1. Checks in-memory cache, then checks persisted tenant-scoped sessionStorage SWR cache.
+ * 2. If cached data exists, returns immediately in 0ms without UI delay.
+ * 3. Concurrently in the background, fetches fresh data from the server.
+ * 4. Calls `onRevalidate` with fresh data if changes are detected, keeping UI 100% accurate.
  */
 export async function fastGet<T = any>(
   url: string,
@@ -312,8 +381,17 @@ export async function fastGet<T = any>(
   const paramStr = config?.params ? JSON.stringify(config.params) : '';
   const cacheKey = `${tenantId}:${url}:${paramStr}`;
 
-  const cached = lookupCache.get(cacheKey);
+  let cached = lookupCache.get(cacheKey);
   const now = Date.now();
+
+  // If not in memory, check persistent sessionStorage SWR cache (cold start / hard refresh recovery)
+  if (!cached && !forceRefresh) {
+    const persisted = getPersistedSWR<T>(cacheKey, tenantId);
+    if (persisted) {
+      cached = persisted;
+      lookupCache.set(cacheKey, persisted);
+    }
+  }
 
   // Background fetch helper with deduplication
   const fetchFresh = (): Promise<{ data: T }> => {
@@ -325,11 +403,13 @@ export async function fastGet<T = any>(
     const promise = api.get<T>(url, config)
       .then((res) => {
         const freshData = res.data;
-        lookupCache.set(cacheKey, {
+        const entry = {
           data: freshData,
           expiresAt: Date.now() + ttlMs,
           cachedAt: Date.now(),
-        });
+        };
+        lookupCache.set(cacheKey, entry);
+        setPersistedSWR(cacheKey, tenantId, freshData, ttlMs);
 
         if (onRevalidate && cached) {
           try {

@@ -66,20 +66,15 @@ export class DashboardService {
       studentsCount,
       teachersCount,
       classesCount,
-      revenueAgg,
+      revenueAggRaw,
       expenseAgg,
       attendanceRaw,
       scoreRaw,
-      pendingLeaveRequests,
-      approvedToday,
-      rejectedToday,
+      leaveRequestsAgg,
+      studentTrendsAgg,
       recentStudents,
       invoices,
       salaryExpenses,
-      studentsThisMonth,
-      studentsLastMonth,
-      revThisMonthAgg,
-      revLastMonthAgg,
       monthlyInvoicesRaw,
       monthlyExpensesRaw
     ] = await Promise.all([
@@ -114,16 +109,15 @@ export class DashboardService {
         },
       }).catch(() => 0),
 
-      // 4. Total Revenue
-      this.prisma.invoice.aggregate({
-        where: {
-          tenantId,
-          status: 'PAID',
-        },
-        _sum: {
-          paidAmount: true,
-        },
-      }).catch(() => ({ _sum: { paidAmount: 0 } })),
+      // 4. Combined Revenue (Total, This Month, Last Month) in 1 query
+      this.prisma.$queryRaw<Array<{ totalRevenue: number; revThisMonth: number; revLastMonth: number }>>`
+        SELECT 
+          COALESCE(SUM("paidAmount"), 0)::float AS "totalRevenue",
+          COALESCE(SUM(CASE WHEN "invoiceDate" >= ${thisMonthStart} THEN "paidAmount" ELSE 0 END), 0)::float AS "revThisMonth",
+          COALESCE(SUM(CASE WHEN "invoiceDate" >= ${lastMonthStart} AND "invoiceDate" <= ${lastMonthEnd} THEN "paidAmount" ELSE 0 END), 0)::float AS "revLastMonth"
+        FROM "Invoice"
+        WHERE "tenantId" = ${tenantId} AND status = 'PAID'
+      `.catch(() => [{ totalRevenue: 0, revThisMonth: 0, revLastMonth: 0 }]),
 
       // 5. Total Expenses
       this.prisma.expense.aggregate({
@@ -136,7 +130,7 @@ export class DashboardService {
         },
       }).catch(() => ({ _sum: { amount: 0 } })),
 
-      // 6. Average Attendance Rate (Database-side SUM aggregation)
+      // 6. Average Attendance Rate (Database-side SUM aggregation preserving exact formula)
       this.prisma.$queryRaw<Array<{ totalPresent: string | number; totalRoster: string | number }>>`
         SELECT 
           COALESCE(SUM("presentCount"), 0)::bigint AS "totalPresent",
@@ -145,7 +139,7 @@ export class DashboardService {
         WHERE "tenantId" = ${tenantId}
       `.catch(() => [{ totalPresent: 0, totalRoster: 0 }]),
 
-      // 7. Avg. Academic Score (Database-side percentage aggregation)
+      // 7. Avg. Academic Score (Database-side percentage aggregation preserving exact formula)
       this.prisma.$queryRaw<Array<{ avgScore: number | null }>>`
         SELECT 
           COALESCE(
@@ -167,12 +161,27 @@ export class DashboardService {
         WHERE em."tenantId" = ${tenantId}
       `.catch(() => [{ avgScore: 0 }]),
 
-      // 7b. Leave requests counts (Direct counts)
-      this.prisma.leaveRequest.count({ where: { tenantId, status: 'PENDING' } }).catch(() => 0),
-      this.prisma.leaveRequest.count({ where: { tenantId, status: 'APPROVED', approvedDate: { gte: todayStart } } }).catch(() => 0),
-      this.prisma.leaveRequest.count({ where: { tenantId, status: 'REJECTED', rejectedDate: { gte: todayStart } } }).catch(() => 0),
+      // 8. Leave requests counts (Combined into 1 single query)
+      this.prisma.$queryRaw<Array<{ pendingCount: number; approvedToday: number; rejectedToday: number }>>`
+        SELECT
+          COUNT(CASE WHEN status = 'PENDING' THEN 1 END)::int AS "pendingCount",
+          COUNT(CASE WHEN status = 'APPROVED' AND "approvedDate" >= ${todayStart} THEN 1 END)::int AS "approvedToday",
+          COUNT(CASE WHEN status = 'REJECTED' AND "rejectedDate" >= ${todayStart} THEN 1 END)::int AS "rejectedToday"
+        FROM "LeaveRequest"
+        WHERE "tenantId" = ${tenantId}
+      `.catch(() => [{ pendingCount: 0, approvedToday: 0, rejectedToday: 0 }]),
 
-      // 8. Recent Admissions (Targeted field selection)
+      // 9. Student trends (Combined into 1 single query)
+      this.prisma.$queryRaw<Array<{ thisMonth: number; lastMonth: number }>>`
+        SELECT
+          COUNT(CASE WHEN u."createdAt" >= ${thisMonthStart} THEN 1 END)::int AS "thisMonth",
+          COUNT(CASE WHEN u."createdAt" >= ${lastMonthStart} AND u."createdAt" <= ${lastMonthEnd} THEN 1 END)::int AS "lastMonth"
+        FROM "StudentProfile" sp
+        JOIN "User" u ON sp."userId" = u.id
+        WHERE u."tenantId" = ${tenantId} AND u."isActive" = true
+      `.catch(() => [{ thisMonth: 0, lastMonth: 0 }]),
+
+      // 10. Recent Admissions (Targeted field selection, top 10)
       this.prisma.studentProfile.findMany({
         where: {
           user: {
@@ -204,7 +213,7 @@ export class DashboardService {
         },
       }).catch(() => []),
 
-      // 9. Recent Payments - Invoices (Targeted field selection)
+      // 11. Recent Payments - Invoices (Targeted field selection, top 10)
       this.prisma.invoice.findMany({
         where: {
           tenantId,
@@ -230,7 +239,7 @@ export class DashboardService {
         take: 10,
       }).catch(() => []),
 
-      // 9b. Recent Payments - Salary Expenses (Targeted field selection)
+      // 12. Recent Payments - Salary Expenses (Targeted field selection, top 10)
       this.prisma.expense.findMany({
         where: {
           tenantId,
@@ -249,29 +258,7 @@ export class DashboardService {
         take: 10,
       }).catch(() => []),
 
-      // 11. Trend Students This Month
-      this.prisma.studentProfile.count({
-        where: { user: { tenantId, isActive: true, createdAt: { gte: thisMonthStart } } },
-      }).catch(() => 0),
-
-      // 11b. Trend Students Last Month
-      this.prisma.studentProfile.count({
-        where: { user: { tenantId, isActive: true, createdAt: { gte: lastMonthStart, lte: lastMonthEnd } } },
-      }).catch(() => 0),
-
-      // 11c. Trend Revenue This Month
-      this.prisma.invoice.aggregate({
-        where: { tenantId, status: 'PAID', invoiceDate: { gte: thisMonthStart } },
-        _sum: { paidAmount: true },
-      }).catch(() => ({ _sum: { paidAmount: 0 } })),
-
-      // 11d. Trend Revenue Last Month
-      this.prisma.invoice.aggregate({
-        where: { tenantId, status: 'PAID', invoiceDate: { gte: lastMonthStart, lte: lastMonthEnd } },
-        _sum: { paidAmount: true },
-      }).catch(() => ({ _sum: { paidAmount: 0 } })),
-
-      // 12. Monthly chart aggregations in database
+      // 13. Monthly chart invoices aggregations in database (Last 6 months)
       this.prisma.$queryRaw<Array<{ month: string; totalPaid: number }>>`
         SELECT 
           to_char("invoiceDate", 'YYYY-MM') AS "month",
@@ -282,6 +269,8 @@ export class DashboardService {
           AND "invoiceDate" >= ${sixMonthsAgo}
         GROUP BY to_char("invoiceDate", 'YYYY-MM')
       `.catch(() => []),
+
+      // 14. Monthly chart salary expenses aggregations in database (Last 6 months)
       this.prisma.$queryRaw<Array<{ month: string; totalSalary: number }>>`
         SELECT 
           to_char(date, 'YYYY-MM') AS "month",
@@ -295,7 +284,10 @@ export class DashboardService {
       `.catch(() => []),
     ]);
 
-    const totalRevenue = Number(revenueAgg._sum.paidAmount || 0);
+    const totalRevenue = Number(revenueAggRaw[0]?.totalRevenue || 0);
+    const revThisMonth = Number(revenueAggRaw[0]?.revThisMonth || 0);
+    const revLastMonth = Number(revenueAggRaw[0]?.revLastMonth || 0);
+
     const totalExpenses = Number(expenseAgg._sum.amount || 0);
     const netIncome = totalRevenue - totalExpenses;
 
@@ -304,6 +296,13 @@ export class DashboardService {
     const attendanceRate = totalRoster > 0 ? Math.round((totalPresent / totalRoster) * 1000) / 10 : 0;
 
     const academicAverage = scoreRaw[0]?.avgScore ? Math.round(Number(scoreRaw[0].avgScore) * 10) / 10 : 0;
+
+    const pendingLeaveRequests = Number(leaveRequestsAgg[0]?.pendingCount || 0);
+    const approvedToday = Number(leaveRequestsAgg[0]?.approvedToday || 0);
+    const rejectedToday = Number(leaveRequestsAgg[0]?.rejectedToday || 0);
+
+    const studentsThisMonth = Number(studentTrendsAgg[0]?.thisMonth || 0);
+    const studentsLastMonth = Number(studentTrendsAgg[0]?.lastMonth || 0);
 
     const recentAdmissions = recentStudents.map(s => ({
       id: s.id,
@@ -359,8 +358,6 @@ export class DashboardService {
       ? ((studentsThisMonth - studentsLastMonth) / studentsLastMonth) * 100
       : studentsThisMonth > 0 ? 100 : 0;
 
-    const revThisMonth = Number(revThisMonthAgg._sum.paidAmount || 0);
-    const revLastMonth = Number(revLastMonthAgg._sum.paidAmount || 0);
     const revenueTrendVal = revLastMonth > 0 
       ? ((revThisMonth - revLastMonth) / revLastMonth) * 100
       : revThisMonth > 0 ? 100 : 0;
