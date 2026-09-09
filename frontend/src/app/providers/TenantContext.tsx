@@ -31,12 +31,17 @@ function getInitialTenantCache() {
   if (typeof window === 'undefined') return null;
   try {
     const tid = getStoredTenantId();
-    if (!tid) return null;
-    const raw = sessionStorage.getItem(`edutrack_swr:${tid}:/tenant/setup-status:`);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.data && parsed.tenantId === tid) {
-        return parsed.data;
+    if (tid) {
+      const raw = sessionStorage.getItem(`edutrack_swr:${tid}:/tenant/setup-status:`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.data && parsed.tenantId === tid) {
+          return parsed.data;
+        }
+      }
+      const rawLocal = localStorage.getItem(`edutrack_tenant_cache_${tid}`);
+      if (rawLocal) {
+        return JSON.parse(rawLocal);
       }
     }
   } catch {}
@@ -46,13 +51,47 @@ function getInitialTenantCache() {
 export function TenantProvider({ children }: { children: React.ReactNode }) {
   const [initialData] = useState(() => getInitialTenantCache());
 
-  const [schoolName, setSchoolName] = useState<string>(() => initialData?.setup?.schoolName || '');
-  const [schoolType, setSchoolType] = useState<string>(() => initialData?.setup?.schoolType || '');
-  const [adminName, setAdminName] = useState<string>(() => initialData?.setup?.adminName || '');
-  const [logoUrl, setLogoUrl] = useState<string | null>(() => initialData?.setup?.schoolLogo || null);
+  const [schoolName, setSchoolName] = useState<string>(() => {
+    return initialData?.setup?.schoolName || 
+           initialData?.tenantName || 
+           initialData?.tenant?.schoolName || 
+           (typeof window !== 'undefined' ? (sessionStorage.getItem('otp_schoolName') || localStorage.getItem('stored_school_name') || '') : '');
+  });
+
+  const [schoolType, setSchoolType] = useState<string>(() => {
+    return initialData?.setup?.schoolType || 
+           initialData?.tenant?.schoolType || 
+           (typeof window !== 'undefined' ? (localStorage.getItem('stored_school_type') || 'School') : 'School');
+  });
+
+  const [adminName, setAdminName] = useState<string>(() => {
+    return initialData?.setup?.adminName || 
+           initialData?.currentUser?.name || 
+           (typeof window !== 'undefined' ? (
+             localStorage.getItem('admin_userName') || 
+             localStorage.getItem('teacher_userName') || 
+             localStorage.getItem('parent_userName') || ''
+           ) : '');
+  });
+
+  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
+    return initialData?.setup?.schoolLogo || 
+           initialData?.tenantLogo || 
+           (typeof window !== 'undefined' ? (sessionStorage.getItem('otp_logoUrl') || localStorage.getItem('stored_school_logo') || null) : null);
+  });
+
   const [loading, setLoading] = useState<boolean>(false);
   const [setupStats, setSetupStats] = useState<any>(() => initialData || null);
-  const [currentUser, setCurrentUser] = useState<any>(() => initialData?.currentUser || null);
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    if (initialData?.currentUser) return initialData.currentUser;
+    if (typeof window !== 'undefined') {
+      const rawUser = localStorage.getItem('stored_current_user');
+      if (rawUser) {
+        try { return JSON.parse(rawUser); } catch {}
+      }
+    }
+    return null;
+  });
   const [subscription, setSubscription] = useState<any>(() => initialData?.subscription || null);
   const [token, setToken] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
@@ -88,34 +127,101 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   const applyTenantData = (data: any) => {
     if (!data) return;
     setSetupStats(data);
-    setCurrentUser(data.currentUser || null);
+    
+    if (data.currentUser) {
+      setCurrentUser(data.currentUser);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('stored_current_user', JSON.stringify(data.currentUser));
+        } catch {}
+      }
+    }
+    
     setSubscription(data.subscription || null);
     
     if (typeof window !== 'undefined' && data.currentUser?.role) {
       if (data.currentUser.role === 'TEACHER') {
         sessionStorage.setItem('active_role', 'TEACHER');
+        if (data.currentUser.name) localStorage.setItem('teacher_userName', data.currentUser.name);
       } else if (data.currentUser.role === 'SCHOOL_ADMIN') {
         sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+        if (data.currentUser.name) localStorage.setItem('admin_userName', data.currentUser.name);
       } else if (data.currentUser.role === 'PARENT') {
         sessionStorage.setItem('active_role', 'PARENT');
+        if (data.currentUser.name) localStorage.setItem('parent_userName', data.currentUser.name);
       }
     }
     
     const setupObj = data.setup;
-    if (setupObj) {
-      setSchoolName(setupObj.schoolName || "");
-      setSchoolType(setupObj.schoolType || "");
-      setAdminName(setupObj.adminName || "");
-      setLogoUrl(setupObj.schoolLogo || null);
-      if (typeof window !== 'undefined' && setupObj.tenantId) {
+    const resolvedSchoolName = 
+      setupObj?.schoolName || 
+      setupObj?.tenant?.name || 
+      data.tenantName || 
+      data.tenant?.name || 
+      (typeof window !== 'undefined' ? (sessionStorage.getItem('otp_schoolName') || localStorage.getItem('stored_school_name')) : '') || 
+      '';
+
+    const resolvedSchoolType = 
+      setupObj?.schoolType || 
+      setupObj?.tenant?.subtitle || 
+      data.tenant?.subtitle || 
+      (typeof window !== 'undefined' ? localStorage.getItem('stored_school_type') : '') || 
+      'School';
+
+    const resolvedAdminName = 
+      setupObj?.adminName || 
+      data.currentUser?.name || 
+      (typeof window !== 'undefined' ? (localStorage.getItem('admin_userName') || localStorage.getItem('teacher_userName') || localStorage.getItem('parent_userName')) : '') || 
+      '';
+
+    const resolvedLogo = 
+      setupObj?.schoolLogo || 
+      setupObj?.tenant?.logoUrl || 
+      data.tenantLogo || 
+      data.tenant?.logoUrl || 
+      (typeof window !== 'undefined' ? (sessionStorage.getItem('otp_logoUrl') || localStorage.getItem('stored_school_logo')) : null) || 
+      null;
+
+    if (resolvedSchoolName) {
+      setSchoolName(resolvedSchoolName);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('stored_school_name', resolvedSchoolName);
+        sessionStorage.setItem('otp_schoolName', resolvedSchoolName);
+      }
+    }
+
+    if (resolvedSchoolType) {
+      setSchoolType(resolvedSchoolType);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('stored_school_type', resolvedSchoolType);
+      }
+    }
+
+    if (resolvedAdminName) {
+      setAdminName(resolvedAdminName);
+    }
+
+    if (resolvedLogo !== undefined) {
+      setLogoUrl(resolvedLogo);
+      if (typeof window !== 'undefined' && resolvedLogo) {
+        localStorage.setItem('stored_school_logo', resolvedLogo);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      const tid = setupObj?.tenantId || data.tenantId || getStoredTenantId();
+      if (tid) {
         const role = getActiveRole();
         if (role === 'TEACHER') {
-          localStorage.setItem('teacher_tenantId', setupObj.tenantId);
+          localStorage.setItem('teacher_tenantId', tid);
         } else if (role === 'PARENT') {
-          localStorage.setItem('parent_tenantId', setupObj.tenantId);
+          localStorage.setItem('parent_tenantId', tid);
         } else {
-          localStorage.setItem('admin_tenantId', setupObj.tenantId);
+          localStorage.setItem('admin_tenantId', tid);
         }
+        try {
+          localStorage.setItem(`edutrack_tenant_cache_${tid}`, JSON.stringify(data));
+        } catch {}
       }
     }
   };
@@ -127,16 +233,20 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         const response = await fastGet('/tenant/public-branding', undefined, { ttlMs: 120000 });
         const data = response.data;
         if (data) {
-          setSchoolName(data.name || "");
-          setSchoolType(data.subtitle || "School");
-          setAdminName(data.name || "");
-          setLogoUrl(data.logoUrl || null);
+          if (!getStoredToken()) {
+            setSchoolName(data.name || "");
+            setSchoolType(data.subtitle || "School");
+            setAdminName(data.name || "");
+            setLogoUrl(data.logoUrl || null);
+          }
         }
       } catch (err) {
-        setSchoolName("");
-        setSchoolType("");
-        setAdminName("");
-        setLogoUrl(null);
+        if (!getStoredToken()) {
+          setSchoolName("");
+          setSchoolType("");
+          setAdminName("");
+          setLogoUrl(null);
+        }
       } finally {
         setSetupStats(null);
         setCurrentUser(null);

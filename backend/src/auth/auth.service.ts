@@ -35,6 +35,34 @@ export class AuthService {
 
   async login(user: any) {
     const payload = { email: user.email, sub: user.id, role: user.role, tenantId: user.tenantId };
+    
+    let schoolName = '';
+    let schoolType = 'School';
+    let adminName = user.name || '';
+    let logoUrl: string | null = null;
+
+    if (user.tenantId) {
+      try {
+        const [tenant, setup] = await Promise.all([
+          this.prisma.tenant.findUnique({
+            where: { id: user.tenantId },
+            select: { name: true, logoUrl: true, subtitle: true },
+          }),
+          this.prisma.schoolSetup.findUnique({
+            where: { tenantId: user.tenantId },
+            select: { schoolName: true, schoolType: true, adminName: true, schoolLogo: true },
+          }),
+        ]);
+
+        schoolName = setup?.schoolName || tenant?.name || '';
+        schoolType = setup?.schoolType || tenant?.subtitle || 'School';
+        adminName = setup?.adminName || user.name || '';
+        logoUrl = setup?.schoolLogo || tenant?.logoUrl || null;
+      } catch (e) {
+        // Fallback gracefully on non-blocking branding lookup failure
+      }
+    }
+
     return {
       access_token: this.jwtService.sign(payload),
       user: {
@@ -44,6 +72,13 @@ export class AuthService {
         phone: user.phone,
         role: user.role,
         tenantId: user.tenantId,
+        avatarUrl: user.avatarUrl || null,
+      },
+      tenant: {
+        schoolName,
+        schoolType,
+        adminName,
+        logoUrl,
       }
     };
   }
@@ -473,7 +508,8 @@ export class AuthService {
         userId: user.id,
         tenantId: user.tenantId,
         access_token: loginResult.access_token,
-        user: loginResult.user
+        user: loginResult.user,
+        tenant: loginResult.tenant,
       };
       const code = this.jwtService.sign(codePayload, { expiresIn: '30s' });
       return {
@@ -508,7 +544,8 @@ export class AuthService {
 
       return {
         access_token: payload.access_token,
-        user: payload.user
+        user: payload.user,
+        tenant: payload.tenant || null,
       };
     } catch (e: any) {
       throw new UnauthorizedException(`Authorization code validation failed: ${e.message}`);

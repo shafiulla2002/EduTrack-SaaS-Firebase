@@ -719,7 +719,7 @@ export default function DashboardLayout({
           <div className="hidden lg:flex items-center gap-2 px-4 text-center">
             <div className="w-[52px] h-[52px] bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200 shrink-0 overflow-hidden">
               {logoUrl ? (
-                <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
+                <img src={logoUrl} alt={schoolName || 'School Logo'} className="w-full h-full object-cover" />
               ) : (
                 <svg className="w-[30px] h-[30px] stroke-[#2E5BFF] fill-none" viewBox="0 0 24 24">
                   <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2"></path>
@@ -729,7 +729,7 @@ export default function DashboardLayout({
             </div>
             <div className="text-left">
               <h1 className="font-extrabold text-[14px] text-indigo-900 leading-none uppercase tracking-wide">
-                {schoolName}
+                {schoolName || 'EduTrack Application'}
               </h1>
               <p className="text-[9px] text-slate-400 font-bold tracking-wider uppercase mt-0.5">
                 {schoolType || 'Building Excellence for Futures'}
@@ -767,18 +767,18 @@ export default function DashboardLayout({
             <NotificationBell />
             <div className="hidden md:flex items-center gap-3 px-3 py-1.5 rounded-xl hover:bg-slate-50 cursor-pointer min-h-[44px]">
               <div className="text-right hidden sm:block">
-                <p className="text-[13px] font-semibold text-slate-800 leading-none">{currentUser?.name || adminName}</p>
+                <p className="text-[13px] font-semibold text-slate-800 leading-none">{currentUser?.name || adminName || 'Admin'}</p>
                 <p className="text-[11px] text-slate-400 font-medium mt-1">{currentUser?.role === 'SCHOOL_ADMIN' ? 'Admin' : (currentUser?.role || 'User')}</p>
               </div>
               {currentUser?.avatarUrl ? (
                 <img
                   src={currentUser.avatarUrl}
-                  alt={currentUser.name || adminName}
+                  alt={currentUser.name || adminName || 'User'}
                   className="w-9 h-9 rounded-xl object-cover border border-slate-200"
                 />
               ) : (
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-sm select-none">
-                  {(currentUser?.name || adminName).split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  {((currentUser?.name || adminName || 'Admin').trim().split(/\s+/).map((n: string) => n[0]).join('').slice(0, 2) || 'AD').toUpperCase()}
                 </div>
               )}
             </div>
@@ -830,7 +830,7 @@ export default function DashboardLayout({
             <div className="flex items-center gap-3 px-6 mb-6">
               <div className="w-[48px] h-[48px] bg-slate-100 rounded-lg flex items-center justify-center border border-slate-200 shrink-0 overflow-hidden">
                 {logoUrl ? (
-                  <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
+                  <img src={logoUrl} alt={schoolName || 'School Logo'} className="w-full h-full object-cover" />
                 ) : (
                   <svg className="w-[28px] h-[28px] stroke-[#2E5BFF] fill-none" viewBox="0 0 24 24">
                     <path d="M22 10v6M2 10l10-5 10 5-10 5z" strokeWidth="2"></path>
@@ -840,7 +840,7 @@ export default function DashboardLayout({
               </div>
               <div>
                 <h1 className="font-extrabold text-[14px] text-indigo-900 leading-none uppercase tracking-wide">
-                  {schoolName}
+                  {schoolName || 'EduTrack Application'}
                 </h1>
               </div>
             </div>
@@ -850,16 +850,16 @@ export default function DashboardLayout({
               {currentUser?.avatarUrl ? (
                 <img
                   src={currentUser.avatarUrl}
-                  alt={currentUser.name || adminName}
+                  alt={currentUser.name || adminName || 'User'}
                   className="w-10 h-10 rounded-xl object-cover border border-slate-200"
                 />
               ) : (
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-sm select-none shrink-0">
-                  {(currentUser?.name || adminName).split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  {((currentUser?.name || adminName || 'Admin').trim().split(/\s+/).map((n: string) => n[0]).join('').slice(0, 2) || 'AD').toUpperCase()}
                 </div>
               )}
               <div className="min-w-0">
-                <p className="text-[13px] font-bold text-slate-800 leading-tight truncate">{currentUser?.name || adminName}</p>
+                <p className="text-[13px] font-bold text-slate-800 leading-tight truncate">{currentUser?.name || adminName || 'Admin'}</p>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
                   {currentUser?.role === 'SCHOOL_ADMIN' ? 'Admin' : (currentUser?.role === 'TEACHER' ? 'Teacher' : (currentUser?.role || 'User'))}
                 </p>

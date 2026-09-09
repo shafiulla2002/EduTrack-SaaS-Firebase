@@ -35,7 +35,9 @@ export function setStoredAuth(
   role: 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' | 'SUPER_ADMIN' | 'STAFF' | string,
   token: string,
   tenantId?: string,
-  phone?: string
+  phone?: string,
+  userProfile?: { id?: string; name?: string; email?: string; phone?: string; role?: string; avatarUrl?: string },
+  tenantBranding?: { schoolName?: string; schoolType?: string; adminName?: string; logoUrl?: string | null }
 ) {
   if (typeof window === 'undefined') return;
 
@@ -49,14 +51,85 @@ export function setStoredAuth(
     localStorage.setItem('parent_token', token);
     if (tenantId) localStorage.setItem('parent_tenantId', tenantId);
     if (phone) localStorage.setItem('parent_userPhone', phone);
+    if (userProfile?.name) localStorage.setItem('parent_userName', userProfile.name);
   } else if (normalizedRole === 'TEACHER' || normalizedRole === 'DRIVER') {
     localStorage.setItem('teacher_token', token);
     if (tenantId) localStorage.setItem('teacher_tenantId', tenantId);
     if (phone) localStorage.setItem('teacher_userPhone', phone);
+    if (userProfile?.name) localStorage.setItem('teacher_userName', userProfile.name);
   } else {
     localStorage.setItem('admin_token', token);
     if (tenantId) localStorage.setItem('admin_tenantId', tenantId);
     if (phone) localStorage.setItem('admin_userPhone', phone);
+    if (userProfile?.name) localStorage.setItem('admin_userName', userProfile.name);
+  }
+
+  if (userProfile) {
+    try {
+      localStorage.setItem('stored_current_user', JSON.stringify(userProfile));
+    } catch {}
+  }
+
+  if (tenantBranding) {
+    if (tenantBranding.schoolName) {
+      localStorage.setItem('stored_school_name', tenantBranding.schoolName);
+      sessionStorage.setItem('otp_schoolName', tenantBranding.schoolName);
+    }
+    if (tenantBranding.schoolType) {
+      localStorage.setItem('stored_school_type', tenantBranding.schoolType);
+    }
+    if (tenantBranding.logoUrl) {
+      localStorage.setItem('stored_school_logo', tenantBranding.logoUrl);
+      sessionStorage.setItem('otp_logoUrl', tenantBranding.logoUrl);
+    }
+  }
+
+  // Pre-seed the setup-status SWR cache so the upcoming Dashboard load has 0ms delay
+  if (tenantId) {
+    try {
+      const schoolName = tenantBranding?.schoolName || sessionStorage.getItem('otp_schoolName') || localStorage.getItem('stored_school_name') || '';
+      const schoolType = tenantBranding?.schoolType || localStorage.getItem('stored_school_type') || 'School';
+      const adminName = tenantBranding?.adminName || userProfile?.name || '';
+      const logoUrl = tenantBranding?.logoUrl || sessionStorage.getItem('otp_logoUrl') || localStorage.getItem('stored_school_logo') || null;
+
+      const initialSetupStatus = {
+        setupCompleted: false,
+        completionPercentage: 0,
+        classesCount: 0,
+        teachersCount: 0,
+        studentsCount: 0,
+        setup: {
+          id: '',
+          tenantId,
+          schoolName,
+          schoolType,
+          adminName,
+          mobileNumber: phone || '',
+          email: userProfile?.email || '',
+          address: '',
+          academicYear: '2026-2027',
+          schoolLogo: logoUrl,
+          isCompleted: false,
+        },
+        tenantName: schoolName,
+        tenantLogo: logoUrl,
+        currentUser: userProfile || {
+          name: adminName,
+          role: normalizedRole,
+          phone: phone || '',
+          tenantId,
+        },
+        subscription: null,
+      };
+
+      const cachePayload = {
+        data: initialSetupStatus,
+        timestamp: Date.now(),
+        tenantId,
+      };
+      sessionStorage.setItem(`edutrack_swr:${tenantId}:/tenant/setup-status:`, JSON.stringify(cachePayload));
+      localStorage.setItem(`edutrack_tenant_cache_${tenantId}`, JSON.stringify(initialSetupStatus));
+    } catch {}
   }
 }
 
@@ -112,23 +185,32 @@ export function clearStoredAuth() {
     localStorage.removeItem('parent_token');
     localStorage.removeItem('parent_tenantId');
     localStorage.removeItem('parent_userPhone');
+    localStorage.removeItem('parent_userName');
   } else if (role === 'TEACHER' || role === 'DRIVER') {
     localStorage.removeItem('teacher_token');
     localStorage.removeItem('teacher_tenantId');
     localStorage.removeItem('teacher_userPhone');
+    localStorage.removeItem('teacher_userName');
   } else {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_tenantId');
     localStorage.removeItem('admin_userPhone');
+    localStorage.removeItem('admin_userName');
   }
   sessionStorage.removeItem('active_role');
+  sessionStorage.removeItem('otp_schoolName');
+  sessionStorage.removeItem('otp_logoUrl');
+  localStorage.removeItem('stored_current_user');
+  localStorage.removeItem('stored_school_name');
+  localStorage.removeItem('stored_school_type');
+  localStorage.removeItem('stored_school_logo');
   
   // Clean all persistent SWR cache entries on logout
   try {
     const keysToRemove: string[] = [];
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
-      if (key && key.startsWith('edutrack_swr:')) {
+      if (key && (key.startsWith('edutrack_swr:') || key.startsWith('edutrack_tenant_cache_'))) {
         keysToRemove.push(key);
       }
     }

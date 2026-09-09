@@ -114,8 +114,13 @@ function OtpContent() {
       if (data.registered) {
         setSuccessMsg('Authenticated! Loading profile...');
         const role = data.user.role;
+        const tenantBranding = data.tenant || {
+          schoolName: sessionStorage.getItem('otp_schoolName') || '',
+          logoUrl: sessionStorage.getItem('otp_logoUrl') || null,
+        };
+
         if (role === 'TEACHER' || role === 'STAFF' || role === 'DRIVER') {
-          setStoredAuth(role, data.access_token, data.user.tenantId, data.user.phone);
+          setStoredAuth(role, data.access_token, data.user.tenantId, data.user.phone, data.user, tenantBranding);
           if (role === 'DRIVER') {
             setSuccessMsg('Authenticated! Redirecting to Driver Transport Dashboard...');
             setTimeout(() => {
@@ -128,13 +133,13 @@ function OtpContent() {
             }, 500);
           }
         } else if (role === 'PARENT') {
-          setStoredAuth('PARENT', data.access_token, data.user.tenantId, data.user.phone);
+          setStoredAuth('PARENT', data.access_token, data.user.tenantId, data.user.phone, data.user, tenantBranding);
           setSuccessMsg('Authenticated! Redirecting to Parent Portal...');
           setTimeout(() => {
             router.push('/parent');
           }, 500);
         } else {
-          setStoredAuth('SCHOOL_ADMIN', data.access_token, data.user.tenantId, data.user.phone);
+          setStoredAuth('SCHOOL_ADMIN', data.access_token, data.user.tenantId, data.user.phone, data.user, tenantBranding);
           setSuccessMsg('Authenticated! Redirecting...');
           setTimeout(() => {
             router.push('/dashboard');

@@ -29,7 +29,7 @@ function CallbackContent() {
       try {
         setStatusMsg('Exchanging credentials...');
         const response = await api.post('/auth/exchange-code', { code });
-        const { access_token, user } = response.data;
+        const { access_token, user, tenant } = response.data;
 
         if (!isMounted) return;
 
@@ -37,7 +37,7 @@ function CallbackContent() {
         const role = user.role;
 
         if (role === 'TEACHER' || role === 'STAFF' || role === 'DRIVER') {
-          setStoredAuth(role, access_token, user.tenantId, user.phone);
+          setStoredAuth(role, access_token, user.tenantId, user.phone, user, tenant);
           
           try {
             await refresh();
@@ -54,7 +54,7 @@ function CallbackContent() {
             }
           }, 800);
         } else if (role === 'PARENT') {
-          setStoredAuth('PARENT', access_token, user.tenantId, user.phone);
+          setStoredAuth('PARENT', access_token, user.tenantId, user.phone, user, tenant);
 
           try {
             await refresh();
@@ -67,7 +67,7 @@ function CallbackContent() {
             router.push('/parent');
           }, 800);
         } else {
-          setStoredAuth('SCHOOL_ADMIN', access_token, user.tenantId, user.phone);
+          setStoredAuth('SCHOOL_ADMIN', access_token, user.tenantId, user.phone, user, tenant);
 
           try {
             await refresh();

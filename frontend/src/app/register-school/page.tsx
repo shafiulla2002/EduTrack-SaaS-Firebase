@@ -70,7 +70,13 @@ function RegisterSchoolContent() {
       
       if (data.success && data.access_token) {
         // Store JWT token and new Tenant ID using unified setStoredAuth
-        setStoredAuth('SCHOOL_ADMIN', data.access_token, data.user.tenantId, data.user.phone);
+        const tenantBranding = {
+          schoolName: formData.schoolName,
+          schoolType: formData.schoolType,
+          adminName: formData.adminName,
+          logoUrl: null,
+        };
+        setStoredAuth('SCHOOL_ADMIN', data.access_token, data.user.tenantId, data.user.phone, data.user, tenantBranding);
 
         // Fetch tenant details immediately to verify branding is ready
         try {

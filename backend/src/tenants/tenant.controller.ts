@@ -211,9 +211,9 @@ export class TenantController {
         setup: tenant ? {
           id: '',
           tenantId: tenant.id,
-          schoolName: tenant.name,
-          schoolType: 'School',
-          adminName: tenant.name,
+          schoolName: tenant.name || '',
+          schoolType: tenant.subtitle || 'School',
+          adminName: currentUser?.name || tenant.name || 'Admin',
           mobileNumber: tenant.phone || '',
           email: tenant.email || '',
           address: tenant.address || '',
@@ -224,9 +224,11 @@ export class TenantController {
           district: '',
           city: '',
           postalCode: '',
-          schoolLogo: null,
+          schoolLogo: tenant.logoUrl || null,
           isCompleted: false,
         } : null,
+        tenantName: tenant?.name || '',
+        tenantLogo: tenant?.logoUrl || null,
         currentUser,
         subscription: subscription ? {
           plan: subscription.plan?.name || 'TRIAL',
@@ -244,6 +246,17 @@ export class TenantController {
       });
 
       return incompleteResult;
+    }
+
+    // Ensure fallback to tenant/currentUser names if empty in setup
+    if (!setup.schoolName && setup.tenant?.name) {
+      setup.schoolName = setup.tenant.name;
+    }
+    if (!setup.adminName && currentUser?.name) {
+      setup.adminName = currentUser.name;
+    }
+    if (!setup.schoolLogo && setup.tenant?.logoUrl) {
+      setup.schoolLogo = setup.tenant.logoUrl;
     }
 
     // Calculate profile completion percentage based on 13 total fields
@@ -282,6 +295,8 @@ export class TenantController {
       studentsCount,
       missingFields,
       setup,
+      tenantName: setup.schoolName || setup.tenant?.name || '',
+      tenantLogo: setup.schoolLogo || setup.tenant?.logoUrl || null,
       currentUser,
       subscription: subscription ? {
         plan: subscription.plan?.name || 'TRIAL',
