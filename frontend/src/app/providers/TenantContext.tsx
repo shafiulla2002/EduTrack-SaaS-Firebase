@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { api, getStoredToken, getStoredTenantId, getActiveRole } from '@/lib/api';
+import { api, fastGet, getStoredToken, getStoredTenantId, getActiveRole } from '@/lib/api';
 import { useSchoolSetupUpdate } from '@/lib/events';
 
 interface TenantContextType {
@@ -67,30 +67,54 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const applyTenantData = (data: any) => {
+    if (!data) return;
+    setSetupStats(data);
+    setCurrentUser(data.currentUser || null);
+    setSubscription(data.subscription || null);
+    
+    if (typeof window !== 'undefined' && data.currentUser?.role) {
+      if (data.currentUser.role === 'TEACHER') {
+        sessionStorage.setItem('active_role', 'TEACHER');
+      } else if (data.currentUser.role === 'SCHOOL_ADMIN') {
+        sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+      } else if (data.currentUser.role === 'PARENT') {
+        sessionStorage.setItem('active_role', 'PARENT');
+      }
+    }
+    
+    const setupObj = data.setup;
+    if (setupObj) {
+      setSchoolName(setupObj.schoolName || "");
+      setSchoolType(setupObj.schoolType || "");
+      setAdminName(setupObj.adminName || "");
+      setLogoUrl(setupObj.schoolLogo || null);
+      if (typeof window !== 'undefined' && setupObj.tenantId) {
+        const role = getActiveRole();
+        if (role === 'TEACHER') {
+          localStorage.setItem('teacher_tenantId', setupObj.tenantId);
+        } else if (role === 'PARENT') {
+          localStorage.setItem('parent_tenantId', setupObj.tenantId);
+        } else {
+          localStorage.setItem('admin_tenantId', setupObj.tenantId);
+        }
+      }
+    }
+  };
+
   const fetchTenantData = async () => {
     const currentToken = typeof window !== 'undefined' ? getStoredToken() : null;
     if (!currentToken) {
       try {
-        const response = await api.get('/tenant/public-branding');
+        const response = await fastGet('/tenant/public-branding', undefined, { ttlMs: 120000 });
         const data = response.data;
         if (data) {
           setSchoolName(data.name || "");
           setSchoolType(data.subtitle || "School");
           setAdminName(data.name || "");
           setLogoUrl(data.logoUrl || null);
-          if (typeof window !== 'undefined' && data.id) {
-            const role = getActiveRole();
-            if (role === 'TEACHER') {
-              localStorage.setItem('teacher_tenantId', data.id);
-            } else if (role === 'PARENT') {
-              localStorage.setItem('parent_tenantId', data.id);
-            } else {
-              localStorage.setItem('admin_tenantId', data.id);
-            }
-          }
         }
       } catch (err) {
-        console.error('Failed to fetch public tenant branding:', err);
         setSchoolName("");
         setSchoolType("");
         setAdminName("");
@@ -105,52 +129,17 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const response = await api.get('/tenant/setup-status');
-      const data = response.data;
-      setSetupStats(data);
-      setCurrentUser(data.currentUser || null);
-      setSubscription(data.subscription || null);
-      
-      if (typeof window !== 'undefined' && data.currentUser?.role) {
-        if (data.currentUser.role === 'TEACHER') {
-          sessionStorage.setItem('active_role', 'TEACHER');
-        } else if (data.currentUser.role === 'SCHOOL_ADMIN') {
-          sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
-        } else if (data.currentUser.role === 'PARENT') {
-          sessionStorage.setItem('active_role', 'PARENT');
+      const response = await fastGet('/tenant/setup-status', undefined, {
+        ttlMs: 60000,
+        onRevalidate: (fresh) => {
+          if (fresh) applyTenantData(fresh);
         }
-      }
-      
-      const setupObj = data.setup;
-      if (setupObj) {
-        setSchoolName(setupObj.schoolName || "");
-        setSchoolType(setupObj.schoolType || "");
-        setAdminName(setupObj.adminName || "");
-        setLogoUrl(setupObj.schoolLogo || null);
-        if (typeof window !== 'undefined' && setupObj.tenantId) {
-          const role = getActiveRole();
-          if (role === 'TEACHER') {
-            localStorage.setItem('teacher_tenantId', setupObj.tenantId);
-          } else if (role === 'PARENT') {
-            localStorage.setItem('parent_tenantId', setupObj.tenantId);
-          } else {
-            localStorage.setItem('admin_tenantId', setupObj.tenantId);
-          }
-        }
-      } else {
-        setSchoolName("");
-        setSchoolType("");
-        setAdminName("");
-        setLogoUrl(null);
+      });
+      if (response.data) {
+        applyTenantData(response.data);
       }
     } catch (err) {
       console.error('Failed to fetch tenant setup status:', err);
-      setSchoolName("");
-      setSchoolType("");
-      setAdminName("");
-      setLogoUrl(null);
-      setCurrentUser(null);
-      setSubscription(null);
     } finally {
       setLoading(false);
     }

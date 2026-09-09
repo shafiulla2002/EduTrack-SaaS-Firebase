@@ -30,15 +30,27 @@ export class ExpensesService {
     });
   }
 
-  async getExpenses(category?: string, status?: ExpenseStatus) {
+  async getExpenses(category?: string, status?: ExpenseStatus, month?: string) {
     const tenantId = this.getTenantId();
+    let dateFilter: any = {};
+    if (month && month.includes('-')) {
+      const parts = month.split('-').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        const start = new Date(parts[0], parts[1] - 1, 1);
+        const end = new Date(parts[0], parts[1], 0, 23, 59, 59, 999);
+        dateFilter = { date: { gte: start, lte: end } };
+      }
+    }
+
     return this.prisma.expense.findMany({
       where: {
         tenantId,
         ...(category ? { category } : {}),
         ...(status ? { status } : {}),
+        ...dateFilter,
       },
       orderBy: { date: 'desc' },
+      take: 200,
     });
   }
 

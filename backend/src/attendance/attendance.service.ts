@@ -604,17 +604,26 @@ export class AttendanceService {
     return this.getSessionData(result.classVal, result.sectionVal, result.dateStr);
   }
 
-  // Salesforce parity: get bundled attendance data for reports
-  async getAttendanceData(startDateStr?: string, endDateStr?: string) {
+  // Salesforce parity: get bundled attendance data for reports with database-side filtering
+  async getAttendanceData(
+    startDateStr?: string,
+    endDateStr?: string,
+    className?: string,
+    sectionName?: string,
+  ) {
     const tenantId = this.getTenantId();
     const now = new Date();
-    const defaultStart = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate()));
+    // Default to last 90 days if not explicitly specified to optimize read cost and speed
+    const defaultStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1));
     const defaultEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 30));
 
     const startDate = startDateStr ? parseAttendanceDate(startDateStr) : defaultStart;
     const endDate = endDateStr ? parseAttendanceDate(endDateStr) : defaultEnd;
 
-    // Parallel high-performance raw SQL queries with tenant isolation
+    const classFilter = className && className !== 'all' ? className : null;
+    const sectionFilter = sectionName && sectionName !== 'all' ? sectionName : null;
+
+    // Parallel high-performance raw SQL queries with tenant isolation & optional class/section filter
     const [rawStudents, rawSessions, rawAbsents] = await Promise.all([
       this.prisma.$queryRaw<Array<{ id: string; rollNo: string | null; name: string; className: string | null; section: string | null }>>`
         SELECT 
@@ -629,8 +638,10 @@ export class AttendanceService {
         LEFT JOIN "Class" c ON cs."classId" = c.id
         LEFT JOIN "Section" s ON cs."sectionId" = s.id
         WHERE sp."tenantId" = ${tenantId}
+          AND (${classFilter}::text IS NULL OR c.name = ${classFilter})
+          AND (${sectionFilter}::text IS NULL OR s.name = ${sectionFilter})
         ORDER BY u.name ASC
-      `,
+      `.catch(() => []),
       this.prisma.$queryRaw<Array<{ id: string; date: Date; totalStudents: number; presentCount: number; absentCount: number; classId: string | null; className: string | null; section: string | null }>>`
         SELECT
           ses.id,
@@ -648,8 +659,10 @@ export class AttendanceService {
         WHERE ses."tenantId" = ${tenantId}
           AND ses.date >= ${startDate}
           AND ses.date <= ${endDate}
+          AND (${classFilter}::text IS NULL OR c.name = ${classFilter})
+          AND (${sectionFilter}::text IS NULL OR s.name = ${sectionFilter})
         ORDER BY ses.date DESC
-      `,
+      `.catch(() => []),
       this.prisma.$queryRaw<Array<{ id: string; studentId: string; attendanceDate: Date; className: string | null; section: string | null }>>`
         SELECT
           a.id,
@@ -666,7 +679,9 @@ export class AttendanceService {
           AND a.status = 'ABSENT'
           AND ses.date >= ${startDate}
           AND ses.date <= ${endDate}
-      `
+          AND (${classFilter}::text IS NULL OR c.name = ${classFilter})
+          AND (${sectionFilter}::text IS NULL OR s.name = ${sectionFilter})
+      `.catch(() => [])
     ]);
 
     const students = rawStudents.map(s => ({

@@ -1340,7 +1340,7 @@ function NotificationBell() {
   const fetchNotifications = async () => {
     if (!currentUser?.id) return;
     try {
-      const res = await api.get(`/communications/user/${currentUser.id}`);
+      const res = await fastGet(`/communications/user/${currentUser.id}`, undefined, { ttlMs: 15000 });
       setNotifications(res.data || []);
     } catch (err) {
       console.error('Failed to fetch notifications:', err);

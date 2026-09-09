@@ -62,10 +62,12 @@ export class AttendanceController {
 
   @Get('report-data')
   async getReportData(
-    @Query('startDate') startDate: string,
-    @Query('endDate') endDate: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('className') className?: string,
+    @Query('sectionName') sectionName?: string,
   ) {
-    return this.attendanceService.getAttendanceData(startDate, endDate);
+    return this.attendanceService.getAttendanceData(startDate, endDate, className, sectionName);
   }
 
   // Fallback REST paths (keeping existing endpoints to avoid breaking legacy routes)

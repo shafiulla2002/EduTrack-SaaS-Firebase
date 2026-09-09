@@ -86,8 +86,17 @@ export default function SchoolStaffPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'teaching' | 'non-teaching' | 'salary'>('all');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  // 300ms Debounce search input to avoid flooding backend on keystrokes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
   const payrollMonths = useMemo(() => {
     const list: string[] = [];
     const now = new Date();
@@ -149,9 +158,9 @@ export default function SchoolStaffPage() {
     setStaffCases([]);
     try {
       const [invoicesRes, casesRes, scheduleRes] = await Promise.allSettled([
-        api.get(`/teachers/${staffId}/salary-invoices`),
-        api.get(`/teachers/${staffId}/cases`),
-        isTeaching ? api.get(`/teachers/${staffId}/schedule`) : Promise.resolve({ data: [] }),
+        fastGet(`/teachers/${staffId}/salary-invoices`),
+        fastGet(`/teachers/${staffId}/cases`),
+        isTeaching ? fastGet(`/teachers/${staffId}/schedule`) : Promise.resolve({ data: [] }),
       ]);
       setStaffSalaryInvoices(invoicesRes.status === 'fulfilled' ? (invoicesRes.value.data || []) : []);
       setStaffCases(casesRes.status === 'fulfilled' ? (casesRes.value.data || []) : []);
@@ -253,7 +262,7 @@ export default function SchoolStaffPage() {
   const loadStaff = async () => {
     try {
       const params = new URLSearchParams();
-      if (search) params.append('search', search);
+      if (debouncedSearch) params.append('search', debouncedSearch);
       if (deptFilter) params.append('department', deptFilter);
       if (statusFilter) params.append('status', statusFilter);
 
@@ -282,7 +291,7 @@ export default function SchoolStaffPage() {
 
   useEffect(() => {
     loadStaff();
-  }, [search, deptFilter, statusFilter]);
+  }, [debouncedSearch, deptFilter, statusFilter]);
 
   const handlePaySalary = async (id: string) => {
     try {

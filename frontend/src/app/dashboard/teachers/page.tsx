@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { useSchoolSetupUpdate } from '@/lib/events';
 import { 
   Plus, X, Search, ChevronDown, ChevronUp, Users, 
@@ -546,103 +546,118 @@ export default function TeacherClassManagement() {
   };
 
   // ── LOAD DASHBOARD METRICS & LISTS ──
+  const applyDashboardData = useCallback((data: any) => {
+    if (!data) return;
+
+    setWorkloadSummary(data.summary || {
+      totalTeachers: 0,
+      totalClasses: 0,
+      totalAssignments: 0,
+      avgLoadPercent: 0
+    });
+
+    const mappedTeachers: Teacher[] = (data.teachers || []).map((t: any, idx: number) => ({
+      id: t.teacherId,
+      name: t.teacherName || 'Unknown Teacher',
+      initials: (t.teacherName || 'TT').split(' ').map((n: string) => n[0] || '').join('').substring(0, 2).toUpperCase(),
+      subjects: t.subjectsTaught || [],
+      classCount: t.classCount || 0,
+      loadPercent: Math.min(100, t.loadPercent || 0),
+      gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
+    }));
+    setTeachers(mappedTeachers);
+
+    const mappedClasses: ClassSection[] = (data.classes || []).map((c: any) => ({
+      id: c.classSectionId,
+      classId: c.classId,
+      name: c.name || 'Unknown Class',
+      academicYear: c.academicYear || '2026-2027',
+      subjectCount: c.subjectCount || 0,
+      staffedCount: c.staffedCount || 0,
+      loadPercent: c.loadPercent || 0
+    }));
+    setClasses(mappedClasses);
+
+    const totalClassesCount = (data.summary?.totalClasses !== undefined && data.summary?.totalClasses !== null && Number(data.summary?.totalClasses) > 0)
+      ? Number(data.summary.totalClasses)
+      : (data.summary?.totalClassSections !== undefined && data.summary?.totalClassSections !== null && Number(data.summary?.totalClassSections) > 0
+          ? Number(data.summary.totalClassSections)
+          : mappedClasses.length);
+
+    setWorkloadSummary({
+      totalTeachers: data.summary?.totalTeachers ?? data.teachers?.length ?? 0,
+      totalClasses: totalClassesCount,
+      totalAssignments: data.summary?.totalAssignments ?? 0,
+      avgLoadPercent: data.summary?.avgLoadPercent ?? 0
+    });
+
+    const rawTimings = data.periodTimings || [];
+    const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
+    let displayCount = 1;
+    const mappedTimings = sortedTimings.map((pt: any) => {
+      const isBreak = pt.isBreak ?? false;
+      const displayLabel = isBreak ? (pt.name || 'Break') : `Period ${displayCount}`;
+      const displayNum = isBreak ? null : displayCount;
+      if (!isBreak) {
+        displayCount++;
+      }
+      return {
+        ...pt,
+        id: pt.id,
+        num: pt.periodNumber ?? pt.num,
+        label: displayLabel,
+        displayPeriodNumber: displayNum,
+        startTime: pt.startTime,
+        endTime: pt.endTime,
+        isBreak
+      };
+    });
+    setTimings(mappedTimings);
+
+    setAllSubjects(data.subjects || []);
+    setAcademicYears(data.academicYears || []);
+    setAvailableSections(data.sections || []);
+
+    if (data.config) {
+      setWorkingDays(data.config.workingDays || []);
+      setSchoolStartTime(data.config.schoolStartTime);
+      setSchoolEndTime(data.config.schoolEndTime);
+      setPeriodDuration(data.config.periodDuration);
+      setAutoGenerate(data.config.autoGenerate);
+      setNumPeriods(data.config.numPeriods);
+    }
+
+    const activeYear = (data.academicYears || []).find((y: any) => y.isActive) || data.academicYears?.[0];
+    if (activeYear) {
+      setSelectedAcademicYear(activeYear.id);
+      setTtSelectedAcademicYear(activeYear.id);
+    }
+  }, []);
+
   const loadWorkloadDashboard = useCallback(async () => {
     try {
-      setIsLoading(true);
-      const res = await api.get('/timetable/workload/dashboard');
-      const data = res.data;
-
-      if (data) {
-        setWorkloadSummary(data.summary || {
-          totalTeachers: 0,
-          totalClasses: 0,
-          totalAssignments: 0,
-          avgLoadPercent: 0
-        });
-
-        const mappedTeachers: Teacher[] = (data.teachers || []).map((t: any, idx: number) => ({
-          id: t.teacherId,
-          name: t.teacherName || 'Unknown Teacher',
-          initials: (t.teacherName || 'TT').split(' ').map((n: string) => n[0] || '').join('').substring(0, 2).toUpperCase(),
-          subjects: t.subjectsTaught || [],
-          classCount: t.classCount || 0,
-          loadPercent: Math.min(100, t.loadPercent || 0),
-          gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
-        }));
-        setTeachers(mappedTeachers);
-
-        const mappedClasses: ClassSection[] = (data.classes || []).map((c: any) => ({
-          id: c.classSectionId,
-          classId: c.classId,
-          name: c.name || 'Unknown Class',
-          academicYear: c.academicYear || '2026-2027',
-          subjectCount: c.subjectCount || 0,
-          staffedCount: c.staffedCount || 0,
-          loadPercent: c.loadPercent || 0
-        }));
-        setClasses(mappedClasses);
-
-        const totalClassesCount = (data.summary?.totalClasses !== undefined && data.summary?.totalClasses !== null && Number(data.summary?.totalClasses) > 0)
-          ? Number(data.summary.totalClasses)
-          : (data.summary?.totalClassSections !== undefined && data.summary?.totalClassSections !== null && Number(data.summary?.totalClassSections) > 0
-              ? Number(data.summary.totalClassSections)
-              : mappedClasses.length);
-
-        setWorkloadSummary({
-          totalTeachers: data.summary?.totalTeachers ?? data.teachers?.length ?? 0,
-          totalClasses: totalClassesCount,
-          totalAssignments: data.summary?.totalAssignments ?? 0,
-          avgLoadPercent: data.summary?.avgLoadPercent ?? 0
-        });
-
-        const rawTimings = data.periodTimings || [];
-        const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
-        let displayCount = 1;
-        const mappedTimings = sortedTimings.map((pt: any) => {
-          const isBreak = pt.isBreak ?? false;
-          const displayLabel = isBreak ? (pt.name || 'Break') : `Period ${displayCount}`;
-          const displayNum = isBreak ? null : displayCount;
-          if (!isBreak) {
-            displayCount++;
+      const res = await fastGet('/timetable/workload/dashboard', undefined, {
+        ttlMs: 60000,
+        onRevalidate: (fresh) => {
+          if (fresh) {
+            applyDashboardData(fresh);
           }
-          return {
-            ...pt,
-            id: pt.id,
-            num: pt.periodNumber ?? pt.num,
-            label: displayLabel,
-            displayPeriodNumber: displayNum,
-            startTime: pt.startTime,
-            endTime: pt.endTime,
-            isBreak
-          };
-        });
-        setTimings(mappedTimings);
-
-        setAllSubjects(data.subjects || []);
-        setAcademicYears(data.academicYears || []);
-        setAvailableSections(data.sections || []);
-
-        if (data.config) {
-          setWorkingDays(data.config.workingDays || []);
-          setSchoolStartTime(data.config.schoolStartTime);
-          setSchoolEndTime(data.config.schoolEndTime);
-          setPeriodDuration(data.config.periodDuration);
-          setAutoGenerate(data.config.autoGenerate);
-          setNumPeriods(data.config.numPeriods);
         }
+      });
 
-        const activeYear = (data.academicYears || []).find((y: any) => y.isActive) || data.academicYears?.[0];
-        if (activeYear) {
-          setSelectedAcademicYear(activeYear.id);
-          setTtSelectedAcademicYear(activeYear.id);
-        }
+      if (!res.isFromCache) {
+        setIsLoading(false);
+      }
+
+      if (res.data) {
+        applyDashboardData(res.data);
       }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [applyDashboardData]);
 
   useEffect(() => {
     loadWorkloadDashboard();
@@ -653,13 +668,13 @@ export default function TeacherClassManagement() {
     setTeacherDetailLoading(true);
     try {
       const [workloadRes, periodsRes, leasersRes] = await Promise.all([
-        api.get(`/timetable/workload/teacher/${teacherId}`),
-        api.get(`/timetable/teacher/${teacherId}/periods?gaps=true`),
-        api.get(`/timetable/teacher/${teacherId}/leaser-periods`)
+        fastGet(`/timetable/workload/teacher/${teacherId}`),
+        fastGet(`/timetable/teacher/${teacherId}/periods?gaps=true`),
+        fastGet(`/timetable/teacher/${teacherId}/leaser-periods`)
       ]);
       
-      const details = workloadRes.data;
-      const skillsRes = await api.get(`/timetable/teachers/${teacherId}/skills`);
+      const details = workloadRes.data || {};
+      const skillsRes = await fastGet(`/timetable/teachers/${teacherId}/skills`);
 
       // Parse schedule periods — backend returns normalized flat fields
       const allPeriods: any[] = periodsRes.data || [];

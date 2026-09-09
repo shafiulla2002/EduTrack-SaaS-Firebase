@@ -81,8 +81,8 @@ export default function ExamsAndMarksPage() {
   // Fetch types for management modal
   const fetchManageTypes = async () => {
     try {
-      const res = await api.get('/exams/exam-types/manage');
-      setManageTypesList(res.data);
+      const res = await fastGet('/exams/exam-types/manage');
+      setManageTypesList(res.data || []);
     } catch (err) {
       console.error('Error fetching manage exam types:', err);
     }
@@ -154,30 +154,32 @@ export default function ExamsAndMarksPage() {
         fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }),
       ]);
 
-      setClasses(classRes.data);
-      if (classRes.data.length > 0) {
+      setClasses(classRes.data || []);
+      if (classRes.data?.length > 0) {
         setSelectedClassSectionId(classRes.data[0].value);
       }
 
-      setSubjects(subRes.data);
-      if (subRes.data.length > 0) {
+      setSubjects(subRes.data || []);
+      if (subRes.data?.length > 0) {
         setSelectedSubjectId(subRes.data[0].id);
       }
 
-      setComponents(compRes.data);
-      if (compRes.data.length > 0) {
+      setComponents(compRes.data || []);
+      if (compRes.data?.length > 0) {
         setSelectedSubjectType(compRes.data[0].name);
       } else {
         setSelectedSubjectType('Theory');
       }
 
-      setExamTypes(typeRes.data);
-      if (typeRes.data.length > 0) {
+      setExamTypes(typeRes.data || []);
+      if (typeRes.data?.length > 0) {
         setSelectedExamName(typeRes.data[0]);
         // Fetch config for first exam type (depends on typeRes)
         try {
-          const cfgRes = await api.get(`/exam-config/resolve?examType=${encodeURIComponent(typeRes.data[0])}`);
-          setExamConfig({ passingPercentage: cfgRes.data.passingPercentage, maxMarks: cfgRes.data.maxMarks });
+          const cfgRes = await fastGet(`/exam-config/resolve?examType=${encodeURIComponent(typeRes.data[0])}`, undefined, { ttlMs: 60000 });
+          if (cfgRes.data) {
+            setExamConfig({ passingPercentage: cfgRes.data.passingPercentage, maxMarks: cfgRes.data.maxMarks });
+          }
         } catch {}
       }
     } catch (err: any) {
@@ -193,12 +195,16 @@ export default function ExamsAndMarksPage() {
     if (selectedClassSectionId) params.classSectionId = selectedClassSectionId;
     if (selectedSubjectId) params.subjectId = selectedSubjectId;
     if (selectedSubjectType) params.subjectType = selectedSubjectType;
-    api.get('/exam-config/resolve', { params })
-      .then(res => setExamConfig({
-        passingPercentage: res.data.passingPercentage,
-        maxMarks: res.data.maxMarks,
-        passMarks: res.data.passMarks,
-      }))
+    fastGet('/exam-config/resolve', { params }, { ttlMs: 60000 })
+      .then(res => {
+        if (res.data) {
+          setExamConfig({
+            passingPercentage: res.data.passingPercentage,
+            maxMarks: res.data.maxMarks,
+            passMarks: res.data.passMarks,
+          });
+        }
+      })
       .catch(() => {});
   }, [selectedExamName, selectedClassSectionId, selectedSubjectId, selectedSubjectType]);
 
@@ -209,17 +215,29 @@ export default function ExamsAndMarksPage() {
   }, [selectedClassSectionId, selectedSubjectId, selectedExamName, selectedSubjectType]);
 
   const fetchRoster = async () => {
-    setIsLoading(true);
     setErrorMsg('');
     try {
-      const res = await api.get(
+      const res = await fastGet(
         `/exams/marks-entry?classSectionId=${selectedClassSectionId}&subjectId=${selectedSubjectId}&examName=${encodeURIComponent(
           selectedExamName
-        )}&subjectType=${encodeURIComponent(selectedSubjectType)}`
+        )}&subjectType=${encodeURIComponent(selectedSubjectType)}`,
+        undefined,
+        {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh?.roster) setRoster(fresh.roster);
+            if (fresh?.config) setExamConfig(fresh.config);
+          }
+        }
       );
-      setRoster(res.data.roster || []);
-      if (res.data.config) {
-        setExamConfig(res.data.config);
+      if (!res.isFromCache) {
+        setIsLoading(false);
+      }
+      if (res.data) {
+        setRoster(res.data.roster || []);
+        if (res.data.config) {
+          setExamConfig(res.data.config);
+        }
       }
     } catch (err: any) {
       console.error('Error fetching marks entry list:', err);

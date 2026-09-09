@@ -194,20 +194,80 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor to handle responses, 401s, and auto-invalidate cache on mutations
+// ── In-Flight Request Deduplication & Tenant-Scoped SWR Cache ─────────────
+const inFlightRequests = new Map<string, Promise<any>>();
+const lookupCache = new Map<string, { data: any; expiresAt: number; cachedAt: number }>();
+
+export function invalidateLookupCache(tenantId?: string, urlPrefix?: string) {
+  const tid = tenantId || getTenantFromHostname() || getStoredTenantId() || '';
+  if (urlPrefix) {
+    lookupCache.forEach((_, key) => {
+      if ((!tid || key.startsWith(`${tid}:`)) && key.includes(urlPrefix)) {
+        lookupCache.delete(key);
+      }
+    });
+  } else if (tid) {
+    lookupCache.forEach((_, key) => {
+      if (key.startsWith(`${tid}:`)) {
+        lookupCache.delete(key);
+      }
+    });
+  } else {
+    lookupCache.clear();
+  }
+}
+
+export function invalidateCachePrefix(prefix: string) {
+  const tid = getTenantFromHostname() || getStoredTenantId() || '';
+  invalidateLookupCache(tid, prefix);
+}
+
+// Interceptor to handle responses, 401s, and targeted auto-invalidation on mutations
 api.interceptors.response.use(
   (response) => {
-    // Automatically purge cached data on state-mutating requests (POST, PUT, PATCH, DELETE)
+    // Automatically purge targeted cached data on state-mutating requests (POST, PUT, PATCH, DELETE)
     const method = response.config.method?.toUpperCase();
     if (method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-      invalidateLookupCache();
+      const url = response.config.url || '';
+      const tid = getTenantFromHostname() || getStoredTenantId() || '';
+      
+      // Determine affected cache domain
+      if (url.includes('/students') || url.includes('/admissions') || url.includes('/promotions')) {
+        invalidateLookupCache(tid, '/students');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/billing') || url.includes('/invoices') || url.includes('/payments')) {
+        invalidateLookupCache(tid, '/billing');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/teachers') || url.includes('/staff') || url.includes('/timetable')) {
+        invalidateLookupCache(tid, '/teachers');
+        invalidateLookupCache(tid, '/timetable');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/attendance')) {
+        invalidateLookupCache(tid, '/attendance');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/expenses')) {
+        invalidateLookupCache(tid, '/expenses');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/exams') || url.includes('/exam-config') || url.includes('/grades')) {
+        invalidateLookupCache(tid, '/exams');
+        invalidateLookupCache(tid, '/grades');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/leave')) {
+        invalidateLookupCache(tid, '/leave');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/announcements')) {
+        invalidateLookupCache(tid, '/announcements');
+      } else {
+        // Fallback: purge module cache while preserving static metadata
+        invalidateLookupCache(tid, url);
+        invalidateLookupCache(tid, '/dashboard/summary');
+      }
     }
     return response;
   },
   async (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
-        // Prevent redirect loop if already on auth pages or onboarding
         const path = window.location.pathname;
         if (!path.includes('/auth/login') && !path.includes('/auth/otp') && !path.includes('/auth/callback') && !path.includes('/register-school')) {
           clearStoredAuth();
@@ -221,25 +281,13 @@ api.interceptors.response.use(
 
 export const updateStudent = (id: string, data: Partial<any>) => api.patch(`/students/${id}`, data);
 
-// ── In-Flight Request Deduplication & Tenant-Scoped SWR Cache ─────────────
-const inFlightRequests = new Map<string, Promise<any>>();
-const lookupCache = new Map<string, { data: any; expiresAt: number; cachedAt: number }>();
-
-export function invalidateLookupCache(tenantId?: string) {
-  if (tenantId) {
-    lookupCache.forEach((_, key) => {
-      if (key.startsWith(`${tenantId}:`)) {
-        lookupCache.delete(key);
-      }
-    });
-  } else {
-    lookupCache.clear();
-  }
-}
-
 // Invalidate on school setup update events
 if (typeof window !== 'undefined') {
-  window.addEventListener('schoolSetupUpdated', () => invalidateLookupCache());
+  window.addEventListener('schoolSetupUpdated', () => {
+    const tid = getTenantFromHostname() || getStoredTenantId() || '';
+    invalidateLookupCache(tid, '/dashboard/summary');
+    invalidateLookupCache(tid, '/tenant/setup-status');
+  });
 }
 
 export interface FastGetOptions<T = any> {

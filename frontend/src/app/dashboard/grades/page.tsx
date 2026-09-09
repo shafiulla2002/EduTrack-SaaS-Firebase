@@ -6,7 +6,7 @@ import {
   TrendingUp, CheckCircle, AlertTriangle, Trophy, BookOpen,
   Download, Printer
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { useTenant } from '../../providers/TenantContext';
 import { PDFService } from '@/lib/pdf';
 import { PDFLayout } from '@/components/PDFLayout';
@@ -118,16 +118,20 @@ export default function GradesMarksPage() {
 
   const fetchMetadata = async () => {
     try {
-      const classRes = await api.get('/exams/classes');
-      setClasses(classRes.data);
-      if (classRes.data.length > 0) {
-        setSelectedClassSectionId(classRes.data[0].value);
+      const [classRes, typeRes] = await Promise.all([
+        fastGet('/exams/classes'),
+        fastGet('/exams/exam-types')
+      ]);
+      const classList = classRes.data || [];
+      const typeList = typeRes.data || [];
+      setClasses(classList);
+      if (classList.length > 0) {
+        setSelectedClassSectionId(classList[0].value);
       }
 
-      const typeRes = await api.get('/exams/exam-types');
-      setExamTypes(typeRes.data);
-      if (typeRes.data.length > 0) {
-        setSelectedExamName(typeRes.data[0]);
+      setExamTypes(typeList);
+      if (typeList.length > 0) {
+        setSelectedExamName(typeList[0]);
       }
     } catch (err: any) {
       console.error('Error fetching grades metadata:', err);
@@ -142,15 +146,26 @@ export default function GradesMarksPage() {
   }, [selectedClassSectionId, selectedExamName]);
 
   const fetchGrades = async () => {
-    setIsLoading(true);
     setErrorMsg('');
     try {
-      const res = await api.get(
+      const res = await fastGet(
         `/exams/grades-report?classSectionId=${selectedClassSectionId}&examName=${encodeURIComponent(
           selectedExamName
-        )}`
+        )}`,
+        undefined,
+        {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh) setRecords(fresh);
+          }
+        }
       );
-      setRecords(res.data);
+      if (!res.isFromCache) {
+        setIsLoading(false);
+      }
+      if (res.data) {
+        setRecords(res.data);
+      }
     } catch (err: any) {
       console.error('Error loading grades report:', err);
       setErrorMsg('Failed to load marks roster report.');

@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, X, Search, Edit2, Trash2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 
 interface Expense {
   id: string;
@@ -65,12 +65,12 @@ export default function ExpensesPage() {
 
   const loadExpenses = async () => {
     try {
-      setLoading(true);
+      const monthParam = showAll ? undefined : selectedMonth;
       const [expRes, sumRes] = await Promise.all([
-        api.get('/expenses'),
-        api.get('/expenses/summary')
+        fastGet('/expenses', { params: monthParam ? { month: monthParam } : undefined }),
+        fastGet('/expenses/summary')
       ]);
-      setExpenses(expRes.data.map((e: any) => ({
+      setExpenses((expRes.data || []).map((e: any) => ({
         id: e.id,
         category: e.category,
         amount: Number(e.amount),
@@ -79,7 +79,9 @@ export default function ExpensesPage() {
         paymentMode: e.paymentMode,
         description: e.description || ''
       })));
-      setSummary(sumRes.data);
+      if (sumRes.data) {
+        setSummary(sumRes.data);
+      }
     } catch (err) {
       console.error('Failed to load expenses:', err);
     } finally {
@@ -89,7 +91,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     loadExpenses();
-  }, []);
+  }, [selectedMonth, showAll]);
 
   // Filtered list
   const filteredExpenses = useMemo(() => {

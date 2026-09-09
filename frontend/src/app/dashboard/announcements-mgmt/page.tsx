@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Megaphone, Plus, Trash2, X, AlertTriangle, Pin, Calendar, Users, Eye, Check, BookOpen, Clock } from 'lucide-react';
 import { useTenant } from '@/app/providers/TenantContext';
 import Drawer from '@/components/Drawer';
@@ -67,11 +67,23 @@ export default function AnnouncementsMgmtPage() {
   async function loadData() {
     try {
       const [annRes, clsRes] = await Promise.all([
-        api.get('/teacher-portal/announcements'),
-        api.get('/teacher-portal/classes'),
+        fastGet('/teacher-portal/announcements', undefined, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh) setAnnouncements(fresh);
+          }
+        }),
+        fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }),
       ]);
-      setAnnouncements(annRes.data);
-      setClasses(clsRes.data);
+      if (!annRes.isFromCache) {
+        setLoading(false);
+      }
+      if (annRes.data) {
+        setAnnouncements(annRes.data);
+      }
+      if (clsRes.data) {
+        setClasses(clsRes.data);
+      }
     } catch (err) {
       console.error('Failed to load announcements:', err);
     } finally {

@@ -8,6 +8,16 @@ import { RoleFilterHelper } from '../common/role-filter.helper';
 
 @Injectable()
 export class TimetableService {
+  private static workloadCache = new Map<string, { data: any; expiresAt: number }>();
+
+  public static invalidateWorkloadCache(tenantId?: string) {
+    if (tenantId) {
+      TimetableService.workloadCache.delete(tenantId);
+    } else {
+      TimetableService.workloadCache.clear();
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly roleFilterHelper: RoleFilterHelper,
@@ -638,6 +648,11 @@ export class TimetableService {
   // ---------- Workload & Assignments (implemented) ----------
   async getWorkloadDashboardData() {
     const tenantId = this.getTenantId();
+    const now = Date.now();
+    const cached = TimetableService.workloadCache.get(tenantId);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
 
     const teacherWhere: any = {
       tenantId,
@@ -749,7 +764,7 @@ export class TimetableService {
       };
     });
 
-    return {
+    const resultData = {
       summary: {
         totalClassSections,
         totalTeachers,
@@ -764,6 +779,13 @@ export class TimetableService {
       periodTimings,
       config,
     };
+
+    TimetableService.workloadCache.set(tenantId, {
+      data: resultData,
+      expiresAt: now + 60 * 1000,
+    });
+
+    return resultData;
   }
 
   async getWorkloadSummary(academicYearId: string) {

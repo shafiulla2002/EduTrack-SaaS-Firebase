@@ -387,63 +387,75 @@ export class BillingService {
   // ── STUDENT SEARCH WITH PENDING BALANCE CALCULATIONS ─────────────────────────
 
   async searchStudents(searchTerm: string) {
+    if (!searchTerm || !searchTerm.trim()) {
+      return [];
+    }
+
     const tenantId = this.getTenantId();
+    const cleanSearch = searchTerm.trim();
 
     const students = await this.prisma.studentProfile.findMany({
       where: {
         user: {
           tenantId,
+          isActive: true,
           OR: [
-            { name: { contains: searchTerm, mode: 'insensitive' } },
-            { phone: { contains: searchTerm, mode: 'insensitive' } },
+            { name: { contains: cleanSearch, mode: 'insensitive' } },
+            { phone: { contains: cleanSearch, mode: 'insensitive' } },
           ],
         },
       },
-      include: {
-        user: true,
+      select: {
+        id: true,
+        rollNo: true,
+        profilePhotoUrl: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          }
+        },
         classSection: {
-          include: {
-            class: true,
-            section: true,
-          },
+          select: {
+            id: true,
+            classId: true,
+            sectionId: true,
+            class: { select: { id: true, name: true, academicYearId: true } },
+            section: { select: { id: true, name: true } },
+          }
         },
         opportunities: {
           where: {
-            stageName: { notIn: ['Closed Won', 'Closed Lost'] }, // Opportunity is open
+            tenantId,
+            stageName: { notIn: ['Closed Won', 'Closed Lost'] },
           },
           orderBy: { createdAt: 'desc' },
           take: 1,
-          include: {
+          select: {
+            id: true,
+            academicYearId: true,
             opportunityLineItems: {
-              include: { product: true }
+              select: {
+                unitPrice: true,
+                quantity: true,
+                discount: true,
+              }
             },
             invoices: {
               where: {
                 tenantId,
                 status: { not: PaymentStatus.VOIDED }
               },
-              include: { invoiceItems: true }
+              select: {
+                paidAmount: true,
+                remainingBalance: true,
+              }
             }
           }
-        },
+        }
       },
       take: 20,
-    });
-
-    const studentIds = students.map(s => s.id);
-    const unpaidInvoices = await this.prisma.invoice.findMany({
-      where: {
-        studentId: { in: studentIds },
-        tenantId,
-        status: { in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID] }
-      },
-      include: {
-        opportunity: {
-          include: {
-            academicYear: true
-          }
-        }
-      }
     });
 
     const results = [];
@@ -451,6 +463,7 @@ export class BillingService {
       const openOpp = student.opportunities[0];
       let totalFee = 0;
       let totalPaid = 0;
+      let totalDue = 0;
 
       if (openOpp) {
         totalFee = openOpp.opportunityLineItems.reduce((sum, oli) => {
@@ -460,50 +473,23 @@ export class BillingService {
         }, 0);
 
         totalPaid = openOpp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+        totalDue = Math.max(0, totalFee - totalPaid);
       }
-
-      if (totalFee === 0 && student.classSection?.classId) {
-        const activeProducts = await this.getActiveProducts(
-          student.classSection.classId,
-          student.classSection.class?.academicYearId || undefined
-        );
-        totalFee = activeProducts.reduce((sum, p) => sum + p.unitPrice, 0);
-      }
-
-      // Calculate previous years unpaid balances
-      let currentYearStart = new Date(0);
-      if (openOpp && openOpp.academicYearId) {
-        const cy = await this.prisma.academicYear.findFirst({
-          where: { id: openOpp.academicYearId, tenantId }
-        });
-        if (cy) currentYearStart = cy.startDate;
-      }
-
-      const studentPrevUnpaid = unpaidInvoices.filter(inv => {
-        if (inv.studentId !== student.id) return false;
-        if (inv.opportunity?.academicYearId) {
-          if (inv.opportunity.academicYearId === openOpp?.academicYearId) return false;
-          return new Date(inv.opportunity.academicYear.startDate) < currentYearStart;
-        }
-        return new Date(inv.invoiceDate) < currentYearStart;
-      });
-
-      const totalPreviousYearDue = studentPrevUnpaid.reduce((sum, inv) => sum + Number(inv.remainingBalance), 0);
 
       results.push({
         account: {
           id: student.id,
-          name: student.user.name,
-          rollNo: student.rollNo,
-          phone: student.user.phone,
+          name: student.user?.name || 'Student',
+          rollNo: student.rollNo || 'N/A',
+          phone: student.user?.phone || '',
           profilePhotoUrl: student.profilePhotoUrl,
-          class: student.classSection?.class.name || '',
-          section: student.classSection?.section.name || '',
+          class: student.classSection?.class?.name || '',
+          section: student.classSection?.section?.name || '',
           classId: student.classSection?.classId || '',
           sectionId: student.classSection?.sectionId || '',
           opportunities: openOpp ? [{ id: openOpp.id, academicYearId: openOpp.academicYearId }] : [],
         },
-        totalPendingBalance: Math.max(0, totalFee - totalPaid) + totalPreviousYearDue,
+        totalPendingBalance: totalDue,
         totalPaidAmount: totalPaid,
       });
     }
