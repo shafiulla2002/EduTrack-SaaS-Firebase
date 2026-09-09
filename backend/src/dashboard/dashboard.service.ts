@@ -91,7 +91,7 @@ export class DashboardService {
             isActive: true,
           },
         },
-      }),
+      }).catch(() => 0),
 
       // 2. Total Teachers
       this.prisma.staffProfile.count({
@@ -102,7 +102,7 @@ export class DashboardService {
             role: { in: ['TEACHER', 'STAFF'] },
           },
         },
-      }),
+      }).catch(() => 0),
 
       // 3. Total Classes
       this.prisma.classSection.count({
@@ -112,7 +112,7 @@ export class DashboardService {
             isActive: true,
           },
         },
-      }),
+      }).catch(() => 0),
 
       // 4. Total Revenue
       this.prisma.invoice.aggregate({
@@ -123,7 +123,7 @@ export class DashboardService {
         _sum: {
           paidAmount: true,
         },
-      }),
+      }).catch(() => ({ _sum: { paidAmount: 0 } })),
 
       // 5. Total Expenses
       this.prisma.expense.aggregate({
@@ -134,7 +134,7 @@ export class DashboardService {
         _sum: {
           amount: true,
         },
-      }),
+      }).catch(() => ({ _sum: { amount: 0 } })),
 
       // 6. Average Attendance Rate (Database-side SUM aggregation)
       this.prisma.$queryRaw<Array<{ totalPresent: string | number; totalRoster: string | number }>>`
@@ -143,7 +143,7 @@ export class DashboardService {
           COALESCE(SUM("totalStudents"), 0)::bigint AS "totalRoster"
         FROM "AttendanceSession"
         WHERE "tenantId" = ${tenantId}
-      `,
+      `.catch(() => [{ totalPresent: 0, totalRoster: 0 }]),
 
       // 7. Avg. Academic Score (Database-side percentage aggregation)
       this.prisma.$queryRaw<Array<{ avgScore: number | null }>>`
@@ -165,12 +165,12 @@ export class DashboardService {
           AND em."subjectType" = es."subjectType"
           AND em."tenantId" = es."tenantId"
         WHERE em."tenantId" = ${tenantId}
-      `,
+      `.catch(() => [{ avgScore: 0 }]),
 
       // 7b. Leave requests counts (Direct counts)
-      this.prisma.leaveRequest.count({ where: { tenantId, status: 'PENDING' } }),
-      this.prisma.leaveRequest.count({ where: { tenantId, status: 'APPROVED', approvedDate: { gte: todayStart } } }),
-      this.prisma.leaveRequest.count({ where: { tenantId, status: 'REJECTED', rejectedDate: { gte: todayStart } } }),
+      this.prisma.leaveRequest.count({ where: { tenantId, status: 'PENDING' } }).catch(() => 0),
+      this.prisma.leaveRequest.count({ where: { tenantId, status: 'APPROVED', approvedDate: { gte: todayStart } } }).catch(() => 0),
+      this.prisma.leaveRequest.count({ where: { tenantId, status: 'REJECTED', rejectedDate: { gte: todayStart } } }).catch(() => 0),
 
       // 8. Recent Admissions (Targeted field selection)
       this.prisma.studentProfile.findMany({
@@ -202,7 +202,7 @@ export class DashboardService {
             },
           },
         },
-      }),
+      }).catch(() => []),
 
       // 9. Recent Payments - Invoices (Targeted field selection)
       this.prisma.invoice.findMany({
@@ -228,7 +228,7 @@ export class DashboardService {
           invoiceDate: 'desc',
         },
         take: 10,
-      }),
+      }).catch(() => []),
 
       // 9b. Recent Payments - Salary Expenses (Targeted field selection)
       this.prisma.expense.findMany({
@@ -247,29 +247,29 @@ export class DashboardService {
           date: 'desc',
         },
         take: 10,
-      }),
+      }).catch(() => []),
 
       // 11. Trend Students This Month
       this.prisma.studentProfile.count({
         where: { user: { tenantId, isActive: true, createdAt: { gte: thisMonthStart } } },
-      }),
+      }).catch(() => 0),
 
       // 11b. Trend Students Last Month
       this.prisma.studentProfile.count({
         where: { user: { tenantId, isActive: true, createdAt: { gte: lastMonthStart, lte: lastMonthEnd } } },
-      }),
+      }).catch(() => 0),
 
       // 11c. Trend Revenue This Month
       this.prisma.invoice.aggregate({
         where: { tenantId, status: 'PAID', invoiceDate: { gte: thisMonthStart } },
         _sum: { paidAmount: true },
-      }),
+      }).catch(() => ({ _sum: { paidAmount: 0 } })),
 
       // 11d. Trend Revenue Last Month
       this.prisma.invoice.aggregate({
         where: { tenantId, status: 'PAID', invoiceDate: { gte: lastMonthStart, lte: lastMonthEnd } },
         _sum: { paidAmount: true },
-      }),
+      }).catch(() => ({ _sum: { paidAmount: 0 } })),
 
       // 12. Monthly chart aggregations in database
       this.prisma.$queryRaw<Array<{ month: string; totalPaid: number }>>`
@@ -281,7 +281,7 @@ export class DashboardService {
           AND status = 'PAID' 
           AND "invoiceDate" >= ${sixMonthsAgo}
         GROUP BY to_char("invoiceDate", 'YYYY-MM')
-      `,
+      `.catch(() => []),
       this.prisma.$queryRaw<Array<{ month: string; totalSalary: number }>>`
         SELECT 
           to_char(date, 'YYYY-MM') AS "month",
@@ -292,7 +292,7 @@ export class DashboardService {
           AND status = 'PAID' 
           AND date >= ${sixMonthsAgo}
         GROUP BY to_char(date, 'YYYY-MM')
-      `,
+      `.catch(() => []),
     ]);
 
     const totalRevenue = Number(revenueAgg._sum.paidAmount || 0);

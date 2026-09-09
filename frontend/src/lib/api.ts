@@ -3,11 +3,16 @@ import axios from 'axios';
 // In production (Vercel): use the Next.js API proxy route /api/* which forwards to the backend.
 // In local dev: use NEXT_PUBLIC_API_URL env var, or fall back to localhost:3001 directly.
 const isServer = typeof window === 'undefined';
+const isProd = process.env.NODE_ENV === 'production';
+const DEFAULT_PROD_API = 'https://api.edutrackapplication.covenantsynergy.in';
+
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL
-  ? process.env.NEXT_PUBLIC_API_URL   // Explicitly configured backend URL (e.g. separate Vercel backend)
-  : isServer
-    ? 'http://localhost:3001'          // Server-side rendering in dev: direct backend call
-    : '/api';                          // Client-side on Vercel: use Next.js proxy route
+  ? process.env.NEXT_PUBLIC_API_URL
+  : isProd
+    ? DEFAULT_PROD_API
+    : isServer
+      ? (process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001')
+      : 'http://localhost:3001';
 
 export function getActiveRole(): 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' {
   if (typeof window === 'undefined') return 'SCHOOL_ADMIN';
@@ -26,36 +31,54 @@ export function getActiveRole(): 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER
   return role;
 }
 
+let memoizedToken: { role: string; token: string | null } | null = null;
+let memoizedTenantId: { role: string; tenantId: string | null } | null = null;
+
 export function getStoredToken(): string | null {
   if (typeof window === 'undefined') return null;
   const role = getActiveRole();
-  if (role === 'PARENT') return localStorage.getItem('parent_token');
-  if (role === 'TEACHER' || role === 'DRIVER') return localStorage.getItem('teacher_token');
-  return localStorage.getItem('admin_token');
+  if (memoizedToken && memoizedToken.role === role) {
+    return memoizedToken.token;
+  }
+  let token: string | null = null;
+  if (role === 'PARENT') token = localStorage.getItem('parent_token');
+  else if (role === 'TEACHER' || role === 'DRIVER') token = localStorage.getItem('teacher_token');
+  else token = localStorage.getItem('admin_token');
+  memoizedToken = { role, token };
+  return token;
 }
 
 export function getStoredTenantId(): string | null {
   if (typeof window === 'undefined') return null;
   const role = getActiveRole();
+  if (memoizedTenantId && memoizedTenantId.role === role) {
+    return memoizedTenantId.tenantId;
+  }
   let tid = role === 'PARENT' ? localStorage.getItem('parent_tenantId') :
             (role === 'TEACHER' || role === 'DRIVER') ? localStorage.getItem('teacher_tenantId') :
             localStorage.getItem('admin_tenantId');
-  if (tid) return tid;
-
-  // Convenience fallback: extract tenantId from the user's stored token
-  const token = getStoredToken();
-  if (token) {
-    try {
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1]));
-        if (payload.tenantId) {
-          return payload.tenantId;
+  if (!tid) {
+    // Convenience fallback: extract tenantId from the user's stored token
+    const token = getStoredToken();
+    if (token) {
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload.tenantId && typeof payload.tenantId === 'string') {
+            const extractedTenantId: string = payload.tenantId;
+            tid = extractedTenantId;
+            // Save to localStorage to avoid repeating JWT decode
+            if (role === 'PARENT') localStorage.setItem('parent_tenantId', extractedTenantId);
+            else if (role === 'TEACHER' || role === 'DRIVER') localStorage.setItem('teacher_tenantId', extractedTenantId);
+            else localStorage.setItem('admin_tenantId', extractedTenantId);
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
   }
-  return null;
+  memoizedTenantId = { role, tenantId: tid || null };
+  return tid || null;
 }
 
 export function getStoredUserPhone(): string | null {
@@ -68,6 +91,8 @@ export function getStoredUserPhone(): string | null {
 
 export function clearStoredAuth() {
   if (typeof window === 'undefined') return;
+  memoizedToken = null;
+  memoizedTenantId = null;
   const role = getActiveRole();
   if (role === 'PARENT') {
     localStorage.removeItem('parent_token');
@@ -107,10 +132,14 @@ export function getTenantFromHostname(): string {
 
   const hostname = window.location.hostname;
   
-  if (hostname === 'edutrack.covenantsynergy.in' || hostname === 'api-edutrack.covenantsynergy.in') {
+  if (
+    hostname === 'edutrackapplication.covenantsynergy.in' ||
+    hostname === 'api.edutrackapplication.covenantsynergy.in' ||
+    hostname === 'edutrack.covenantsynergy.in'
+  ) {
     return '';
-  } else if (hostname.endsWith('.edutrack.covenantsynergy.in')) {
-    const parts = hostname.replace('.edutrack.covenantsynergy.in', '').split('.');
+  } else if (hostname.endsWith('.edutrackapplication.covenantsynergy.in') || hostname.endsWith('.edutrack.covenantsynergy.in')) {
+    const parts = hostname.replace('.edutrackapplication.covenantsynergy.in', '').replace('.edutrack.covenantsynergy.in', '').split('.');
     const sub = parts[parts.length - 1];
     if (!PLATFORM_HOSTS.has(sub)) {
       return sub;

@@ -32,10 +32,15 @@ export class TenantMiddleware implements NestMiddleware {
       // 2. Resolve from subdomain of hostname
       const hostname = req.hostname || '';
       
-      if (hostname === 'edutrack.covenantsynergy.in' || hostname === 'api-edutrack.covenantsynergy.in') {
+      if (
+        hostname === 'edutrackapplication.covenantsynergy.in' ||
+        hostname === 'api.edutrackapplication.covenantsynergy.in' ||
+        hostname === 'edutrack.covenantsynergy.in' ||
+        hostname === 'api-edutrack.covenantsynergy.in'
+      ) {
         tenantSubdomain = '';
-      } else if (hostname.endsWith('.edutrack.covenantsynergy.in')) {
-        const parts = hostname.replace('.edutrack.covenantsynergy.in', '').split('.');
+      } else if (hostname.endsWith('.edutrackapplication.covenantsynergy.in') || hostname.endsWith('.edutrack.covenantsynergy.in')) {
+        const parts = hostname.replace('.edutrackapplication.covenantsynergy.in', '').replace('.edutrack.covenantsynergy.in', '').split('.');
         const sub = parts[parts.length - 1];
         if (!PLATFORM_SUBDOMAINS.has(sub)) {
           tenantSubdomain = sub;

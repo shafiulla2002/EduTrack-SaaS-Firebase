@@ -1,6 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const isProd = process.env.NODE_ENV === 'production';
+const DEFAULT_PROD_API = 'https://api.edutrackapplication.covenantsynergy.in';
+const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || (isProd ? DEFAULT_PROD_API : 'http://localhost:3001');
 
 class SocketService {
   private socket: Socket | null = null;

@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/core": "^6.2.1",
     "@react-google-maps/api": "^2.20.8",
     "axios": "^1.6.5",
     "clsx": "^2.1.0",
