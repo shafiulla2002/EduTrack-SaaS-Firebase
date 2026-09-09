@@ -1444,11 +1444,12 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
       {/* CASE DETAILS & EDIT MODAL */}
       {selectedCase && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[999] p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full sm:max-w-xl overflow-hidden shadow-2xl space-y-0">
+        <>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[999]" onClick={() => { setSelectedCase(null); setIsEditing(false); }} />
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[1000] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
             
             {/* Modal Header */}
-            <div className={`p-6 text-white flex justify-between items-start ${
+            <div className={`p-6 text-white flex justify-between items-start shrink-0 ${
               (isEditing ? editBehaviorType : selectedCase.behaviorType) === 'Complaint' ? 'bg-rose-600' : 'bg-emerald-600'
             }`}>
               <div className="space-y-1">
@@ -1467,7 +1468,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
             {/* Modal Body */}
             {isEditing ? (
-              <form onSubmit={handleSaveEdit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto overscroll-contain">
+              <form onSubmit={handleSaveEdit} className="p-6 space-y-4 flex-1 overflow-y-auto overscroll-contain flex flex-col">
                 <div className="grid grid-cols-2 gap-4">
                   
                   {/* Edit Record Type */}
@@ -1560,7 +1561,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
 
                 {/* Edit Form Actions */}
-                <div className="flex gap-3 justify-end pt-3 border-t border-slate-150">
+                <div className="flex gap-3 justify-end pt-3 border-t border-slate-150 shrink-0 mt-auto">
                   <button
                     type="button"
                     onClick={() => setIsEditing(false)}
@@ -1578,7 +1579,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
               </form>
             ) : (
-              <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto overscroll-contain">
+              <div className="p-6 space-y-6 flex-1 overflow-y-auto overscroll-contain">
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
                     <span className="text-slate-400 font-bold block text-[10px] uppercase tracking-wider font-sans">Student Name</span>
@@ -1683,7 +1684,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             )}
 
             {/* Modal Footer block */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-700 flex justify-end">
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end shrink-0">
               <button
                 onClick={() => { setSelectedCase(null); setIsEditing(false); }}
                 className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold cursor-pointer transition-colors"
@@ -1692,14 +1693,15 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* PARENT COMPLAINT ACTION MODAL */}
       {selectedParentComplaint && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[999] p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full sm:max-w-2xl overflow-hidden shadow-2xl space-y-0">
-            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+        <>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[999]" onClick={() => setSelectedParentComplaint(null)} />
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-[1000] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
+            <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Parent Grievance Ticket</span>
                 <h3 className="text-lg font-black leading-tight mt-0.5">{selectedParentComplaint.title}</h3>
@@ -1712,7 +1714,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </button>
             </div>
 
-            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto overscroll-contain">
+            <div className="p-6 space-y-5 flex-1 overflow-y-auto overscroll-contain">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-150">
                 <div>
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Submitted By</span>
@@ -1826,7 +1828,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

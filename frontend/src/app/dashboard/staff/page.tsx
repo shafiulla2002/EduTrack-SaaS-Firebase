@@ -97,6 +97,7 @@ export default function SchoolStaffPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
   const payrollMonths = useMemo(() => {
     const list: string[] = [];
     const now = new Date();
@@ -879,9 +880,9 @@ export default function SchoolStaffPage() {
       {selectedStaff && (
         <>
           <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50" onClick={() => setSelectedStaff(null)} />
-          <div className="fixed top-4 sm:top-1/2 bottom-20 sm:bottom-auto left-1/2 -translate-x-1/2 translate-y-0 sm:-translate-y-1/2 w-[92%] sm:w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-50 overflow-y-auto max-h-none sm:max-h-[90vh] flex flex-col">
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
             {/* Modal Header Banner */}
-            <div className="p-5" style={{ background: selectedStaff.gradient }}>
+            <div className="p-5 shrink-0" style={{ background: selectedStaff.gradient }}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   {selectedStaff.avatarUrl ? (
@@ -905,7 +906,7 @@ export default function SchoolStaffPage() {
               </div>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
               {/* Info grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {/* Personal Info */}
@@ -1157,12 +1158,12 @@ export default function SchoolStaffPage() {
       {editingStaff && (
         <>
           <div className="fixed inset-0 bg-slate-900/60 z-50" onClick={() => setEditingStaff(null)} />
-          <div className="fixed top-4 sm:top-1/2 bottom-20 sm:bottom-auto left-1/2 -translate-x-1/2 translate-y-0 sm:-translate-y-1/2 w-[92%] sm:w-full max-w-xl bg-white rounded-2xl shadow-2xl z-50 overflow-y-auto max-h-none sm:max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-lg">Edit Staff Member</h3>
               <button onClick={() => setEditingStaff(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleUpdateStaff} className="p-6 space-y-4 text-sm">
+            <form onSubmit={handleUpdateStaff} className="flex-1 overflow-y-auto p-6 space-y-4 text-sm flex flex-col">
               {/* Photo Upload */}
               <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
                 <div className="w-14 h-14 rounded-xl bg-slate-200 flex items-center justify-center text-slate-400 overflow-hidden flex-shrink-0">
@@ -1358,12 +1359,12 @@ export default function SchoolStaffPage() {
       {showAddModal && (
         <>
           <div className="fixed inset-0 bg-slate-900/60 z-50" onClick={() => setShowAddModal(false)} />
-          <div className="fixed top-4 sm:top-1/2 bottom-20 sm:bottom-auto left-1/2 -translate-x-1/2 translate-y-0 sm:-translate-y-1/2 w-[92%] sm:w-full max-w-xl bg-white rounded-2xl shadow-2xl z-50 overflow-y-auto max-h-none sm:max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-lg">Add New Staff Member</h3>
               <button onClick={() => setShowAddModal(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleSaveStaff} className="p-6 space-y-4 text-sm">
+            <form onSubmit={handleSaveStaff} className="flex-1 overflow-y-auto p-6 space-y-4 text-sm flex flex-col">
               {/* Staff Type Toggle */}
               <div className="flex bg-slate-100 p-1 rounded-xl">
                 {(['Teaching', 'Non-Teaching'] as const).map(t => (

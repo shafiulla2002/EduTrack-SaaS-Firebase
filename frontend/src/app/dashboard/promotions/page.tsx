@@ -129,6 +129,18 @@ export default function StudentPromotionPage() {
   const [loadingStudentHistory, setLoadingStudentHistory] = useState(false);
   const [historyActiveTab, setHistoryActiveTab] = useState<'overview' | 'timeline' | 'attendance' | 'exams' | 'homework' | 'fees' | 'complaints'>('overview');
 
+  // Body scroll lock effect
+  useEffect(() => {
+    if (showSuccessModal || showValidationModal || isHistoryModalOpen || isLifecycleDrawerOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showSuccessModal, showValidationModal, isHistoryModalOpen, isLifecycleDrawerOpen]);
+
   // Load Academic Years & Classes & Sections in parallel with shared cache
   useEffect(() => {
     const fetchInitData = async () => {
@@ -1164,8 +1176,9 @@ export default function StudentPromotionPage() {
 
       {/* ── VALIDATION MODAL ── */}
       {showValidationModal && validationData && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]">
+        <>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50" onClick={() => setShowValidationModal(false)} />
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-50 overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col p-6">
             
             {/* Header */}
             <div className="flex items-start justify-between border-b border-slate-200 pb-4 mb-4">
@@ -1308,7 +1321,7 @@ export default function StudentPromotionPage() {
             </div>
 
           </div>
-        </div>
+        </>
       )}
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
@@ -1927,8 +1940,9 @@ export default function StudentPromotionPage() {
       {/* ── COMPLETE 360° STUDENT HISTORY MODAL ─────────────────────────────────── */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {isHistoryModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
+        <>
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xs animate-fade-in" onClick={() => setIsHistoryModalOpen(false)} />
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-4xl bg-white shadow-2xl z-[101] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col border border-slate-200">
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
               <div className="flex items-center gap-3">
@@ -2252,7 +2266,7 @@ export default function StudentPromotionPage() {
               ) : null}
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

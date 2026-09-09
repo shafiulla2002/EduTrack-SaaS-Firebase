@@ -454,13 +454,14 @@ export default function GradesMarksPage() {
       </div>
             {/* REPORT CARD MODAL */}
       {activeReportStudent && (
-        <div 
-          className="fixed inset-0 flex items-center justify-center p-4 sm:p-6 z-[99999] bg-slate-900/60 backdrop-blur-sm overflow-hidden print:relative print:inset-0 print:bg-transparent print:p-0"
-          onClick={() => setActiveReportStudent(null)}
-        >
+        <>
+          <div 
+            className="fixed inset-0 z-[99998] bg-slate-900/60 backdrop-blur-sm print:hidden"
+            onClick={() => setActiveReportStudent(null)}
+          />
           {/* Modal Container */}
           <div 
-            className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden transform transition-all animate-in zoom-in-95 print:relative print:max-h-none print:shadow-none print:border-none print:overflow-visible print:w-full"
+            className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-5xl bg-white shadow-2xl z-[99999] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col transform transition-all animate-in zoom-in-95 print:relative print:inset-auto print:translate-x-0 print:h-auto print:max-h-none print:shadow-none print:border-none print:overflow-visible print:w-full"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sticky Header */}
@@ -621,7 +622,7 @@ export default function GradesMarksPage() {
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

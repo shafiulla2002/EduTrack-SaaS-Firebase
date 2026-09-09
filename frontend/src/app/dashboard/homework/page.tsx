@@ -118,9 +118,9 @@ export default function HomeworkPage() {
     }
   }, [loading, classes]);
 
-  // Lock body scroll when WhatsApp Share Modal is open
+  // Lock body scroll when WhatsApp Share Modal or Attachment Preview Modal is open
   useEffect(() => {
-    if (showShareModal) {
+    if (showShareModal || previewAttachmentUrl) {
       const originalOverflow = document.body.style.overflow;
       const originalPaddingRight = document.body.style.paddingRight;
       const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
@@ -135,7 +135,7 @@ export default function HomeworkPage() {
         document.body.style.paddingRight = originalPaddingRight;
       };
     }
-  }, [showShareModal]);
+  }, [showShareModal, previewAttachmentUrl]);
 
   const openCreateModal = () => {
     setEditingHomework(null);
@@ -533,11 +533,12 @@ Thank you.`;
 
       {/* WhatsApp Share Dialog / Modal */}
       {isMounted && showShareModal && hwToShare && createPortal(
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
+        <>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[99998]" onClick={() => { setShowShareModal(false); setHwToShare(null); }} />
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white shadow-2xl z-[99999] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col animate-scale-in">
             
             {/* Header */}
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
               <div>
                 <h3 className="font-black text-slate-900 text-base leading-none">Share Homework</h3>
                 <p className="text-[11px] text-slate-400 font-semibold mt-1">WhatsApp Sharing options & distribution</p>
@@ -933,7 +934,7 @@ Thank you.`;
 
             </div>
           </div>
-        </div>,
+        </>,
         document.body
       )}
 
@@ -1190,9 +1191,10 @@ Thank you.`;
 
       {/* In-Page Attachment Preview Modal */}
       {previewAttachmentUrl && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+        <>
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xs animate-fade-in" onClick={() => setPreviewAttachmentUrl(null)} />
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white dark:bg-slate-800 shadow-2xl z-[101] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col border border-slate-200 dark:border-slate-700">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="w-5 h-5 text-[#2E5BFF] shrink-0" />
                 <h4 className="text-sm font-bold text-slate-800 dark:text-white truncate">{previewAttachmentName}</h4>
@@ -1234,7 +1236,7 @@ Thank you.`;
               )}
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
