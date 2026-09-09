@@ -3252,8 +3252,8 @@ export default function TeacherClassManagement() {
 
       {/* ── TIMETABLE RESET WARNING MODAL ── */}
       {isMounted && showConfirmChangeConfigModal && createPortal(
-        <div className="fixed inset-0 bg-black/60 z-[99999] flex items-center justify-center animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full border border-slate-100 shadow-2xl text-center space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowConfirmChangeConfigModal(false)}>
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl text-center space-y-4 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mx-auto">
               ⚠️
             </div>
@@ -3284,9 +3284,8 @@ export default function TeacherClassManagement() {
 
       {/* ── ADD NEW TEACHER MODAL (Single Creation) ── */}
       {isMounted && showTeacherForm && createPortal(
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowTeacherForm(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 animate-in">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowTeacherForm(false)}>
+          <div className="w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-base">Add New Teacher</h3>
               <button onClick={() => setShowTeacherForm(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
@@ -3387,15 +3386,14 @@ export default function TeacherClassManagement() {
               </div>
             </form>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
       {/* ── REASSIGN TEACHER MODAL ── */}
       {isMounted && showReassignModal && createPortal(
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowReassignModal(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowReassignModal(false)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Reassign Teacher</h3>
               <button onClick={() => setShowReassignModal(false)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4" /></button>
@@ -3438,19 +3436,18 @@ export default function TeacherClassManagement() {
             </div>
 
             <div className="flex gap-3 pt-4 border-t border-slate-100 shrink-0 mt-auto">
-              <button onClick={() => setShowReassignModal(false)} className="flex-1 py-2 border border-slate-200 rounded-xl text-slate-600 font-semibold">Cancel</button>
-              <button onClick={handleSaveReassign} className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold">Save Change</button>
+              <button onClick={() => setShowReassignModal(false)} className="flex-1 py-2 border border-slate-200 rounded-xl text-slate-600 font-semibold text-xs">Cancel</button>
+              <button onClick={handleSaveReassign} className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs">Save Change</button>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
       {/* ── DELETE CONFIRMATION MODAL ── */}
       {isMounted && deleteConfirm.show && createPortal(
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setDeleteConfirm({ show: false, type: 'class', id: '', name: '' })} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-[99999] p-6 text-center space-y-4 animate-in">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setDeleteConfirm({ show: false, type: 'class', id: '', name: '' })}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 text-center space-y-4 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>
@@ -3471,15 +3468,14 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
       {/* ── SIMPLE MODALS (Subject, Class, Section) ── */}
       {isMounted && showAddSubject && createPortal(
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowAddSubject(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowAddSubject(false)}>
+          <div className="w-full max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Add Subjects Catalog</h3>
               <button onClick={() => setShowAddSubject(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
@@ -3542,14 +3538,13 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
       {isMounted && showCreateClass && createPortal(
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowCreateClass(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowCreateClass(false)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Create Class Names</h3>
               <button onClick={() => setShowCreateClass(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
@@ -3616,14 +3611,13 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
       {isMounted && showCreateSection && createPortal(
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setShowCreateSection(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowCreateSection(false)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Create Section Letters</h3>
               <button onClick={() => setShowCreateSection(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
@@ -3690,14 +3684,13 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
       {isMounted && isManageTypesOpen && createPortal(
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[99998]" onClick={() => setIsManageTypesOpen(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col p-6 rounded-none my-0 animate-in text-slate-800">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setIsManageTypesOpen(false)}>
+          <div className="w-full max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in text-slate-800" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
@@ -3801,7 +3794,7 @@ export default function TeacherClassManagement() {
               </div>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 

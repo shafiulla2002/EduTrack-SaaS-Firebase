@@ -883,7 +883,7 @@ export default function SchoolStaffPage() {
       {isMounted && selectedStaff && createPortal(
         <>
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setSelectedStaff(null)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] sm:w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl z-[99999] overflow-hidden max-h-[90vh] flex flex-col animate-scale-in">
             {/* Modal Header Banner */}
             <div className="p-5 shrink-0" style={{ background: selectedStaff.gradient }}>
               <div className="flex items-start justify-between">
@@ -1098,24 +1098,16 @@ export default function SchoolStaffPage() {
                         {staffCases.map((c: any) => (
                           <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-2.5">
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
-                                c.behaviorType === 'Complaint'
-                                  ? 'bg-rose-50 text-rose-600 border-rose-100'
-                                  : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                c.type === 'Praise' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'
                               }`}>
-                                {c.behaviorType}
+                                {c.type}
                               </span>
                             </td>
                             <td className="px-4 py-2.5 text-slate-600">{c.category}</td>
-                            <td className="px-4 py-2.5 font-semibold text-slate-700">{c.student?.user?.name || '—'}</td>
+                            <td className="px-4 py-2.5 font-semibold text-slate-800">{c.student?.user?.name || '—'}</td>
                             <td className="px-4 py-2.5">
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
-                                c.status === 'Resolved'
-                                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                  : c.status === 'New'
-                                  ? 'bg-amber-50 text-amber-600 border-amber-100'
-                                  : 'bg-slate-50 text-slate-500 border-slate-200'
-                              }`}>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
                                 {c.status}
                               </span>
                             </td>
@@ -1162,7 +1154,7 @@ export default function SchoolStaffPage() {
       {isMounted && editingStaff && createPortal(
         <>
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setEditingStaff(null)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] sm:w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl z-[99999] overflow-hidden max-h-[90vh] flex flex-col animate-scale-in">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-lg">Edit Staff Member</h3>
               <button onClick={() => setEditingStaff(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5" /></button>
@@ -1364,7 +1356,7 @@ export default function SchoolStaffPage() {
       {isMounted && showAddModal && createPortal(
         <>
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setShowAddModal(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] sm:w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl z-[99999] overflow-hidden max-h-[90vh] flex flex-col animate-scale-in">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-lg">Add New Staff Member</h3>
               <button onClick={() => setShowAddModal(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5" /></button>

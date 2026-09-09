@@ -455,16 +455,15 @@ export default function GradesMarksPage() {
           </>
         )}
       </div>
-            {/* REPORT CARD MODAL */}
+      {/* REPORT CARD MODAL */}
       {isMounted && activeReportStudent && createPortal(
-        <>
-          <div 
-            className="fixed inset-0 z-[99998] bg-slate-900/60 backdrop-blur-sm print:hidden"
-            onClick={() => setActiveReportStudent(null)}
-          />
+        <div 
+          className="fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-fade-in print:p-0 print:bg-transparent print:backdrop-blur-none"
+          onClick={() => setActiveReportStudent(null)}
+        >
           {/* Modal Container */}
           <div 
-            className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-5xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 transform transition-all animate-in zoom-in-95 print:relative print:inset-auto print:translate-x-0 print:h-auto print:max-h-none print:shadow-none print:border-none print:overflow-visible print:w-full"
+            className="w-full max-w-5xl max-h-[90vh] bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col transform transition-all animate-scale-in print:relative print:inset-auto print:translate-x-0 print:h-auto print:max-h-none print:shadow-none print:border-none print:overflow-visible print:w-full print:rounded-none"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sticky Header */}
@@ -625,7 +624,7 @@ export default function GradesMarksPage() {
               </button>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
     </div>

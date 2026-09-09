@@ -1447,9 +1447,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
       {/* CASE DETAILS & EDIT MODAL */}
       {isMounted && selectedCase && createPortal(
-        <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[99998]" onClick={() => { setSelectedCase(null); setIsEditing(false); }} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => { setSelectedCase(null); setIsEditing(false); }}>
+          <div className="w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
             
             {/* Modal Header */}
             <div className={`p-6 text-white flex justify-between items-start shrink-0 ${
@@ -1696,15 +1695,14 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </button>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
       {/* PARENT COMPLAINT ACTION MODAL */}
       {isMounted && selectedParentComplaint && createPortal(
-        <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[99998]" onClick={() => setSelectedParentComplaint(null)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setSelectedParentComplaint(null)}>
+          <div className="w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Parent Grievance Ticket</span>
@@ -1759,6 +1757,16 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                       <option value="CLOSED">CLOSED (Archived)</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Internal Resolution Notes</label>
+                    <input
+                      type="text"
+                      placeholder="Internal remarks for staff..."
+                      value={parentResolutionNotes}
+                      onChange={(e) => setParentResolutionNotes(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-800 outline-none"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -1767,26 +1775,26 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                   </label>
                   <textarea
                     rows={3}
+                    placeholder="Enter official reply to the parent..."
                     value={parentReplyText}
                     onChange={(e) => setParentReplyText(e.target.value)}
-                    placeholder="Enter official reply to the parent..."
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-blue-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-800 outline-none focus:border-blue-500"
                   />
                 </div>
 
-                {/* Audit Trail Timeline */}
-                {selectedParentComplaint.statusHistories && selectedParentComplaint.statusHistories.length > 0 && (
-                  <div className="border-t border-slate-700 pt-3 space-y-2">
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Audit Trail History</span>
-                    <div className="space-y-2 max-h-36 overflow-y-auto">
-                      {selectedParentComplaint.statusHistories.map((h: any, i: number) => (
-                        <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-150">
-                          <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-slate-800 text-[11px]">
-                              Status: <strong className="text-blue-600">{h.currentStatus}</strong> by {h.updatedBy?.name || 'Admin'}
-                            </p>
-                            {h.remarks && <p className="text-slate-500 text-[10px] italic mt-0.5 font-medium">"{h.remarks}"</p>}
+                {selectedParentComplaint.history && selectedParentComplaint.history.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Timeline History</span>
+                    <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                      {selectedParentComplaint.history.map((h: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-1">
+                          <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
+                            <span>Status: <strong className="text-slate-800">{h.status}</strong></span>
+                            <span>{h.changedBy?.name || 'System'}</span>
+                          </div>
+                          {h.adminReply && <p className="text-blue-700 text-xs italic">&ldquo;{h.adminReply}&rdquo;</p>}
+                          {h.resolutionNotes && <p className="text-slate-500 text-[11px]">Note: {h.resolutionNotes}</p>}
+                          <div className="text-right">
                             <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{new Date(h.createdAt).toLocaleString()}</span>
                           </div>
                         </div>
@@ -1832,7 +1840,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </div>
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
     </div>

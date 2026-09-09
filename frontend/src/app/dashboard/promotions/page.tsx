@@ -1100,10 +1100,9 @@ export default function StudentPromotionPage() {
 
       {/* Success Modal Overlay */}
       {isMounted && showSuccessModal && createPortal(
-        <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={closeSuccessModal} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 p-8 animate-in text-center overflow-y-auto">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-400 to-cyan-400 flex items-center justify-center text-white text-3xl shadow-lg shadow-emerald-500/20 mb-6 animate-bounce shrink-0">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={closeSuccessModal}>
+          <div className="w-full max-w-lg bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-8 animate-scale-in text-center overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-400 to-cyan-400 flex items-center justify-center text-white text-3xl shadow-lg shadow-emerald-500/20 mb-6 animate-bounce shrink-0 mx-auto">
               ✨
             </div>
             
@@ -1177,18 +1176,17 @@ export default function StudentPromotionPage() {
               Continue
             </button>
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
       {/* ── VALIDATION MODAL ── */}
       {isMounted && showValidationModal && validationData && createPortal(
-        <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setShowValidationModal(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 p-6">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowValidationModal(false)}>
+          <div className="w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             
             {/* Header */}
-            <div className="flex items-start justify-between border-b border-slate-200 pb-4 mb-4">
+            <div className="flex items-start justify-between border-b border-slate-200 pb-4 mb-4 shrink-0">
               <div className="flex items-center gap-2">
                 {validationData.studentsWithPendingDue > 0 ? (
                   <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
@@ -1206,7 +1204,7 @@ export default function StudentPromotionPage() {
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 border border-slate-200 rounded-xl mb-4 text-center">
+            <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 border border-slate-200 rounded-xl mb-4 text-center shrink-0">
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Selected</span>
                 <span className="text-base font-extrabold text-slate-700">{validationData.totalSelected}</span>
@@ -1275,14 +1273,14 @@ export default function StudentPromotionPage() {
 
             {/* Warning/Success Message */}
             {validationData.studentsWithPendingDue > 0 ? (
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6 flex gap-3 text-xs text-amber-800 animate-in">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6 flex gap-3 text-xs text-amber-800 animate-in shrink-0">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <p className="leading-relaxed font-semibold">
                   Warning: Some students still have pending fees from the previous academic year. If you continue, these outstanding balances will automatically be carried forward to the next academic year along with the new academic year's fee structure. Do you want to continue?
                 </p>
               </div>
             ) : (
-              <div className="p-4 bg-emerald-50 border border-emerald-250 rounded-xl mb-6 flex gap-3 text-xs text-emerald-800 animate-in">
+              <div className="p-4 bg-emerald-50 border border-emerald-250 rounded-xl mb-6 flex gap-3 text-xs text-emerald-800 animate-in shrink-0">
                 <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                 <p className="leading-relaxed font-semibold">
                   All selected students are clear of any outstanding dues. Proceeding will enroll them in the target academic year and allocate their new class standard fee structures.
@@ -1291,7 +1289,7 @@ export default function StudentPromotionPage() {
             )}
 
             {/* Actions */}
-            <div className="flex gap-3 justify-end">
+            <div className="flex gap-3 justify-end shrink-0">
               <button
                 onClick={() => setShowValidationModal(false)}
                 className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 cursor-pointer text-xs"
@@ -1328,7 +1326,7 @@ export default function StudentPromotionPage() {
             </div>
 
           </div>
-        </>,
+        </div>,
         document.body
       )}
 
@@ -1948,9 +1946,8 @@ export default function StudentPromotionPage() {
       {/* ── COMPLETE 360° STUDENT HISTORY MODAL ─────────────────────────────────── */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {isMounted && isHistoryModalOpen && createPortal(
-        <>
-          <div className="fixed inset-0 z-[99998] bg-black/70 backdrop-blur-xs animate-fade-in" onClick={() => setIsHistoryModalOpen(false)} />
-          <div className="fixed inset-y-0 top-0 bottom-0 left-1/2 -translate-x-1/2 w-full max-w-4xl bg-white shadow-2xl z-[99999] overflow-hidden h-screen sm:h-[100dvh] max-h-screen sm:max-h-[100dvh] flex flex-col rounded-none my-0 border border-slate-200">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setIsHistoryModalOpen(false)}>
+          <div className="w-full max-w-4xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-scale-in border border-slate-200" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
               <div className="flex items-center gap-3">
@@ -2274,7 +2271,7 @@ export default function StudentPromotionPage() {
               ) : null}
             </div>
           </div>
-        </>,
+        </div>,
         document.body
       )}
     </div>
