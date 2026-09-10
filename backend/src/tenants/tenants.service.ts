@@ -373,6 +373,14 @@ export class TenantsService {
 
     const txRef = 'TXN-' + Date.now();
 
+    // Fetch tenant/setup details for customer info
+    const tenantObj = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    const setupObj = await this.prisma.schoolSetup.findUnique({ where: { tenantId } });
+    const rawPhone = setupObj?.mobileNumber || tenantObj?.phone || '9999999999';
+    const cleanPhone = String(rawPhone).replace(/\D/g, '').slice(-10) || '9999999999';
+    const customerEmail = setupObj?.email || tenantObj?.email || 'admin@edutrack.com';
+    const customerName = setupObj?.schoolName || tenantObj?.name || 'School Admin';
+
     // Create hosted Razorpay payment link fallback (bypasses domain origin restrictions)
     let paymentLinkUrl: string | null = null;
     try {
@@ -382,6 +390,16 @@ export class TenantsService {
         accept_partial: false,
         description: `EduTrack SaaS BASIC Plan – ${planDef.durationMonths} Months`,
         reference_id: txRef,
+        customer: {
+          name: customerName,
+          email: customerEmail,
+          contact: cleanPhone,
+        },
+        notify: {
+          sms: false,
+          email: false,
+        },
+        reminder_enable: false,
         notes: {
           tenantId,
           planCode: planDef.code,
@@ -391,8 +409,9 @@ export class TenantsService {
         callback_method: 'get',
       });
       paymentLinkUrl = (plink as any).short_url || (plink as any).url || null;
+      this.logger.log(`Generated Razorpay Payment Link: ${paymentLinkUrl}`);
     } catch (err: any) {
-      this.logger.warn(`PaymentLink creation fallback notice: ${err?.message || err}`);
+      this.logger.error(`PaymentLink creation error: ${err?.message || JSON.stringify(err)}`);
     }
 
     // Store PENDING SubscriptionPayment
