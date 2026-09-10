@@ -38,8 +38,8 @@ export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanDefinition> = {
     name: 'BASIC PLAN',
     code: 'BASIC_HALF_YEARLY',
     durationMonths: 6,
-    priceInINR: 1,
-    priceInPaise: 100, // 100 paise = ₹1
+    priceInINR: 10,
+    priceInPaise: 1000, // 1000 paise = ₹10
     currency: 'INR',
     studentLimit: null, // Unlimited
     staffLimit: null,   // Unlimited
@@ -57,8 +57,8 @@ export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanDefinition> = {
     name: 'BASIC PLAN',
     code: 'BASIC_ANNUAL',
     durationMonths: 12,
-    priceInINR: 2,
-    priceInPaise: 200, // 200 paise = ₹2
+    priceInINR: 20,
+    priceInPaise: 2000, // 2000 paise = ₹20
     currency: 'INR',
     studentLimit: null, // Unlimited
     staffLimit: null,   // Unlimited

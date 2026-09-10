@@ -73,7 +73,14 @@ async function bootstrap() {
     });
 
     try {
-      expressApp.use(express.json({ limit: '10mb' }));
+      expressApp.use(
+        express.json({
+          limit: '10mb',
+          verify: (req: any, _res: any, buf: Buffer) => {
+            req.rawBody = buf.toString('utf8');
+          },
+        }),
+      );
       expressApp.use(express.urlencoded({ limit: '10mb', extended: true }));
       
       // Serve static uploaded files
@@ -114,7 +121,14 @@ if (!process.env.VERCEL) {
     
     app.enableCors(corsOptions);
 
-    app.use(express.json({ limit: '10mb' }));
+    app.use(
+      express.json({
+        limit: '10mb',
+        verify: (req: any, _res: any, buf: Buffer) => {
+          req.rawBody = buf.toString('utf8');
+        },
+      }),
+    );
     app.use(express.urlencoded({ limit: '10mb', extended: true }));
     app.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
 
