@@ -134,7 +134,16 @@ export default function SubscriptionPage() {
     }
   };
 
-  useEffect(() => { fetchStats(); }, [subscription?.status]);
+  useEffect(() => {
+    fetchStats();
+    if (typeof window !== 'undefined' && window.location.search.includes('payment=success')) {
+      setPaymentSuccess({
+        transactionId: 'Razorpay Direct Payment',
+        message: 'Payment processed successfully! Your school subscription is active.',
+      });
+      refresh();
+    }
+  }, [subscription?.status]);
 
   // ─── Coupon Logic ─────────────────────────────────────────────────────────
   const applyCoupon = () => {
@@ -295,7 +304,13 @@ export default function SubscriptionPage() {
         baseAmountRs: finalPayable,
         couponCode: appliedCoupon?.code || null,
       });
-      const { orderId, amount, currency, key_id } = orderRes.data;
+      const { orderId, amount, currency, key_id, paymentLinkUrl } = orderRes.data;
+
+      // If backend created a hosted Razorpay payment link, use it directly (bypasses domain origin restrictions)
+      if (paymentLinkUrl) {
+        window.location.href = paymentLinkUrl;
+        return;
+      }
 
       // 3. Open Razorpay Checkout
       const options = {

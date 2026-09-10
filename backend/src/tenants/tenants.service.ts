@@ -371,8 +371,31 @@ export class TenantsService {
     });
     const orderId = order.id as string;
 
-    // Store PENDING SubscriptionPayment
     const txRef = 'TXN-' + Date.now();
+
+    // Create hosted Razorpay payment link fallback (bypasses domain origin restrictions)
+    let paymentLinkUrl: string | null = null;
+    try {
+      const plink = await instance.paymentLink.create({
+        amount: amountPaise,
+        currency: 'INR',
+        accept_partial: false,
+        description: `EduTrack SaaS BASIC Plan – ${planDef.durationMonths} Months`,
+        reference_id: txRef,
+        notes: {
+          tenantId,
+          planCode: planDef.code,
+          billingMonths: String(planDef.durationMonths),
+        },
+        callback_url: `https://edutrack-live-app.vercel.app/dashboard/settings/subscription?payment=success`,
+        callback_method: 'get',
+      });
+      paymentLinkUrl = (plink as any).short_url || (plink as any).url || null;
+    } catch (err: any) {
+      this.logger.warn(`PaymentLink creation fallback notice: ${err?.message || err}`);
+    }
+
+    // Store PENDING SubscriptionPayment
     await this.prisma.subscriptionPayment.create({
       data: {
         tenantId,
@@ -384,7 +407,7 @@ export class TenantsService {
         billingDurationMonths: planDef.durationMonths,
         planId: planDef.code,
         status: SaaSPaymentStatus.PENDING,
-        gatewayResponse: { orderId, amountPaise, couponCode: couponCode || null },
+        gatewayResponse: { orderId, amountPaise, couponCode: couponCode || null, paymentLinkUrl },
       },
     });
 
@@ -394,6 +417,7 @@ export class TenantsService {
       currency: 'INR',
       key_id: keyId,
       txRef,
+      paymentLinkUrl,
     };
   }
 
