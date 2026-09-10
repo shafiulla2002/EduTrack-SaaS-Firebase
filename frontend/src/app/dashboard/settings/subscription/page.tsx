@@ -305,7 +305,7 @@ export default function SubscriptionPage() {
         order_id: orderId,
         name: 'EduTrack SaaS',
         description: `BASIC Plan – ${billingMonths} Months`,
-        image: '/logo.png',
+        image: typeof window !== 'undefined' ? `${window.location.origin}/logo.png` : undefined,
         handler: async (response: any) => {
           // 4. Verify payment on backend
           try {
