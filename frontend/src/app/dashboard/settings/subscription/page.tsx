@@ -398,6 +398,29 @@ export default function SubscriptionPage() {
   const expiryDate = subscription?.expiryDate ? new Date(subscription.expiryDate) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
   const daysRemaining = Math.max(0, Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
 
+  const isSubscribedActive = (currentStatus === 'ACTIVE' || stats?.status === 'ACTIVE') && daysRemaining > 0;
+
+  const activePlanDuration = useMemo(() => {
+    if (!isSubscribedActive) return null;
+    if (payments && payments.length > 0) {
+      const activeSuccess = payments.find(
+        (p: any) => (p.status === 'SUCCESS' || p.status === 'PAID') && Number(p.amount) > 0
+      );
+      if (activeSuccess) {
+        if (activeSuccess.billingDurationMonths) {
+          return Number(activeSuccess.billingDurationMonths);
+        }
+        if (activeSuccess.planId === 'BASIC_HALF_YEARLY' || Number(activeSuccess.amount) === 10) return 6;
+        if (activeSuccess.planId === 'BASIC_ANNUAL' || Number(activeSuccess.amount) === 20) return 12;
+      }
+    }
+    if (stats?.billingCycle) {
+      if (String(stats.billingCycle).includes('6')) return 6;
+      if (String(stats.billingCycle).includes('12')) return 12;
+    }
+    return 12;
+  }, [isSubscribedActive, payments, stats]);
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8">
 
@@ -488,27 +511,43 @@ export default function SubscriptionPage() {
 
           {/* ── CARD 1: 6 MONTHS ──────────────────────────────────────────────── */}
           <div
-            onClick={() => setBillingMonths(6)}
-            className={`bg-white border-2 rounded-3xl p-6 transition-all duration-200 flex flex-col justify-between cursor-pointer relative overflow-hidden ${
-              billingMonths === 6
-                ? 'border-blue-600 shadow-2xl bg-gradient-to-b from-blue-50/50 to-white ring-2 ring-blue-600/20'
-                : 'border-slate-200 hover:border-blue-300 shadow-md hover:shadow-lg'
+            onClick={() => !isSubscribedActive && setBillingMonths(6)}
+            className={`bg-white border-2 rounded-3xl p-6 transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+              activePlanDuration === 6
+                ? 'border-emerald-500 bg-emerald-50/40 shadow-2xl ring-4 ring-emerald-500/20'
+                : billingMonths === 6
+                ? 'border-blue-600 shadow-2xl bg-gradient-to-b from-blue-50/50 to-white ring-2 ring-blue-600/20 cursor-pointer'
+                : isSubscribedActive
+                ? 'border-slate-200 opacity-80 shadow-sm cursor-not-allowed'
+                : 'border-slate-200 hover:border-blue-300 shadow-md hover:shadow-lg cursor-pointer'
             }`}
           >
+            {activePlanDuration === 6 && (
+              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
+                <CheckCircle className="w-3.5 h-3.5 text-white" /> CURRENT ACTIVE PLAN
+              </div>
+            )}
+
             <div className="space-y-4">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${billingMonths === 6 ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'}`}>
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                    activePlanDuration === 6 ? 'bg-emerald-600 text-white' : billingMonths === 6 ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'
+                  }`}>
                     <Zap className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-100 px-2.5 py-0.5 rounded-full">Half-Yearly</span>
+                    <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                      activePlanDuration === 6 ? 'text-emerald-700 bg-emerald-100' : 'text-blue-600 bg-blue-100'
+                    }`}>Half-Yearly</span>
                     <h3 className="text-lg font-black text-slate-900 mt-0.5">BASIC PLAN</h3>
                   </div>
                 </div>
 
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${billingMonths === 6 ? 'border-blue-600 bg-blue-600' : 'border-slate-300'}`}>
-                  {billingMonths === 6 && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  activePlanDuration === 6 ? 'border-emerald-600 bg-emerald-600' : billingMonths === 6 ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
+                }`}>
+                  {(activePlanDuration === 6 || billingMonths === 6) && <Check className="w-3 h-3 text-white stroke-[3]" />}
                 </div>
               </div>
 
@@ -541,36 +580,69 @@ export default function SubscriptionPage() {
             </div>
 
             <button
+              disabled={isSubscribedActive}
               onClick={(e) => {
                 e.stopPropagation();
-                openCheckoutWithMonths(6);
+                if (!isSubscribedActive) openCheckoutWithMonths(6);
               }}
-              className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-extrabold text-sm transition-all shadow-lg shadow-blue-600/30 cursor-pointer flex items-center justify-center gap-2"
+              className={`mt-6 w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 ${
+                activePlanDuration === 6
+                  ? 'bg-emerald-600 text-white shadow-md cursor-not-allowed opacity-95'
+                  : isSubscribedActive
+                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 cursor-pointer'
+              }`}
             >
-              <CreditCard className="w-4 h-4" />
-              <span>Proceed to Payment (₹{price6Months})</span>
-              <ChevronRight className="w-4 h-4" />
+              {activePlanDuration === 6 ? (
+                <>
+                  <CheckCircle className="w-4 h-4 text-white" />
+                  <span>Current Active Plan (Subscribed)</span>
+                </>
+              ) : isSubscribedActive ? (
+                <>
+                  <Shield className="w-4 h-4 text-slate-400" />
+                  <span>Subscription Active</span>
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4" />
+                  <span>Proceed to Payment (₹{price6Months})</span>
+                  <ChevronRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </div>
 
           {/* ── CARD 2: 12 MONTHS ─────────────────────────────────────────────── */}
           <div
-            onClick={() => setBillingMonths(12)}
-            className={`bg-white border-2 rounded-3xl p-6 transition-all duration-200 flex flex-col justify-between cursor-pointer relative overflow-hidden ${
-              billingMonths === 12
-                ? 'border-blue-600 shadow-2xl bg-gradient-to-b from-blue-50/50 to-white ring-2 ring-blue-600/20'
-                : 'border-slate-200 hover:border-blue-300 shadow-md hover:shadow-lg'
+            onClick={() => !isSubscribedActive && setBillingMonths(12)}
+            className={`bg-white border-2 rounded-3xl p-6 transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+              activePlanDuration === 12
+                ? 'border-emerald-500 bg-emerald-50/40 shadow-2xl ring-4 ring-emerald-500/20'
+                : billingMonths === 12
+                ? 'border-blue-600 shadow-2xl bg-gradient-to-b from-blue-50/50 to-white ring-2 ring-blue-600/20 cursor-pointer'
+                : isSubscribedActive
+                ? 'border-slate-200 opacity-80 shadow-sm cursor-not-allowed'
+                : 'border-slate-200 hover:border-blue-300 shadow-md hover:shadow-lg cursor-pointer'
             }`}
           >
             {/* Top Ribbon Badge */}
-            <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
-              <Sparkles className="w-3 h-3" /> BEST VALUE — ANNUAL PLAN
-            </div>
+            {activePlanDuration === 12 ? (
+              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
+                <CheckCircle className="w-3.5 h-3.5 text-white" /> CURRENT ACTIVE PLAN
+              </div>
+            ) : (
+              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
+                <Sparkles className="w-3 h-3" /> BEST VALUE — ANNUAL PLAN
+              </div>
+            )}
 
             <div className="space-y-4">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${billingMonths === 12 ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'}`}>
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                    activePlanDuration === 12 ? 'bg-emerald-600 text-white' : billingMonths === 12 ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'
+                  }`}>
                     <Zap className="w-5 h-5" />
                   </div>
                   <div>
@@ -579,8 +651,10 @@ export default function SubscriptionPage() {
                   </div>
                 </div>
 
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${billingMonths === 12 ? 'border-blue-600 bg-blue-600' : 'border-slate-300'}`}>
-                  {billingMonths === 12 && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                  activePlanDuration === 12 ? 'border-emerald-600 bg-emerald-600' : billingMonths === 12 ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
+                }`}>
+                  {(activePlanDuration === 12 || billingMonths === 12) && <Check className="w-3 h-3 text-white stroke-[3]" />}
                 </div>
               </div>
 
@@ -613,15 +687,36 @@ export default function SubscriptionPage() {
             </div>
 
             <button
+              disabled={isSubscribedActive}
               onClick={(e) => {
                 e.stopPropagation();
-                openCheckoutWithMonths(12);
+                if (!isSubscribedActive) openCheckoutWithMonths(12);
               }}
-              className="mt-6 w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-extrabold text-sm transition-all shadow-lg shadow-blue-600/30 cursor-pointer flex items-center justify-center gap-2"
+              className={`mt-6 w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 ${
+                activePlanDuration === 12
+                  ? 'bg-emerald-600 text-white shadow-md cursor-not-allowed opacity-95'
+                  : isSubscribedActive
+                  ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/30 cursor-pointer'
+              }`}
             >
-              <CreditCard className="w-4 h-4" />
-              <span>Proceed to Payment (₹{price12Months})</span>
-              <ChevronRight className="w-4 h-4" />
+              {activePlanDuration === 12 ? (
+                <>
+                  <CheckCircle className="w-4 h-4 text-white" />
+                  <span>Current Active Plan (Subscribed)</span>
+                </>
+              ) : isSubscribedActive ? (
+                <>
+                  <Shield className="w-4 h-4 text-slate-400" />
+                  <span>Subscription Active</span>
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4" />
+                  <span>Proceed to Payment (₹{price12Months})</span>
+                  <ChevronRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </div>
 
