@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { Tenant, PlanType, SubscriptionStatus, SaaSPaymentStatus, SaaSInvoiceStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -12,6 +12,8 @@ import { SUBSCRIPTION_PLANS } from '../common/config/subscription-plans.config';
 
 @Injectable()
 export class TenantsService {
+  private readonly logger = new Logger(TenantsService.name);
+
   constructor(
     private prisma: PrismaService,
     private paymentService: PaymentService,
