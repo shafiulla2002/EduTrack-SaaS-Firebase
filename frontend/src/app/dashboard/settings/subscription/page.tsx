@@ -23,7 +23,7 @@ import {
 
 // ─── Pricing Configuration (Single Source of Truth Default) ───────────────
 const DEFAULT_PLAN_PRICING: Record<string, Record<number, number>> = {
-  BASIC: { 6: 1, 12: 2 },
+  BASIC: { 6: 10, 12: 20 },
 };
 
 const VALID_COUPONS: Record<string, { type: 'percent' | 'flat'; value: number; label: string }> = {
@@ -121,8 +121,8 @@ export default function SubscriptionPage() {
           setPlanPricing(prev => ({
             ...prev,
             BASIC: {
-              6: pricingMap[6] ?? 1,
-              12: pricingMap[12] ?? 2,
+              6: pricingMap[6] ?? 10,
+              12: pricingMap[12] ?? 20,
             }
           }));
         }
@@ -333,7 +333,7 @@ export default function SubscriptionPage() {
         },
         prefill: {
           email: stats?.email || '',
-          contact: stats?.phone || '',
+          contact: stats?.phone ? String(stats.phone).replace(/\D/g, '').slice(-10) : '',
         },
         theme: { color: '#2563EB' },
         modal: {
