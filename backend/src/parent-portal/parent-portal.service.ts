@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma.service';
 import { BillingService } from '../billing/billing.service';
 import { StorageService } from '../common/storage.service';
 import { ExamConfigService } from '../exam-config/exam-config.service';
-import { Role, PaymentStatus } from '@prisma/client';
+import { Role, PaymentStatus, PaymentMethod } from '@prisma/client';
 import { parseAttendanceDate } from '../attendance/date.utils';
 
 export interface PaymentGatewayResult {
