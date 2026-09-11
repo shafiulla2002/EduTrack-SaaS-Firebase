@@ -112,6 +112,7 @@ export default function StudentsDirectory() {
   // Selected student for Profile details (Full Page swap)
   const [activeStudent, setActiveStudent] = useState<Student | null>(null);
   const [activeStudentDetails, setActiveStudentDetails] = useState<any>(null);
+  const [showAllCases, setShowAllCases] = useState<boolean>(false);
   const [selectedExamTab, setSelectedExamTab] = useState<string>('Unit Test');
   const [expandedInvoices, setExpandedInvoices] = useState<Record<string, boolean>>({});
   const [expandedExams, setExpandedExams] = useState<Record<string, boolean>>({});
@@ -420,9 +421,11 @@ export default function StudentsDirectory() {
   // Switch to detail view and load details
   const handleViewDetails = async (student: Student) => {
     try {
+      setActiveStudent(student);
+      setShowAllCases(false);
       setLoading(true);
-      setSelectedYear(student.academicYearId || 'All');
-      await loadStudentDetails(student.id, student.academicYearId || 'All');
+      const yearId = student.academicYearId || (selectedYear !== 'All' ? selectedYear : 'All');
+      await loadStudentDetails(student.id, yearId);
     } catch (err) {
       console.error('Failed to load student details:', err);
     } finally {
@@ -1409,32 +1412,64 @@ export default function StudentsDirectory() {
 
               {/* Student Behaviour (incidents cases) */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                  <ShieldAlert className="w-5 h-5 text-blue-500" />
-                  <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
+                  </div>
+                  {detailData && detailData.cases && detailData.cases.length > 0 && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+                      Total: {detailData.cases.length}
+                    </span>
+                  )}
                 </div>
 
-                {detailData && detailData.cases.length > 0 ? (
+                {detailData && detailData.cases && detailData.cases.length > 0 ? (
                   <div className="space-y-3">
-                    {detailData.cases.map((c: any) => (
-                      <div key={c.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/30 space-y-2 text-xs">
-                        <div className="flex justify-between items-start gap-2">
-                          <span className="font-bold text-slate-750 leading-snug">{c.subject}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${
-                            c.type === 'Positive' 
-                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
-                              : 'bg-rose-50 text-rose-600 border border-rose-100'
-                          }`}>
-                            {c.type}
+                    {/* Scrollable Container with max height */}
+                    <div className="max-h-[380px] overflow-y-auto pr-1 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
+                      {(showAllCases ? detailData.cases : detailData.cases.slice(0, 5)).map((c: any) => (
+                        <div key={c.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/30 space-y-2 text-xs hover:border-slate-200 transition-colors">
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="font-bold text-slate-750 leading-snug">{c.subject}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${
+                              c.type === 'Positive' 
+                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                                : 'bg-rose-50 text-rose-600 border border-rose-100'
+                            }`}>
+                              {c.type}
+                            </span>
+                          </div>
+                          <p className="text-slate-500 text-[11px] font-light leading-relaxed">{c.description}</p>
+                          <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-1 border-t border-slate-100/50">
+                            <span>Priority: {c.priority}</span>
+                            <span>Date: {c.date}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Show More / Show Less Toggle Button */}
+                    {detailData.cases.length > 5 && (
+                      <div className="pt-2 flex justify-center border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setShowAllCases(prev => !prev)}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-blue-100 bg-blue-50/50 hover:bg-blue-50 text-blue-600 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                        >
+                          <span>
+                            {showAllCases
+                              ? 'Show Less'
+                              : `Show More (${detailData.cases.length - 5} remaining)`}
                           </span>
-                        </div>
-                        <p className="text-slate-500 text-[11px] font-light leading-relaxed">{c.description}</p>
-                        <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-1 border-t border-slate-100/50">
-                          <span>Priority: {c.priority}</span>
-                          <span>Date: {c.date}</span>
-                        </div>
+                          {showAllCases ? (
+                            <ChevronUp className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-blue-600" />
+                          )}
+                        </button>
                       </div>
-                    ))}
+                    )}
                   </div>
                 ) : (
                   <div className="p-6 text-center bg-slate-50/50 border border-dashed border-slate-200 rounded-xl space-y-2">

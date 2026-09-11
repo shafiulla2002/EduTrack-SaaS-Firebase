@@ -407,9 +407,31 @@ export class AttendanceService {
       return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
     }
 
-    const absentIds = session.attendances
-      .filter(a => a.status === AttendanceStatus.ABSENT)
-      .map(a => a.studentId);
+    const dateObj = new Date(searchDate);
+    const yyyy = dateObj.getUTCFullYear();
+    const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+    const monthStr = `${yyyy}-${mm}`;
+    const dayIdx = dateObj.getUTCDate() - 1;
+
+    const monthlyRecords = await this.prisma.monthlyAttendance.findMany({
+      where: {
+        tenantId,
+        classSectionId: classSection.id,
+        month: monthStr,
+      },
+      select: { studentId: true, attendance: true },
+    });
+
+    let absentIds: string[] = [];
+    if (monthlyRecords.length > 0) {
+      absentIds = monthlyRecords
+        .filter(m => m.attendance && m.attendance[dayIdx] === 'A')
+        .map(m => m.studentId);
+    } else if (session.attendances && session.attendances.length > 0) {
+      absentIds = session.attendances
+        .filter(a => a.status === AttendanceStatus.ABSENT)
+        .map(a => a.studentId);
+    }
 
     return {
       sessionExists: true,
@@ -634,8 +656,67 @@ export class AttendanceService {
         });
       }
 
-      // 5. Implicit present storage management:
-      // Delete existing records that are NOT in the new absent list (they are now present)
+      // 5. MonthlyAttendance PAPA model synchronization
+      const dateObj = new Date(date);
+      const yyyy = dateObj.getUTCFullYear();
+      const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+      const monthStr = `${yyyy}-${mm}`;
+      const dayIdx = dateObj.getUTCDate() - 1; // 0 to 30
+
+      const academicYearId = cls.academicYearId;
+      const enrolledStudents = await tx.studentProfile.findMany({
+        where: { tenantId, classSectionId: classSection.id, user: { isActive: true } },
+        select: { id: true },
+      });
+
+      const absentSet = new Set(absentStudentIds);
+
+      for (const s of enrolledStudents) {
+        const char = absentSet.has(s.id) ? 'A' : 'P';
+        
+        const existingMonthly = await tx.monthlyAttendance.findUnique({
+          where: {
+            tenantId_academicYearId_studentId_month: {
+              tenantId,
+              academicYearId,
+              studentId: s.id,
+              month: monthStr,
+            },
+          },
+        });
+
+        let attArray = new Array(31).fill('-');
+        if (existingMonthly && existingMonthly.attendance) {
+          attArray = existingMonthly.attendance.split('');
+        }
+        attArray[dayIdx] = char;
+        const newAttStr = attArray.join('');
+
+        await tx.monthlyAttendance.upsert({
+          where: {
+            tenantId_academicYearId_studentId_month: {
+              tenantId,
+              academicYearId,
+              studentId: s.id,
+              month: monthStr,
+            },
+          },
+          create: {
+            tenantId,
+            academicYearId,
+            studentId: s.id,
+            classSectionId: classSection.id,
+            month: monthStr,
+            attendance: newAttStr,
+          },
+          update: {
+            attendance: newAttStr,
+            classSectionId: classSection.id,
+          },
+        });
+      }
+
+      // 6. Legacy attendance table synchronization (for fallback safety)
       await tx.attendance.deleteMany({
         where: {
           attendanceSessionId: session.id,
@@ -645,7 +726,6 @@ export class AttendanceService {
         },
       });
 
-      // Fetch already stored absent records to avoid duplicates
       const storedAbsents = await tx.attendance.findMany({
         where: {
           attendanceSessionId: session.id,
@@ -655,7 +735,6 @@ export class AttendanceService {
       });
       const storedAbsentIds = new Set(storedAbsents.map(a => a.studentId));
 
-      // Insert new records for newly absent students
       const newAbsents = absentStudentIds.filter(id => !storedAbsentIds.has(id));
       if (newAbsents.length > 0) {
         const attendanceData = newAbsents.map(studentId => ({
@@ -670,7 +749,7 @@ export class AttendanceService {
       }
 
       return { classVal, sectionVal, dateStr: data.dateStr || data.date };
-    }, { timeout: 25000 });
+    }, { timeout: 45000 });
 
     // Run outside the database write lock transaction to avoid transaction deadlocks
     return this.getSessionData(result.classVal, result.sectionVal, result.dateStr);

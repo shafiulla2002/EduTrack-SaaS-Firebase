@@ -106,8 +106,9 @@ model Tenant {
   subjects       Subject[]
   classSubjects  ClassSubject[]
   teacherAssigns TeacherAssignment[]
-  attendances    Attendance[]
-  attendanceSess AttendanceSession[]
+  attendances        Attendance[]
+  monthlyAttendances MonthlyAttendance[]
+  attendanceSess     AttendanceSession[]
   exams          Exam[]
   examMarks      ExamMark[]
   invoices       Invoice[]
@@ -285,8 +286,9 @@ model StudentProfile {
   busStopId String?
   busStop   BusStop? @relation(fields: [busStopId], references: [id], onDelete: SetNull)
 
-  attendances   Attendance[]
-  examMarks     ExamMark[]
+  attendances        Attendance[]
+  monthlyAttendances MonthlyAttendance[]
+  examMarks          ExamMark[]
   invoices      Invoice[]
   opportunities Opportunity[]
   leaveRequests LeaveRequest[]
@@ -310,8 +312,9 @@ model AcademicYear {
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  classes       Class[]
-  complaints    Complaint[]
+  classes            Class[]
+  monthlyAttendances MonthlyAttendance[]
+  complaints         Complaint[]
   pricebooks    Pricebook[]
   opportunities Opportunity[]
   examSchedules ExamSchedule[]
@@ -370,6 +373,7 @@ model ClassSection {
   classSubjects      ClassSubject[]
   teacherAssigns     TeacherAssignment[]
   attendanceSessions AttendanceSession[]
+  monthlyAttendances MonthlyAttendance[]
   periods            Period[]
   exams              Exam[]
   complaints         Complaint[]
@@ -473,6 +477,30 @@ model Attendance {
   @@index([tenantId])
   @@index([studentId])
   @@index([attendanceSessionId])
+}
+
+model MonthlyAttendance {
+  id             String         @id @default(uuid())
+  tenantId       String
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classSectionId String
+  classSection   ClassSection   @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  month          String         // Format: "YYYY-MM" (e.g. "2026-06")
+
+  // Compact 31-character PAPA representation (Day 1 at index 0 ... Day 31 at index 30)
+  // 'P' = PRESENT, 'A' = ABSENT, 'L' = LATE, 'E' = EXCUSED, '-' = UNMARKED/NON-WORKING
+  attendance     String         @default("-------------------------------")
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([tenantId, academicYearId, studentId, month])
+  @@index([tenantId, classSectionId, month])
+  @@index([studentId, month])
 }
 
 model Exam {
