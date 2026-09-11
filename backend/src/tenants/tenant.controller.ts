@@ -393,13 +393,13 @@ export class TenantController {
     return this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
-        bankName: body.bankName || null,
-        bankBranch: body.bankBranch || null,
-        bankIFSC: body.bankIFSC || null,
-        bankAccountNo: body.bankAccountNo || null,
-        googlePayId: body.googlePayId || null,
-        phonePeId: body.phonePeId || null,
-        upiQrId: body.upiQrId || null,
+        bankName: body.bankName ? String(body.bankName).trim() : null,
+        bankBranch: body.bankBranch ? String(body.bankBranch).trim() : null,
+        bankIFSC: body.bankIFSC ? String(body.bankIFSC).trim().toUpperCase() : null,
+        bankAccountNo: body.bankAccountNo ? String(body.bankAccountNo).trim() : null,
+        googlePayId: body.googlePayId ? String(body.googlePayId).trim() : null,
+        phonePeId: body.phonePeId ? String(body.phonePeId).trim() : null,
+        upiQrId: body.upiQrId ? String(body.upiQrId).trim() : null,
       },
     });
   }
