@@ -137,16 +137,8 @@ function AttendanceEntryContent() {
         setRecentSubmissions(recentRes.data);
       }
       if (teachersRes.data) {
-        const nonTeachingKeywords = [
-          'driver', 'account', 'librar', 'secur', 'peon', 'clerk',
-          'clean', 'attend', 'coach', 'pet', 'sport', 'admin', 'bus'
-        ];
-        const validTeachingStaff = (teachersRes.data as Teacher[]).filter(t => {
-          const name = t.name.toLowerCase();
-          const sub = (t.subject || '').toLowerCase();
-          return !nonTeachingKeywords.some(kw => name.startsWith(kw) || sub.includes(kw));
-        });
-        setTeachers(validTeachingStaff);
+        // Backend already filters by Role.TEACHER + staffCategory, trust its results directly
+        setTeachers(teachersRes.data as Teacher[]);
       }
       if (classesRes.data) {
         setClassOptions(classesRes.data);

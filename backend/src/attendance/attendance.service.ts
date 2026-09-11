@@ -101,83 +101,37 @@ export class AttendanceService {
     }));
   }
 
-  // Salesforce parity: get teachers associated with tenant (strictly teaching faculty only)
+  // Fetch teaching staff for attendance entry
   async getTeachers() {
     const tenantId = this.getTenantId();
+    // Include all active staff with TEACHING category (or role TEACHER), excluding NON_TEACHING
+    // This handles cases where Principal/Admin may also take attendance
     const staff = await this.prisma.staffProfile.findMany({
       where: {
         tenantId,
         user: {
-          role: Role.TEACHER,
           isActive: true,
+          role: { in: [Role.TEACHER, Role.SCHOOL_ADMIN, Role.STAFF] },
         },
+        NOT: [{ staffCategory: 'NON_TEACHING' }],
         OR: [
-          { staffCategory: null },
           { staffCategory: 'TEACHING' },
-        ],
-        NOT: [
-          { staffCategory: 'NON_TEACHING' },
-          { designation: { contains: 'driver', mode: 'insensitive' } },
-          { designation: { contains: 'account', mode: 'insensitive' } },
-          { designation: { contains: 'librarian', mode: 'insensitive' } },
-          { designation: { contains: 'security', mode: 'insensitive' } },
-          { designation: { contains: 'peon', mode: 'insensitive' } },
-          { designation: { contains: 'clerk', mode: 'insensitive' } },
-          { designation: { contains: 'cleaner', mode: 'insensitive' } },
-          { designation: { contains: 'attendant', mode: 'insensitive' } },
-          { designation: { contains: 'attender', mode: 'insensitive' } },
-          { designation: { contains: 'coach', mode: 'insensitive' } },
-          { designation: { contains: 'pet', mode: 'insensitive' } },
-          { designation: { contains: 'sports', mode: 'insensitive' } },
-          { staffRole: { contains: 'driver', mode: 'insensitive' } },
-          { staffRole: { contains: 'account', mode: 'insensitive' } },
-          { staffRole: { contains: 'librarian', mode: 'insensitive' } },
-          { staffRole: { contains: 'security', mode: 'insensitive' } },
-          { staffRole: { contains: 'peon', mode: 'insensitive' } },
-          { staffRole: { contains: 'clerk', mode: 'insensitive' } },
-          { staffRole: { contains: 'coach', mode: 'insensitive' } },
-          { staffRole: { contains: 'pet', mode: 'insensitive' } },
+          { staffCategory: null },
+          { user: { role: Role.TEACHER } },
         ],
       },
       include: {
         user: {
-          select: {
-            id: true,
-            name: true,
-          },
+          select: { id: true, name: true, role: true },
         },
       },
-      orderBy: {
-        user: {
-          name: 'asc',
-        },
-      },
+      orderBy: { user: { name: 'asc' } },
       take: 1000,
     });
-
-    const nonTeachingKeywords = [
-      'driver', 'account', 'librar', 'secur', 'peon', 'clerk',
-      'clean', 'attend', 'coach', 'pet', 'sport', 'admin', 'bus'
-    ];
-
-    const teachingFaculty = staff.filter(s => {
-      const desig = (s.designation || '').toLowerCase();
-      const role = (s.staffRole || '').toLowerCase();
-      const cat = (s.staffCategory || '').toUpperCase();
-      const name = (s.user?.name || '').toLowerCase();
-      const sub = (s.subjectsTaught[0] || '').toLowerCase();
-
-      if (cat === 'NON_TEACHING') return false;
-      if (nonTeachingKeywords.some(kw => desig.includes(kw) || role.includes(kw) || sub.includes(kw) || name.startsWith(kw))) {
-        return false;
-      }
-      return true;
-    });
-
-    return teachingFaculty.map(s => ({
+    return staff.map(s => ({
       id: s.id,
-      name: s.user.name,
-      subject: s.subjectsTaught[0] || s.designation || 'Faculty',
+      name: s.user?.name || 'Faculty',
+      subject: s.subjectsTaught?.[0] || s.designation || 'Faculty',
     }));
   }
 
