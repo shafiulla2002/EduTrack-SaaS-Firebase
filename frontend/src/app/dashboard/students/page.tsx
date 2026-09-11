@@ -113,6 +113,7 @@ export default function StudentsDirectory() {
   const [activeStudent, setActiveStudent] = useState<Student | null>(null);
   const [activeStudentDetails, setActiveStudentDetails] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [casesLoading, setCasesLoading] = useState(false);
   const [selectedExamTab, setSelectedExamTab] = useState<string>('Unit Test');
   const [expandedInvoices, setExpandedInvoices] = useState<Record<string, boolean>>({});
   const [expandedExams, setExpandedExams] = useState<Record<string, boolean>>({});
@@ -294,15 +295,12 @@ export default function StudentsDirectory() {
     if (loadedDetailsKey === key && activeStudent?.id === studentId) return;
     
     try {
-      const [detailsRes, casesRes] = await Promise.all([
-        api.get(`/students/${studentId}`, {
-          params: yearId && yearId !== 'All' ? { academicYearId: yearId } : {}
-        }),
-        api.get(`/complaint-box/student-cases/${studentId}`)
-      ]);
+      // ── Phase 1: Load student details + exam marks FAST (no behavior cases yet) ──
+      const detailsRes = await api.get(`/students/${studentId}`, {
+        params: yearId && yearId !== 'All' ? { academicYearId: yearId } : {}
+      });
       
       const data = detailsRes.data;
-      const casesData = casesRes.data;
 
       const paid = data.paidAmount !== undefined ? Number(data.paidAmount) : (data.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
       const due = data.balanceDue !== undefined ? Number(data.balanceDue) : (data.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
@@ -328,7 +326,7 @@ export default function StudentsDirectory() {
         profilePhotoUrl: data.profilePhotoUrl || null,
       };
 
-      // Group exams
+      // Group exams by exam id
       const examsMap: Record<string, any> = {};
       data.examMarks?.forEach((mark: any) => {
         const exId = mark.exam.id;
@@ -337,25 +335,29 @@ export default function StudentsDirectory() {
             id: exId,
             name: mark.exam.name,
             type: mark.exam.type,
-            subjects: []
+            subjects: [],
+            maxMarks: mark.exam.maxMarks || 100,
           };
         }
         examsMap[exId].subjects.push({
           name: mark.subject.name,
           score: Number(mark.marksObtained),
-          max: 100
+          max: mark.exam.maxMarks || 100
         });
       });
 
       const exams = Object.values(examsMap).map((ex: any) => {
-        const total = ex.subjects.reduce((sum: number, s: any) => sum + s.score, 0);
-        const avg = ex.subjects.length > 0 ? (total / ex.subjects.length).toFixed(0) : '0';
+        const totalObtained = ex.subjects.reduce((sum: number, s: any) => sum + s.score, 0);
+        const totalMax = ex.subjects.reduce((sum: number, s: any) => sum + s.max, 0);
+        const pct = totalMax > 0 ? Math.round((totalObtained / totalMax) * 100) : 0;
         return {
           ...ex,
-          score: `${avg}%`
+          score: `${pct}%`,
+          avgPct: pct,
         };
       });
 
+      // Set details with empty cases first (fast render)
       setActiveStudentDetails({
         products: data.feeItems?.map((item: any) => ({
           id: item.oliId,
@@ -388,16 +390,7 @@ export default function StudentsDirectory() {
           })) || []
         })) || [],
         exams,
-        cases: casesData.map((c: any) => ({
-          id: c.id,
-          type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
-          typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
-          subject: c.category,
-          priority: c.priority,
-          status: c.status,
-          date: new Date(c.createdAt).toISOString().split('T')[0],
-          description: c.description || ''
-        }))
+        cases: [], // empty initially — loaded lazily in Phase 2
       });
 
       if (exams.length > 0) {
@@ -412,6 +405,30 @@ export default function StudentsDirectory() {
       setExpandedExams({});
       setTempDiscount(0);
       setAppliedDiscountPercent(0);
+
+      // ── Phase 2: Lazily load behavior cases in background (doesn't block profile render) ──
+      setCasesLoading(true);
+      api.get(`/complaint-box/student-cases/${studentId}`)
+        .then((casesRes) => {
+          const casesData = casesRes.data;
+          setActiveStudentDetails((prev: any) => prev ? {
+            ...prev,
+            cases: casesData.map((c: any) => ({
+              id: c.id,
+              type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
+              typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
+              subject: c.category,
+              priority: c.priority,
+              status: c.status,
+              date: new Date(c.createdAt).toISOString().split('T')[0],
+              description: c.description || '',
+              teacher: c.teacher?.user?.name || ''
+            }))
+          } : prev);
+        })
+        .catch((err) => console.error('Failed to load student cases:', err))
+        .finally(() => setCasesLoading(false));
+
     } catch (err) {
       console.error('Failed to load student details:', err);
       alert('Failed to load student details');
@@ -473,6 +490,83 @@ export default function StudentsDirectory() {
     const list = Array.from(typesSet);
     return list.length > 0 ? list : ['Unit Test', 'Quarterly', 'Final'];
   }, [detailData]);
+
+  // Overall Exam Performance metrics for Progress Card
+  const progressMetrics = useMemo(() => {
+    if (!detailData?.exams || detailData.exams.length === 0) {
+      return {
+        hasData: false,
+        overallAvgPct: 0,
+        grade: '—',
+        gradeColor: 'text-slate-400',
+        gradeBg: 'bg-slate-50 border-slate-200',
+        remark: 'No exam assessment records recorded for this academic year yet.',
+        syllabusProgress: 0,
+        completedExamsCount: 0,
+      };
+    }
+
+    const allExams = detailData.exams;
+    let totalObtained = 0;
+    let totalMax = 0;
+
+    allExams.forEach((ex: any) => {
+      ex.subjects?.forEach((s: any) => {
+        totalObtained += Number(s.score) || 0;
+        totalMax += Number(s.max) || 0;
+      });
+    });
+
+    const overallAvgPct = totalMax > 0 
+      ? Math.round((totalObtained / totalMax) * 100) 
+      : Math.round(allExams.reduce((sum: number, ex: any) => sum + (ex.avgPct || 0), 0) / allExams.length);
+
+    let grade = 'D';
+    let gradeColor = 'text-rose-600';
+    let gradeBg = 'bg-rose-50 border-rose-100';
+    let remark = 'Needs significant improvement. Additional remedial guidance and practice required.';
+
+    if (overallAvgPct >= 90) {
+      grade = 'A+';
+      gradeColor = 'text-emerald-600';
+      gradeBg = 'bg-emerald-50 border-emerald-100';
+      remark = 'Outstanding performance! Exceptional results across all subjects.';
+    } else if (overallAvgPct >= 80) {
+      grade = 'A';
+      gradeColor = 'text-blue-600';
+      gradeBg = 'bg-blue-50 border-blue-100';
+      remark = 'Excellent academic standing! Consistently matches exam requirements.';
+    } else if (overallAvgPct >= 70) {
+      grade = 'B+';
+      gradeColor = 'text-indigo-600';
+      gradeBg = 'bg-indigo-50 border-indigo-100';
+      remark = 'Good academic standing. Steady progress shown across core subjects.';
+    } else if (overallAvgPct >= 60) {
+      grade = 'B';
+      gradeColor = 'text-violet-600';
+      gradeBg = 'bg-violet-50 border-violet-100';
+      remark = 'Satisfactory performance. Can achieve higher scores with consistent revision.';
+    } else if (overallAvgPct >= 50) {
+      grade = 'C';
+      gradeColor = 'text-amber-600';
+      gradeBg = 'bg-amber-50 border-amber-100';
+      remark = 'Average performance. Needs focused attention on weaker subjects.';
+    }
+
+    const completedCount = allExams.length;
+    const syllabusProgress = Math.min(100, Math.round((completedCount / 3) * 100));
+
+    return {
+      hasData: true,
+      overallAvgPct,
+      grade,
+      gradeColor,
+      gradeBg,
+      remark,
+      syllabusProgress: completedCount > 0 ? syllabusProgress : 0,
+      completedExamsCount: completedCount,
+    };
+  }, [detailData?.exams]);
 
   const isPaidClear = activeStudent ? activeStudent.balanceDue <= 0 : false;
 
@@ -1338,30 +1432,53 @@ export default function StudentsDirectory() {
                   <CheckCircle className="w-5 h-5 text-blue-500" />
                   <h3 className="text-base font-bold text-slate-800">Progress Card</h3>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center font-extrabold text-[#2E5BFF] text-2xl shadow-sm">
-                    A
+
+                {profileLoading && !detailData ? (
+                  <div className="animate-pulse space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-100" />
+                      <div className="space-y-2">
+                        <div className="h-3 w-24 bg-slate-100 rounded" />
+                        <div className="h-6 w-16 bg-slate-200 rounded" />
+                      </div>
+                    </div>
+                    <div className="h-12 bg-slate-100 rounded-xl" />
+                    <div className="h-4 bg-slate-100 rounded" />
                   </div>
-                  <div>
-                    <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Overall Average</div>
-                    <div className="text-2xl font-extrabold text-slate-800">86%</div>
-                  </div>
-                </div>
-                <div className="p-3.5 bg-blue-50/20 border border-blue-100/30 rounded-xl text-xs text-slate-600 leading-relaxed font-medium">
-                  Excellent academic standing! Consistently matches exam requirements.
-                </div>
-                
-                {/* Syllabus progression */}
-                <div className="space-y-1.5 pt-2">
-                  <div className="flex justify-between text-xs font-semibold text-slate-600">
-                    <span>Year Syllabus Progress</span>
-                    <span>65%</span>
-                  </div>
-                  <div className="bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div className="bg-[#2E5BFF] h-full rounded-full" style={{ width: '65%' }} />
-                  </div>
-                  <p className="text-[10px] text-slate-400 font-medium">65% of academic catalog syllabus completed.</p>
-                </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center font-extrabold text-2xl shadow-sm ${progressMetrics.gradeBg} ${progressMetrics.gradeColor}`}>
+                        {progressMetrics.grade}
+                      </div>
+                      <div>
+                        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Overall Average</div>
+                        <div className="text-2xl font-extrabold text-slate-800">
+                          {progressMetrics.hasData ? `${progressMetrics.overallAvgPct}%` : 'N/A'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-3.5 bg-blue-50/20 border border-blue-100/30 rounded-xl text-xs text-slate-600 leading-relaxed font-medium">
+                      {progressMetrics.remark}
+                    </div>
+                    
+                    {/* Syllabus / Assessments progression */}
+                    <div className="space-y-1.5 pt-2">
+                      <div className="flex justify-between text-xs font-semibold text-slate-600">
+                        <span>Year Assessment Progress</span>
+                        <span>{progressMetrics.syllabusProgress}%</span>
+                      </div>
+                      <div className="bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="bg-[#2E5BFF] h-full rounded-full transition-all duration-500" style={{ width: `${progressMetrics.syllabusProgress}%` }} />
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        {progressMetrics.hasData
+                          ? `${progressMetrics.completedExamsCount} assessment cycle(s) recorded for this session.`
+                          : 'No exam marks recorded yet.'}
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Performance Report */}
@@ -1371,67 +1488,100 @@ export default function StudentsDirectory() {
                   <h3 className="text-base font-bold text-slate-800">Performance Report</h3>
                 </div>
                 
-                {/* Exam Category Tabs */}
-                <div className="flex border-b border-slate-100 gap-4 text-xs font-bold overflow-x-auto whitespace-nowrap scrollbar-none pb-0.5">
-                  {dynamicExamTabs.map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setSelectedExamTab(tab)}
-                      className={`pb-2.5 transition-all border-b-2 uppercase ${
-                        selectedExamTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'
-                      }`}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
+                {profileLoading && !detailData ? (
+                  <div className="animate-pulse space-y-3 pt-2">
+                    <div className="h-8 bg-slate-100 rounded-lg w-3/4" />
+                    <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl" />
+                    <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Exam Category Tabs */}
+                    <div className="flex border-b border-slate-100 gap-4 text-xs font-bold overflow-x-auto whitespace-nowrap scrollbar-none pb-0.5">
+                      {dynamicExamTabs.map((tab) => (
+                        <button
+                          key={tab}
+                          onClick={() => setSelectedExamTab(tab)}
+                          className={`pb-2.5 transition-all border-b-2 uppercase ${
+                            selectedExamTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+                          }`}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
 
-                {/* Exam Cards */}
-                <div className="space-y-3 pt-2">
-                  {detailData?.exams
-                    .filter((ex: any) => ex.type === selectedExamTab)
-                    .map((ex: any) => {
-                      const isExpanded = !!expandedExams[ex.id];
-                      return (
-                        <div key={ex.id} className="border border-slate-100 rounded-xl overflow-hidden">
-                          <div
-                            onClick={() => toggleExam(ex.id)}
-                            className="flex justify-between items-center p-3 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors"
-                          >
-                            <div className="flex items-center gap-2">
-                              <BookOpen className="w-4 h-4 text-slate-500" />
-                              <div className="text-xs font-bold text-slate-700">{ex.name}</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-emerald-600">{ex.score}</span>
-                              {isExpanded ? <ChevronUp className="w-4.5 h-4.5 text-slate-400" /> : <ChevronDown className="w-4.5 h-4.5 text-slate-400" />}
-                            </div>
-                          </div>
-                          
-                          {isExpanded && (
-                            <div className="p-3 border-t border-slate-100 bg-white space-y-2 text-xs">
-                              {ex.subjects.map((subj: any, idx: number) => (
-                                <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50 last:border-none">
-                                  <span className="text-slate-500 font-semibold">{subj.name}</span>
-                                  <span className="text-slate-800 font-extrabold font-mono">{subj.score} / {subj.max}</span>
+                    {/* Exam Cards */}
+                    <div className="space-y-3 pt-2">
+                      {detailData?.exams && detailData.exams.filter((ex: any) => ex.type === selectedExamTab).length > 0 ? (
+                        detailData.exams
+                          .filter((ex: any) => ex.type === selectedExamTab)
+                          .map((ex: any) => {
+                            const isExpanded = !!expandedExams[ex.id];
+                            return (
+                              <div key={ex.id} className="border border-slate-100 rounded-xl overflow-hidden">
+                                <div
+                                  onClick={() => toggleExam(ex.id)}
+                                  className="flex justify-between items-center p-3 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <BookOpen className="w-4 h-4 text-slate-500" />
+                                    <div className="text-xs font-bold text-slate-700">{ex.name}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-emerald-600">{ex.score}</span>
+                                    {isExpanded ? <ChevronUp className="w-4.5 h-4.5 text-slate-400" /> : <ChevronDown className="w-4.5 h-4.5 text-slate-400" />}
+                                  </div>
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                                
+                                {isExpanded && (
+                                  <div className="p-3 border-t border-slate-100 bg-white space-y-2 text-xs">
+                                    {ex.subjects.map((subj: any, idx: number) => (
+                                      <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50 last:border-none">
+                                        <span className="text-slate-500 font-semibold">{subj.name}</span>
+                                        <span className="text-slate-800 font-extrabold font-mono">{subj.score} / {subj.max}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                      ) : (
+                        <div className="p-4 text-center text-xs text-slate-400 font-medium">
+                          No {selectedExamTab} marks recorded yet.
                         </div>
-                      );
-                    })}
-                </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Student Behaviour (incidents cases) */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                  <ShieldAlert className="w-5 h-5 text-blue-500" />
-                  <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
+                  </div>
+                  {casesLoading && (
+                    <span className="text-[11px] font-semibold text-blue-600 animate-pulse">Loading records...</span>
+                  )}
                 </div>
 
-                {detailData && detailData.cases.length > 0 ? (
+                {casesLoading ? (
+                  <div className="space-y-3 animate-pulse">
+                    <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
+                      <div className="h-4 bg-slate-200 rounded w-3/4" />
+                      <div className="h-3 bg-slate-100 rounded w-full" />
+                      <div className="h-3 bg-slate-100 rounded w-1/2" />
+                    </div>
+                    <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
+                      <div className="h-4 bg-slate-200 rounded w-2/3" />
+                      <div className="h-3 bg-slate-100 rounded w-5/6" />
+                    </div>
+                  </div>
+                ) : detailData && detailData.cases && detailData.cases.length > 0 ? (
                   <div className="max-h-96 overflow-y-auto pr-1 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                     {detailData.cases.map((c: any) => (
                       <div key={c.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/30 space-y-2 text-xs">
@@ -1447,7 +1597,7 @@ export default function StudentsDirectory() {
                         </div>
                         <p className="text-slate-500 text-[11px] font-light leading-relaxed">{c.description}</p>
                         <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-1 border-t border-slate-100/50">
-                          <span>Priority: {c.priority}</span>
+                          <span>{c.teacher ? `Teacher: ${c.teacher}` : `Priority: ${c.priority}`}</span>
                           <span>Date: {c.date}</span>
                         </div>
                       </div>

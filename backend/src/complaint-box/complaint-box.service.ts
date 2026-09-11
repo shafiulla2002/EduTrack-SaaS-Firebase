@@ -337,20 +337,22 @@ export class ComplaintBoxService {
 
     return this.prisma.behaviorCase.findMany({
       where: filter,
-      include: {
-        student: {
-          include: {
-            user: { select: { name: true } },
-            classSection: { include: { class: true, section: true } },
-          },
-        },
+      select: {
+        id: true,
+        behaviorType: true,
+        category: true,
+        priority: true,
+        status: true,
+        description: true,
+        createdAt: true,
         teacher: {
-          include: {
+          select: {
             user: { select: { name: true } },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 20,
     });
   }
 
