@@ -94,7 +94,7 @@ async function bootstrap() {
         new ValidationPipe({
           whitelist: true,
           transform: true,
-          forbidNonWhitelisted: true,
+          forbidNonWhitelisted: false,
         }),
       );
 
@@ -110,8 +110,13 @@ async function bootstrap() {
 
 // For Vercel serverless functions
 export default async (req: any, res: any) => {
-  const server = await bootstrap();
-  return server(req, res);
+  try {
+    const server = await bootstrap();
+    return server(req, res);
+  } catch (err: any) {
+    console.error('Vercel Serverless Function Execution Error:', err);
+    return res.status(500).json({ error: 'Internal Server Error', message: err?.message || String(err) });
+  }
 };
 
 // For local running
