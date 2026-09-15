@@ -126,6 +126,8 @@ export class AttendanceService {
           { designation: { contains: 'cleaner', mode: 'insensitive' } },
           { designation: { contains: 'attendant', mode: 'insensitive' } },
           { designation: { contains: 'attender', mode: 'insensitive' } },
+          { designation: { contains: 'maintenance', mode: 'insensitive' } },
+          { designation: { contains: 'support', mode: 'insensitive' } },
           { designation: { contains: 'coach', mode: 'insensitive' } },
           { designation: { contains: 'pet', mode: 'insensitive' } },
           { designation: { contains: 'sports', mode: 'insensitive' } },
@@ -135,6 +137,8 @@ export class AttendanceService {
           { staffRole: { contains: 'security', mode: 'insensitive' } },
           { staffRole: { contains: 'peon', mode: 'insensitive' } },
           { staffRole: { contains: 'clerk', mode: 'insensitive' } },
+          { staffRole: { contains: 'maintenance', mode: 'insensitive' } },
+          { staffRole: { contains: 'support', mode: 'insensitive' } },
           { staffRole: { contains: 'coach', mode: 'insensitive' } },
           { staffRole: { contains: 'pet', mode: 'insensitive' } },
         ],
@@ -157,7 +161,8 @@ export class AttendanceService {
 
     const nonTeachingKeywords = [
       'driver', 'account', 'librar', 'secur', 'peon', 'clerk',
-      'clean', 'attend', 'coach', 'pet', 'sport', 'admin', 'bus'
+      'clean', 'attend', 'coach', 'pet', 'sport', 'admin', 'bus',
+      'maintenance', 'support', 'watchman', 'helper', 'sweeper'
     ];
 
     const teachingFaculty = staff.filter(s => {

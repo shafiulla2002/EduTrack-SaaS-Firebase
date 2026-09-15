@@ -138,8 +138,8 @@ export default function SubscriptionPage() {
           setPlanPricing(prev => ({
             ...prev,
             BASIC: {
-              6: pricingMap[6] ?? 10,
-              12: pricingMap[12] ?? 20,
+              6: pricingMap[6] ?? 1,
+              12: pricingMap[12] ?? 2,
             }
           }));
         }
@@ -365,7 +365,7 @@ export default function SubscriptionPage() {
         },
         prefill: {
           email: stats?.email || '',
-          contact: stats?.phone ? String(stats.phone).replace(/\D/g, '').slice(-10) : '',
+          contact: stats?.phone || '',
         },
         theme: { color: '#2563EB' },
         modal: {
