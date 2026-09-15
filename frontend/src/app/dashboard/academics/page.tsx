@@ -5,7 +5,7 @@ import {
   Users, Calendar, Plus, BookOpen, Clock, AlertTriangle, 
   CheckCircle, ChevronRight, X, Search, Info, Grid, MapPin, RefreshCw, Trash2
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 
@@ -90,23 +90,22 @@ export default function AcademicsManagement() {
 
   const loadData = async () => {
     try {
-      setLoading(true);
       const [teachersRes, classSectionsRes, yearsRes, subjectsRes] = await Promise.all([
-        api.get('/teachers'),
-        api.get('/academics/class-sections'),
-        api.get('/academics/academic-years'),
-        api.get('/academics/subjects'),
+        fastGet('/teachers', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/class-sections', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/subjects', undefined, { ttlMs: 60000 }),
       ]);
 
-      setTeachers(teachersRes.data);
-      setClassSections(classSectionsRes.data);
-      setAcademicYears(yearsRes.data);
-      setSubjects(subjectsRes.data);
+      if (teachersRes.data) setTeachers(teachersRes.data);
+      if (classSectionsRes.data) setClassSections(classSectionsRes.data);
+      if (yearsRes.data) setAcademicYears(yearsRes.data);
+      if (subjectsRes.data) setSubjects(subjectsRes.data);
 
-      if (yearsRes.data.length > 0) {
+      if (yearsRes.data && yearsRes.data.length > 0) {
         setWizardData(prev => ({ ...prev, academicYearId: yearsRes.data[0].id }));
       }
-      if (teachersRes.data.length > 0) {
+      if (teachersRes.data && teachersRes.data.length > 0) {
         setWizardData(prev => ({ ...prev, teacherId: teachersRes.data[0].id }));
       }
     } catch (err) {

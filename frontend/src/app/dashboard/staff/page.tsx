@@ -410,8 +410,11 @@ export default function SchoolStaffPage() {
       if (statusFilter) params.append('status', statusFilter);
       if (selectedPayrollMonth) params.append('month', selectedPayrollMonth);
 
-      const res = await fastGet(`/teachers?${params.toString()}`, undefined, {
-        ttlMs: 5000,
+      const q = params.toString();
+      const endpoint = q ? `/teachers?${q}` : '/teachers';
+
+      const res = await fastGet(endpoint, undefined, {
+        ttlMs: 30000,
         onRevalidate: (fresh) => {
           if (fresh && Array.isArray(fresh)) {
             mapAndSetStaff(fresh);

@@ -624,6 +624,41 @@ export default function DashboardLayout({
                       onMouseEnter={() => {
                         if (!isLocked && item.href && item.href !== '#') {
                           router.prefetch(item.href);
+                          if (item.href === '/dashboard/students') {
+                            fastGet('/students', { params: { page: 1, limit: 20 } }, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/academics/academic-years', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/academics/classes', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/academics/sections', undefined, { ttlMs: 120000 }).catch(() => {});
+                          } else if (item.href === '/dashboard/staff') {
+                            fastGet('/teachers', undefined, { ttlMs: 120000 }).catch(() => {});
+                          } else if (item.href === '/dashboard/teachers') {
+                            fastGet('/timetable/workload/dashboard', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/timetable/config', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/timetable/period-timings', undefined, { ttlMs: 120000 }).catch(() => {});
+                          } else if (item.href === '/dashboard/academics') {
+                            fastGet('/teachers', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/academics/class-sections', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/academics/academic-years', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/academics/subjects', undefined, { ttlMs: 120000 }).catch(() => {});
+                          } else if (item.href === '/dashboard/billing') {
+                            fastGet('/billing/summary', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/billing/options/years', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/billing/invoices/recent', undefined, { ttlMs: 120000 }).catch(() => {});
+                          } else if (item.href === '/attendance/dashboard' || item.href === '/dashboard/attendance') {
+                            fastGet('/attendance/dashboard', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/complaint-box/teachers', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/academics/class-sections', undefined, { ttlMs: 120000 }).catch(() => {});
+                          } else if (item.href === '/dashboard/admissions') {
+                            fastGet('/billing/options/years', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/billing/options/classes', undefined, { ttlMs: 120000 }).catch(() => {});
+                          } else if (item.href === '/dashboard/timetable') {
+                            fastGet('/timetable/academic-years', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/timetable/classes', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/timetable/period-timings', undefined, { ttlMs: 120000 }).catch(() => {});
+                          } else if (item.href === '/dashboard/salary') {
+                            fastGet('/teacher-portal/salary/details', undefined, { ttlMs: 120000 }).catch(() => {});
+                            fastGet('/teacher-portal/salary/history', undefined, { ttlMs: 120000 }).catch(() => {});
+                          }
                         }
                       }}
                       onClick={(e) => {

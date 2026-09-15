@@ -298,15 +298,27 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         '/academics/academic-years',
         '/academics/classes',
         '/academics/sections',
+        '/academics/class-sections',
+        '/academics/subjects',
         '/exams/exam-types',
         '/exams/subjects',
         '/billing/options/years',
         '/billing/options/classes',
+        '/billing/invoices/recent',
+        '/teachers',
+        '/attendance/dashboard',
+        '/billing/summary',
+        '/timetable/workload/dashboard',
+        '/complaint-box/teachers',
+        '/dashboard/summary',
       ];
 
       prefetchUrls.forEach((url) => {
         fastGet(url, undefined, { ttlMs: 120000 }).catch(() => {});
       });
+
+      // Pre-prime initial page of student directory (limit: 20 matches students/page.tsx default limit)
+      fastGet('/students', { params: { page: 1, limit: 20 } }, { ttlMs: 120000 }).catch(() => {});
     };
 
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
