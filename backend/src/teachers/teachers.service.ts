@@ -121,7 +121,7 @@ export class TeachersService {
     });
   }
 
-  async getTeachers(filters?: { department?: string; status?: string; search?: string }) {
+  async getTeachers(filters?: { department?: string; status?: string; search?: string; month?: string }) {
     const tenantId = this.getTenantId();
     
     const andConditions: any[] = [];
@@ -190,7 +190,7 @@ export class TeachersService {
       whereClause.AND = andConditions;
     }
 
-    return this.prisma.staffProfile.findMany({
+    const staffProfiles = await this.prisma.staffProfile.findMany({
       where: whereClause,
       include: {
         user: {
@@ -218,6 +218,37 @@ export class TeachersService {
         },
       },
     });
+
+    if (filters?.month) {
+      const monthStr = filters.month;
+      const salaryExpenses = await this.prisma.expense.findMany({
+        where: {
+          tenantId,
+          category: 'Salary',
+          description: {
+            contains: `for ${monthStr}`,
+            mode: 'insensitive',
+          },
+        },
+        select: { description: true },
+      });
+
+      const paidDescriptions = salaryExpenses.map(e => (e.description || '').toLowerCase());
+
+      return staffProfiles.map(s => {
+        const userName = (s.user?.name || '').toLowerCase();
+        const empId = (s.employeeId || '').toLowerCase();
+        const isPaid = paidDescriptions.some(desc =>
+          (userName && desc.includes(userName)) || (empId && desc.includes(empId))
+        );
+        return {
+          ...s,
+          salaryStatus: isPaid ? 'Paid' : 'Pending',
+        };
+      });
+    }
+
+    return staffProfiles;
   }
 
   // Returns only TEACHER-role staff (used by Teacher & Class Management page)
@@ -597,6 +628,60 @@ export class TeachersService {
     });
   }
 
+  async payAllSalaries(month: string) {
+    const tenantId = this.getTenantId();
+    const staffMembers = await this.prisma.staffProfile.findMany({
+      where: {
+        user: {
+          tenantId,
+          role: { in: [Role.TEACHER, Role.STAFF, Role.DRIVER] },
+          isActive: true,
+        },
+      },
+      include: { user: true },
+    });
+
+    const existingExpenses = await this.prisma.expense.findMany({
+      where: {
+        tenantId,
+        category: 'Salary',
+        description: {
+          contains: `for ${month}`,
+          mode: 'insensitive',
+        },
+      },
+      select: { description: true },
+    });
+
+    const paidDescriptions = existingExpenses.map(e => (e.description || '').toLowerCase());
+
+    const createdExpenses = [];
+    for (const profile of staffMembers) {
+      const userName = (profile.user?.name || '').toLowerCase();
+      const empId = (profile.employeeId || '').toLowerCase();
+      const isAlreadyPaid = paidDescriptions.some(desc =>
+        (userName && desc.includes(userName)) || (empId && desc.includes(empId))
+      );
+
+      if (!isAlreadyPaid) {
+        const netSalary = Number(profile.basicSalary || 0) + Number(profile.allowances || 0) - Number(profile.pfDeduction || 0);
+        const exp = await this.prisma.expense.create({
+          data: {
+            amount: netSalary,
+            category: 'Salary',
+            date: new Date(),
+            description: `Salary disbursed to ${profile.user.name} (${profile.employeeId || 'Staff'}) for ${month}`,
+            paymentMode: 'BANK_TRANSFER',
+            status: 'PAID',
+            tenantId,
+          },
+        });
+        createdExpenses.push(exp);
+      }
+    }
+    return { count: createdExpenses.length, message: `Processed ${createdExpenses.length} staff salaries for ${month}.` };
+  }
+
   async getSalaryInvoices(staffProfileId: string) {
     const tenantId = this.getTenantId();
     // Select minimal columns required for profile verification
@@ -691,34 +776,6 @@ export class TeachersService {
         periodTiming: { select: { startTime: true, endTime: true, periodNumber: true } },
       },
       orderBy: [{ dayOfWeek: 'asc' }, { periodTiming: { periodNumber: 'asc' } }],
-    });
-  }
-
-  async payAllSalaries(month: string) {
-    const tenantId = this.getTenantId();
-    const staffMembers = await this.prisma.staffProfile.findMany({
-      where: { user: { tenantId, isActive: true } },
-      include: { user: true }
-    });
-
-    return this.prisma.$transaction(async (tx) => {
-      const createdExpenses = [];
-      for (const staff of staffMembers) {
-        const netSalary = Number(staff.basicSalary || 0) + Number(staff.allowances || 0) - Number(staff.pfDeduction || 0);
-        const exp = await tx.expense.create({
-          data: {
-            amount: netSalary,
-            category: 'Salary',
-            date: new Date(),
-            description: `Salary disbursed to ${staff.user.name} (${staff.employeeId || 'Staff'}) for ${month}`,
-            paymentMode: 'BANK_TRANSFER',
-            status: 'PAID',
-            tenantId,
-          }
-        });
-        createdExpenses.push(exp);
-      }
-      return createdExpenses;
     });
   }
 }

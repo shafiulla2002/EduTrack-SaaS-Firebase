@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Users, Plus, X, Search, Phone, Mail, Calendar,
-  ChevronRight, ChevronDown, Edit2, Trash2, Clock, BookOpen, Check
+  ChevronRight, ChevronLeft, ChevronDown, Edit2, Trash2, Clock, BookOpen, Check
 } from 'lucide-react';
 import { formatDateDDMMYYYY } from '@/lib/date';
 
@@ -101,15 +101,17 @@ export default function SchoolStaffPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Generate list of valid past and current months only (no future years/months)
   const payrollMonths = useMemo(() => {
     const list: string[] = [];
     const now = new Date();
     const currentYear = now.getFullYear();
-    for (let year = currentYear + 1; year >= currentYear - 2; year--) {
-      for (let month = 11; month >= 0; month--) {
-        const d = new Date(year, month, 1);
-        list.push(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
-      }
+    const currentMonth = now.getMonth();
+
+    // Past 24 months up to current month
+    for (let i = 0; i < 24; i++) {
+      const d = new Date(currentYear, currentMonth - i, 1);
+      list.push(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
     }
     return list;
   }, []);
@@ -118,6 +120,33 @@ export default function SchoolStaffPage() {
     const now = new Date();
     return now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   });
+
+  const [pickerYear, setPickerYear] = useState<number>(() => new Date().getFullYear());
+
+  const handlePrevMonth = () => {
+    const currentIndex = payrollMonths.indexOf(selectedPayrollMonth);
+    if (currentIndex >= 0 && currentIndex < payrollMonths.length - 1) {
+      setSelectedPayrollMonth(payrollMonths[currentIndex + 1]);
+    } else {
+      const parts = selectedPayrollMonth.split(' ');
+      const mIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(parts[0]);
+      let yr = parseInt(parts[1], 10) || new Date().getFullYear();
+      let newMIdx = mIdx - 1;
+      if (newMIdx < 0) {
+        newMIdx = 11;
+        yr -= 1;
+      }
+      const d = new Date(yr, newMIdx, 1);
+      setSelectedPayrollMonth(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+    }
+  };
+
+  const handleNextMonth = () => {
+    const currentIndex = payrollMonths.indexOf(selectedPayrollMonth);
+    if (currentIndex > 0) {
+      setSelectedPayrollMonth(payrollMonths[currentIndex - 1]);
+    }
+  };
 
   const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
   const monthDropdownRef = useRef<HTMLDivElement>(null);
@@ -367,7 +396,7 @@ export default function SchoolStaffPage() {
               exp: sk.yearsOfExperience ?? 0,
             }))
           : (t.subjectsTaught?.map((sub: string) => ({ subject: sub, level: 'Expert', exp: 5 })) || []),
-        salaryStatus: 'Pending',
+        salaryStatus: t.salaryStatus || 'Pending',
         gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
       };
     }));
@@ -379,9 +408,10 @@ export default function SchoolStaffPage() {
       if (debouncedSearch) params.append('search', debouncedSearch);
       if (deptFilter) params.append('department', deptFilter);
       if (statusFilter) params.append('status', statusFilter);
+      if (selectedPayrollMonth) params.append('month', selectedPayrollMonth);
 
       const res = await fastGet(`/teachers?${params.toString()}`, undefined, {
-        ttlMs: 30000,
+        ttlMs: 5000,
         onRevalidate: (fresh) => {
           if (fresh && Array.isArray(fresh)) {
             mapAndSetStaff(fresh);
@@ -405,7 +435,7 @@ export default function SchoolStaffPage() {
 
   useEffect(() => {
     loadStaff();
-  }, [debouncedSearch, deptFilter, statusFilter]);
+  }, [debouncedSearch, deptFilter, statusFilter, selectedPayrollMonth]);
 
   const handlePaySalary = async (id: string) => {
     try {
@@ -784,38 +814,121 @@ export default function SchoolStaffPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-500 font-semibold">Month:</label>
+              <label className="text-xs text-slate-500 font-semibold flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                <span>Month:</span>
+              </label>
+
+              {/* Prev Month Button */}
+              <button
+                type="button"
+                onClick={handlePrevMonth}
+                title="Previous Month"
+                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 shadow-xs cursor-pointer transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Month Selector Button & Popover */}
               <div className="relative" ref={monthDropdownRef}>
                 <button
                   type="button"
-                  onClick={() => setIsMonthDropdownOpen(prev => !prev)}
-                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs bg-white font-medium shadow-xs hover:border-slate-300 flex items-center justify-between gap-2 min-w-[110px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onClick={() => {
+                    setIsMonthDropdownOpen(prev => !prev);
+                    const parts = selectedPayrollMonth.split(' ');
+                    if (parts[1]) setPickerYear(parseInt(parts[1], 10));
+                  }}
+                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs bg-white font-bold shadow-xs hover:border-blue-300 flex items-center justify-between gap-2 min-w-[125px] text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition-colors"
                 >
-                  <span>{selectedPayrollMonth}</span>
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                    {selectedPayrollMonth}
+                  </span>
                   <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isMonthDropdownOpen ? 'rotate-180 text-blue-600' : ''}`} />
                 </button>
 
                 {isMonthDropdownOpen && (
-                  <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
-                    <div className="max-h-36 overflow-y-auto py-1 divide-y divide-slate-50">
-                      {payrollMonths.map(m => {
-                        const isSelected = m === selectedPayrollMonth;
+                  <div className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 space-y-3">
+                    {/* Header with Year Navigator */}
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <button
+                        type="button"
+                        onClick={() => setPickerYear(y => y - 1)}
+                        className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
+                        title="Previous Year"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-xs font-extrabold text-slate-800">{pickerYear}</span>
+                      <button
+                        type="button"
+                        disabled={pickerYear >= new Date().getFullYear()}
+                        onClick={() => setPickerYear(y => y + 1)}
+                        className={`p-1 rounded-lg transition-colors ${pickerYear >= new Date().getFullYear() ? 'opacity-30 cursor-not-allowed' : 'hover:bg-slate-100 text-slate-600'}`}
+                        title="Next Year"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Quick Presets */}
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const currentStr = now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                          setSelectedPayrollMonth(currentStr);
+                          setPickerYear(now.getFullYear());
+                          setIsMonthDropdownOpen(false);
+                        }}
+                        className="flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border border-blue-100 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                      >
+                        This Month
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const now = new Date();
+                          const lastM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                          const lastStr = lastM.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                          setSelectedPayrollMonth(lastStr);
+                          setPickerYear(lastM.getFullYear());
+                          setIsMonthDropdownOpen(false);
+                        }}
+                        className="flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
+                      >
+                        Last Month
+                      </button>
+                    </div>
+
+                    {/* 12-Month Grid */}
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((mName, mIdx) => {
+                        const candidateStr = `${mName} ${pickerYear}`;
+                        const isSelected = candidateStr === selectedPayrollMonth;
+
+                        const now = new Date();
+                        const isFuture = pickerYear > now.getFullYear() || (pickerYear === now.getFullYear() && mIdx > now.getMonth());
+
                         return (
                           <button
-                            key={m}
+                            key={mName}
                             type="button"
+                            disabled={isFuture}
                             onClick={() => {
-                              setSelectedPayrollMonth(m);
+                              setSelectedPayrollMonth(candidateStr);
                               setIsMonthDropdownOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between ${
-                              isSelected
-                                ? 'bg-blue-50 text-blue-600 font-semibold'
-                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                            className={`py-1.5 text-xs font-semibold rounded-lg transition-all text-center cursor-pointer ${
+                              isFuture
+                                ? 'opacity-30 cursor-not-allowed bg-slate-50 text-slate-400'
+                                : isSelected
+                                ? 'bg-blue-600 text-white font-extrabold shadow-sm'
+                                : 'text-slate-700 hover:bg-blue-50 hover:text-blue-600 border border-transparent hover:border-blue-100'
                             }`}
                           >
-                            <span>{m}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-600" />}
+                            {mName}
                           </button>
                         );
                       })}
@@ -823,6 +936,21 @@ export default function SchoolStaffPage() {
                   </div>
                 )}
               </div>
+
+              {/* Next Month Button */}
+              <button
+                type="button"
+                disabled={selectedPayrollMonth === new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                onClick={handleNextMonth}
+                title="Next Month"
+                className={`p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 shadow-xs cursor-pointer transition-colors ${
+                  selectedPayrollMonth === new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                    ? 'opacity-30 cursor-not-allowed'
+                    : 'hover:bg-slate-50'
+                }`}
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
           <div className="hidden md:block overflow-x-auto">

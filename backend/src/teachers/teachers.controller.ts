@@ -26,8 +26,9 @@ export class TeachersController {
     @Query('department') department?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('month') month?: string,
   ) {
-    return this.teachersService.getTeachers({ department, status, search });
+    return this.teachersService.getTeachers({ department, status, search, month });
   }
 
   @Post(':id/assignments')
