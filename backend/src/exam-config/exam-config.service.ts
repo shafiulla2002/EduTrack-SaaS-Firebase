@@ -169,6 +169,9 @@ export class ExamConfigService {
     subjectType: string = 'Theory',
     subjectName?: string,
   ): { maxMarks: number; passMarks: number; passingPercentage: number } {
+    if (!cfg) {
+      return { maxMarks: 100, passMarks: 35, passingPercentage: 35 };
+    }
     const cleanType = (subjectType || 'Theory').trim().toLowerCase();
     const cleanSubName = subjectName ? subjectName.trim().toLowerCase() : '';
 
@@ -457,18 +460,25 @@ export class ExamConfigService {
     const { maxMarks, passMarks, passingPercentage } = this.resolveSubjectConfig(cfg, subjectId, subjectType, subName);
 
     if (!examSubject) {
-      examSubject = await prisma.examSubject.create({
-        data: {
-          tenantId: tid,
-          examId,
-          subjectId,
-          subjectType,
-          maxMarks,
-          passingPercentage,
-          passMarks,
-        },
-        include: { subject: true },
-      });
+      try {
+        examSubject = await prisma.examSubject.create({
+          data: {
+            tenantId: tid,
+            examId,
+            subjectId,
+            subjectType,
+            maxMarks,
+            passingPercentage,
+            passMarks,
+          },
+          include: { subject: true },
+        });
+      } catch (err) {
+        examSubject = await prisma.examSubject.findUnique({
+          where: { examId_subjectId_subjectType: { examId, subjectId, subjectType } },
+          include: { subject: true },
+        });
+      }
     } else if (
       examSubject.maxMarks !== maxMarks ||
       Number(examSubject.passingPercentage) !== Number(passingPercentage) ||
