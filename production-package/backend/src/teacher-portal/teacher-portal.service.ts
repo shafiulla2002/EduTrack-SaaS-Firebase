@@ -1437,12 +1437,43 @@ export class TeacherPortalService {
   }
 
   async applyLeave(userId: string, tenantId: string, data: any) {
-    const staff = await this.getStaffProfile(userId, tenantId);
+    let teacherId = data.teacherId;
+    let applicantName = 'Staff Member';
+
+    if (teacherId) {
+      const targetStaff = await this.prisma.staffProfile.findFirst({
+        where: { id: teacherId, tenantId },
+        include: { user: { select: { name: true } } },
+      });
+      if (targetStaff?.user?.name) {
+        applicantName = targetStaff.user.name;
+      }
+    } else {
+      const staff = await this.prisma.staffProfile.findFirst({
+        where: { userId, tenantId },
+        include: { user: { select: { name: true } } },
+      });
+      if (staff) {
+        teacherId = staff.id;
+        applicantName = staff.user?.name || applicantName;
+      } else {
+        const anyStaff = await this.prisma.staffProfile.findFirst({
+          where: { tenantId },
+          include: { user: { select: { name: true } } },
+        });
+        if (anyStaff) {
+          teacherId = anyStaff.id;
+          applicantName = anyStaff.user?.name || applicantName;
+        } else {
+          throw new BadRequestException('No staff profile found for this school tenant.');
+        }
+      }
+    }
 
     const leave = await this.prisma.leaveRequest.create({
       data: {
-        teacherId: staff.id,
-        leaveType: data.leaveType, // Casual, Medical, Emergency, Half Day, Maternity, Paternity
+        teacherId,
+        leaveType: data.leaveType, // Casual, Medical, Emergency, HalfDay, Maternity, Paternity
         startDate: new Date(data.startDate),
         endDate: new Date(data.endDate),
         reason: data.reason,
@@ -1460,7 +1491,7 @@ export class TeacherPortalService {
     if (admins.length > 0) {
       await this.prisma.notification.createMany({
         data: admins.map((admin) => ({
-          title: `Leave Application: ${staff.user.name}`,
+          title: `Leave Application: ${applicantName}`,
           message: `Type: ${data.leaveType}\nFrom: ${data.startDate}\nTo: ${data.endDate}\nReason: ${data.reason}\nLeaveRequestId: ${leave.id}`,
           type: 'LEAVE_APPROVAL',
           recipientId: admin.id,
