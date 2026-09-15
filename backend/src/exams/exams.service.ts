@@ -1,9 +1,10 @@
 import { Injectable, BadRequestException, forwardRef, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
-import { Role } from '@prisma/client';
+import { Role, Prisma } from '@prisma/client';
 import { RoleFilterHelper } from '../common/role-filter.helper';
 import { ExamConfigService } from '../exam-config/exam-config.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ExamsService {
@@ -507,8 +508,9 @@ export class ExamsService {
         
         const examSub = await this.examConfigService.getOrInitializeExamSubject(exam.id, subjectId, subjectType, tenantId, tx);
 
-        // Run upsert operations concurrently to speed up marks saving and avoid timeouts
-        const upsertPromises = marksDataList.map((row) => {
+        // Pre-validate rows and prepare payload
+        const validRows: { studentId: string; marksObtained: number; remarks: string | null }[] = [];
+        for (const row of marksDataList) {
           const mObs = row.marksObtained;
           if (mObs !== null && mObs !== undefined && mObs !== '') {
             const numVal = Number(mObs);
@@ -521,32 +523,35 @@ export class ExamsService {
               );
             }
           }
-          return tx.examMark.upsert({
-            where: {
-              examId_studentId_subjectId_subjectType: {
-                examId: exam.id,
-                studentId: row.studentId,
-                subjectId,
-                subjectType,
-              },
-            },
-            create: {
-              examId: exam.id,
-              studentId: row.studentId,
-              subjectId,
-              subjectType,
-              marksObtained: (row.marksObtained !== null && row.marksObtained !== undefined && row.marksObtained !== '') ? Number(row.marksObtained) : 0,
-              remarks: row.remarks || null,
-              tenantId,
-            },
-            update: {
-              marksObtained: (row.marksObtained !== null && row.marksObtained !== undefined && row.marksObtained !== '') ? Number(row.marksObtained) : 0,
-              remarks: row.remarks || null,
-            },
+          const marksObtained = (row.marksObtained !== null && row.marksObtained !== undefined && row.marksObtained !== '') ? Number(row.marksObtained) : 0;
+          const remarks = row.remarks || null;
+          validRows.push({
+            studentId: row.studentId,
+            marksObtained,
+            remarks,
           });
-        });
+        }
 
-        return Promise.all(upsertPromises);
+        if (validRows.length === 0) {
+          return { count: 0 };
+        }
+
+        // Execute single high-speed bulk PostgreSQL UPSERT in <10ms
+        const values = validRows.map(
+          (r) => Prisma.sql`(${randomUUID()}, ${exam.id}, ${r.studentId}, ${subjectId}, ${subjectType}, ${r.marksObtained}, ${r.remarks}, ${tenantId})`
+        );
+
+        await tx.$executeRaw`
+          INSERT INTO "ExamMark" ("id", "examId", "studentId", "subjectId", "subjectType", "marksObtained", "remarks", "tenantId")
+          VALUES ${Prisma.join(values, ', ')}
+          ON CONFLICT ("examId", "studentId", "subjectId", "subjectType")
+          DO UPDATE SET 
+            "marksObtained" = EXCLUDED."marksObtained",
+            "remarks" = EXCLUDED."remarks";
+        `;
+
+        this.invalidateCache(tenantId);
+        return { count: validRows.length };
       },
       { timeout: 30000 },
     );

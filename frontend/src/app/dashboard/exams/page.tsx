@@ -50,6 +50,7 @@ export default function ExamsAndMarksPage() {
   // Roster & marks list
   const [roster, setRoster] = useState<StudentMarkRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [popupAlert, setPopupAlert] = useState<{
@@ -379,6 +380,7 @@ export default function ExamsAndMarksPage() {
     }
 
     try {
+      setIsSaving(true);
       const marksPayload = roster.map(item => ({
         studentId: item.studentId,
         marksObtained: item.marksObtained === null ? 0 : item.marksObtained,
@@ -411,6 +413,8 @@ export default function ExamsAndMarksPage() {
         setErrorMsg(msg);
         showToast(msg, 'error');
       }
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -472,11 +476,20 @@ export default function ExamsAndMarksPage() {
           </button>
           <button
             onClick={handleSaveMarks}
-            disabled={roster.length === 0 || isLoading || !!errorMsg}
+            disabled={roster.length === 0 || isLoading || isSaving || !!errorMsg}
             className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white font-semibold text-[13px] flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
           >
-            <Save className="w-4 h-4" />
-            Save Scoresheet
+            {isSaving ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                Save Scoresheet
+              </>
+            )}
           </button>
         </div>
       </div>
