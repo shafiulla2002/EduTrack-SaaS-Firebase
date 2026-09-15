@@ -145,8 +145,9 @@ export default function ExamsAndMarksPage() {
     fetchMetadata();
   }, []);
 
-  const fetchMetadata = async () => {
+  const fetchMetadata = async (retryCount = 0) => {
     try {
+      setErrorMsg('');
       // Fetch all independent metadata in parallel with caching
       const [classRes, subRes, compRes, typeRes] = await Promise.all([
         fastGet('/exams/classes', undefined, { ttlMs: 60000 }),
@@ -180,7 +181,11 @@ export default function ExamsAndMarksPage() {
       }
     } catch (err: any) {
       console.error('Error fetching exams metadata:', err);
-      setErrorMsg('Failed to load class, subject, or exam metadata.');
+      if (retryCount < 2) {
+        setTimeout(() => fetchMetadata(retryCount + 1), 600);
+      } else {
+        setErrorMsg('Failed to load class, subject, or exam metadata.');
+      }
     }
   };
 
@@ -502,9 +507,18 @@ export default function ExamsAndMarksPage() {
       )}
 
       {errorMsg && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center gap-3 text-sm">
-          <X className="w-5 h-5 text-rose-600 shrink-0" />
-          <span className="font-semibold">{errorMsg}</span>
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm">
+          <div className="flex items-center gap-3">
+            <X className="w-5 h-5 text-rose-600 shrink-0" />
+            <span className="font-semibold">{errorMsg}</span>
+          </div>
+          <button
+            onClick={() => fetchMetadata(0)}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry Loading
+          </button>
         </div>
       )}
 

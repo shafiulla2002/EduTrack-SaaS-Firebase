@@ -9,12 +9,20 @@ const PLATFORM_SUBDOMAINS = new Set([
   'api',
   'app',
   'localhost',
+  'edutrack-live-app',
+  'edutrack-liveapi-app',
+  'edutrack-live',
   'edutrack-frontend-live',
+  'edutrack-backend-live',
   'edutrack-frontend',
   'edutrack-platform',
   'edu-track-saa-s-orcin',
   'edutrack-saas',
   'edutrack-saas-independent',
+  'edutrack-app',
+  'edutrack-api',
+  'edutrack-backend',
+  'covenantsynergy',
 ]);
 
 @Injectable()
@@ -72,7 +80,7 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     if (!tenantSubdomain || PLATFORM_SUBDOMAINS.has(tenantSubdomain)) {
-      // No tenant identifier provided — allow the request through so verified auth can resolve tenant.
+      // No tenant identifier provided or platform host — allow the request through so verified auth can resolve tenant.
       next();
       return;
     }
@@ -82,10 +90,8 @@ export class TenantMiddleware implements NestMiddleware {
     try {
       let tenant;
       if (isUuid) {
-        // Direct ID lookup (avoids failing findBySubdomain round-trip)
         tenant = await this.tenantsService.findById(tenantSubdomain);
       } else {
-        // Subdomain lookup
         tenant = await this.tenantsService.findBySubdomain(tenantSubdomain);
       }
 
@@ -95,7 +101,6 @@ export class TenantMiddleware implements NestMiddleware {
       });
     } catch (error) {
       if (error instanceof NotFoundException) {
-        // If lookup failed, try the alternate resolution method
         try {
           const tenant = isUuid
             ? await this.tenantsService.findBySubdomain(tenantSubdomain)
@@ -106,22 +111,13 @@ export class TenantMiddleware implements NestMiddleware {
           });
           return;
         } catch (e) {
-          // If still not found, allow authenticated or public routes to pass without unverified crash
-          const isPublicAuthRoute = req.path.startsWith('/auth/') || req.path.startsWith('/tenant/public-branding');
-          const hasAuthToken = !!req.headers.authorization;
-          if (isPublicAuthRoute || hasAuthToken) {
-            next();
-            return;
-          }
+          // If lookup failed, allow route to pass to auth guard / TenantContextInterceptor safely
+          next();
+          return;
         }
       }
-      const isPublicAuthRoute = req.path.startsWith('/auth/') || req.path.startsWith('/tenant/public-branding');
-      const hasAuthToken = !!req.headers.authorization;
-      if (isPublicAuthRoute || hasAuthToken) {
-        next();
-        return;
-      }
-      throw new BadRequestException(`Tenant resolution failed: ${error.message}`);
+      next();
+      return;
     }
   }
 }

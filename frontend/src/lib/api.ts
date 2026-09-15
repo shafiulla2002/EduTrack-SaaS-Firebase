@@ -223,12 +223,20 @@ const PLATFORM_HOSTS = new Set([
   'api',
   'app',
   'localhost',
+  'edutrack-live-app',
+  'edutrack-liveapi-app',
+  'edutrack-live',
   'edutrack-frontend-live',
+  'edutrack-backend-live',
   'edutrack-frontend',
   'edutrack-platform',
   'edu-track-saa-s-orcin',
   'edutrack-saas',
   'edutrack-saas-independent',
+  'edutrack-app',
+  'edutrack-api',
+  'edutrack-backend',
+  'covenantsynergy',
 ]);
 
 export function getTenantFromHostname(): string {
