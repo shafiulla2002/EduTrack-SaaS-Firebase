@@ -54,6 +54,20 @@ export class BillingService {
     return totalPaid;
   }
 
+  private activeProductsCacheMap = new Map<string, { data: any[]; expiresAt: number }>();
+
+  invalidateActiveProductsCache(tenantId?: string) {
+    if (tenantId) {
+      this.activeProductsCacheMap.forEach((_, key) => {
+        if (key.startsWith(`${tenantId}:`)) {
+          this.activeProductsCacheMap.delete(key);
+        }
+      });
+    } else {
+      this.activeProductsCacheMap.clear();
+    }
+  }
+
   // ── ACTIVE PRODUCTS (Pricebook Entries) ────────────────────────────────────
 
   async getActiveProducts(classId: string, academicYearId?: string) {
@@ -61,6 +75,12 @@ export class BillingService {
 
     if (!classId) {
       return [];
+    }
+
+    const cacheKey = `${tenantId}:${classId}:${academicYearId || 'default'}`;
+    const cached = this.activeProductsCacheMap.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
     }
 
     // Get the class record so we know the class name for fallback lookups
@@ -156,7 +176,7 @@ export class BillingService {
       take: 1000,
     });
 
-    return (entries as any[]).map(entry => ({
+    const result = (entries as any[]).map(entry => ({
       id: entry.id,
       product2Id: entry.productId,
       productName: entry.product.name,
@@ -164,6 +184,13 @@ export class BillingService {
       unitPrice: Number(entry.unitPrice),
       pricebook2Id: entry.pricebookId,
     }));
+
+    this.activeProductsCacheMap.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + 60000,
+    });
+
+    return result;
   }
 
   // ── CREATE ADMISSION (Opportunities & Concessions) ─────────────────────────
