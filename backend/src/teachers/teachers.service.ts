@@ -599,17 +599,18 @@ export class TeachersService {
 
   async getSalaryInvoices(staffProfileId: string) {
     const tenantId = this.getTenantId();
-    // Look up the staff member to get their name and employeeId for description matching
+    // Select minimal columns required for profile verification
     const profile = await this.prisma.staffProfile.findFirst({
       where: { id: staffProfileId, user: { tenantId } },
-      include: { user: true },
+      select: {
+        id: true,
+        employeeId: true,
+        user: { select: { name: true } },
+      },
     });
     if (!profile) return [];
 
-    // Expense records store staff info in the description field.
-    // Filter by category=Salary AND description containing the staff's name or employeeId.
     const nameFragment = profile.user.name;
-    const empId = profile.employeeId || '';
 
     return this.prisma.expense.findMany({
       where: {
@@ -621,6 +622,7 @@ export class TeachersService {
         },
       },
       orderBy: { date: 'desc' },
+      take: 50,
       select: {
         id: true,
         amount: true,
@@ -632,29 +634,56 @@ export class TeachersService {
     });
   }
 
-  async getTeacherCases(teacherId: string) {
+  async getTeacherCases(teacherId: string, month?: string) {
     const tenantId = this.getTenantId();
+    const whereCondition: any = { tenantId, teacherId };
+
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      const [year, m] = month.split('-').map(Number);
+      const startDate = new Date(year, m - 1, 1);
+      const endDate = new Date(year, m, 1);
+      whereCondition.createdAt = {
+        gte: startDate,
+        lt: endDate,
+      };
+    }
+
     return this.prisma.behaviorCase.findMany({
-      where: { tenantId, teacherId },
-      include: {
+      where: whereCondition,
+      select: {
+        id: true,
+        behaviorType: true,
+        category: true,
+        status: true,
+        createdAt: true,
         student: {
-          include: {
+          select: {
+            id: true,
             user: { select: { name: true } },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
   }
 
-  async getTeacherSchedule(teacherId: string) {
+  async getTeacherSchedule(teacherId: string, dayOfWeek?: string) {
     const tenantId = this.getTenantId();
+    const whereCondition: any = { tenantId, teacherId };
+
+    if (dayOfWeek) {
+      whereCondition.dayOfWeek = { equals: dayOfWeek, mode: 'insensitive' };
+    }
+
     return this.prisma.period.findMany({
-      where: { tenantId, teacherId },
-      include: {
+      where: whereCondition,
+      select: {
+        id: true,
+        dayOfWeek: true,
         subject: { select: { name: true } },
         classSection: {
-          include: {
+          select: {
             class: { select: { name: true } },
             section: { select: { name: true } },
           },

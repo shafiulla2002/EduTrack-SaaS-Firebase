@@ -86,12 +86,18 @@ export class TeachersController {
   }
 
   @Get(':id/cases')
-  async getTeacherCases(@Param('id') id: string) {
-    return this.teachersService.getTeacherCases(id);
+  async getTeacherCases(
+    @Param('id') id: string,
+    @Query('month') month?: string,
+  ) {
+    return this.teachersService.getTeacherCases(id, month);
   }
 
   @Get(':id/schedule')
-  async getTeacherSchedule(@Param('id') id: string) {
-    return this.teachersService.getTeacherSchedule(id);
+  async getTeacherSchedule(
+    @Param('id') id: string,
+    @Query('dayOfWeek') dayOfWeek?: string,
+  ) {
+    return this.teachersService.getTeacherSchedule(id, dayOfWeek);
   }
 }
