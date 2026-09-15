@@ -1321,7 +1321,8 @@ export default function SchoolStaffPage() {
                             </td>
                             <td className="px-4 py-2.5 text-slate-400">{formatDateDDMMYYYY(c.createdAt)}</td>
                           </tr>
-                        ))}
+                        );
+                      })}
                       </tbody>
                     </table>
                   </div>
