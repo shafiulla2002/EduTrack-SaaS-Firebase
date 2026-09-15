@@ -321,56 +321,59 @@ export class TenantController {
   async getDashboardStats(@Req() req: any) {
     const tenantId = req.user.tenantId;
 
-    const studentsCount = await this.prisma.studentProfile.count({
-      where: { user: { tenantId } },
-    });
+    const [
+      studentsCount,
+      teachersCount,
+      classesCount,
+      booksCount,
+      complaintsCount,
+      revenueAgg,
+      expenseAgg,
+      attendanceAgg,
+      academicAgg
+    ] = await Promise.all([
+      this.prisma.studentProfile.count({
+        where: { user: { tenantId } },
+      }),
+      this.prisma.staffProfile.count({
+        where: { user: { tenantId } },
+      }),
+      this.prisma.class.count({
+        where: { tenantId },
+      }),
+      this.prisma.book.count({
+        where: { tenantId },
+      }),
+      this.prisma.behaviorCase.count({
+        where: { tenantId },
+      }),
+      this.prisma.invoice.aggregate({
+        where: { tenantId },
+        _sum: { paidAmount: true },
+      }),
+      this.prisma.expense.aggregate({
+        where: { tenantId },
+        _sum: { amount: true },
+      }),
+      this.prisma.attendanceSession.aggregate({
+        where: { tenantId },
+        _sum: { presentCount: true, totalStudents: true },
+      }),
+      this.prisma.examMark.aggregate({
+        where: { tenantId },
+        _avg: { marksObtained: true },
+      }),
+    ]);
 
-    const teachersCount = await this.prisma.staffProfile.count({
-      where: { user: { tenantId } },
-    });
+    const totalRevenue = Number(revenueAgg._sum.paidAmount || 0);
+    const totalExpenses = Number(expenseAgg._sum.amount || 0);
 
-    const classesCount = await this.prisma.class.count({
-      where: { tenantId },
-    });
-
-    const booksCount = await this.prisma.book.count({
-      where: { tenantId },
-    });
-
-    const complaintsCount = await this.prisma.behaviorCase.count({
-      where: { tenantId },
-    });
-
-    // Invoices / revenue
-    const invoices = await this.prisma.invoice.findMany({
-      where: { tenantId },
-      select: { paidAmount: true },
-    });
-    const totalRevenue = invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
-
-    // Expenses
-    const expenses = await this.prisma.expense.findMany({
-      where: { tenantId },
-      select: { amount: true },
-    });
-    const totalExpenses = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
-
-    // Attendance rate
-    const sessions = await this.prisma.attendanceSession.findMany({
-      where: { tenantId },
-      select: { presentCount: true, totalStudents: true },
-    });
-    const totalPresent = sessions.reduce((sum, s) => sum + s.presentCount, 0);
-    const totalRoster = sessions.reduce((sum, s) => sum + s.totalStudents, 0);
+    const totalPresent = attendanceAgg._sum.presentCount || 0;
+    const totalRoster = attendanceAgg._sum.totalStudents || 0;
     const attendanceRate = totalRoster > 0 ? Math.round((totalPresent / totalRoster) * 1000) / 10 : 0;
 
-    // Academic scores
-    const marks = await this.prisma.examMark.findMany({
-      where: { tenantId },
-      select: { marksObtained: true },
-    });
-    const academicAverage = marks.length > 0
-      ? Math.round((marks.reduce((sum, m) => sum + Number(m.marksObtained), 0) / (marks.length)) * 10) / 10
+    const academicAverage = academicAgg._avg.marksObtained
+      ? Math.round(Number(academicAgg._avg.marksObtained) * 10) / 10
       : 0;
 
     return {

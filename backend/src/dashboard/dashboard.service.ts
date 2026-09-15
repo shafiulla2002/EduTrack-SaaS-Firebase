@@ -116,7 +116,7 @@ export class DashboardService {
           COALESCE(SUM(CASE WHEN "invoiceDate" >= ${thisMonthStart} THEN "paidAmount" ELSE 0 END), 0)::float AS "revThisMonth",
           COALESCE(SUM(CASE WHEN "invoiceDate" >= ${lastMonthStart} AND "invoiceDate" <= ${lastMonthEnd} THEN "paidAmount" ELSE 0 END), 0)::float AS "revLastMonth"
         FROM "Invoice"
-        WHERE "tenantId" = ${tenantId} AND status = 'PAID'
+        WHERE "tenantId" = ${tenantId} AND status::text = 'PAID'
       `.catch(() => [{ totalRevenue: 0, revThisMonth: 0, revLastMonth: 0 }]),
 
       // 5. Total Expenses
@@ -164,9 +164,9 @@ export class DashboardService {
       // 8. Leave requests counts (Combined into 1 single query)
       this.prisma.$queryRaw<Array<{ pendingCount: number; approvedToday: number; rejectedToday: number }>>`
         SELECT
-          COUNT(CASE WHEN status = 'PENDING' THEN 1 END)::int AS "pendingCount",
-          COUNT(CASE WHEN status = 'APPROVED' AND "approvedDate" >= ${todayStart} THEN 1 END)::int AS "approvedToday",
-          COUNT(CASE WHEN status = 'REJECTED' AND "rejectedDate" >= ${todayStart} THEN 1 END)::int AS "rejectedToday"
+          COUNT(CASE WHEN status::text = 'PENDING' THEN 1 END)::int AS "pendingCount",
+          COUNT(CASE WHEN status::text = 'APPROVED' AND "approvedDate" >= ${todayStart} THEN 1 END)::int AS "approvedToday",
+          COUNT(CASE WHEN status::text = 'REJECTED' AND "rejectedDate" >= ${todayStart} THEN 1 END)::int AS "rejectedToday"
         FROM "LeaveRequest"
         WHERE "tenantId" = ${tenantId}
       `.catch(() => [{ pendingCount: 0, approvedToday: 0, rejectedToday: 0 }]),
@@ -265,7 +265,7 @@ export class DashboardService {
           COALESCE(SUM("paidAmount"), 0)::float AS "totalPaid"
         FROM "Invoice"
         WHERE "tenantId" = ${tenantId} 
-          AND status = 'PAID' 
+          AND status::text = 'PAID' 
           AND "invoiceDate" >= ${sixMonthsAgo}
         GROUP BY to_char("invoiceDate", 'YYYY-MM')
       `.catch(() => []),
@@ -278,7 +278,7 @@ export class DashboardService {
         FROM "Expense"
         WHERE "tenantId" = ${tenantId} 
           AND category = 'Salary' 
-          AND status = 'PAID' 
+          AND status::text = 'PAID' 
           AND date >= ${sixMonthsAgo}
         GROUP BY to_char(date, 'YYYY-MM')
       `.catch(() => []),

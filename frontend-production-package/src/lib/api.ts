@@ -163,7 +163,7 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
       // Inject resolved tenant ID if present
-      const tenantId = getTenantFromHostname();
+      const tenantId = getTenantFromHostname() || getStoredTenantId();
       if (tenantId) {
         config.headers['X-Tenant-ID'] = tenantId;
       }

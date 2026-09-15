@@ -1,0 +1,443 @@
+'use client';
+
+import React, { useState, useRef } from 'react';
+import { Download, Upload, CheckCircle, AlertCircle, RefreshCw, X, FileText, ChevronRight } from 'lucide-react';
+import { api } from '@/lib/api';
+import Modal from '@/components/Modal';
+
+interface BulkImportModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onImportSuccess: (importedCount: number) => void;
+}
+
+interface ParsedRecord {
+  [key: string]: string;
+}
+
+export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: BulkImportModalProps) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [fileName, setFileName] = useState('');
+  const [parsedData, setParsedData] = useState<ParsedRecord[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressStatus, setProgressStatus] = useState('');
+  const [successCount, setSuccessCount] = useState(0);
+  const [errors, setErrors] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const templateHeaders = [
+    'First Name', 'Last Name', 'Father Name', 'Mother Name', 'DOB',
+    'Phone', 'Email', 'Aadhar No', 'Village', 'City', 'Pincode',
+    'State', 'Country', 'Class', 'Section', 'Academic Year'
+  ];
+
+  // Triggers template download
+  const handleDownloadTemplate = () => {
+    const csvContent = templateHeaders.join(',') + '\n' +
+      'Rohan,Sharma,Vijay Sharma,Sunita Sharma,2011-04-12,9876543210,rohan.sharma@example.com,123456789012,Rohini,New Delhi,110085,Delhi,India,Grade 10,Section A,2026-2027\n' +
+      'Anjali,Verma,Rajesh Verma,Anita Verma,2012-08-22,9998887776,anjali.v@example.com,987654321098,Pitampura,New Delhi,110034,Delhi,India,Grade 9,Section B,2026-2027';
+
+    const element = document.createElement('a');
+    element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent));
+    element.setAttribute('download', 'EduTrack_Student_Import_Template.csv');
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  // RFC-4180 compliant CSV row parser
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim().replace(/^"|"$/g, '').trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim().replace(/^"|"$/g, '').trim());
+    return result;
+  };
+
+  // Helper to split CSV text into lines, respecting quotes across newlines
+  const splitCSVLines = (text: string): string[] => {
+    const lines: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        current += char;
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (char === '\r' && text[i + 1] === '\n') {
+          i++;
+        }
+        if (current.trim()) {
+          lines.push(current);
+        }
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    if (current.trim()) {
+      lines.push(current);
+    }
+    return lines;
+  };
+
+  // Case-insensitive & quote-stripped helper to retrieve a field value from a row record
+  const getRowVal = (row: ParsedRecord, key: string): string => {
+    if (!row) return '';
+    let rawVal = row[key];
+    if (rawVal === undefined) {
+      const foundKey = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase());
+      if (foundKey) rawVal = row[foundKey];
+    }
+    if (!rawVal) return '';
+    return String(rawVal).replace(/^"|"$/g, '').trim();
+  };
+
+  // CSV Parsing logic
+  const parseCSV = (text: string) => {
+    try {
+      const lines = splitCSVLines(text);
+      if (lines.length === 0) {
+        alert('CSV file is empty.');
+        return;
+      }
+
+      // Strip UTF-8 BOM if present
+      const rawHeaderLine = lines[0].replace(/^\uFEFF/, '');
+      const headers = parseCSVLine(rawHeaderLine).map(h => h.toLowerCase());
+      const originalHeaders = parseCSVLine(rawHeaderLine);
+
+      // Check for presence of at least student name and class
+      const hasName = headers.some(h => ['first name', 'name', 'student name', 'fullname'].includes(h));
+      const hasClass = headers.some(h => ['class', 'grade'].includes(h));
+
+      if (!hasName || !hasClass) {
+        alert('Invalid CSV template format. The CSV must contain at least "First Name" (or "Name") and "Class" columns. Please download and use the official template.');
+        return;
+      }
+
+      const rows: ParsedRecord[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const currentValues = parseCSVLine(line);
+        const obj: ParsedRecord = {};
+
+        for (let j = 0; j < originalHeaders.length; j++) {
+          const headerName = originalHeaders[j];
+          obj[headerName] = currentValues[j] !== undefined ? currentValues[j] : '';
+        }
+        rows.push(obj);
+      }
+
+      if (rows.length === 0) {
+        alert('No data rows found in CSV.');
+        return;
+      }
+
+      setParsedData(rows);
+      setStep(2);
+    } catch (err) {
+      alert('Error parsing CSV file: ' + (err as Error).message);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      parseCSV(reader.result as string);
+    };
+    reader.readAsText(file);
+  };
+
+  // Run validations and upload via backend API in chunked batches
+  const handleConfirmImport = async () => {
+    setStep(3);
+    setIsProcessing(true);
+    setErrors([]);
+    setProgressPercent(0);
+    setProgressStatus(`Preparing to import ${parsedData.length} records...`);
+
+    let totalSuccess = 0;
+    const accumulatedErrors: string[] = [];
+
+    // Process in batches of 200 records. Backend handles each batch with concurrent transactions.
+    const BATCH_SIZE = 200;
+    const totalBatches = Math.ceil(parsedData.length / BATCH_SIZE);
+
+    for (let b = 0; b < totalBatches; b++) {
+      const start = b * BATCH_SIZE;
+      const end = Math.min(start + BATCH_SIZE, parsedData.length);
+      const batch = parsedData.slice(start, end);
+
+      const percent = Math.round((start / parsedData.length) * 100);
+      setProgressPercent(percent);
+      setProgressStatus(`Importing records ${start + 1} to ${end} of ${parsedData.length}...`);
+
+      try {
+        const response = await api.post('/students/import', { students: batch }, { timeout: 60000 });
+        const { successCount, errors } = response.data;
+
+        totalSuccess += successCount || 0;
+        if (errors && errors.length > 0) {
+          // Adjust row number to match the actual CSV line number
+          const offsetErrors = errors.map((errStr: string) => {
+            return errStr.replace(/Row (\d+)/g, (_, rNum) => `Row ${start + parseInt(rNum, 10)}`);
+          });
+          accumulatedErrors.push(...offsetErrors);
+        }
+      } catch (err: any) {
+        console.error(`Batch ${b + 1} error:`, err);
+        const errMsg = err.response?.data?.message || err.message || 'Batch request failed';
+        accumulatedErrors.push(`Records ${start + 1} to ${end}: ${errMsg}`);
+      }
+    }
+
+    setProgressPercent(100);
+    setProgressStatus('Finalizing import...');
+    setSuccessCount(totalSuccess);
+    setErrors(accumulatedErrors);
+    setIsProcessing(false);
+
+    if (totalSuccess > 0) {
+      onImportSuccess(totalSuccess);
+    }
+  };
+
+  const handleDone = () => {
+    setStep(1);
+    setFileName('');
+    setParsedData([]);
+    setSuccessCount(0);
+    setErrors([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    onClose();
+  };
+
+  const handleBack = () => {
+    setStep(1);
+    setFileName('');
+    setParsedData([]);
+    setErrors([]);
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={handleDone}
+      title="Bulk Student Import"
+      subtitle="Import student rosters in bulk via official CSV template"
+      size="2xl"
+    >
+      <div className="space-y-6">
+        {/* STEP 1: UPLOAD ZONE */}
+        {step === 1 && (
+          <div className="space-y-6">
+            <div className="bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-xl p-4 text-[13px] text-slate-700 dark:text-slate-300 leading-relaxed">
+              Import student rosters in bulk. Download the official CSV templates layout, fill in personal &amp; registration information, and re-upload the file.
+            </div>
+
+            <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-850 transition-all text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950 text-[#2E5BFF] flex items-center justify-center">
+                <Upload className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-[14px] font-bold text-slate-900 dark:text-white">Upload Filled CSV Template</p>
+                <p className="text-[11px] text-slate-400 font-semibold mt-1">Accepts UTF-8 formatted CSV rosters only</p>
+              </div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".csv"
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-[13px] shadow-xs cursor-pointer"
+              >
+                Select CSV File
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[12px] text-slate-400 font-semibold uppercase tracking-wider">Instructions</span>
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="px-4 py-2 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white font-semibold text-[13px] flex items-center gap-2 shadow-sm cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                Download CSV Template
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: CONFIRM DATA ROWS */}
+        {step === 2 && (
+          <div className="space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center mx-auto">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">Confirm Data Import</h3>
+              <p className="text-[13px] text-slate-600 dark:text-slate-400">
+                We parsed <strong>{parsedData.length}</strong> record rows from <strong>{fileName}</strong>.
+              </p>
+            </div>
+
+            {/* Sample grid preview */}
+            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Roster Preview (First 3 rows)
+              </div>
+              <div className="overflow-x-auto max-h-[160px]">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-[11px] text-slate-400 uppercase">
+                      <th className="px-4 py-2">Name</th>
+                      <th className="px-4 py-2">Class</th>
+                      <th className="px-4 py-2">Father Name</th>
+                      <th className="px-4 py-2">Aadhar No</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[12px] text-slate-700 dark:text-slate-300">
+                    {parsedData.slice(0, 3).map((row, idx) => {
+                      const name = `${getRowVal(row, 'First Name') || getRowVal(row, 'Name') || getRowVal(row, 'Student Name')} ${getRowVal(row, 'Last Name')}`.trim();
+                      const cls = getRowVal(row, 'Class') || getRowVal(row, 'Grade') || '—';
+                      const sec = getRowVal(row, 'Section') || 'A';
+                      const father = getRowVal(row, 'Father Name') || '—';
+                      const aadhar = getRowVal(row, 'Aadhar No') || '—';
+                      return (
+                        <tr key={idx}>
+                          <td className="px-4 py-2 font-bold text-slate-900 dark:text-white">
+                            {name || 'Unnamed Student'}
+                          </td>
+                          <td className="px-4 py-2">{cls} - {sec}</td>
+                          <td className="px-4 py-2">{father}</td>
+                          <td className="px-4 py-2 font-mono">{aadhar}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold text-[13px] cursor-pointer text-center"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmImport}
+                className="flex-1 py-2.5 rounded-xl bg-[#2E5BFF] text-white hover:bg-blue-600 font-semibold text-[13px] cursor-pointer text-center shadow-md shadow-blue-500/10"
+              >
+                Confirm and Upload
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: PROCESSING & ERROR RESOLUTION */}
+        {step === 3 && (
+          <div className="space-y-6">
+            {isProcessing ? (
+              <div className="flex flex-col items-center justify-center py-8 space-y-4 w-full">
+                <RefreshCw className="w-8 h-8 text-[#2E5BFF] animate-spin" />
+                <div className="text-center w-full max-w-sm space-y-2">
+                  <p className="text-[14px] font-bold text-slate-900 dark:text-white">Processing Bulk Import</p>
+                  <p className="text-[12px] text-slate-500 dark:text-slate-400 font-semibold">
+                    {progressStatus}
+                  </p>
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className="bg-[#2E5BFF] h-2.5 rounded-full transition-all duration-300"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-mono text-slate-400 font-bold block">{progressPercent}% Completed</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Results Overview */}
+                <div className="text-center space-y-2">
+                  <span className="text-[32px] block">
+                    {successCount === parsedData.length ? '✅' : '⚠️'}
+                  </span>
+                  <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">
+                    {successCount === parsedData.length ? 'Import Complete' : 'Import Partially Completed'}
+                  </h3>
+                  <p className="text-[13px] text-slate-600 dark:text-slate-400">
+                    Successfully Imported: <strong>{successCount}</strong> / {parsedData.length} records.
+                  </p>
+                </div>
+
+                {/* Errors log box */}
+                {errors.length > 0 && (
+                  <div className="border border-rose-200 dark:border-rose-900/50 rounded-xl bg-rose-50/50 dark:bg-rose-950/30 p-4 space-y-2">
+                    <div className="text-[12px] font-bold text-rose-800 dark:text-rose-400 flex items-center gap-1.5 border-b border-rose-100 dark:border-rose-900/50 pb-2">
+                      <AlertCircle className="w-4 h-4" />
+                      Errors Encountered ({errors.length}):
+                    </div>
+                    <ul className="text-[11px] text-rose-700 dark:text-rose-400 font-mono space-y-1 max-h-[120px] overflow-y-auto pl-4 list-disc">
+                      {errors.map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleDone}
+                    className="px-6 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-[13px] cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+

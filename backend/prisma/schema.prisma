@@ -301,6 +301,8 @@ model StudentProfile {
   @@index([tenantId])
   @@index([classSectionId])
   @@index([rollNo])
+  @@index([tenantId, classSectionId])
+  @@index([tenantId, rollNo])
 }
 
 model AcademicYear {
@@ -477,6 +479,8 @@ model Attendance {
   @@index([tenantId])
   @@index([studentId])
   @@index([attendanceSessionId])
+  @@index([tenantId, studentId])
+  @@index([tenantId, attendanceSessionId])
 }
 
 model MonthlyAttendance {
@@ -538,6 +542,7 @@ model ExamMark {
   @@unique([examId, studentId, subjectId, subjectType])
   @@index([tenantId, studentId])
   @@index([tenantId, examId])
+  @@index([tenantId, examId, studentId])
 }
 
 model Invoice {
@@ -605,6 +610,8 @@ model Expense {
   @@index([category])
   @@index([status])
   @@index([date])
+  @@index([tenantId, status])
+  @@index([tenantId, date])
 }
 
 model PeriodTiming {
@@ -828,6 +835,9 @@ model PricebookEntry {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([tenantId, pricebookId])
+  @@index([pricebookId])
 }
 
 model Opportunity {
@@ -852,6 +862,9 @@ model Opportunity {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([tenantId, studentId])
+  @@index([tenantId, academicYearId])
 }
 
 model OpportunityLineItem {
@@ -872,6 +885,9 @@ model OpportunityLineItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([tenantId, opportunityId])
+  @@index([opportunityId])
 }
 
 model BehaviorCase {

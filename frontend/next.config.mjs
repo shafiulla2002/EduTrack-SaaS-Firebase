@@ -4,6 +4,10 @@ const nextConfig = {
 
   output: 'standalone',
 
+  experimental: {
+    optimizePackageImports: ['lucide-react'],
+  },
+
   images: {
     domains: ['localhost', 'edutrack-saas-media.s3.amazonaws.com'],
   },

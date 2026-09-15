@@ -112,7 +112,7 @@ export default function MyTimetablePage() {
                       </h3>
                       <p className="text-[11px] text-slate-450 font-semibold flex items-center gap-1 mt-0.5">
                         <Clock className="w-3 h-3 text-slate-400" />
-                        {p.periodTiming.startTime} - {p.periodTiming.endTime}
+                        {p?.periodTiming?.startTime || ''} - {p?.periodTiming?.endTime || ''}
                       </p>
                     </div>
                   </div>
@@ -125,7 +125,7 @@ export default function MyTimetablePage() {
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#2E5BFF] flex flex-col items-center justify-center font-bold shrink-0">
                     <span className="text-[10px] text-slate-400 uppercase leading-none">Period</span>
-                    <span className="text-lg leading-none mt-1">{p.periodTiming.displayPeriodNumber ?? p.periodTiming.periodNumber}</span>
+                    <span className="text-lg leading-none mt-1">{p?.periodTiming?.displayPeriodNumber ?? p?.periodTiming?.periodNumber ?? ''}</span>
                   </div>
                   
                   <div className="space-y-1">
@@ -139,7 +139,7 @@ export default function MyTimetablePage() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {p.periodTiming.startTime} - {p.periodTiming.endTime}
+                        {p?.periodTiming?.startTime || ''} - {p?.periodTiming?.endTime || ''}
                       </span>
                     </div>
                   </div>

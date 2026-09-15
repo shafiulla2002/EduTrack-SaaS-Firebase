@@ -7,9 +7,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   constructor() {
     let dbUrl = process.env.DATABASE_URL;
-    if (dbUrl && !dbUrl.includes('connection_limit')) {
-      const sep = dbUrl.includes('?') ? '&' : '?';
-      dbUrl += `${sep}connection_limit=25&pool_timeout=15`;
+    if (dbUrl) {
+      if (dbUrl.includes('connection_limit=')) {
+        dbUrl = dbUrl.replace(/connection_limit=\d+/, 'connection_limit=3');
+      } else {
+        const sep = dbUrl.includes('?') ? '&' : '?';
+        dbUrl += `${sep}connection_limit=3&pool_timeout=10`;
+      }
+    }
+
+    if ((globalThis as any).prismaInstance) {
+      return (globalThis as any).prismaInstance;
     }
 
     super({
@@ -23,12 +31,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       log: ['error'],
     });
 
-    if (PrismaService.instance) {
-      return PrismaService.instance;
-    }
-
     console.log('[PrismaService] Initialized database client singleton');
-    PrismaService.instance = this;
+    (globalThis as any).prismaInstance = this;
   }
 
   async onModuleInit() {
