@@ -21,6 +21,7 @@ function LeaveMgmtContent() {
 
   const [leaves, setLeaves] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Stats
@@ -80,6 +81,10 @@ function LeaveMgmtContent() {
   const [fileLoadError, setFileLoadError] = useState<boolean>(false);
 
   const isAdmin = currentUser?.role === 'SCHOOL_ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Search Debouncer
   useEffect(() => {
@@ -417,7 +422,7 @@ function LeaveMgmtContent() {
     });
   }, [leaves, isAdmin, statusFilter, applicantTypeFilter]);
 
-  if (loading) {
+  if (!mounted || loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <div className="w-10 h-10 border-4 border-t-[#2E5BFF] border-slate-200 rounded-full animate-spin"></div>
@@ -1302,7 +1307,10 @@ function LeaveMgmtContent() {
         )}
       </Modal>
 
-      {/* Apply Leave Modal for Staff (teacher view) */}
+        </div>
+      )}
+
+      {/* Apply Leave Modal for Staff & Admin */}
       <Drawer
         open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -1339,6 +1347,8 @@ function LeaveMgmtContent() {
               <option value="Medical" className="dark:bg-slate-800">Medical Leave</option>
               <option value="Emergency" className="dark:bg-slate-800">Emergency Leave</option>
               <option value="HalfDay" className="dark:bg-slate-800">Half-Day Leave</option>
+              <option value="Maternity" className="dark:bg-slate-800">Maternity Leave</option>
+              <option value="Paternity" className="dark:bg-slate-800">Paternity Leave</option>
             </select>
           </div>
 
@@ -1368,7 +1378,7 @@ function LeaveMgmtContent() {
               onChange={(e) => setReason(e.target.value)}
               placeholder="Explain reason details clearly for administrator approval..."
               rows={5}
-              className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-205 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold leading-relaxed"
+              className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold leading-relaxed"
               required
             />
           </div>
@@ -1382,8 +1392,6 @@ function LeaveMgmtContent() {
           </button>
         </form>
       </Drawer>
-        </div>
-      )}
 
       {/* In-App Leave Attachment Preview Modal */}
       <Modal

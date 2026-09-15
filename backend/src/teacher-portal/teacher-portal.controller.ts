@@ -166,13 +166,13 @@ export class TeacherPortalController {
   }
 
   @Post('leave')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async applyLeave(@Req() req: any, @Body() data: any) {
     return this.portalService.applyLeave(req.user.sub, req.user.tenantId, data);
   }
 
   @Delete('leave/:id')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async cancelLeave(@Req() req: any, @Param('id') id: string) {
     return this.portalService.cancelLeave(req.user.sub, req.user.tenantId, id);
   }

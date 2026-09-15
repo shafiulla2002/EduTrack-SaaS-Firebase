@@ -7,8 +7,8 @@ import { Role } from '@prisma/client';
 export class LeaveManagementService {
   constructor(private prisma: PrismaService) {}
 
-  private getTenantId(): string {
-    const tenantId = TenantContext.getTenantId();
+  private getTenantId(reqTenantId?: string): string {
+    const tenantId = reqTenantId || TenantContext.getTenantId();
     if (!tenantId) {
       throw new BadRequestException('No active school tenant context found');
     }
@@ -29,9 +29,10 @@ export class LeaveManagementService {
       search?: string;
       sortBy?: string;
       sortOrder?: string;
-    }
+    },
+    reqTenantId?: string
   ) {
-    const tenantId = this.getTenantId();
+    const tenantId = this.getTenantId(reqTenantId);
 
     const whereClause: any = { tenantId };
 
@@ -181,8 +182,8 @@ export class LeaveManagementService {
     }
   }
 
-  async getLeaveStats() {
-    const tenantId = this.getTenantId();
+  async getLeaveStats(reqTenantId?: string) {
+    const tenantId = this.getTenantId(reqTenantId);
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -233,8 +234,8 @@ export class LeaveManagementService {
     };
   }
 
-  async getApplicantLeaveHistory(applicantType: string, applicantId: string) {
-    const tenantId = this.getTenantId();
+  async getApplicantLeaveHistory(applicantType: string, applicantId: string, reqTenantId?: string) {
+    const tenantId = this.getTenantId(reqTenantId);
     const isStudent = applicantType.toUpperCase() === 'STUDENT' || applicantType.toUpperCase() === 'PARENT';
     const where: any = { tenantId };
     if (isStudent) {
@@ -253,8 +254,8 @@ export class LeaveManagementService {
     });
   }
 
-  async updateLeaveStatus(userId: string, id: string, data: { status: string; comments?: string }) {
-    const tenantId = this.getTenantId();
+  async updateLeaveStatus(userId: string, id: string, data: { status: string; comments?: string }, reqTenantId?: string) {
+    const tenantId = this.getTenantId(reqTenantId);
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException('User not found.');
@@ -336,8 +337,8 @@ export class LeaveManagementService {
     });
   }
 
-  async bulkUpdateLeaveStatus(userId: string, ids: string[], data: { status: string; comments?: string }) {
-    const tenantId = this.getTenantId();
+  async bulkUpdateLeaveStatus(userId: string, ids: string[], data: { status: string; comments?: string }, reqTenantId?: string) {
+    const tenantId = this.getTenantId(reqTenantId);
     const results = [];
 
     return this.prisma.$transaction(async (tx) => {

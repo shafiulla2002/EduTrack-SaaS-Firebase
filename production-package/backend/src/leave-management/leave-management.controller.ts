@@ -6,7 +6,7 @@ import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SCHOOL_ADMIN)
+@Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
 @Controller('leave-management')
 export class LeaveManagementController {
   constructor(private leaveManagementService: LeaveManagementService) {}
@@ -26,32 +26,37 @@ export class LeaveManagementController {
     @Query('sortBy') sortBy?: string,
     @Query('sortOrder') sortOrder?: string,
   ) {
-    return this.leaveManagementService.getLeaveRequests(req.user.sub, {
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-      status,
-      applicantType,
-      leaveType,
-      academicYearId,
-      startDate,
-      endDate,
-      search,
-      sortBy,
-      sortOrder,
-    });
+    return this.leaveManagementService.getLeaveRequests(
+      req.user.sub,
+      {
+        page: page ? parseInt(page, 10) : undefined,
+        limit: limit ? parseInt(limit, 10) : undefined,
+        status,
+        applicantType,
+        leaveType,
+        academicYearId,
+        startDate,
+        endDate,
+        search,
+        sortBy,
+        sortOrder,
+      },
+      req.user.tenantId
+    );
   }
 
   @Get('stats')
-  async getLeaveStats() {
-    return this.leaveManagementService.getLeaveStats();
+  async getLeaveStats(@Req() req: any) {
+    return this.leaveManagementService.getLeaveStats(req.user?.tenantId);
   }
 
   @Get('history/:applicantType/:applicantId')
   async getApplicantLeaveHistory(
+    @Req() req: any,
     @Param('applicantType') applicantType: string,
     @Param('applicantId') applicantId: string,
   ) {
-    return this.leaveManagementService.getApplicantLeaveHistory(applicantType, applicantId);
+    return this.leaveManagementService.getApplicantLeaveHistory(applicantType, applicantId, req.user?.tenantId);
   }
 
   @Patch(':id/status')
@@ -60,7 +65,7 @@ export class LeaveManagementController {
     @Param('id') id: string,
     @Body() data: { status: string; comments?: string },
   ) {
-    return this.leaveManagementService.updateLeaveStatus(req.user.sub, id, data);
+    return this.leaveManagementService.updateLeaveStatus(req.user.sub, id, data, req.user?.tenantId);
   }
 
   @Post('bulk-status')
@@ -71,6 +76,6 @@ export class LeaveManagementController {
     return this.leaveManagementService.bulkUpdateLeaveStatus(req.user.sub, data.ids, {
       status: data.status,
       comments: data.comments,
-    });
+    }, req.user?.tenantId);
   }
 }
