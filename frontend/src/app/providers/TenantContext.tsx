@@ -322,22 +322,21 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     }
   }, [token]);
 
-  // Background polling to sync data dynamically across multiple users
+  // Background polling and visibility-change revalidation to sync data dynamically
   useEffect(() => {
     if (!token) return;
 
     let previousStats: any = null;
+    let lastFetched = Date.now();
 
-    const interval = setInterval(async () => {
-      // Skip polling if document is hidden to conserve connection pool
+    const checkUpdates = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
 
       try {
         const response = await api.get('/tenant/setup-status');
         const data = response.data;
+        lastFetched = Date.now();
         
-        // If stats changed, trigger a local custom event dispatch
-        // to update all listening pages automatically.
         if (previousStats) {
           const statsChanged = 
             data.classesCount !== previousStats.classesCount ||
@@ -355,7 +354,6 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
             dispatchSchoolSetupUpdated();
           }
         } else {
-          // Initialize first comparison baseline
           setSetupStats(data);
           setSubscription(data.subscription || null);
         }
@@ -363,9 +361,26 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error('Failed background sync of tenant data:', err);
       }
-    }, 60000); // Check every 60 seconds
+    };
 
-    return () => clearInterval(interval);
+    const interval = setInterval(checkUpdates, 60000);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && !document.hidden && Date.now() - lastFetched > 60000) {
+        checkUpdates();
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
   }, [token]);
 
   // Use the centralized school-setup-updated listener
