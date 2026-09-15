@@ -1171,12 +1171,19 @@ export class BillingService {
       where: { id: tenantId },
     });
 
-    // Calculate remaining balance for student
-    const studentInvoices = await this.prisma.invoice.findMany({
-      where: { studentId: invoice.studentId, tenantId },
-      select: { remainingBalance: true }
-    });
-    const totalRemainingBalance = studentInvoices.reduce((sum, inv) => sum + Number(inv.remainingBalance || 0), 0);
+    // Calculate total remaining balance for student across opportunities and standalone invoices
+    let totalRemainingBalance = 0;
+    try {
+      const studentBillingInfo = await this.getStudentById(invoice.studentId);
+      totalRemainingBalance = Number(studentBillingInfo?.feeSummary?.overall?.grandTotalBalanceDue ?? 0);
+    } catch (err: any) {
+      console.warn(`[getInvoicePDFData] Fallback calculation for student ${invoice.studentId}:`, err?.message || err);
+      const studentInvoices = await this.prisma.invoice.findMany({
+        where: { studentId: invoice.studentId, tenantId, status: { in: ['UNPAID', 'PARTIALLY_PAID'] } },
+        select: { remainingBalance: true }
+      });
+      totalRemainingBalance = studentInvoices.reduce((sum, inv) => sum + Number(inv.remainingBalance || 0), 0);
+    }
     const parentPhone = invoice.student.fatherPhone || invoice.student.motherPhone || invoice.student.user?.phone || '';
 
     return {
