@@ -104,7 +104,7 @@ export class AttendanceService {
   // Fetch teaching staff for attendance entry (strictly teaching faculty only)
   async getTeachers() {
     const tenantId = this.getTenantId();
-    // Include active staff, excluding non-teaching personnel (e.g., maintenance, support, drivers, etc.)
+    // Fetch active staff profiles for tenant, excluding NON_TEACHING category
     const staff = await this.prisma.staffProfile.findMany({
       where: {
         tenantId,
@@ -112,35 +112,7 @@ export class AttendanceService {
           isActive: true,
           role: { in: [Role.TEACHER, Role.SCHOOL_ADMIN, Role.STAFF] },
         },
-        NOT: [
-          { staffCategory: 'NON_TEACHING' },
-          { designation: { contains: 'driver', mode: 'insensitive' } },
-          { designation: { contains: 'account', mode: 'insensitive' } },
-          { designation: { contains: 'librarian', mode: 'insensitive' } },
-          { designation: { contains: 'security', mode: 'insensitive' } },
-          { designation: { contains: 'peon', mode: 'insensitive' } },
-          { designation: { contains: 'clerk', mode: 'insensitive' } },
-          { designation: { contains: 'cleaner', mode: 'insensitive' } },
-          { designation: { contains: 'attendant', mode: 'insensitive' } },
-          { designation: { contains: 'attender', mode: 'insensitive' } },
-          { designation: { contains: 'maintenance', mode: 'insensitive' } },
-          { designation: { contains: 'support', mode: 'insensitive' } },
-          { designation: { contains: 'bus', mode: 'insensitive' } },
-          { designation: { contains: 'watchman', mode: 'insensitive' } },
-          { designation: { contains: 'helper', mode: 'insensitive' } },
-          { designation: { contains: 'sweeper', mode: 'insensitive' } },
-          { staffRole: { contains: 'driver', mode: 'insensitive' } },
-          { staffRole: { contains: 'account', mode: 'insensitive' } },
-          { staffRole: { contains: 'librarian', mode: 'insensitive' } },
-          { staffRole: { contains: 'security', mode: 'insensitive' } },
-          { staffRole: { contains: 'peon', mode: 'insensitive' } },
-          { staffRole: { contains: 'clerk', mode: 'insensitive' } },
-          { staffRole: { contains: 'maintenance', mode: 'insensitive' } },
-          { staffRole: { contains: 'support', mode: 'insensitive' } },
-          { staffRole: { contains: 'cleaner', mode: 'insensitive' } },
-          { staffRole: { contains: 'helper', mode: 'insensitive' } },
-          { staffRole: { contains: 'watchman', mode: 'insensitive' } },
-        ],
+        NOT: [{ staffCategory: 'NON_TEACHING' }],
       },
       include: {
         user: {
@@ -152,9 +124,9 @@ export class AttendanceService {
     });
 
     const nonTeachingKeywords = [
-      'driver', 'account', 'librarian', 'security', 'peon', 'clerk',
-      'cleaner', 'attendant', 'attender', 'maintenance', 'support',
-      'bus', 'watchman', 'helper', 'sweeper', 'non-teaching', 'non teaching'
+      'driver', 'account', 'librar', 'secur', 'peon', 'clerk',
+      'clean', 'attend', 'maintenance', 'support', 'bus', 'watchman',
+      'helper', 'sweeper', 'non-teaching', 'non teaching', 'transport'
     ];
 
     const teachingStaff = staff.filter(s => {

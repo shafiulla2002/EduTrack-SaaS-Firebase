@@ -108,40 +108,10 @@ export class AttendanceService {
       where: {
         tenantId,
         user: {
-          role: Role.TEACHER,
+          role: { in: [Role.TEACHER, Role.SCHOOL_ADMIN, Role.STAFF] },
           isActive: true,
         },
-        OR: [
-          { staffCategory: null },
-          { staffCategory: 'TEACHING' },
-        ],
-        NOT: [
-          { staffCategory: 'NON_TEACHING' },
-          { designation: { contains: 'driver', mode: 'insensitive' } },
-          { designation: { contains: 'account', mode: 'insensitive' } },
-          { designation: { contains: 'librarian', mode: 'insensitive' } },
-          { designation: { contains: 'security', mode: 'insensitive' } },
-          { designation: { contains: 'peon', mode: 'insensitive' } },
-          { designation: { contains: 'clerk', mode: 'insensitive' } },
-          { designation: { contains: 'cleaner', mode: 'insensitive' } },
-          { designation: { contains: 'attendant', mode: 'insensitive' } },
-          { designation: { contains: 'attender', mode: 'insensitive' } },
-          { designation: { contains: 'maintenance', mode: 'insensitive' } },
-          { designation: { contains: 'support', mode: 'insensitive' } },
-          { designation: { contains: 'coach', mode: 'insensitive' } },
-          { designation: { contains: 'pet', mode: 'insensitive' } },
-          { designation: { contains: 'sports', mode: 'insensitive' } },
-          { staffRole: { contains: 'driver', mode: 'insensitive' } },
-          { staffRole: { contains: 'account', mode: 'insensitive' } },
-          { staffRole: { contains: 'librarian', mode: 'insensitive' } },
-          { staffRole: { contains: 'security', mode: 'insensitive' } },
-          { staffRole: { contains: 'peon', mode: 'insensitive' } },
-          { staffRole: { contains: 'clerk', mode: 'insensitive' } },
-          { staffRole: { contains: 'maintenance', mode: 'insensitive' } },
-          { staffRole: { contains: 'support', mode: 'insensitive' } },
-          { staffRole: { contains: 'coach', mode: 'insensitive' } },
-          { staffRole: { contains: 'pet', mode: 'insensitive' } },
-        ],
+        NOT: [{ staffCategory: 'NON_TEACHING' }],
       },
       include: {
         user: {
@@ -161,19 +131,18 @@ export class AttendanceService {
 
     const nonTeachingKeywords = [
       'driver', 'account', 'librar', 'secur', 'peon', 'clerk',
-      'clean', 'attend', 'coach', 'pet', 'sport', 'admin', 'bus',
-      'maintenance', 'support', 'watchman', 'helper', 'sweeper'
+      'clean', 'attend', 'maintenance', 'support', 'bus', 'watchman',
+      'helper', 'sweeper', 'non-teaching', 'non teaching', 'transport'
     ];
 
     const teachingFaculty = staff.filter(s => {
       const desig = (s.designation || '').toLowerCase();
       const role = (s.staffRole || '').toLowerCase();
       const cat = (s.staffCategory || '').toUpperCase();
-      const name = (s.user?.name || '').toLowerCase();
-      const sub = (s.subjectsTaught[0] || '').toLowerCase();
+      const sub = (s.subjectsTaught?.[0] || '').toLowerCase();
 
       if (cat === 'NON_TEACHING') return false;
-      if (nonTeachingKeywords.some(kw => desig.includes(kw) || role.includes(kw) || sub.includes(kw) || name.startsWith(kw))) {
+      if (nonTeachingKeywords.some(kw => desig.includes(kw) || role.includes(kw) || sub.includes(kw))) {
         return false;
       }
       return true;
@@ -182,7 +151,7 @@ export class AttendanceService {
     return teachingFaculty.map(s => ({
       id: s.id,
       name: s.user.name,
-      subject: s.subjectsTaught[0] || s.designation || 'Faculty',
+      subject: s.subjectsTaught?.[0] || s.designation || 'Faculty',
     }));
   }
 
