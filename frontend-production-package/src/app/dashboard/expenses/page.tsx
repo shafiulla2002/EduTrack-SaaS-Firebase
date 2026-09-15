@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, X, Search, Edit2, Trash2 } from 'lucide-react';
-import { api, fastGet } from '@/lib/api';
+import { api } from '@/lib/api';
 
 interface Expense {
   id: string;
@@ -65,12 +65,12 @@ export default function ExpensesPage() {
 
   const loadExpenses = async () => {
     try {
-      const monthParam = showAll ? undefined : selectedMonth;
+      setLoading(true);
       const [expRes, sumRes] = await Promise.all([
-        fastGet('/expenses', { params: monthParam ? { month: monthParam } : undefined }),
-        fastGet('/expenses/summary')
+        api.get('/expenses'),
+        api.get('/expenses/summary')
       ]);
-      setExpenses((expRes.data || []).map((e: any) => ({
+      setExpenses(expRes.data.map((e: any) => ({
         id: e.id,
         category: e.category,
         amount: Number(e.amount),
@@ -79,9 +79,7 @@ export default function ExpensesPage() {
         paymentMode: e.paymentMode,
         description: e.description || ''
       })));
-      if (sumRes.data) {
-        setSummary(sumRes.data);
-      }
+      setSummary(sumRes.data);
     } catch (err) {
       console.error('Failed to load expenses:', err);
     } finally {
@@ -91,7 +89,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     loadExpenses();
-  }, [selectedMonth, showAll]);
+  }, []);
 
   // Lock body scroll when modal is open so background page doesn't scroll
   useEffect(() => {
