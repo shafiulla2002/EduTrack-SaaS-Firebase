@@ -25,6 +25,27 @@ export class BillingService {
     return this.getTenantId();
   }
 
+  async getBillingSummary() {
+    const tenantId = this.getTenantId();
+    const [totalInvoices, totalCollected, totalPending] = await Promise.all([
+      this.prisma.invoice.count({ where: { tenantId } }),
+      this.prisma.invoice.aggregate({
+        where: { tenantId, status: { not: 'VOIDED' } },
+        _sum: { paidAmount: true },
+      }),
+      this.prisma.invoice.aggregate({
+        where: { tenantId, status: { in: ['UNPAID', 'PARTIALLY_PAID'] } },
+        _sum: { remainingBalance: true },
+      }),
+    ]);
+
+    return {
+      totalInvoices,
+      totalCollected: Number(totalCollected._sum.paidAmount || 0),
+      totalPending: Number(totalPending._sum.remainingBalance || 0),
+    };
+  }
+
   // ── OPPORTUNITY SERVICE LOGIC (Centralized trigger logic from Apex) ─────────
 
   async recalculatePaidAmount(oppId: string, tx?: any): Promise<number> {

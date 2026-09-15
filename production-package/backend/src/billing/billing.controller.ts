@@ -7,6 +7,11 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class BillingController {
   constructor(private billingService: BillingService) {}
 
+  @Get('summary')
+  async getSummary() {
+    return this.billingService.getBillingSummary();
+  }
+
   @Post('invoices')
   async create(
     @Body('opportunityId') opportunityId: string,
