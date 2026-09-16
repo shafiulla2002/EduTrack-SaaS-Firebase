@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { api, fastGet, invalidateCachePrefix } from '@/lib/api';
 import {
   Settings2, Plus, Trash2, Save, CheckCircle, AlertCircle,
@@ -52,6 +53,22 @@ export default function ExamConfigPage() {
   
   const [showAddOverride, setShowAddOverride] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ExamConfigEntry | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (showAddOverride) {
+      const originalStyle = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalStyle;
+      };
+    }
+  }, [showAddOverride]);
   
   const [overrideData, setOverrideData] = useState<{
     academicYearId: string;
@@ -293,43 +310,44 @@ export default function ExamConfigPage() {
   const classSpecific = configs.filter(c => c.classId);
 
   return (
-    <div className="space-y-6 max-w-5xl animate-in">
+    <div className="space-y-6 max-w-5xl animate-in pb-20 lg:pb-6">
       {/* Header */}
-      <div className="flex justify-between items-center border-b border-slate-200 pb-5">
-        <div>
-          <h2 className="text-[28px] font-bold text-slate-900 flex items-center gap-2">
-            <Settings2 className="w-7 h-7 text-[#2E5BFF]" />
-            Exam Configuration
+      <div className="border-b border-slate-200 pb-5 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-[20px] sm:text-[28px] font-bold text-slate-900 flex items-center gap-2 leading-tight">
+            <Settings2 className="w-6 h-6 sm:w-7 sm:h-7 text-[#2E5BFF] shrink-0" />
+            <span>Exam Configuration</span>
           </h2>
-          <p className="text-slate-500 text-[13px] mt-2">
-            Configure examination rules, pass marks, and grade ranges globally or per class.
-          </p>
+          <button
+            onClick={openCreateModal}
+            className="shrink-0 px-3.5 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs sm:text-sm rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4 shrink-0" />
+            <span className="hidden xs:inline sm:inline">Add Class Template</span>
+            <span className="xs:hidden sm:hidden">Add Template</span>
+          </button>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="px-5 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          Add Class Template
-        </button>
+        <p className="text-slate-500 text-xs sm:text-[13px] font-medium">
+          Configure examination rules, pass marks, and grade ranges globally or per class.
+        </p>
       </div>
 
       {/* Global Config */}
       <div className="space-y-2">
         <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Global Default</h3>
         {globalEntry ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between">
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <span className="bg-blue-100 text-blue-700 font-bold text-xs px-2.5 py-1 rounded-md">Global Exam Config</span>
-                <div className="flex gap-4 mt-3 text-sm text-slate-600 font-medium">
+                <span className="bg-blue-100 text-blue-700 font-bold text-xs px-2.5 py-1 rounded-md inline-block">Global Exam Config</span>
+                <div className="flex flex-wrap gap-3 sm:gap-4 mt-3 text-xs sm:text-sm text-slate-600 font-medium">
                   <div>Max Marks: <strong className="text-slate-900">{globalEntry.maxMarks}</strong></div>
                   <div>Passing: <strong className="text-slate-900">{globalEntry.passingPercentage}%</strong></div>
                 </div>
               </div>
               <button
                 onClick={() => handleDeleteConfig(globalEntry.id)}
-                className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
                 title="Delete Global Config"
               >
                 <Trash2 className="w-4 h-4" />
@@ -337,8 +355,8 @@ export default function ExamConfigPage() {
             </div>
           </div>
         ) : (
-          <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-6 text-center">
-            <p className="text-sm text-slate-500">No global config. Defaults to 35% pass, 100 max marks.</p>
+          <div className="bg-slate-50 border border-dashed border-slate-300 rounded-2xl p-5 sm:p-6 text-center">
+            <p className="text-xs sm:text-sm text-slate-500">No global config. Defaults to 35% pass, 100 max marks.</p>
             <button
               onClick={() => api.post('/exam-config', { examTypeName: null, passingPercentage: 35, maxMarks: 100 }).then(fetchAll)}
               className="mt-3 px-4 py-2 bg-blue-100 text-blue-700 text-xs font-bold rounded-xl cursor-pointer hover:bg-blue-200"
@@ -354,7 +372,7 @@ export default function ExamConfigPage() {
         <div className="space-y-3 pt-4">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Class Templates ({classSpecific.length})</h3>
-            <span className="text-xs text-slate-400">Click any card to open and edit</span>
+            <span className="text-[11px] sm:text-xs text-slate-400">Click any card to edit</span>
           </div>
           <div className="grid gap-3">
             {classSpecific.map(c => {
@@ -365,38 +383,38 @@ export default function ExamConfigPage() {
                 <div 
                   key={c.id} 
                   onClick={() => openEditModal(c)}
-                  className="bg-white border border-slate-200 hover:border-[#2E5BFF]/50 hover:shadow-md rounded-2xl p-5 shadow-xs transition-all cursor-pointer group"
+                  className="bg-white border border-slate-200 hover:border-[#2E5BFF]/50 hover:shadow-md rounded-2xl p-4 sm:p-5 shadow-xs transition-all cursor-pointer group"
                 >
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-blue-50 group-hover:bg-[#2E5BFF] flex items-center justify-center text-[#2E5BFF] group-hover:text-white transition-colors">
-                        <GraduationCap className="w-6 h-6" />
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4 w-full">
+                    <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-blue-50 group-hover:bg-[#2E5BFF] flex items-center justify-center text-[#2E5BFF] group-hover:text-white transition-colors shrink-0">
+                        <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-slate-900 text-lg group-hover:text-[#2E5BFF] transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-slate-900 text-base sm:text-lg group-hover:text-[#2E5BFF] transition-colors truncate">
                             {c.className || 'Class'}
                           </h4>
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                          <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60 shrink-0">
                             {c.examTypeName}
                           </span>
                         </div>
-                        <div className="flex items-center gap-4 mt-1 text-xs text-slate-500 font-medium">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-slate-500 font-medium">
                           <span>{subCount} subject components configured</span>
-                          <span>•</span>
+                          <span className="hidden sm:inline">•</span>
                           <span>Total Marks: <strong className="text-slate-800">{totalMax}</strong></span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-end gap-2 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           openEditModal(c);
                         }}
-                        className="px-3.5 py-1.5 bg-blue-50 hover:bg-[#2E5BFF] text-[#2E5BFF] hover:text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        className="px-3 py-1.5 bg-blue-50 hover:bg-[#2E5BFF] text-[#2E5BFF] hover:text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                         Edit Template
@@ -406,7 +424,7 @@ export default function ExamConfigPage() {
                           e.stopPropagation();
                           handleDeleteConfig(c.id);
                         }}
-                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                         title="Delete Template"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -420,38 +438,40 @@ export default function ExamConfigPage() {
         </div>
       )}
 
-      {/* Add / Edit Class Template Modal */}
-      {showAddOverride && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-blue-100 text-[#2E5BFF] flex items-center justify-center">
-                  <GraduationCap className="w-5 h-5" />
+      {/* Add / Edit Class Template Modal via Portal */}
+      {mounted && showAddOverride && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+          <div className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-4xl h-[95dvh] sm:h-auto sm:max-h-[85vh] shadow-2xl overflow-hidden flex flex-col my-auto border border-slate-200">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-4 sm:p-6 border-b border-slate-150 bg-slate-50/50 shrink-0">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 pr-2">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-blue-100 text-[#2E5BFF] flex items-center justify-center shrink-0">
+                  <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold text-slate-800">
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-xl font-bold text-slate-800 truncate">
                     {editingConfig ? `Edit Template: ${editingConfig.className || 'Class'} (${editingConfig.examTypeName})` : 'Add Class Exam Template'}
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5 truncate">
                     Configure exact subject maximums, components, and passing rules.
                   </p>
                 </div>
               </div>
-              <button onClick={() => setShowAddOverride(false)} className="p-2 hover:bg-slate-200/60 rounded-full cursor-pointer text-slate-400">
+              <button onClick={() => setShowAddOverride(false)} className="p-1.5 hover:bg-slate-200/60 rounded-full cursor-pointer text-slate-400 shrink-0">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <div className="p-6 flex-1 overflow-y-auto space-y-6">
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 flex-1 overflow-y-auto space-y-5 sm:space-y-6 bg-white min-h-0 custom-scrollbar">
               {/* Selectors */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4 text-xs font-bold">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Academic Year</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Academic Year</label>
                   <select 
                     value={overrideData.academicYearId}
                     onChange={e => setOverrideData({...overrideData, academicYearId: e.target.value})}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:border-[#2E5BFF]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:border-[#2E5BFF]"
                   >
                     <option value="">Select Year...</option>
                     {academicYears.map(ay => (
@@ -460,7 +480,7 @@ export default function ExamConfigPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Class</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Class</label>
                   <select 
                     value={overrideData.classId}
                     onChange={e => {
@@ -468,11 +488,10 @@ export default function ExamConfigPage() {
                       setOverrideData(prev => ({
                         ...prev,
                         classId: newClassId,
-                        // if in create mode, reset subjects so they regenerate
                         subjectConfigs: editingConfig ? prev.subjectConfigs : [],
                       }));
                     }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:border-[#2E5BFF]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:border-[#2E5BFF]"
                   >
                     <option value="">Select Class...</option>
                     {classes
@@ -483,11 +502,11 @@ export default function ExamConfigPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">Exam Type</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">Exam Type</label>
                   <select 
                     value={overrideData.examTypeName}
                     onChange={e => setOverrideData({...overrideData, examTypeName: e.target.value})}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:border-[#2E5BFF]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold outline-none focus:border-[#2E5BFF]"
                   >
                     <option value="">Select Exam Type...</option>
                     {examTypes.map(t => (
@@ -499,19 +518,19 @@ export default function ExamConfigPage() {
 
               {/* Subject Grid */}
               {overrideData.subjectConfigs.length > 0 && (
-                <div className="space-y-4 pt-4 border-t border-slate-100">
-                  <div className="flex justify-between items-center">
-                    <h4 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                <div className="space-y-3.5 pt-4 border-t border-slate-100">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h4 className="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-2">
                       <BookOpen className="w-4 h-4 text-[#2E5BFF]" />
                       Subject-wise Marking Scheme
                     </h4>
-                    <span className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                      Auto-calculates pass marks (e.g. 17.5) and percentages
+                    <span className="text-[11px] sm:text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full w-fit">
+                      Auto-calculates pass marks and percentages
                     </span>
                   </div>
                   
-                  <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
-                    <table className="w-full text-left border-collapse">
+                  <div className="border border-slate-200 rounded-2xl overflow-x-auto bg-white shadow-xs max-w-full">
+                    <table className="w-full text-left border-collapse min-w-[550px] sm:min-w-full">
                       <thead>
                         <tr className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                           <th className="p-3 border-b border-slate-200">Subject</th>
@@ -537,7 +556,7 @@ export default function ExamConfigPage() {
                                       type="button"
                                       onClick={() => addSubjectComponent(cfg.subjectId)}
                                       title="Add Practical / Component"
-                                      className="w-5 h-5 rounded bg-blue-50 text-[#2E5BFF] flex items-center justify-center hover:bg-blue-100 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                      className="w-5 h-5 rounded bg-blue-50 text-[#2E5BFF] flex items-center justify-center hover:bg-blue-100 cursor-pointer sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                     >
                                       <Plus className="w-3.5 h-3.5" />
                                     </button>
@@ -599,12 +618,12 @@ export default function ExamConfigPage() {
               )}
             </div>
 
-            {/* Footer */}
-            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 rounded-b-3xl">
+            {/* Modal Footer */}
+            <div className="p-4 sm:p-5 border-t border-slate-100 bg-slate-50 flex flex-col-reverse sm:flex-row justify-end gap-2.5 sm:gap-3 rounded-b-2xl sm:rounded-b-3xl shrink-0">
               <button 
                 type="button"
                 onClick={() => setShowAddOverride(false)}
-                className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-100 cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-100 cursor-pointer"
               >
                 Cancel
               </button>
@@ -612,14 +631,15 @@ export default function ExamConfigPage() {
                 type="button"
                 onClick={handleSaveOverride}
                 disabled={saving || overrideData.subjectConfigs.length === 0}
-                className="px-6 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full sm:w-auto px-6 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
                 {saving ? 'Saving...' : (editingConfig ? 'Update Template' : 'Save Template')}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Component Management */}
@@ -630,16 +650,16 @@ export default function ExamConfigPage() {
             Define custom components (e.g. Practical, Viva, Lab) to apply different passing criteria within the same subject. "Theory" is always included by default.
           </p>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-5 shadow-sm">
-          <form onSubmit={handleAddComponent} className="flex gap-3">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
+          <form onSubmit={handleAddComponent} className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
             <input 
               type="text" 
               placeholder="e.g. Practical"
               value={newComponent}
               onChange={e => setNewComponent(e.target.value)}
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-[#2E5BFF]"
+              className="w-full sm:flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-[#2E5BFF] min-w-0"
             />
-            <button type="submit" disabled={!newComponent.trim()} className="px-5 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer disabled:opacity-50 shadow-sm">
+            <button type="submit" disabled={!newComponent.trim()} className="w-full sm:w-auto px-5 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer disabled:opacity-50 shadow-sm shrink-0">
               Add Component
             </button>
           </form>

@@ -453,46 +453,46 @@ export default function ExamsAndMarksPage() {
   const highestMarks = validScores.length > 0 ? Math.max(...validScores) : 0;
 
   return (
-    <div className="space-y-6 animate-in">
+    <div className="space-y-6 animate-in pb-20 lg:pb-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
         <div>
-          <h2 className="text-[28px] font-bold text-slate-900 leading-none">
+          <h2 className="text-[24px] sm:text-[28px] font-bold text-slate-900 leading-tight">
             Enter Student Marks
           </h2>
-          <p className="text-slate-500 text-[13px] font-medium mt-2">
+          <p className="text-slate-500 text-xs sm:text-[13px] font-medium mt-1">
             Grade and evaluate student performance in specific examinations.
           </p>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2.5 sm:gap-3 w-full sm:w-auto">
           <button
             onClick={() => router.push('/dashboard/exams/config')}
-            className="px-4 py-2.5 rounded-xl border border-[#2E5BFF]/30 bg-blue-50 hover:bg-blue-100 text-[#2E5BFF] font-semibold text-[13px] flex items-center gap-2 transition-all shadow-xs cursor-pointer"
+            className="col-span-1 px-3 py-2.5 rounded-xl border border-[#2E5BFF]/30 bg-blue-50 hover:bg-blue-100 text-[#2E5BFF] font-semibold text-xs sm:text-[13px] flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer truncate"
           >
-            <Settings className="w-4 h-4" />
-            Exam Configuration
+            <Settings className="w-4 h-4 shrink-0" />
+            <span className="truncate">Exam Configuration</span>
           </button>
           <button
             onClick={() => setIsManageTypesOpen(true)}
-            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[13px] flex items-center gap-2 transition-all shadow-xs cursor-pointer"
+            className="col-span-1 px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs sm:text-[13px] flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer truncate"
           >
-            <Settings className="w-4 h-4 text-slate-500" />
-            Manage Exam Types
+            <Settings className="w-4 h-4 text-slate-500 shrink-0" />
+            <span className="truncate">Manage Exam Types</span>
           </button>
           <button
             onClick={handleSaveMarks}
             disabled={roster.length === 0 || isLoading || isSaving || !!errorMsg}
-            className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white font-semibold text-[13px] flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+            className="col-span-2 sm:col-span-1 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white font-semibold text-xs sm:text-[13px] flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer w-full sm:w-auto"
           >
             {isSaving ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Saving...
+                <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+                <span>Saving...</span>
               </>
             ) : (
               <>
-                <Save className="w-4 h-4" />
-                Save Scoresheet
+                <Save className="w-4 h-4 shrink-0" />
+                <span>Save Scoresheet</span>
               </>
             )}
           </button>
