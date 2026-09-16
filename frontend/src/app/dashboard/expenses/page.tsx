@@ -182,55 +182,55 @@ export default function ExpensesPage() {
   };
 
   return (
-    <div className="space-y-6 animate-in">
+    <div className="space-y-6 animate-in pb-20 lg:pb-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <h2 className="text-[24px] font-bold text-slate-900 leading-none">Expense Management</h2>
-          <p className="text-slate-500 text-xs font-medium mt-1">Track and manage school expenses with category breakdown</p>
+      <div className="border-b border-slate-200 pb-5 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-[20px] sm:text-[24px] font-bold text-slate-900 leading-tight">Expense Management</h2>
+          <button
+            onClick={() => handleOpenModal()}
+            className="shrink-0 px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> <span className="hidden xs:inline sm:inline">Add Expense</span><span className="xs:hidden sm:hidden">Add Expense</span>
+          </button>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 shadow-md"
-        >
-          <Plus className="w-4 h-4" /> Add Expense
-        </button>
+        <p className="text-slate-500 text-xs font-medium">Track and manage school expenses with category breakdown</p>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">This Month</span>
-          <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.currentMonth.toLocaleString()}</span>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-6">
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs min-w-0">
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block truncate">This Month</span>
+          <span className="text-base sm:text-2xl font-extrabold text-slate-800 mt-1 block break-words tracking-tight">₹{summary.currentMonth.toLocaleString()}</span>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Previous Month</span>
-          <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.prevMonth.toLocaleString()}</span>
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs min-w-0">
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block truncate">Previous Month</span>
+          <span className="text-base sm:text-2xl font-extrabold text-slate-800 mt-1 block break-words tracking-tight">₹{summary.prevMonth.toLocaleString()}</span>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
-          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Yearly Total</span>
-          <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.yearly.toLocaleString()}</span>
+        <div className="col-span-2 sm:col-span-1 bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-xs min-w-0">
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block truncate">Yearly Total</span>
+          <span className="text-base sm:text-2xl font-extrabold text-slate-800 mt-1 block break-words tracking-tight">₹{summary.yearly.toLocaleString()}</span>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center bg-slate-50/50 border border-slate-200 rounded-xl p-4">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2.5 sm:gap-3 items-center bg-slate-50/50 border border-slate-200 rounded-2xl p-3 sm:p-4">
         <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
-          className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-white outline-none">
+          className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-white outline-none truncate w-full sm:w-auto">
           <option value="">All Categories</option>
           {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={selectedStatus} onChange={e => setSelectedStatus(e.target.value)}
-          className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-white outline-none">
+          className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-white outline-none truncate w-full sm:w-auto">
           <option value="">All Statuses</option>
           {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-          className="border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-white outline-none"
+          className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold bg-white outline-none w-full sm:w-auto"
         />
-        <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer">
-          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="rounded" />
-          Show All
+        <label className="flex items-center justify-center sm:justify-start gap-1.5 text-xs font-bold text-slate-600 cursor-pointer px-2 py-1.5 bg-white border border-slate-200 rounded-xl sm:border-none sm:bg-transparent">
+          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="rounded accent-blue-600" />
+          <span>Show All</span>
         </label>
       </div>
 
@@ -242,33 +242,59 @@ export default function ExpensesPage() {
           </div>
         ) : (
           filteredExpenses.map(exp => (
-            <div key={exp.id} className={`bg-white border border-slate-200 border-l-4 rounded-xl p-4 flex items-center gap-4 shadow-xs hover:shadow-sm transition-all ${CATEGORY_COLORS[exp.category] || CATEGORY_COLORS.Other}`}>
-              <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-xl flex-shrink-0">
-                {CATEGORY_ICONS[exp.category] || '📋'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-slate-800">{exp.category}</span>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${STATUS_COLORS[exp.status] || STATUS_COLORS.Pending}`}>
-                    {exp.status}
-                  </span>
+            <div key={exp.id} className={`bg-white border border-slate-200 border-l-4 rounded-xl p-3.5 sm:p-4 shadow-xs hover:shadow-sm transition-all ${CATEGORY_COLORS[exp.category] || CATEGORY_COLORS.Other}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 w-full">
+                
+                {/* Main Details (Category, Icon, Status, Date, Payment Mode) */}
+                <div className="flex items-start justify-between sm:justify-start gap-3 flex-1 min-w-0">
+                  <div className="flex items-start sm:items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center text-lg sm:text-xl shrink-0">
+                      {CATEGORY_ICONS[exp.category] || '📋'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-slate-800 truncate">{exp.category}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${STATUS_COLORS[exp.status] || STATUS_COLORS.Pending}`}>
+                          {exp.status}
+                        </span>
+                      </div>
+                      <div className="text-[11px] sm:text-[10px] text-slate-400 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="whitespace-nowrap">📅 {exp.date}</span>
+                        <span className="whitespace-nowrap font-medium">💳 {exp.paymentMode}</span>
+                        {exp.description && <span className="truncate max-w-[180px] sm:max-w-[200px]">{exp.description}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mobile Actions (Top Right) */}
+                  <div className="flex items-center gap-1 shrink-0 sm:hidden">
+                    <button onClick={() => handleOpenModal(exp)} className="p-2 rounded-lg hover:bg-blue-50 text-blue-500 cursor-pointer" title="Edit">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDelete(exp.id)} className="p-2 rounded-lg hover:bg-rose-50 text-rose-500 cursor-pointer" title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5 flex gap-3">
-                  <span>📅 {exp.date}</span>
-                  <span>💳 {exp.paymentMode}</span>
-                  {exp.description && <span className="truncate max-w-[200px]">{exp.description}</span>}
+
+                {/* Amount and Desktop Actions */}
+                <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
+                  <div className="text-left sm:text-right">
+                    <span className="text-[10px] font-bold text-slate-400 block sm:hidden uppercase tracking-wider">Amount</span>
+                    <span className="text-base sm:text-lg font-extrabold text-slate-800 font-mono tracking-tight break-words">₹{exp.amount.toLocaleString()}</span>
+                  </div>
+
+                  {/* Desktop Actions */}
+                  <div className="hidden sm:flex items-center gap-1 shrink-0">
+                    <button onClick={() => handleOpenModal(exp)} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500 cursor-pointer" title="Edit">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDelete(exp.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 cursor-pointer" title="Delete">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <div className="text-lg font-extrabold text-slate-800 font-mono">₹{exp.amount.toLocaleString()}</div>
-              </div>
-              <div className="flex gap-1 flex-shrink-0">
-                <button onClick={() => handleOpenModal(exp)} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500" title="Edit">
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button onClick={() => handleDelete(exp.id)} className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500" title="Delete">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+
               </div>
             </div>
           ))
