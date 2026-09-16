@@ -117,30 +117,27 @@ export class SubscriptionGuard implements CanActivate {
         }).catch(() => {});
       }
 
-      // ─── ADMIN PORTAL POST-EXPIRY (Read-Only Mode) ───
-      if (isAdmin) {
-        // GET requests: ALLOWED (Read-Only access to inspect dashboard, reports, data)
-        if (method === 'GET') {
-          const response = context.switchToHttp().getResponse();
-          if (response && typeof response.setHeader === 'function') {
-            response.setHeader('X-Subscription-Status', 'EXPIRED');
-            response.setHeader('X-Subscription-Mode', 'READ_ONLY');
-          }
-          return true;
+      // ─── POST-EXPIRY READ-ONLY MODE FOR ALL ROLES ───
+      // GET requests: ALLOWED (Read-Only access so users can view dashboards, reports, and portal data)
+      if (method === 'GET') {
+        const response = context.switchToHttp().getResponse();
+        if (response && typeof response.setHeader === 'function') {
+          response.setHeader('X-Subscription-Status', 'EXPIRED');
+          response.setHeader('X-Subscription-Mode', 'READ_ONLY');
         }
+        return true;
+      }
 
-        // Data-changing requests (POST, PUT, PATCH, DELETE): BLOCKED
+      // Data-changing requests (POST, PUT, PATCH, DELETE): BLOCKED
+      if (isAdmin) {
         throw new ForbiddenException({
           code: 'SUBSCRIPTION_EXPIRED',
           message: "Your school's EduTrack subscription has expired. The application is in read-only mode. Please renew your subscription to restore full access.",
         });
-      }
-
-      // ─── TEACHER & PARENT PORTALS POST-EXPIRY (Locked Mode) ───
-      if (['TEACHER', 'STAFF', 'PARENT', 'STUDENT'].includes(user.role)) {
+      } else {
         throw new ForbiddenException({
           code: 'SUBSCRIPTION_EXPIRED',
-          message: "Your school's EduTrack subscription has expired. Please reach out to your school admin.",
+          message: "Your school's EduTrack subscription has expired. Please reach out to your school admin to restore full access.",
         });
       }
     } else {

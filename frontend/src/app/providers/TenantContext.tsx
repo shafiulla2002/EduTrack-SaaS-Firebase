@@ -294,31 +294,44 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
 
     const prefetchMetadata = () => {
-      const prefetchUrls = [
-        '/academics/academic-years',
-        '/academics/classes',
-        '/academics/sections',
-        '/academics/class-sections',
-        '/academics/subjects',
-        '/exams/exam-types',
-        '/exams/subjects',
-        '/billing/options/years',
-        '/billing/options/classes',
-        '/billing/invoices/recent',
-        '/teachers',
-        '/attendance/dashboard',
-        '/billing/summary',
-        '/timetable/workload/dashboard',
-        '/complaint-box/teachers',
-        '/dashboard/summary',
-      ];
+      const role = getActiveRole();
+      
+      let prefetchUrls: string[] = [];
+      if (role === 'PARENT') {
+        prefetchUrls = [
+          '/parent-portal/dashboard',
+          '/parent-portal/children',
+        ];
+      } else if (role === 'TEACHER' || role === 'DRIVER') {
+        prefetchUrls = [
+          '/teacher-portal/dashboard',
+          '/academics/classes',
+        ];
+      } else {
+        prefetchUrls = [
+          '/academics/academic-years',
+          '/academics/classes',
+          '/academics/sections',
+          '/academics/class-sections',
+          '/academics/subjects',
+          '/exams/exam-types',
+          '/exams/subjects',
+          '/billing/options/years',
+          '/billing/options/classes',
+          '/billing/invoices/recent',
+          '/teachers',
+          '/attendance/dashboard',
+          '/billing/summary',
+          '/timetable/workload/dashboard',
+          '/complaint-box/teachers',
+          '/dashboard/summary',
+        ];
+        fastGet('/students', { params: { page: 1, limit: 20 } }, { ttlMs: 120000 }).catch(() => {});
+      }
 
       prefetchUrls.forEach((url) => {
         fastGet(url, undefined, { ttlMs: 120000 }).catch(() => {});
       });
-
-      // Pre-prime initial page of student directory (limit: 20 matches students/page.tsx default limit)
-      fastGet('/students', { params: { page: 1, limit: 20 } }, { ttlMs: 120000 }).catch(() => {});
     };
 
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
