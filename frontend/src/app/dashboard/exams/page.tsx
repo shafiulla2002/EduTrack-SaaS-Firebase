@@ -523,14 +523,14 @@ export default function ExamsAndMarksPage() {
       )}
 
       {/* Selectors card */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-bold">
-          <div>
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-4 text-xs font-bold">
+          <div className="col-span-2 sm:col-span-1">
             <label className="block text-slate-400 mb-1.5 uppercase tracking-wider">Select Class & Section</label>
             <select
               value={selectedClassSectionId}
               onChange={(e) => setSelectedClassSectionId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none truncate"
             >
               {classes.map((cls) => (
                 <option key={cls.value} value={cls.value}>
@@ -539,12 +539,12 @@ export default function ExamsAndMarksPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-slate-400 mb-1.5 uppercase tracking-wider">Select Subject</label>
+          <div className="col-span-1 sm:col-span-1 min-w-0">
+            <label className="block text-slate-400 mb-1.5 uppercase tracking-wider truncate">Select Subject</label>
             <select
               value={selectedSubjectId}
               onChange={(e) => setSelectedSubjectId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none truncate"
             >
               {subjects.map((sub) => (
                 <option key={sub.id} value={sub.id}>
@@ -553,12 +553,12 @@ export default function ExamsAndMarksPage() {
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-slate-400 mb-1.5 uppercase tracking-wider">Select Exam Term</label>
+          <div className="col-span-1 sm:col-span-1 min-w-0">
+            <label className="block text-slate-400 mb-1.5 uppercase tracking-wider truncate">Select Exam Term</label>
             <select
               value={selectedExamName}
               onChange={(e) => setSelectedExamName(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none truncate"
             >
               {examTypes.map((t) => (
                 <option key={t} value={t}>
@@ -571,41 +571,44 @@ export default function ExamsAndMarksPage() {
       </div>
 
       {/* Class Statistics */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2E5BFF] flex items-center justify-center font-extrabold">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-50 text-[#2E5BFF] flex items-center justify-center font-extrabold text-sm sm:text-base shrink-0">
             📈
           </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Class Average</span>
-            <span className="text-xl font-extrabold text-slate-850 block mt-0.5">{classAverage}%</span>
+          <div className="min-w-0">
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate block">Class Average</span>
+            <span className="text-base sm:text-xl font-extrabold text-slate-850 block mt-0.5 truncate">{classAverage}%</span>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-extrabold">
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-extrabold text-sm sm:text-base shrink-0">
             🏆
           </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Highest Score</span>
-            <span className="text-xl font-extrabold text-slate-850 block mt-0.5">{highestMarks}</span>
+          <div className="min-w-0">
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate block">Highest Score</span>
+            <span className="text-base sm:text-xl font-extrabold text-slate-850 block mt-0.5 truncate">{highestMarks}</span>
           </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-extrabold">
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-extrabold text-sm sm:text-base shrink-0">
             ✅
           </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Roster Entries</span>
-            <span className="text-xl font-extrabold text-slate-850 block mt-0.5">{roster.length} Students</span>
+          <div className="min-w-0">
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate block">Roster Entries</span>
+            <span className="text-base sm:text-xl font-extrabold text-slate-850 block mt-0.5 truncate">{roster.length} Students</span>
           </div>
         </div>
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-extrabold text-sm">{examConfig.passingPercentage}%</div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pass Threshold</span>
-            <span className="text-sm font-extrabold text-slate-850 block mt-0.5">
+
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-sm flex items-center gap-2.5 sm:gap-4 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-extrabold text-xs sm:text-sm shrink-0">
+            {examConfig.passingPercentage}%
+          </div>
+          <div className="min-w-0">
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate block">Pass Threshold</span>
+            <span className="text-xs sm:text-sm font-extrabold text-slate-850 block mt-0.5 leading-tight break-words">
               {examConfig.passMarks !== undefined ? examConfig.passMarks : ((examConfig.passingPercentage / 100) * examConfig.maxMarks).toFixed(1)} / {examConfig.maxMarks} ({examConfig.passingPercentage}%)
             </span>
           </div>
