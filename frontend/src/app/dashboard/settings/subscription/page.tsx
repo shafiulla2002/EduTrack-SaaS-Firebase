@@ -439,14 +439,14 @@ export default function SubscriptionPage() {
   }, [isSubscribedActive, payments, stats]);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-8">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 sm:space-y-8 pb-24 sm:pb-12 min-w-0 overflow-x-hidden">
 
       {/* ── Top Banner ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-black text-white tracking-tight">Subscription & Billing Console</h1>
-            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 sm:gap-4 bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+            <h1 className="text-lg sm:text-2xl font-black text-white tracking-tight leading-snug">Subscription &amp; Billing Console</h1>
+            <span className={`px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 ${
               isPending ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
               : isExpired ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
               : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
@@ -454,11 +454,11 @@ export default function SubscriptionPage() {
               {currentStatus}
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">Real-time Razorpay checkout, automated invoicing, and approval workflows.</p>
+          <p className="text-[11px] sm:text-xs text-slate-400 mt-1 leading-relaxed">Real-time Razorpay checkout, automated invoicing, and approval workflows.</p>
         </div>
         <button
           onClick={() => openCheckoutWithMonths(12)}
-          className="flex items-center gap-2 px-5 py-3 text-xs font-extrabold text-white bg-blue-600 hover:bg-blue-500 rounded-2xl shadow-lg shadow-blue-600/30 cursor-pointer transition-all"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 text-xs font-extrabold text-white bg-blue-600 hover:bg-blue-500 rounded-xl sm:rounded-2xl shadow-lg shadow-blue-600/30 cursor-pointer transition-all shrink-0"
         >
           <CreditCard className="w-4 h-4" />
           <span>Renew / Upgrade Subscription</span>
@@ -467,23 +467,23 @@ export default function SubscriptionPage() {
 
       {/* ── Payment Success Banner ──────────────────────────────────────────── */}
       {paymentSuccess && (
-        <div className="p-6 bg-emerald-950/60 border border-emerald-700/80 rounded-3xl flex items-start gap-4 shadow-xl">
-          <CheckCircle className="w-6 h-6 text-emerald-400 shrink-0 mt-0.5" />
+        <div className="p-4 sm:p-6 bg-emerald-950/60 border border-emerald-700/80 rounded-2xl sm:rounded-3xl flex items-start gap-3 sm:gap-4 shadow-xl">
+          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400 shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-sm font-bold text-emerald-300">Payment Received Successfully!</h3>
-            <p className="text-xs text-emerald-200/90 mt-1 leading-relaxed max-w-2xl">{paymentSuccess.message}</p>
-            <p className="text-[11px] text-emerald-400/70 mt-2 font-mono">Transaction ID: {paymentSuccess.transactionId}</p>
+            <h3 className="text-xs sm:text-sm font-bold text-emerald-300">Payment Received Successfully!</h3>
+            <p className="text-[11px] sm:text-xs text-emerald-200/90 mt-1 leading-relaxed max-w-2xl">{paymentSuccess.message}</p>
+            <p className="text-[10px] sm:text-[11px] text-emerald-400/70 mt-2 font-mono">Transaction ID: {paymentSuccess.transactionId}</p>
           </div>
         </div>
       )}
 
       {/* ── Pending Approval Banner ─────────────────────────────────────────── */}
       {isPending && !paymentSuccess && (
-        <div className="p-6 bg-amber-950/60 border border-amber-800/80 rounded-3xl flex items-start gap-4 text-amber-200 shadow-xl">
-          <Clock className="w-6 h-6 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+        <div className="p-4 sm:p-6 bg-amber-950/60 border border-amber-800/80 rounded-2xl sm:rounded-3xl flex items-start gap-3 sm:gap-4 text-amber-200 shadow-xl">
+          <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
           <div>
-            <h3 className="text-sm font-bold text-amber-300">Renewal Request Pending Approval</h3>
-            <p className="text-xs text-amber-200/90 mt-1 leading-relaxed">
+            <h3 className="text-xs sm:text-sm font-bold text-amber-300">Renewal Request Pending Approval</h3>
+            <p className="text-[11px] sm:text-xs text-amber-200/90 mt-1 leading-relaxed">
               Your payment has been received and is awaiting approval from the Platform Administrator. Approval normally takes a few hours. You will receive a notification once approved.
             </p>
           </div>
@@ -492,44 +492,44 @@ export default function SubscriptionPage() {
 
       {/* ── Expired Banner ──────────────────────────────────────────────────── */}
       {isExpired && (
-        <div className="p-6 bg-rose-950/70 border border-rose-800/80 rounded-3xl flex items-start gap-4 text-rose-200 shadow-xl">
-          <AlertTriangle className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
+        <div className="p-4 sm:p-6 bg-rose-950/70 border border-rose-800/80 rounded-2xl sm:rounded-3xl flex items-start gap-3 sm:gap-4 text-rose-200 shadow-xl">
+          <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-rose-400 shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-sm font-bold text-rose-300">Subscription Expired — Application Locked</h3>
-            <p className="text-xs text-rose-200/90 mt-1 leading-relaxed">Please renew your subscription to continue using EduTrack modules.</p>
+            <h3 className="text-xs sm:text-sm font-bold text-rose-300">Subscription Expired — Application Locked</h3>
+            <p className="text-[11px] sm:text-xs text-rose-200/90 mt-1 leading-relaxed">Please renew your subscription to continue using EduTrack modules.</p>
           </div>
         </div>
       )}
 
       {/* ── Status Cards ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {[
           { label: 'Current Plan', value: subscription?.plan || 'BASIC', sub: 'Standard tier' },
           { label: 'Expiry Date', value: expiryDate.toLocaleDateString(), sub: `${daysRemaining} days remaining` },
           { label: 'Billing Cycle', value: stats?.billingCycle || '12 Months', sub: 'Auto-renewal enabled' },
           { label: 'Grace Period', value: 'Active', sub: '14-day grace window', green: true },
         ].map((card) => (
-          <div key={card.label} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">{card.label}</span>
-            <div className={`text-xl font-black mt-2 ${card.green ? 'text-emerald-600' : 'text-slate-900'}`}>{card.value}</div>
-            <span className="text-xs text-slate-500 mt-1 block">{card.sub}</span>
+          <div key={card.label} className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-5 shadow-sm min-w-0">
+            <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider block truncate">{card.label}</span>
+            <div className={`text-sm sm:text-xl font-black mt-1 sm:mt-2 truncate ${card.green ? 'text-emerald-600' : 'text-slate-900'}`}>{card.value}</div>
+            <span className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 block truncate">{card.sub}</span>
           </div>
         ))}
       </div>
 
       {/* ── SIDE-BY-SIDE BASIC PLAN CARDS ───────────────────────────────────── */}
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">Available Subscription Plans</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Select a billing duration to proceed with secure Razorpay checkout.</p>
+          <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Available Subscription Plans</h2>
+          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">Select a billing duration to proceed with secure Razorpay checkout.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
 
           {/* ── CARD 1: 6 MONTHS ──────────────────────────────────────────────── */}
           <div
             onClick={() => !isSubscribedActive && setBillingMonths(6)}
-            className={`bg-white border-2 rounded-3xl p-6 transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+            className={`bg-white border-2 rounded-2xl sm:rounded-3xl p-4 sm:p-6 transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
               activePlanDuration === 6
                 ? 'border-emerald-500 bg-emerald-50/40 shadow-2xl ring-4 ring-emerald-500/20'
                 : billingMonths === 6
@@ -540,28 +540,28 @@ export default function SubscriptionPage() {
             }`}
           >
             {activePlanDuration === 6 && (
-              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
+              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[9px] sm:text-[10px] font-black uppercase px-3 sm:px-4 py-1 sm:py-1.5 rounded-bl-xl sm:rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
                 <CheckCircle className="w-3.5 h-3.5 text-white" /> CURRENT ACTIVE PLAN
               </div>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                <div className="flex items-center gap-2.5 sm:gap-3">
+                  <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 ${
                     activePlanDuration === 6 ? 'bg-emerald-600 text-white' : billingMonths === 6 ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'
                   }`}>
-                    <Zap className="w-5 h-5" />
+                    <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div>
-                    <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                    <span className={`text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                       activePlanDuration === 6 ? 'text-emerald-700 bg-emerald-100' : 'text-blue-600 bg-blue-100'
                     }`}>Half-Yearly</span>
-                    <h3 className="text-lg font-black text-slate-900 mt-0.5">BASIC PLAN</h3>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 mt-0.5">BASIC PLAN</h3>
                   </div>
                 </div>
 
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                   activePlanDuration === 6 ? 'border-emerald-600 bg-emerald-600' : billingMonths === 6 ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
                 }`}>
                   {(activePlanDuration === 6 || billingMonths === 6) && <Check className="w-3 h-3 text-white stroke-[3]" />}
@@ -569,17 +569,17 @@ export default function SubscriptionPage() {
               </div>
 
               <div>
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Billing Duration: 6 Months</span>
+                <span className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Billing Duration: 6 Months</span>
                 <div className="flex items-baseline gap-1 mt-1">
-                  <span className="text-3xl font-black text-slate-900">₹{price6Months}</span>
+                  <span className="text-2xl sm:text-3xl font-black text-slate-900">₹{price6Months}</span>
                   <span className="text-xs text-slate-400 font-medium">/ 6 months</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">Includes all core school management modules</p>
+                <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5">Includes all core school management modules</p>
               </div>
 
-              <div className="border-t border-slate-100 pt-4 space-y-2">
-                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Plan Features:</p>
-                <ul className="space-y-2 text-xs text-slate-600">
+              <div className="border-t border-slate-100 pt-3 sm:pt-4 space-y-2">
+                <p className="text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider">Plan Features:</p>
+                <ul className="space-y-1.5 sm:space-y-2 text-xs text-slate-600">
                   {[
                     'Unlimited Students & Staff Profiles',
                     'Attendance, Fees & Timetable Management',
@@ -588,8 +588,8 @@ export default function SubscriptionPage() {
                     'Transport & Bus GPS Tracking',
                   ].map((feature) => (
                     <li key={feature} className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>{feature}</span>
+                      <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 shrink-0" />
+                      <span className="text-[11px] sm:text-xs">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -602,7 +602,7 @@ export default function SubscriptionPage() {
                 e.stopPropagation();
                 if (!isSubscribedActive) openCheckoutWithMonths(6);
               }}
-              className={`mt-6 w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 ${
+              className={`mt-4 sm:mt-6 w-full py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${
                 activePlanDuration === 6
                   ? 'bg-emerald-600 text-white shadow-md cursor-not-allowed opacity-95'
                   : isSubscribedActive
@@ -633,7 +633,7 @@ export default function SubscriptionPage() {
           {/* ── CARD 2: 12 MONTHS ─────────────────────────────────────────────── */}
           <div
             onClick={() => !isSubscribedActive && setBillingMonths(12)}
-            className={`bg-white border-2 rounded-3xl p-6 transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+            className={`bg-white border-2 rounded-2xl sm:rounded-3xl p-4 sm:p-6 transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
               activePlanDuration === 12
                 ? 'border-emerald-500 bg-emerald-50/40 shadow-2xl ring-4 ring-emerald-500/20'
                 : billingMonths === 12
@@ -645,30 +645,30 @@ export default function SubscriptionPage() {
           >
             {/* Top Ribbon Badge */}
             {activePlanDuration === 12 ? (
-              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
+              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[9px] sm:text-[10px] font-black uppercase px-3 sm:px-4 py-1 sm:py-1.5 rounded-bl-xl sm:rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
                 <CheckCircle className="w-3.5 h-3.5 text-white" /> CURRENT ACTIVE PLAN
               </div>
             ) : (
-              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black uppercase px-4 py-1.5 rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
+              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[9px] sm:text-[10px] font-black uppercase px-3 sm:px-4 py-1 sm:py-1.5 rounded-bl-xl sm:rounded-bl-2xl tracking-wider flex items-center gap-1 shadow-md">
                 <Sparkles className="w-3 h-3" /> BEST VALUE — ANNUAL PLAN
               </div>
             )}
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                <div className="flex items-center gap-2.5 sm:gap-3">
+                  <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl flex items-center justify-center shrink-0 ${
                     activePlanDuration === 12 ? 'bg-emerald-600 text-white' : billingMonths === 12 ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'
                   }`}>
-                    <Zap className="w-5 h-5" />
+                    <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">Annual Plan</span>
-                    <h3 className="text-lg font-black text-slate-900 mt-0.5">BASIC PLAN</h3>
+                    <span className="text-[9px] sm:text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">Annual Plan</span>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900 mt-0.5">BASIC PLAN</h3>
                   </div>
                 </div>
 
-                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
                   activePlanDuration === 12 ? 'border-emerald-600 bg-emerald-600' : billingMonths === 12 ? 'border-blue-600 bg-blue-600' : 'border-slate-300'
                 }`}>
                   {(activePlanDuration === 12 || billingMonths === 12) && <Check className="w-3 h-3 text-white stroke-[3]" />}
@@ -676,17 +676,17 @@ export default function SubscriptionPage() {
               </div>
 
               <div>
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Billing Duration: 12 Months</span>
+                <span className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">Billing Duration: 12 Months</span>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-3xl font-black text-slate-900">₹{price12Months}</span>
+                  <span className="text-2xl sm:text-3xl font-black text-slate-900">₹{price12Months}</span>
                   <span className="text-xs text-slate-400 font-medium">/ 12 months</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">Best value annual plan for full academic year support</p>
+                <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5">Best value annual plan for full academic year support</p>
               </div>
 
-              <div className="border-t border-slate-100 pt-4 space-y-2">
-                <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Plan Features:</p>
-                <ul className="space-y-2 text-xs text-slate-600">
+              <div className="border-t border-slate-100 pt-3 sm:pt-4 space-y-2">
+                <p className="text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider">Plan Features:</p>
+                <ul className="space-y-1.5 sm:space-y-2 text-xs text-slate-600">
                   {[
                     'Unlimited Students & Staff Profiles',
                     'Attendance, Fees & Timetable Management',
@@ -695,8 +695,8 @@ export default function SubscriptionPage() {
                     'Transport & Bus GPS Tracking',
                   ].map((feature) => (
                     <li key={feature} className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>{feature}</span>
+                      <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 shrink-0" />
+                      <span className="text-[11px] sm:text-xs">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -709,7 +709,7 @@ export default function SubscriptionPage() {
                 e.stopPropagation();
                 if (!isSubscribedActive) openCheckoutWithMonths(12);
               }}
-              className={`mt-6 w-full py-3.5 rounded-2xl font-extrabold text-sm transition-all flex items-center justify-center gap-2 ${
+              className={`mt-4 sm:mt-6 w-full py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 ${
                 activePlanDuration === 12
                   ? 'bg-emerald-600 text-white shadow-md cursor-not-allowed opacity-95'
                   : isSubscribedActive
@@ -741,40 +741,40 @@ export default function SubscriptionPage() {
       </div>
 
       {/* ── Invoice History ─────────────────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-          <Receipt className="w-5 h-5 text-blue-600" />
+      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-3 sm:space-y-4 min-w-0">
+        <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+          <Receipt className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 shrink-0" />
           Invoice History
         </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+        <div className="overflow-x-auto min-w-0 w-full scrollbar-thin">
+          <table className="w-full text-left border-collapse text-xs min-w-[500px] sm:min-w-0">
             <thead>
               <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 font-semibold">
-                <th className="p-3">Invoice #</th>
-                <th className="p-3">Plan</th>
-                <th className="p-3">Subtotal</th>
-                <th className="p-3">GST (18%)</th>
-                <th className="p-3">Total</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Date</th>
-                <th className="p-3">PDF</th>
+                <th className="p-2.5 sm:p-3">Invoice #</th>
+                <th className="p-2.5 sm:p-3">Plan</th>
+                <th className="p-2.5 sm:p-3">Subtotal</th>
+                <th className="p-2.5 sm:p-3">GST (18%)</th>
+                <th className="p-2.5 sm:p-3">Total</th>
+                <th className="p-2.5 sm:p-3">Status</th>
+                <th className="p-2.5 sm:p-3">Date</th>
+                <th className="p-2.5 sm:p-3">PDF</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {invoices.length > 0 ? invoices.map((inv) => (
                 <tr key={inv.id}>
-                  <td className="p-3 font-mono font-bold text-slate-900">{inv.invoiceNumber}</td>
-                  <td className="p-3 font-semibold">{inv.planId || 'BASIC'}</td>
-                  <td className="p-3 font-mono">₹{Number(inv.amount).toLocaleString('en-IN')}</td>
-                  <td className="p-3 font-mono">₹{Number(inv.gst).toLocaleString('en-IN')}</td>
-                  <td className="p-3 font-mono font-bold text-emerald-600">₹{(Number(inv.amount) + Number(inv.gst)).toLocaleString('en-IN')}</td>
-                  <td className="p-3">
+                  <td className="p-2.5 sm:p-3 font-mono font-bold text-slate-900">{inv.invoiceNumber}</td>
+                  <td className="p-2.5 sm:p-3 font-semibold">{inv.planId || 'BASIC'}</td>
+                  <td className="p-2.5 sm:p-3 font-mono">₹{Number(inv.amount).toLocaleString('en-IN')}</td>
+                  <td className="p-2.5 sm:p-3 font-mono">₹{Number(inv.gst).toLocaleString('en-IN')}</td>
+                  <td className="p-2.5 sm:p-3 font-mono font-bold text-emerald-600">₹{(Number(inv.amount) + Number(inv.gst)).toLocaleString('en-IN')}</td>
+                  <td className="p-2.5 sm:p-3">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${inv.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                       {inv.status}
                     </span>
                   </td>
-                  <td className="p-3 text-slate-500">{new Date(inv.createdDate || inv.createdAt).toLocaleDateString()}</td>
-                  <td className="p-3">
+                  <td className="p-2.5 sm:p-3 text-slate-500">{new Date(inv.createdDate || inv.createdAt).toLocaleDateString()}</td>
+                  <td className="p-2.5 sm:p-3">
                     <button
                       type="button"
                       onClick={() => handleDownloadInvoicePDF(inv)}
@@ -791,7 +791,7 @@ export default function SubscriptionPage() {
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={8} className="p-5 text-center text-slate-400">No invoices yet. Invoices are generated after Super Admin approval.</td></tr>
+                <tr><td colSpan={8} className="p-4 sm:p-5 text-center text-slate-400 text-xs whitespace-normal break-words">No invoices yet. Invoices are generated after Super Admin approval.</td></tr>
               )}
             </tbody>
           </table>
@@ -799,36 +799,36 @@ export default function SubscriptionPage() {
       </div>
 
       {/* ── Payment History ─────────────────────────────────────────────────── */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-          <Banknote className="w-5 h-5 text-emerald-600" />
+      <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm space-y-3 sm:space-y-4 min-w-0">
+        <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+          <Banknote className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0" />
           Payment History
         </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 font-semibold">
-                <th className="p-3">Date</th>
-                <th className="p-3">Plan</th>
-                <th className="p-3">Duration</th>
-                <th className="p-3">Gateway</th>
-                <th className="p-3">Method</th>
-                <th className="p-3">Transaction ID</th>
-                <th className="p-3">Amount</th>
-                <th className="p-3">Status</th>
+        <div className="max-h-[350px] overflow-y-auto overflow-x-auto min-w-0 w-full pr-1 scrollbar-thin">
+          <table className="w-full text-left border-collapse text-xs min-w-[500px] sm:min-w-0">
+            <thead className="sticky top-0 bg-slate-50 z-10">
+              <tr className="text-slate-500 border-b border-slate-200 font-semibold">
+                <th className="p-2.5 sm:p-3">Date</th>
+                <th className="p-2.5 sm:p-3">Plan</th>
+                <th className="p-2.5 sm:p-3">Duration</th>
+                <th className="p-2.5 sm:p-3">Gateway</th>
+                <th className="p-2.5 sm:p-3">Method</th>
+                <th className="p-2.5 sm:p-3">Transaction ID</th>
+                <th className="p-2.5 sm:p-3">Amount</th>
+                <th className="p-2.5 sm:p-3">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
               {payments.length > 0 ? payments.map((p) => (
                 <tr key={p.id}>
-                  <td className="p-3 text-slate-500">{p.paidAt ? new Date(p.paidAt).toLocaleDateString() : new Date(p.createdAt).toLocaleDateString()}</td>
-                  <td className="p-3 font-semibold">{p.planId || 'BASIC'}</td>
-                  <td className="p-3">{p.billingDurationMonths ? `${p.billingDurationMonths} Months` : '—'}</td>
-                  <td className="p-3">{p.gateway || '—'}</td>
-                  <td className="p-3">{p.method || '—'}</td>
-                  <td className="p-3 font-mono text-slate-600">{p.transactionId?.slice(0, 20) || '—'}</td>
-                  <td className="p-3 font-mono font-bold text-emerald-600">₹{Number(p.amount).toLocaleString('en-IN')}</td>
-                  <td className="p-3">
+                  <td className="p-2.5 sm:p-3 text-slate-500 whitespace-nowrap">{p.paidAt ? new Date(p.paidAt).toLocaleDateString() : new Date(p.createdAt).toLocaleDateString()}</td>
+                  <td className="p-2.5 sm:p-3 font-semibold truncate max-w-[140px]" title={p.planId}>{p.planId || 'BASIC'}</td>
+                  <td className="p-2.5 sm:p-3 whitespace-nowrap">{p.billingDurationMonths ? `${p.billingDurationMonths} Months` : '—'}</td>
+                  <td className="p-2.5 sm:p-3 whitespace-nowrap">{p.gateway || '—'}</td>
+                  <td className="p-2.5 sm:p-3 whitespace-nowrap">{p.method || '—'}</td>
+                  <td className="p-2.5 sm:p-3 font-mono text-slate-600 truncate max-w-[120px]" title={p.transactionId}>{p.transactionId?.slice(0, 20) || '—'}</td>
+                  <td className="p-2.5 sm:p-3 font-mono font-bold text-emerald-600 whitespace-nowrap">₹{Number(p.amount).toLocaleString('en-IN')}</td>
+                  <td className="p-2.5 sm:p-3">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                       p.status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700'
                       : p.status === 'PENDING' ? 'bg-amber-100 text-amber-700'
@@ -837,7 +837,7 @@ export default function SubscriptionPage() {
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={8} className="p-5 text-center text-slate-400">No payment records yet.</td></tr>
+                <tr><td colSpan={8} className="p-4 sm:p-5 text-center text-slate-400 text-xs">No payment records yet.</td></tr>
               )}
             </tbody>
           </table>
