@@ -115,80 +115,80 @@ export default function TeacherSalaryPage() {
       </div>
 
       {/* Salary Dashboard Stats Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
         {/* Basic Salary */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl shadow-sm flex items-center gap-3">
-          <div className="w-9 h-9 bg-blue-50 dark:bg-blue-950/40 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
-            <DollarSign className="w-4.5 h-4.5" />
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 sm:p-4 rounded-2xl shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-blue-50 dark:bg-blue-950/40 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+            <DollarSign className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </div>
-          <div>
-            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Basic Salary</div>
-            <div className="text-base font-black text-slate-800 dark:text-slate-100 mt-0.5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider truncate">Basic Salary</div>
+            <div className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 mt-0.5 truncate">
               ₹{Number(details?.basicSalary || 0).toLocaleString('en-IN')}
             </div>
           </div>
         </div>
 
         {/* Allowances */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl shadow-sm flex items-center gap-3">
-          <div className="w-9 h-9 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-            <PlusCircle className="w-4.5 h-4.5" />
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 sm:p-4 rounded-2xl shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+            <PlusCircle className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </div>
-          <div>
-            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Allowances</div>
-            <div className="text-base font-black text-slate-800 dark:text-slate-100 mt-0.5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider truncate">Allowances</div>
+            <div className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 mt-0.5 truncate">
               ₹{Number(details?.allowances || 0).toLocaleString('en-IN')}
             </div>
           </div>
         </div>
 
         {/* Bonus / Incentives */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl shadow-sm flex items-center gap-3">
-          <div className="w-9 h-9 bg-amber-50 dark:bg-amber-950/40 rounded-xl flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-            <TrendingUp className="w-4.5 h-4.5" />
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 sm:p-4 rounded-2xl shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-amber-50 dark:bg-amber-950/40 rounded-xl flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+            <TrendingUp className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </div>
-          <div>
-            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Bonus / Incentives</div>
-            <div className="text-base font-black text-slate-800 dark:text-slate-100 mt-0.5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider truncate">Bonus / Incentives</div>
+            <div className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 mt-0.5 truncate">
               ₹{Number(details?.bonus || 0).toLocaleString('en-IN')}
             </div>
           </div>
         </div>
 
         {/* PF Deductions */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl shadow-sm flex items-center gap-3">
-          <div className="w-9 h-9 bg-orange-50 dark:bg-orange-950/40 rounded-xl flex items-center justify-center text-orange-600 dark:text-orange-400 shrink-0">
-            <Percent className="w-4.5 h-4.5" />
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 sm:p-4 rounded-2xl shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-orange-50 dark:bg-orange-950/40 rounded-xl flex items-center justify-center text-orange-600 dark:text-orange-400 shrink-0">
+            <Percent className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </div>
-          <div>
-            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">PF Deduction</div>
-            <div className="text-base font-black text-slate-800 dark:text-slate-100 mt-0.5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider truncate">PF Deduction</div>
+            <div className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 mt-0.5 truncate">
               ₹{Number(details?.pfDeduction || 0).toLocaleString('en-IN')}
             </div>
           </div>
         </div>
 
         {/* Other Deductions */}
-        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl shadow-sm flex items-center gap-3">
-          <div className="w-9 h-9 bg-rose-50 dark:bg-rose-950/40 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
-            <MinusCircle className="w-4.5 h-4.5" />
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3.5 sm:p-4 rounded-2xl shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-rose-50 dark:bg-rose-950/40 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+            <MinusCircle className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </div>
-          <div>
-            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Other Deductions</div>
-            <div className="text-base font-black text-slate-800 dark:text-slate-100 mt-0.5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider truncate">Other Deductions</div>
+            <div className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-100 mt-0.5 truncate">
               ₹{Number(details?.deductions || 0).toLocaleString('en-IN')}
             </div>
           </div>
         </div>
 
         {/* Net Take Home */}
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-750 text-white p-4 rounded-2xl shadow-sm flex items-center gap-3">
-          <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center text-white shrink-0">
-            <DollarSign className="w-4.5 h-4.5" />
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-750 text-white p-3.5 sm:p-4 rounded-2xl shadow-sm flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-white/20 rounded-xl flex items-center justify-center text-white shrink-0">
+            <DollarSign className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </div>
-          <div>
-            <div className="text-[9px] text-blue-200 font-bold uppercase tracking-wider">Net Take Home</div>
-            <div className="text-base font-black mt-0.5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[9px] text-blue-200 font-bold uppercase tracking-wider truncate">Net Take Home</div>
+            <div className="text-sm sm:text-base font-black mt-0.5 truncate">
               ₹{Number(details?.netSalary || 0).toLocaleString('en-IN')}
             </div>
           </div>

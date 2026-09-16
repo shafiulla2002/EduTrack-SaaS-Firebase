@@ -432,7 +432,7 @@ export default function ExamsPage() {
                     key={card.examName}
                     card={card}
                     child={selectedChild}
-                    schoolName={schoolName || 'Cambridge International School'}
+                    schoolName={schoolName || 'EduTrack School'}
                     logoUrl={logoUrl || null}
                     defaultOpen={idx === 0}
                   />

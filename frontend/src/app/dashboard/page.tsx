@@ -783,44 +783,44 @@ function TeacherDashboardView() {
       </div>
 
       {/* Quick Action Grid */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-        <h3 className="text-[15px] font-bold text-slate-800 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-3 gap-4">
-          <Link href="/dashboard/attendance-mgmt" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-blue-55 text-blue-600 flex items-center justify-center shadow-xs">
-              <span className="text-lg">📅</span>
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <h3 className="text-[15px] font-bold text-slate-800 dark:text-slate-100 mb-4">Quick Actions</h3>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+          <Link href="/dashboard/attendance-mgmt" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-blue-50/50 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
+            <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <span className="text-xl">📅</span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-600">Attendance</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-[#2E5BFF] dark:group-hover:text-blue-400 truncate max-w-full">Attendance</span>
           </Link>
-          <Link href="/dashboard/marks-mgmt" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-emerald-55 text-emerald-600 flex items-center justify-center shadow-xs">
-              <span className="text-lg">✍️</span>
+          <Link href="/dashboard/marks-mgmt" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-emerald-50/50 dark:hover:bg-slate-700 hover:border-emerald-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <span className="text-xl">✍️</span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-600">Enter Marks</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 truncate max-w-full">Enter Marks</span>
           </Link>
-          <Link href="/dashboard/homework" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-purple-55 text-purple-600 flex items-center justify-center shadow-xs">
-              <span className="text-lg">📖</span>
+          <Link href="/dashboard/homework" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-purple-50/50 dark:hover:bg-slate-700 hover:border-purple-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
+            <div className="w-11 h-11 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <span className="text-xl">📖</span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-600">Homework</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 truncate max-w-full">Homework</span>
           </Link>
-          <Link href="/dashboard/communication" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-pink-55 text-pink-600 flex items-center justify-center shadow-xs">
-              <span className="text-lg">💬</span>
+          <Link href="/dashboard/communication" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-pink-50/50 dark:hover:bg-slate-700 hover:border-pink-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
+            <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/50 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <span className="text-xl">💬</span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-600">Messages</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-pink-600 dark:group-hover:text-pink-400 truncate max-w-full">Messages</span>
           </Link>
-          <Link href="/dashboard/my-timetable" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-amber-55 text-amber-600 flex items-center justify-center shadow-xs">
-              <span className="text-lg">⏰</span>
+          <Link href="/dashboard/my-timetable" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-amber-50/50 dark:hover:bg-slate-700 hover:border-amber-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
+            <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <span className="text-xl">⏰</span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-600">Timetable</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 truncate max-w-full">Timetable</span>
           </Link>
-          <Link href="/dashboard/calendar" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-teal-55 text-teal-600 flex items-center justify-center shadow-xs">
-              <span className="text-lg">🗓️</span>
+          <Link href="/dashboard/calendar" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-teal-50/50 dark:hover:bg-slate-700 hover:border-teal-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
+            <div className="w-11 h-11 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <span className="text-xl">🗓️</span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-600">Calendar</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-teal-600 dark:group-hover:text-teal-400 truncate max-w-full">Calendar</span>
           </Link>
         </div>
       </div>
@@ -828,48 +828,64 @@ function TeacherDashboardView() {
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
         {statsList.map((stat, idx) => (
-          <div key={idx} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between h-32">
+          <div key={idx} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-32">
             <div className="flex justify-between items-center">
               <span className="text-2xl">{stat.icon}</span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Metrics</span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Metrics</span>
             </div>
             <div>
-              <div className="text-2xl font-black text-slate-800 leading-none">{stat.val}</div>
-              <div className="text-[12px] font-bold text-slate-600 mt-1">{stat.name}</div>
+              <div className="text-2xl font-black text-slate-800 dark:text-slate-100 leading-none">{stat.val}</div>
+              <div className="text-[12px] font-bold text-slate-600 dark:text-slate-300 mt-1">{stat.name}</div>
             </div>
           </div>
         ))}
       </div>
 
       {/* Today's Classes List */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[15px] font-bold text-slate-800">Today's Class Schedule</h3>
-          <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md">Today</span>
+          <h3 className="text-[15px] font-bold text-slate-800 dark:text-slate-100">Today's Class Schedule</h3>
+          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-950/50 px-2.5 py-0.5 rounded-full border border-blue-100 dark:border-blue-900">Today</span>
         </div>
         
-        {data?.today?.classes?.length === 0 ? (
-          <div className="py-8 text-center text-slate-400 text-xs italic">No teaching periods scheduled for today.</div>
-        ) : (
-          <div className="space-y-3">
-            {data?.today?.classes?.map((cls: any) => (
-              <div key={cls.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex justify-between items-center">
-                <div>
-                  <h4 className="font-bold text-sm text-slate-800">{cls.className}</h4>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">{cls.subjectName} • Period {cls.periodNumber}</p>
-                  <p className="text-[11px] text-slate-400 font-mono mt-1">{cls.time}</p>
+        {(() => {
+          const sortedClasses = [...(data?.today?.classes || [])].sort((a: any, b: any) => {
+            const pA = Number(a.periodNumber) || 0;
+            const pB = Number(b.periodNumber) || 0;
+            if (pA !== pB) return pA - pB;
+            return (a.time || '').localeCompare(b.time || '');
+          });
+
+          if (sortedClasses.length === 0) {
+            return <div className="py-8 text-center text-slate-400 dark:text-slate-500 text-xs italic">No teaching periods scheduled for today.</div>;
+          }
+
+          return (
+            <div className="space-y-3">
+              {sortedClasses.map((cls: any) => (
+                <div key={cls.id} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-extrabold text-xs px-2.5 py-0.5 rounded-full">
+                        Period {cls.periodNumber || '—'}
+                      </span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">{cls.time}</span>
+                    </div>
+                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100">{cls.className}</h4>
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{cls.subjectName}</p>
+                  </div>
+                  <Link
+                    href={`/dashboard/homework?classSectionId=${encodeURIComponent(cls.classSectionId)}&subjectId=${encodeURIComponent(cls.subjectId || '')}&subjectName=${encodeURIComponent(cls.subjectName)}&className=${encodeURIComponent(cls.className)}&periodNumber=${encodeURIComponent(cls.periodNumber || '')}&create=true`}
+                    className="w-full sm:w-auto justify-center px-3.5 py-1.5 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Assign Homework
+                  </Link>
                 </div>
-                <Link
-                  href={`/dashboard/homework?classSectionId=${encodeURIComponent(cls.classSectionId)}&subjectId=${encodeURIComponent(cls.subjectId || '')}&subjectName=${encodeURIComponent(cls.subjectName)}&className=${encodeURIComponent(cls.className)}&periodNumber=${encodeURIComponent(cls.periodNumber || '')}&create=true`}
-                  className="px-3.5 py-1.5 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  Assign Homework
-                </Link>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Upcoming events / Notice Board */}

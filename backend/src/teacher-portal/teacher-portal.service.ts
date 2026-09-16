@@ -262,15 +262,17 @@ export class TeacherPortalService {
 
     const result = {
       today: {
-        classes: todayClasses.map(p => ({
-          id: p.id,
-          classSectionId: p.classSectionId,
-          subjectId: p.subjectId,
-          className: `${p.classSection.class.name} - ${p.classSection.section.name}`,
-          subjectName: p.subject.name,
-          time: `${p.periodTiming.startTime} - ${p.periodTiming.endTime}`,
-          periodNumber: p.periodTiming.periodNumber,
-        })),
+        classes: todayClasses
+          .map(p => ({
+            id: p.id,
+            classSectionId: p.classSectionId,
+            subjectId: p.subjectId,
+            className: `${p.classSection.class.name} - ${p.classSection.section.name}`,
+            subjectName: p.subject.name,
+            time: `${p.periodTiming.startTime} - ${p.periodTiming.endTime}`,
+            periodNumber: p.periodTiming.periodNumber,
+          }))
+          .sort((a, b) => (a.periodNumber || 0) - (b.periodNumber || 0)),
         attendancePending: pendingAttendanceCount,
         homeworkPending: homeworkPendingCount,
         exams: todayExams.map(e => ({
