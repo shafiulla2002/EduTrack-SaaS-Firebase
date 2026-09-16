@@ -124,9 +124,9 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Row 1: Full Name & School Name */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 truncate">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Full Name <span className="text-[#2E5BFF]">*</span>
               </label>
               <input
@@ -141,7 +141,7 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 truncate">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 School Name <span className="text-[#2E5BFF]">*</span>
               </label>
               <input
@@ -158,9 +158,9 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
           </div>
 
           {/* Row 2: Email Address & Phone Number */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 truncate">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Email Address <span className="text-[#2E5BFF]">*</span>
               </label>
               <input
@@ -175,7 +175,7 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 truncate">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                 Mobile Number <span className="text-[#2E5BFF]">*</span>
               </label>
               <input
@@ -231,19 +231,19 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={onClose}
               disabled={loading || success}
-              className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all min-h-[42px] cursor-pointer"
+              className="w-full sm:flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all min-h-[42px] cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || success}
-              className="flex-1 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-bold transition-all min-h-[42px] flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-500/10"
+              className="w-full sm:flex-1 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-bold transition-all min-h-[42px] flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-500/10"
             >
               {loading ? (
                 <>

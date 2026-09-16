@@ -189,7 +189,7 @@ export default function Modal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? 'modal-title' : undefined}
-      className={`fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 transition-opacity duration-200 ease-in-out ${
+      className={`fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-6 transition-opacity duration-200 ease-in-out ${
         animate ? 'opacity-100' : 'opacity-0'
       }`}
       style={{ backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(6px)' }}
@@ -207,22 +207,22 @@ export default function Modal({
       <div
         ref={modalRef}
         tabIndex={-1}
-        className={`w-full max-h-[88vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl flex flex-col shadow-2xl relative overflow-hidden my-auto outline-none z-10 transform transition-all duration-200 ease-in-out ${
+        className={`w-full max-h-[85vh] sm:max-h-[88vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl flex flex-col shadow-2xl relative overflow-hidden my-auto outline-none z-10 transform transition-all duration-200 ease-in-out ${
           sizeClasses[size]
         } ${animate ? 'scale-100 opacity-100' : 'scale-95 opacity-0'} ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Sticky Header */}
         {(title || Boolean(onClose)) && (
-          <div className="p-4 sm:p-5 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800 select-none">
-            <div>
+          <div className="p-3.5 sm:p-5 bg-slate-900 text-white flex justify-between items-center shrink-0 border-b border-slate-800 select-none">
+            <div className="min-w-0 flex-1 pr-2">
               {title && (
                 <h3 id="modal-title" className="font-extrabold text-sm sm:text-base leading-tight">
                   {title}
                 </h3>
               )}
               {subtitle && (
-                <p className="text-slate-400 text-[10px] sm:text-xs mt-0.5 font-medium truncate max-w-xs sm:max-w-md">
+                <p className="text-slate-400 text-[10px] sm:text-xs mt-0.5 font-medium leading-tight line-clamp-2 sm:line-clamp-none">
                   {subtitle}
                 </p>
               )}
@@ -231,7 +231,7 @@ export default function Modal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-white"
+              className="p-1.5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer text-slate-400 hover:text-white shrink-0"
               aria-label="Close modal"
               title="Close (ESC)"
             >
@@ -241,7 +241,7 @@ export default function Modal({
         )}
 
         {/* Modal Body Container */}
-        <div className={`flex-1 overflow-y-auto p-4 sm:p-6 text-slate-800 dark:text-slate-200 ${bodyClassName}`}>
+        <div className={`flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-6 text-slate-800 dark:text-slate-200 ${bodyClassName}`}>
           {loading ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3">
               <Loader2 className="w-9 h-9 text-[#2E5BFF] animate-spin" />

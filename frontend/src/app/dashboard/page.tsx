@@ -193,41 +193,41 @@ function AdminDashboardOverview() {
       )}
 
       {setupStatus && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3 sm:mb-4">
             <svg className="w-5 h-5 stroke-blue-600 fill-none" viewBox="0 0 24 24">
               <circle cx="12" cy="12" r="10" strokeWidth="2"></circle>
               <polyline points="12 6 12 12 16 14" strokeWidth="2"></polyline>
             </svg>
             Instance Setup Progress
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-6">
             {/* Completion Rate */}
-            <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
-              <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
-                <svg className="w-full h-full transform -rotate-90">
-                  <circle cx="24" cy="24" r="20" stroke="#e2e8f0" strokeWidth="3.5" fill="transparent" />
+            <div className="bg-slate-50 border border-slate-200/50 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4 h-full justify-between sm:justify-start">
+              <div className="relative w-9 h-9 sm:w-12 sm:h-12 flex items-center justify-center shrink-0">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 48 48">
+                  <circle cx="24" cy="24" r="20" stroke="#e2e8f0" strokeWidth="4" fill="transparent" />
                   <circle
                     cx="24"
                     cy="24"
                     r="20"
                     stroke="#2563eb"
-                    strokeWidth="3.5"
+                    strokeWidth="4"
                     fill="transparent"
                     strokeDasharray={`${2 * Math.PI * 20}`}
                     strokeDashoffset={`${2 * Math.PI * 20 * (1 - setupStatus.completionPercentage / 100)}`}
                     strokeLinecap="round"
                   />
                 </svg>
-                <span className="absolute text-[11px] font-bold text-slate-700">{setupStatus.completionPercentage}%</span>
+                <span className="absolute text-[9px] sm:text-[11px] font-bold text-slate-700">{setupStatus.completionPercentage}%</span>
               </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Profile Setup</div>
-                <div className="text-xs font-semibold text-slate-800 mt-0.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Profile Setup</div>
+                <div className="text-[11px] sm:text-xs font-semibold text-slate-800 mt-0.5 truncate">
                   {setupStatus.setupCompleted ? 'Completed' : 'Complete Profile'}
                 </div>
                 {!setupStatus.setupCompleted && (
-                  <Link href="/dashboard/setup-checklist" className="text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block">
+                  <Link href="/dashboard/setup-checklist" className="text-[10px] sm:text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block truncate">
                     Complete now
                   </Link>
                 )}
@@ -235,48 +235,48 @@ function AdminDashboardOverview() {
             </div>
 
             {/* Classes Created */}
-            <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">
+            <div className="bg-slate-50 border border-slate-200/50 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4 h-full justify-between sm:justify-start">
+              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs sm:text-lg shrink-0">
                 {setupStatus.classesCount}
               </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Classes Created</div>
-                <div className="text-xs font-semibold text-slate-800 mt-0.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Classes Created</div>
+                <div className="text-[11px] sm:text-xs font-semibold text-slate-800 mt-0.5 truncate">
                   {setupStatus.classesCount > 0 ? `${setupStatus.classesCount} Active Class(es)` : 'No classes added'}
                 </div>
-                <Link href="/dashboard/teachers" className="text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block">
+                <Link href="/dashboard/teachers" className="text-[10px] sm:text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block truncate">
                   Add Classes
                 </Link>
               </div>
             </div>
 
             {/* Teachers Added */}
-            <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-lg shrink-0">
+            <div className="bg-slate-50 border border-slate-200/50 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4 h-full justify-between sm:justify-start">
+              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs sm:text-lg shrink-0">
                 {setupStatus.teachersCount}
               </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Teachers Added</div>
-                <div className="text-xs font-semibold text-slate-800 mt-0.5">
-                  {setupStatus.teachersCount > 0 ? `${setupStatus.teachersCount} Faculty Registered` : 'No faculty added'}
+              <div className="min-w-0 flex-1">
+                <div className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Teachers Added</div>
+                <div className="text-[11px] sm:text-xs font-semibold text-slate-800 mt-0.5 truncate">
+                  {setupStatus.teachersCount > 0 ? `${setupStatus.teachersCount} Faculty` : 'No faculty added'}
                 </div>
-                <Link href="/dashboard/teachers" className="text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block">
+                <Link href="/dashboard/teachers" className="text-[10px] sm:text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block truncate">
                   Add Teachers
                 </Link>
               </div>
             </div>
 
             {/* Students Added */}
-            <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg shrink-0">
+            <div className="bg-slate-50 border border-slate-200/50 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4 h-full justify-between sm:justify-start">
+              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs sm:text-lg shrink-0">
                 {setupStatus.studentsCount}
               </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Students Added</div>
-                <div className="text-xs font-semibold text-slate-800 mt-0.5">
+              <div className="min-w-0 flex-1">
+                <div className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Students Added</div>
+                <div className="text-[11px] sm:text-xs font-semibold text-slate-800 mt-0.5 truncate">
                   {setupStatus.studentsCount > 0 ? `${setupStatus.studentsCount} Active Student(s)` : 'No students added'}
                 </div>
-                <Link href="/dashboard/admissions" className="text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block">
+                <Link href="/dashboard/admissions" className="text-[10px] sm:text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block truncate">
                   New Admission
                 </Link>
               </div>
