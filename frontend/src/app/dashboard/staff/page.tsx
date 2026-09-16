@@ -1533,27 +1533,27 @@ export default function SchoolStaffPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">First Name *</label>
-                  <input required value={editingStaff.firstName} onChange={e => setEditingStaff({...editingStaff, firstName: e.target.value, name: `${e.target.value} ${editingStaff.lastName}`})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" />
+                  <input required value={editingStaff.firstName} onChange={e => setEditingStaff({...editingStaff, firstName: e.target.value, name: `${e.target.value} ${editingStaff.lastName}`})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-medium" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Last Name *</label>
-                  <input required value={editingStaff.lastName} onChange={e => setEditingStaff({...editingStaff, lastName: e.target.value, name: `${editingStaff.firstName} ${e.target.value}`})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" />
+                  <input required value={editingStaff.lastName} onChange={e => setEditingStaff({...editingStaff, lastName: e.target.value, name: `${editingStaff.firstName} ${e.target.value}`})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-medium" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Email *</label>
-                  <input type="email" required value={editingStaff.email} onChange={e => setEditingStaff({...editingStaff, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" />
+                  <input type="email" required value={editingStaff.email} onChange={e => setEditingStaff({...editingStaff, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-medium" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Mobile Phone *</label>
-                  <input type="tel" required value={editingStaff.phone} onChange={e => setEditingStaff({...editingStaff, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" />
+                  <input type="tel" required value={editingStaff.phone} onChange={e => setEditingStaff({...editingStaff, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-medium" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Designation *</label>
-                  <select value={editingStaff.designation} onChange={e => setEditingStaff({...editingStaff, designation: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none">
+                  <select value={editingStaff.designation} onChange={e => setEditingStaff({...editingStaff, designation: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 outline-none font-medium">
                     {editingStaff.staffType === 'Teaching'
                       ? ['Principal', 'Vice Principal', 'Senior Teacher', 'Teacher', 'Sports Coach'].map(d => <option key={d}>{d}</option>)
                       : ['Accountant', 'Librarian', 'Security Guard', 'Driver', 'Bus Attendant', 'Transport Manager', 'Administrative Staff', 'Clerk'].map(d => <option key={d}>{d}</option>)
@@ -1562,7 +1562,7 @@ export default function SchoolStaffPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Department *</label>
-                  <select value={editingStaff.department} onChange={e => setEditingStaff({...editingStaff, department: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none">
+                  <select value={editingStaff.department} onChange={e => setEditingStaff({...editingStaff, department: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 outline-none font-medium">
                     {editingStaff.staffType === 'Teaching'
                       ? ['Science', 'Mathematics', 'English', 'Social Studies', 'General Knowledge'].map(d => <option key={d}>{d}</option>)
                       : ['Transport', 'Finance', 'Library', 'Security', 'Administration', 'Operations', 'Maintenance / Support'].map(d => <option key={d}>{d}</option>)
@@ -1573,21 +1573,21 @@ export default function SchoolStaffPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Basic Salary (₹)</label>
-                  <input type="number" value={editingStaff.basicSalary} onChange={e => setEditingStaff({...editingStaff, basicSalary: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
+                  <input type="number" value={editingStaff.basicSalary} onChange={e => setEditingStaff({...editingStaff, basicSalary: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none font-medium" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">HRA (₹)</label>
-                  <input type="number" value={editingStaff.hra} onChange={e => setEditingStaff({...editingStaff, hra: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
+                  <input type="number" value={editingStaff.hra} onChange={e => setEditingStaff({...editingStaff, hra: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none font-medium" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">PF Deduction (₹)</label>
-                  <input type="number" value={editingStaff.pf} onChange={e => setEditingStaff({...editingStaff, pf: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
+                  <input type="number" value={editingStaff.pf} onChange={e => setEditingStaff({...editingStaff, pf: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none font-medium" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Status *</label>
-                  <select value={editingStaff.status} onChange={e => setEditingStaff({...editingStaff, status: e.target.value as any})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none">
+                  <select value={editingStaff.status} onChange={e => setEditingStaff({...editingStaff, status: e.target.value as any})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 outline-none font-medium">
                     <option>Active</option>
                     <option>On Leave</option>
                     <option>Inactive</option>
@@ -1595,22 +1595,22 @@ export default function SchoolStaffPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Qualification</label>
-                  <input value={editingStaff.qualification} onChange={e => setEditingStaff({...editingStaff, qualification: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
+                  <input value={editingStaff.qualification} onChange={e => setEditingStaff({...editingStaff, qualification: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none font-medium" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Bank Account</label>
-                  <input value={editingStaff.accountNumber} onChange={e => setEditingStaff({...editingStaff, accountNumber: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" placeholder="Account Number" />
+                  <input value={editingStaff.accountNumber} onChange={e => setEditingStaff({...editingStaff, accountNumber: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-xl px-4 py-2 outline-none font-medium" placeholder="Account Number" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">IFSC Code</label>
-                  <input value={editingStaff.ifsc} onChange={e => setEditingStaff({...editingStaff, ifsc: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" placeholder="IFSC Code" />
+                  <input value={editingStaff.ifsc} onChange={e => setEditingStaff({...editingStaff, ifsc: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-xl px-4 py-2 outline-none font-medium" placeholder="IFSC Code" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs text-slate-500 font-bold mb-1">Address</label>
-                <textarea value={editingStaff.address} onChange={e => setEditingStaff({...editingStaff, address: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none h-16 resize-none" />
+                <textarea value={editingStaff.address} onChange={e => setEditingStaff({...editingStaff, address: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none h-16 resize-none font-medium" />
               </div>
               {/* Subject Skills */}
               {editingStaff.staffType === 'Teaching' && (
@@ -1640,7 +1640,7 @@ export default function SchoolStaffPage() {
                           s[idx] = { ...s[idx], subject: e.target.value }; 
                           setEditingStaff({ ...editingStaff, skills: s }); 
                         }} 
-                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none" 
+                        className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-lg px-3 py-1.5 text-xs outline-none font-medium" 
                         placeholder="Subject" 
                       />
                       <select 
@@ -1650,7 +1650,7 @@ export default function SchoolStaffPage() {
                           s[idx] = { ...s[idx], level: e.target.value }; 
                           setEditingStaff({ ...editingStaff, skills: s }); 
                         }} 
-                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none"
+                        className="bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs outline-none font-medium"
                       >
                         <option>Beginner</option>
                         <option>Intermediate</option>
@@ -1665,7 +1665,7 @@ export default function SchoolStaffPage() {
                           s[idx] = { ...s[idx], exp: Number(e.target.value) }; 
                           setEditingStaff({ ...editingStaff, skills: s }); 
                         }} 
-                        className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none" 
+                        className="w-14 bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-lg px-2 py-1.5 text-xs outline-none font-medium" 
                         placeholder="Yrs" 
                       />
                       <button 

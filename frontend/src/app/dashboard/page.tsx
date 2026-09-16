@@ -117,7 +117,7 @@ function AdminDashboardOverview() {
           <h2 className="text-[28px] font-bold text-slate-900 leading-none">
             Dashboard Overview
           </h2>
-          <span className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
+          <span className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-[11px] font-bold px-3 py-1 sm:px-2.5 sm:py-0.5 rounded-full shadow-sm inline-flex items-center justify-center text-center leading-none">
             ✨ New Features
           </span>
         </div>

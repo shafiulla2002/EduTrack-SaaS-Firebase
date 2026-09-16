@@ -958,15 +958,7 @@ export default function StudentsDirectory() {
                   <span className="font-bold text-slate-800">{Math.min(page * limit, total)}</span> of{' '}
                   <span className="font-bold text-slate-800">{total}</span> records (Page <span className="font-bold text-slate-800">{page}</span> of <span className="font-bold text-slate-800">{totalPages}</span>)
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5 justify-center">
-                  <button
-                    disabled={page === 1}
-                    onClick={() => loadStudents(1)}
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
-                    title="First Page"
-                  >
-                    First
-                  </button>
+                <div className="flex flex-wrap items-center gap-1.5 justify-center max-w-full">
                   <button
                     disabled={page === 1}
                     onClick={() => loadStudents(page - 1)}
@@ -1004,14 +996,6 @@ export default function StudentsDirectory() {
                     className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
                   >
                     Next
-                  </button>
-                  <button
-                    disabled={page === totalPages}
-                    onClick={() => loadStudents(totalPages)}
-                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
-                    title="Last Page"
-                  >
-                    Last
                   </button>
                 </div>
               </div>
