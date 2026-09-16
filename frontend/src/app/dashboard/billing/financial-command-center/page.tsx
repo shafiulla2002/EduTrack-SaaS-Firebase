@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useTenant } from '@/app/providers/TenantContext';
 import { api } from '@/lib/api';
@@ -34,6 +35,22 @@ export default function FinancialCommandCenter() {
   const [drilldownType, setDrilldownType] = useState<string | null>(null);
   const [drilldownTitle, setDrilldownTitle] = useState('');
   const [drilldownSearch, setDrilldownSearch] = useState('');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll when drilldown modal is open
+  useEffect(() => {
+    if (drilldownType) {
+      const originalStyle = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalStyle;
+      };
+    }
+  }, [drilldownType]);
 
   // Access check
   const hasAccess = 
@@ -1031,26 +1048,26 @@ export default function FinancialCommandCenter() {
         </>
       )}
 
-      {/* Reusable Drill-down Modal */}
-      {drilldownType && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
+      {/* Reusable Drill-down Modal via React Portal */}
+      {mounted && drilldownType && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl w-full max-w-4xl max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 my-auto">
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-150 flex justify-between items-center bg-slate-50">
-              <div>
-                <h3 className="font-extrabold text-lg text-slate-900">{drilldownTitle}</h3>
-                <p className="text-xs text-slate-500 mt-1">Live metrics matching applied filters</p>
+            <div className="p-4 sm:p-6 border-b border-slate-150 flex justify-between items-center bg-slate-50 shrink-0">
+              <div className="min-w-0 pr-2">
+                <h3 className="font-extrabold text-base sm:text-lg text-slate-900 truncate">{drilldownTitle}</h3>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">Live metrics matching applied filters</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                 <button
                   onClick={() => handleExportCSV(drilldownType === 'expenses' ? 'expenses' : drilldownType === 'pending' ? 'dues' : 'revenue')}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" /> CSV
                 </button>
                 <button 
                   onClick={() => setDrilldownType(null)}
-                  className="p-1.5 hover:bg-slate-200 text-slate-500 rounded-lg transition-all"
+                  className="p-1.5 hover:bg-slate-200 text-slate-500 rounded-lg transition-all cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1058,8 +1075,8 @@ export default function FinancialCommandCenter() {
             </div>
 
             {/* Modal Search Bar */}
-            <div className="p-4 border-b border-slate-100 flex items-center bg-white">
-              <Search className="w-4 h-4 text-slate-400 mr-2" />
+            <div className="p-3 sm:p-4 border-b border-slate-100 flex items-center bg-white shrink-0">
+              <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
               <input
                 type="text"
                 placeholder="Search listing by name, category, or keyword..."
@@ -1070,90 +1087,96 @@ export default function FinancialCommandCenter() {
             </div>
 
             {/* Modal Table Content */}
-            <div className="overflow-y-auto p-6 flex-grow bg-white">
+            <div className="overflow-y-auto p-4 sm:p-6 flex-grow bg-white min-h-0 custom-scrollbar">
               {drilldownType === 'revenue' && (
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase pb-3">
-                      <th className="py-2.5">Transaction ID</th>
-                      <th className="py-2.5">Student Name</th>
-                      <th className="py-2.5">Payment Method</th>
-                      <th className="py-2.5 text-right">Amount Paid</th>
-                      <th className="py-2.5 text-right">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-semibold text-slate-650">
-                    {data.activities?.latestPayments
-                      ?.filter((p: any) => p.studentName?.toLowerCase().includes(drilldownSearch.toLowerCase()) || p.method?.toLowerCase().includes(drilldownSearch.toLowerCase()))
-                      .map((p: any) => (
-                        <tr key={p.id} className="hover:bg-slate-50/50">
-                          <td className="py-3 font-mono font-bold text-slate-500">{p.id.slice(-8).toUpperCase()}</td>
-                          <td className="py-3 font-black text-slate-800">{p.studentName}</td>
-                          <td className="py-3">{p.method}</td>
-                          <td className="py-3 text-right text-emerald-600 font-bold font-mono">₹{p.amount.toLocaleString()}</td>
-                          <td className="py-3 text-right">{p.date}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto max-w-full">
+                  <table className="w-full text-left border-collapse text-xs min-w-[500px] sm:min-w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase pb-3">
+                        <th className="py-2.5">Transaction ID</th>
+                        <th className="py-2.5">Student Name</th>
+                        <th className="py-2.5">Payment Method</th>
+                        <th className="py-2.5 text-right">Amount Paid</th>
+                        <th className="py-2.5 text-right">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-650">
+                      {data.activities?.latestPayments
+                        ?.filter((p: any) => p.studentName?.toLowerCase().includes(drilldownSearch.toLowerCase()) || p.method?.toLowerCase().includes(drilldownSearch.toLowerCase()))
+                        .map((p: any) => (
+                          <tr key={p.id} className="hover:bg-slate-50/50">
+                            <td className="py-3 font-mono font-bold text-slate-500">{p.id.slice(-8).toUpperCase()}</td>
+                            <td className="py-3 font-black text-slate-800">{p.studentName}</td>
+                            <td className="py-3">{p.method}</td>
+                            <td className="py-3 text-right text-emerald-600 font-bold font-mono">₹{p.amount.toLocaleString()}</td>
+                            <td className="py-3 text-right">{p.date}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
 
               {drilldownType === 'expenses' && (
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase pb-3">
-                      <th className="py-2.5">ID</th>
-                      <th className="py-2.5">Category</th>
-                      <th className="py-2.5">Payment Mode</th>
-                      <th className="py-2.5 text-right">Amount</th>
-                      <th className="py-2.5 text-right">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-semibold text-slate-650">
-                    {data.insights?.expense?.recentExpenses
-                      ?.filter((e: any) => e.category?.toLowerCase().includes(drilldownSearch.toLowerCase()) || e.description?.toLowerCase().includes(drilldownSearch.toLowerCase()))
-                      .map((e: any) => (
-                        <tr key={e.id} className="hover:bg-slate-50/50">
-                          <td className="py-3 font-mono font-bold text-slate-500">{e.id.slice(-8).toUpperCase()}</td>
-                          <td className="py-3 font-black text-slate-800">{e.category}</td>
-                          <td className="py-3">{e.mode || 'CASH'}</td>
-                          <td className="py-3 text-right text-rose-600 font-bold font-mono">₹{e.amount.toLocaleString()}</td>
-                          <td className="py-3 text-right">{e.date}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto max-w-full">
+                  <table className="w-full text-left border-collapse text-xs min-w-[500px] sm:min-w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase pb-3">
+                        <th className="py-2.5">ID</th>
+                        <th className="py-2.5">Category</th>
+                        <th className="py-2.5">Payment Mode</th>
+                        <th className="py-2.5 text-right">Amount</th>
+                        <th className="py-2.5 text-right">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-650">
+                      {data.insights?.expense?.recentExpenses
+                        ?.filter((e: any) => e.category?.toLowerCase().includes(drilldownSearch.toLowerCase()) || e.description?.toLowerCase().includes(drilldownSearch.toLowerCase()))
+                        .map((e: any) => (
+                          <tr key={e.id} className="hover:bg-slate-50/50">
+                            <td className="py-3 font-mono font-bold text-slate-500">{e.id.slice(-8).toUpperCase()}</td>
+                            <td className="py-3 font-black text-slate-800">{e.category}</td>
+                            <td className="py-3">{e.mode || 'CASH'}</td>
+                            <td className="py-3 text-right text-rose-600 font-bold font-mono">₹{e.amount.toLocaleString()}</td>
+                            <td className="py-3 text-right">{e.date}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
 
               {drilldownType === 'pending' && (
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase pb-3">
-                      <th className="py-2.5">Student Name</th>
-                      <th className="py-2.5">Class/Section</th>
-                      <th className="py-2.5 text-right">Assigned (₹)</th>
-                      <th className="py-2.5 text-right">Collected (₹)</th>
-                      <th className="py-2.5 text-right">Outstanding Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-semibold text-slate-650">
-                    {data.insights?.topPendingStudents
-                      ?.filter((s: any) => s.studentName?.toLowerCase().includes(drilldownSearch.toLowerCase()) || s.className?.toLowerCase().includes(drilldownSearch.toLowerCase()))
-                      .map((s: any) => (
-                        <tr key={s.studentId} className="hover:bg-slate-50/50">
-                          <td className="py-3 font-black text-slate-800">{s.studentName}</td>
-                          <td className="py-3">{s.className} - {s.sectionName}</td>
-                          <td className="py-3 text-right font-mono">₹{s.totalFee?.toLocaleString()}</td>
-                          <td className="py-3 text-right font-mono text-emerald-600">₹{s.paid?.toLocaleString()}</td>
-                          <td className="py-3 text-right text-rose-600 font-bold font-mono">₹{s.pending?.toLocaleString()}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto max-w-full">
+                  <table className="w-full text-left border-collapse text-xs min-w-[550px] sm:min-w-full">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase pb-3">
+                        <th className="py-2.5">Student Name</th>
+                        <th className="py-2.5">Class/Section</th>
+                        <th className="py-2.5 text-right">Assigned (₹)</th>
+                        <th className="py-2.5 text-right">Collected (₹)</th>
+                        <th className="py-2.5 text-right">Outstanding Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-650">
+                      {data.insights?.topPendingStudents
+                        ?.filter((s: any) => s.studentName?.toLowerCase().includes(drilldownSearch.toLowerCase()) || s.className?.toLowerCase().includes(drilldownSearch.toLowerCase()))
+                        .map((s: any) => (
+                          <tr key={s.studentId} className="hover:bg-slate-50/50">
+                            <td className="py-3 font-black text-slate-800">{s.studentName}</td>
+                            <td className="py-3">{s.className} - {s.sectionName}</td>
+                            <td className="py-3 text-right font-mono">₹{s.totalFee?.toLocaleString()}</td>
+                            <td className="py-3 text-right font-mono text-emerald-600">₹{s.paid?.toLocaleString()}</td>
+                            <td className="py-3 text-right text-rose-600 font-bold font-mono">₹{s.pending?.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
 
               {drilldownType === 'students' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                   {data.activities?.latestAdmissions
                     ?.filter((s: any) => s.name?.toLowerCase().includes(drilldownSearch.toLowerCase()) || s.class?.toLowerCase().includes(drilldownSearch.toLowerCase()))
                     .map((s: any) => (
@@ -1168,16 +1191,17 @@ export default function FinancialCommandCenter() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-100 flex justify-end bg-slate-50">
+            <div className="p-3 sm:p-4 border-t border-slate-100 flex justify-end bg-slate-50 shrink-0">
               <button
                 onClick={() => setDrilldownType(null)}
-                className="px-4 py-2 border border-slate-250 hover:bg-slate-100 text-slate-650 rounded-xl text-xs font-bold transition-all"
+                className="px-4 py-2 border border-slate-250 hover:bg-slate-100 text-slate-650 rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
                 Close View
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

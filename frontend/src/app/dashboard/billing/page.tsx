@@ -88,6 +88,16 @@ export default function FeesBillingPage() {
   const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
   const [successRemainingBalance, setSuccessRemainingBalance] = useState(0);
   const [successPaymentDate, setSuccessPaymentDate] = useState('');
+  // Lock body scroll when modals are open
+  useEffect(() => {
+    if (successModalOpen || confirmModalOpen || errorModalOpen) {
+      const originalStyle = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalStyle;
+      };
+    }
+  }, [successModalOpen, confirmModalOpen, errorModalOpen]);
 
   // Load initial options & recent invoices
   useEffect(() => {
