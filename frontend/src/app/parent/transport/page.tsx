@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { socketService } from '@/lib/socket';
 import GoogleBusMap from '@/components/GoogleBusMap';
 
@@ -16,7 +16,7 @@ export default function ParentTransportPage() {
   const fetchTransportData = async () => {
     if (!selectedChild?.id) return;
     try {
-      const res = await api.get(`/transport/parent-portal/children/${selectedChild.id}`);
+      const res = await fastGet(`/transport/parent-portal/children/${selectedChild.id}`, undefined, { ttlMs: 15000 });
       setTransportData(res.data);
       setError('');
       

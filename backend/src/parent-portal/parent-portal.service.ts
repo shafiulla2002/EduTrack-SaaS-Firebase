@@ -49,6 +49,13 @@ export class ParentPortalService {
   ) {}
 
   private async verifyOwnership(userId: string, studentId: string): Promise<any> {
+    const cacheKey = `${userId}:${studentId}:ownership`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const parent = await this.getParentProfile(userId);
 
     const link = await this.prisma.parentStudent.findUnique({
@@ -77,6 +84,7 @@ export class ParentPortalService {
       throw new ForbiddenException('You do not have permission to access records for this student');
     }
 
+    this.parentCache.set(cacheKey, { data: link.student, expiresAt: now + 60000 });
     return link.student;
   }
 
@@ -168,9 +176,16 @@ export class ParentPortalService {
   }
 
   async getDashboardStats(userId: string, tenantId: string) {
+    const cacheKey = `${userId}:${tenantId}:dashboard-stats`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const children = await this.getChildren(userId);
     if (children.length === 0) {
-      return {
+      const emptyRes = {
         totalChildren: 0,
         todayAttendance: 'N/A',
         homeworkPending: 0,
@@ -179,93 +194,105 @@ export class ParentPortalService {
         announcements: [],
         notifications: [],
       };
+      this.parentCache.set(cacheKey, { data: emptyRes, expiresAt: now + 30000 });
+      return emptyRes;
     }
 
     const studentIds = children.map(c => c.id);
     const classSectionIds = children.map(c => c.classSectionId).filter(Boolean) as string[];
 
-    // 1. Total Outstanding Fees directly from BillingService single source of truth
-    let pendingFees = 0;
-    for (const childId of studentIds) {
-      try {
-        const billingInfo = await this.billingService.getStudentById(childId);
-        pendingFees += Number(billingInfo.totalPendingBalance || 0);
-      } catch (err) {
-        console.error(`Failed to fetch billing info for student ${childId}:`, err);
-      }
-    }
-
-    // 2. Pending Homework count
-    const homeworkCount = await this.prisma.homework.count({
-      where: {
-        classSectionId: { in: classSectionIds },
-        tenantId,
-        dueDate: { gte: new Date() },
-      },
-    });
-
-    // 3. Upcoming Exams (next 14 days)
-    const upcomingExams = await this.prisma.examSchedule.count({
-      where: {
-        classSectionId: { in: classSectionIds },
-        tenantId,
-        examDate: { gte: new Date() },
-      },
-    });
-
-    // 4. Combined announcements
-    const rawAnnouncements = await this.prisma.announcement.findMany({
-      where: {
-        tenantId,
-        OR: [
-          { audienceType: 'INSTITUTION' },
-          { classSectionId: { in: classSectionIds } },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-    });
-    const announcements = rawAnnouncements.map(ann => ({
-      ...ann,
-      content: this.sanitizeAnnouncementContent(ann.content),
-    }));
-
-    // 5. Combined notifications
-    const parent = await this.getParentProfile(userId);
-    const notificationRecipients = [parent.userId];
-
-    const notifications = await this.prisma.notification.findMany({
-      where: {
-        recipientId: { in: notificationRecipients },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
-
-    // 6. Student-specific Today's Attendance Summary
     const todayUTC = parseAttendanceDate(null);
-    let markedChildrenCount = 0;
-    let presentChildrenCount = 0;
 
-    for (const child of children) {
-      if (!child.classSectionId) continue;
-
-      const session = await this.prisma.attendanceSession.findFirst({
+    // Parallelized aggregations & queries
+    const [pendingFeesAgg, homeworkCount, upcomingExams, rawAnnouncements, parent, todaySessions] = await Promise.all([
+      // 1. Total Outstanding Fees direct aggregation
+      this.prisma.invoice.aggregate({
         where: {
-          classSectionId: child.classSectionId,
+          tenantId,
+          studentId: { in: studentIds },
+          status: { in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID] },
+        },
+        _sum: {
+          totalAmount: true,
+          paidAmount: true,
+        },
+      }).catch(() => null),
+
+      // 2. Pending Homework count
+      this.prisma.homework.count({
+        where: {
+          classSectionId: { in: classSectionIds },
+          tenantId,
+          dueDate: { gte: new Date() },
+        },
+      }),
+
+      // 3. Upcoming Exams
+      this.prisma.examSchedule.count({
+        where: {
+          classSectionId: { in: classSectionIds },
+          tenantId,
+          examDate: { gte: new Date() },
+        },
+      }),
+
+      // 4. Announcements
+      this.prisma.announcement.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { audienceType: 'INSTITUTION' },
+            { classSectionId: { in: classSectionIds } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+
+      // 5. Parent profile
+      this.getParentProfile(userId),
+
+      // 6. Today's attendance sessions
+      this.prisma.attendanceSession.findMany({
+        where: {
+          classSectionId: { in: classSectionIds },
           date: todayUTC,
           tenantId,
         },
         include: {
           attendances: {
-            where: { studentId: child.id },
+            where: { studentId: { in: studentIds } },
           },
         },
-      });
+      }),
+    ]);
 
+    const totalAmount = Number(pendingFeesAgg?._sum?.totalAmount || 0);
+    const paidAmount = Number(pendingFeesAgg?._sum?.paidAmount || 0);
+    const pendingFees = Math.max(0, totalAmount - paidAmount);
+
+    const announcements = rawAnnouncements.map(ann => ({
+      ...ann,
+      content: this.sanitizeAnnouncementContent(ann.content),
+    }));
+
+    const notifications = parent ? await this.prisma.notification.findMany({
+      where: {
+        recipientId: parent.userId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }) : [];
+
+    let markedChildrenCount = 0;
+    let presentChildrenCount = 0;
+
+    for (const child of children) {
+      if (!child.classSectionId) continue;
+      const session = todaySessions.find(s => s.classSectionId === child.classSectionId);
       if (session) {
         markedChildrenCount++;
-        const record = session.attendances[0];
+        const record = session.attendances.find(a => a.studentId === child.id);
         const status = record ? record.status : 'PRESENT';
         if (status === 'PRESENT' || status === 'LATE') {
           presentChildrenCount++;
@@ -282,7 +309,7 @@ export class ParentPortalService {
       }
     }
 
-    return {
+    const result = {
       totalChildren: children.length,
       todayAttendance: todayAttendanceStr,
       homeworkPending: homeworkCount,
@@ -291,66 +318,65 @@ export class ParentPortalService {
       announcements,
       notifications,
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getChildDashboard(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:child-dashboard`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
-
-    // Get attendance metrics
-    const attendances = await this.prisma.attendance.findMany({
-      where: { studentId },
-      select: { status: true },
-    });
-    const total = attendances.length;
-    const present = attendances.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length;
-    const hasAttendanceData = total > 0;
-    const attendancePercentage = hasAttendanceData ? Math.round((present / total) * 100) : null;
-
-    // Check today's submission status for this child
     const todayUTC = parseAttendanceDate(null);
-    let todayAttendanceSubmitted = false;
-    let todayAttendanceStatus = 'NOT_TAKEN';
 
-    if (student.classSectionId) {
-      const todaySession = await this.prisma.attendanceSession.findFirst({
+    const [
+      attendances,
+      todaySession,
+      pendingHomework,
+      pendingFeesAgg,
+      upcomingExams,
+      recentMarks,
+      parentLinks,
+      classSection,
+      assignments
+    ] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: { studentId },
+        select: { status: true },
+      }),
+      student.classSectionId ? this.prisma.attendanceSession.findFirst({
         where: {
           classSectionId: student.classSectionId,
           date: todayUTC,
           tenantId: student.tenantId,
         },
         include: {
-          attendances: {
-            where: { studentId },
-          },
+          attendances: { where: { studentId } },
         },
-      });
-
-      if (todaySession) {
-        todayAttendanceSubmitted = true;
-        const record = todaySession.attendances[0];
-        todayAttendanceStatus = record ? record.status : 'PRESENT';
-      }
-    }
-
-    // Get pending homework
-    let pendingHomework = 0;
-    if (student.classSectionId) {
-      pendingHomework = await this.prisma.homework.count({
+      }) : null,
+      student.classSectionId ? this.prisma.homework.count({
         where: {
           classSectionId: student.classSectionId,
           dueDate: { gte: new Date() },
         },
-      });
-    }
-
-    // Get fee stats
-    const billingInfo = await this.billingService.getStudentById(studentId);
-    const pendingFees = billingInfo.totalPendingBalance;
-
-    // Get upcoming exams
-    let upcomingExams = [];
-    if (student.classSectionId) {
-      upcomingExams = await this.prisma.examSchedule.findMany({
+      }) : 0,
+      this.prisma.invoice.aggregate({
+        where: {
+          tenantId: student.tenantId,
+          studentId,
+          status: { in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID] },
+        },
+        _sum: {
+          totalAmount: true,
+          paidAmount: true,
+        },
+      }).catch(() => null),
+      student.classSectionId ? this.prisma.examSchedule.findMany({
         where: {
           classSectionId: student.classSectionId,
           examDate: { gte: new Date() },
@@ -358,28 +384,57 @@ export class ParentPortalService {
         include: { subject: true },
         orderBy: { examDate: 'asc' },
         take: 3,
-      });
-    }
-
-    // Get recent results
-    const recentMarks = await this.prisma.examMark.findMany({
-      where: { studentId },
-      include: { exam: true, subject: true },
-      orderBy: { exam: { date: 'desc' } },
-      take: 5,
-    });
-
-    // Fetch all parent links for this student to get all details
-    const parentLinks = await this.prisma.parentStudent.findMany({
-      where: { studentId },
-      include: {
-        parent: {
-          include: {
-            user: true,
+      }) : [],
+      this.prisma.examMark.findMany({
+        where: { studentId },
+        include: { exam: true, subject: true },
+        orderBy: { exam: { date: 'desc' } },
+        take: 5,
+      }),
+      this.prisma.parentStudent.findMany({
+        where: { studentId },
+        include: {
+          parent: {
+            include: { user: true },
           },
         },
-      },
-    });
+      }),
+      student.classSectionId ? this.prisma.classSection.findUnique({
+        where: { id: student.classSectionId },
+        include: {
+          teacher: {
+            include: { user: true },
+          },
+        },
+      }) : null,
+      student.classSectionId ? this.prisma.teacherAssignment.findMany({
+        where: { classSectionId: student.classSectionId },
+        include: {
+          subject: true,
+          teacher: {
+            include: { user: true },
+          },
+        },
+      }) : [],
+    ]);
+
+    const total = attendances.length;
+    const present = attendances.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length;
+    const hasAttendanceData = total > 0;
+    const attendancePercentage = hasAttendanceData ? Math.round((present / total) * 100) : null;
+
+    let todayAttendanceSubmitted = false;
+    let todayAttendanceStatus = 'NOT_TAKEN';
+
+    if (todaySession) {
+      todayAttendanceSubmitted = true;
+      const record = todaySession.attendances[0];
+      todayAttendanceStatus = record ? record.status : 'PRESENT';
+    }
+
+    const totalAmount = Number(pendingFeesAgg?._sum?.totalAmount || 0);
+    const paidAmount = Number(pendingFeesAgg?._sum?.paidAmount || 0);
+    const pendingFees = Math.max(0, totalAmount - paidAmount);
 
     const currentParentLink = parentLinks.find(pl => pl.parent.userId === userId);
     const relationship = currentParentLink?.relationship || 'Guardian';
@@ -393,44 +448,21 @@ export class ParentPortalService {
     const primaryContactPhone = primaryLink?.parent?.user?.phone || null;
 
     let classAdvisor = null;
-    let subjectTeachers = [];
+    let subjectTeachers: any[] = [];
 
-    if (student.classSectionId) {
-      const classSection = await this.prisma.classSection.findUnique({
-        where: { id: student.classSectionId },
-        include: {
-          teacher: {
-            include: {
-              user: true,
-            },
-          },
-        },
-      });
+    if (classSection?.teacher) {
+      classAdvisor = {
+        name: classSection.teacher.user.name,
+        employeeId: classSection.teacher.employeeId || 'N/A',
+        email: classSection.teacher.user.email || '',
+        phone: classSection.teacher.user.phone || classSection.teacher.whatsappNumber || '',
+        avatarUrl: classSection.teacher.user.avatarUrl || null,
+        designation: classSection.teacher.designation || 'Class Advisor',
+        department: classSection.teacher.designation ? (classSection.teacher.designation.includes('Department') ? classSection.teacher.designation : `${classSection.teacher.designation} Department`) : 'Academics',
+      };
+    }
 
-      if (classSection?.teacher) {
-        classAdvisor = {
-          name: classSection.teacher.user.name,
-          employeeId: classSection.teacher.employeeId || 'N/A',
-          email: classSection.teacher.user.email || '',
-          phone: classSection.teacher.user.phone || classSection.teacher.whatsappNumber || '',
-          avatarUrl: classSection.teacher.user.avatarUrl || null,
-          designation: classSection.teacher.designation || 'Class Advisor',
-          department: classSection.teacher.designation ? (classSection.teacher.designation.includes('Department') ? classSection.teacher.designation : `${classSection.teacher.designation} Department`) : 'Academics',
-        };
-      }
-
-      const assignments = await this.prisma.teacherAssignment.findMany({
-        where: { classSectionId: student.classSectionId },
-        include: {
-          subject: true,
-          teacher: {
-            include: {
-              user: true,
-            },
-          },
-        },
-      });
-
+    if (assignments && assignments.length > 0) {
       const teacherMap = new Map<string, {
         name: string;
         employeeId: string;
@@ -480,7 +512,7 @@ export class ParentPortalService {
       return phone;
     };
 
-    return {
+    const result = {
       student: {
         id: student.id,
         name: student.user.name,
@@ -513,9 +545,19 @@ export class ParentPortalService {
       classAdvisor,
       subjectTeachers,
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getAttendance(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:attendance`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
 
     const attendances = await this.prisma.attendance.findMany({
@@ -563,7 +605,7 @@ export class ParentPortalService {
       }
     }
 
-    return {
+    const result = {
       summary: {
         total,
         present,
@@ -583,11 +625,24 @@ export class ParentPortalService {
         markedBy: a.attendanceSession.takenBy?.user?.name || 'Teacher',
       })),
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getHomework(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:homework`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
-    if (!student.classSectionId) return [];
+    if (!student.classSectionId) {
+      this.parentCache.set(cacheKey, { data: [], expiresAt: now + 30000 });
+      return [];
+    }
 
     const homeworkList = await this.prisma.homework.findMany({
       where: {
@@ -611,7 +666,7 @@ export class ParentPortalService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return homeworkList.map(h => {
+    const result = homeworkList.map(h => {
       const logMatch = submissionsLogs.find(log => {
         try {
           const detailObj = JSON.parse(log.details || '{}');
@@ -635,9 +690,14 @@ export class ParentPortalService {
         submissionStatus: logMatch ? 'Pending Approval' : 'Pending',
       };
     });
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async submitAssignment(userId: string, studentId: string, homeworkId: string, base64File: string, fileName: string) {
+    this.invalidateCache(userId);
+
     const student = await this.verifyOwnership(userId, studentId);
 
     const homework = await this.prisma.homework.findUnique({
@@ -676,9 +736,18 @@ export class ParentPortalService {
   }
 
   async getExams(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:exams`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
     if (!student.classSectionId) {
-      return { schedules: [], exams: [], marks: [] };
+      const emptyRes = { schedules: [], exams: [], marks: [] };
+      this.parentCache.set(cacheKey, { data: emptyRes, expiresAt: now + 30000 });
+      return emptyRes;
     }
 
     const [schedules, rawMarks] = await Promise.all([
@@ -831,7 +900,7 @@ export class ParentPortalService {
       };
     });
 
-    return {
+    const result = {
       schedules: schedules.map(s => ({
         id: s.id,
         examName: s.examName,
@@ -846,9 +915,19 @@ export class ParentPortalService {
       exams: examCards,   // ← new grouped structure
       marks: legacyMarks, // ← backward compat
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getFees(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:fees`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
 
     // Parallelize billing calculation, invoice fetching, and tenant settings lookups
@@ -1060,11 +1139,14 @@ export class ParentPortalService {
       }
     }
 
-    return {
+    const result = {
       summary: billingSummary,
       invoices: mappedInvoices,
       paymentDetails: tenantDetails,
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async generateInvoicePdf(userId: string, studentId: string, invoiceId: string, res: any) {
@@ -1325,6 +1407,13 @@ export class ParentPortalService {
   }
 
   async getTimetable(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:timetable`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
     if (!student.classSectionId) return [];
 
@@ -1421,6 +1510,7 @@ export class ParentPortalService {
       });
     });
 
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
     return result;
   }
 
@@ -1433,6 +1523,13 @@ export class ParentPortalService {
   }
 
   async getAnnouncements(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:announcements`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
 
     const announcements = await this.prisma.announcement.findMany({
@@ -1447,15 +1544,25 @@ export class ParentPortalService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return announcements.map(ann => ({
+    const result = announcements.map(ann => ({
       ...ann,
       content: this.sanitizeAnnouncementContent(ann.content),
     }));
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getTeacherComplaints(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:teacher-complaints`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
-    return this.prisma.behaviorCase.findMany({
+    const result = await this.prisma.behaviorCase.findMany({
       where: {
         studentId: student.id,
         behaviorType: 'Complaint',
@@ -1470,9 +1577,19 @@ export class ParentPortalService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getComplaints(userId: string) {
+    const cacheKey = `${userId}:complaints`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const parent = await this.getParentProfile(userId);
     const complaints = await this.prisma.complaint.findMany({
       where: { submittedById: parent.userId },
@@ -1496,13 +1613,18 @@ export class ParentPortalService {
       historyMap.get(h.entityId)!.push(h);
     }
 
-    return complaints.map(c => ({
+    const result = complaints.map(c => ({
       ...c,
       statusHistories: historyMap.get(c.id) || [],
     }));
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async submitComplaint(userId: string, tenantId: string, data: any) {
+    this.invalidateCache(userId);
+
     const parent = await this.getParentProfile(userId);
     const activeYear = await this.prisma.academicYear.findFirst({
       where: { tenantId, isActive: true },
@@ -1569,9 +1691,16 @@ export class ParentPortalService {
   }
 
   async getTransport(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:transport`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     await this.verifyOwnership(userId, studentId);
 
-    return {
+    const result = {
       busNumber: 'MH-12-FE-4321',
       driverName: 'Sanjay Shinde',
       driverPhone: '+91 9881726354',
@@ -1584,9 +1713,14 @@ export class ParentPortalService {
         etaMinutes: 8,
       },
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async submitLeaveRequest(userId: string, studentId: string, data: any) {
+    this.invalidateCache(userId);
+
     const student = await this.verifyOwnership(userId, studentId);
     const parent = await this.getParentProfile(userId);
 
@@ -1690,6 +1824,13 @@ export class ParentPortalService {
   }
 
   async getLeavesHistory(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:leaves-history`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
     const parent = await this.getParentProfile(userId);
 
@@ -1721,7 +1862,7 @@ export class ParentPortalService {
       historyMap.get(h.entityId)!.push(h);
     }
 
-    return leaves.map(l => ({
+    const result = leaves.map(l => ({
       id: l.id,
       leaveType: l.leaveType,
       startDate: l.startDate ? l.startDate.toISOString().split('T')[0] : '',
@@ -1737,5 +1878,8 @@ export class ParentPortalService {
       updatedAt: l.updatedAt,
       statusHistories: historyMap.get(l.id) || [],
     }));
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 }
