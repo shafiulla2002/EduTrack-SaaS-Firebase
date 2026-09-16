@@ -514,6 +514,18 @@ export class TeacherPortalService {
 
   // 4. Attendance (Strict permission checked proxy to existing service)
   async getClassesForAttendance(userId: string, tenantId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.role === Role.SCHOOL_ADMIN || user?.role === Role.SUPER_ADMIN) {
+      const classes = await this.prisma.class.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: { name: 'asc' },
+      });
+      return classes.map((c) => ({
+        label: c.name,
+        value: c.name,
+      }));
+    }
+
     const staff = await this.getStaffProfile(userId, tenantId);
     const [assignments, periods, advisorSections] = await Promise.all([
       this.prisma.teacherAssignment.findMany({
@@ -532,17 +544,18 @@ export class TeacherPortalService {
 
     const classesMap = new Map();
     assignments.forEach(a => {
-      const cls = a.classSection.class;
-      classesMap.set(cls.id, cls);
+      if (a.classSection?.class) {
+        classesMap.set(a.classSection.class.id, a.classSection.class);
+      }
     });
     periods.forEach(p => {
-      const cls = p.classSection.class;
-      classesMap.set(cls.id, cls);
+      if (p.classSection?.class) {
+        classesMap.set(p.classSection.class.id, p.classSection.class);
+      }
     });
     advisorSections.forEach(cs => {
-      const cls = cs.class;
-      if (cls) {
-        classesMap.set(cls.id, cls);
+      if (cs.class) {
+        classesMap.set(cs.class.id, cs.class);
       }
     });
 
@@ -553,6 +566,25 @@ export class TeacherPortalService {
   }
 
   async getSectionsForAttendance(userId: string, tenantId: string, classVal: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user?.role === Role.SCHOOL_ADMIN || user?.role === Role.SUPER_ADMIN) {
+      const classSections = await this.prisma.classSection.findMany({
+        where: {
+          tenantId,
+          class: { name: { equals: classVal, mode: 'insensitive' } },
+        },
+        include: { section: true },
+      });
+      const sectionsMap = new Map();
+      classSections.forEach(cs => {
+        if (cs.section) sectionsMap.set(cs.section.id, cs.section);
+      });
+      return Array.from(sectionsMap.values()).map((s: any) => ({
+        label: s.name,
+        value: s.name,
+      }));
+    }
+
     const staff = await this.getStaffProfile(userId, tenantId);
     const [assignments, periods, advisorSections] = await Promise.all([
       this.prisma.teacherAssignment.findMany({
@@ -583,17 +615,18 @@ export class TeacherPortalService {
 
     const sectionsMap = new Map();
     assignments.forEach(a => {
-      const sec = a.classSection.section;
-      sectionsMap.set(sec.id, sec);
+      if (a.classSection?.section) {
+        sectionsMap.set(a.classSection.section.id, a.classSection.section);
+      }
     });
     periods.forEach(p => {
-      const sec = p.classSection.section;
-      sectionsMap.set(sec.id, sec);
+      if (p.classSection?.section) {
+        sectionsMap.set(p.classSection.section.id, p.classSection.section);
+      }
     });
     advisorSections.forEach(cs => {
-      const sec = cs.section;
-      if (sec) {
-        sectionsMap.set(sec.id, sec);
+      if (cs.section) {
+        sectionsMap.set(cs.section.id, cs.section);
       }
     });
 
@@ -604,7 +637,7 @@ export class TeacherPortalService {
   }
 
   async getStudentsForAttendance(userId: string, tenantId: string, classVal: string, sectionVal: string) {
-    const staff = await this.getStaffProfile(userId, tenantId);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     
     // Resolve classSection
     const cs = await this.prisma.classSection.findFirst({
@@ -616,13 +649,17 @@ export class TeacherPortalService {
     });
 
     if (!cs) return [];
-    await this.verifyTeacherAssignment(staff.id, cs.id);
 
-    return this.attendanceService.getStudents(classVal, sectionVal);
+    if (user?.role === Role.TEACHER) {
+      const staff = await this.getStaffProfile(userId, tenantId);
+      await this.verifyTeacherAssignment(staff.id, cs.id);
+    }
+
+    return this.attendanceService.getStudents(classVal, sectionVal, userId, user?.role);
   }
 
   async saveAttendanceSheet(userId: string, tenantId: string, data: any) {
-    const staff = await this.getStaffProfile(userId, tenantId);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     
     const cs = await this.prisma.classSection.findFirst({
       where: {
@@ -636,11 +673,13 @@ export class TeacherPortalService {
       throw new BadRequestException('Class Section not resolved.');
     }
 
-    await this.verifyTeacherAssignment(staff.id, cs.id);
-    
-    // Inject the teacher staff profile ID
-    data.teacherId = staff.id;
-    const result = await this.attendanceService.saveAttendance(data);
+    if (user?.role === Role.TEACHER) {
+      const staff = await this.getStaffProfile(userId, tenantId);
+      await this.verifyTeacherAssignment(staff.id, cs.id);
+      data.teacherId = staff.id;
+    }
+
+    const result = await this.attendanceService.saveAttendance(data, userId, user?.role);
     this.invalidateCache(tenantId, userId);
     await this.logAction(userId, tenantId, 'RECORD_CREATE', 'AttendanceSession', result.sessionId, data);
     return result;

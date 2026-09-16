@@ -47,19 +47,19 @@ export class TeacherPortalController {
   }
 
   @Get('attendance/classes')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
   async getAttendanceClasses(@Req() req: any) {
     return this.portalService.getClassesForAttendance(req.user.sub, req.user.tenantId);
   }
 
   @Get('attendance/sections')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
   async getAttendanceSections(@Req() req: any, @Query('classVal') classVal: string) {
     return this.portalService.getSectionsForAttendance(req.user.sub, req.user.tenantId, classVal);
   }
 
   @Get('attendance/students')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
   async getAttendanceStudents(
     @Req() req: any,
     @Query('classVal') classVal: string,
@@ -69,13 +69,13 @@ export class TeacherPortalController {
   }
 
   @Post('attendance/save')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
   async saveAttendance(@Req() req: any, @Body() data: any) {
     return this.portalService.saveAttendanceSheet(req.user.sub, req.user.tenantId, data);
   }
 
   @Get('attendance/history')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
   async getAttendanceHistory(@Req() req: any) {
     return this.portalService.getAttendanceHistory(req.user.sub, req.user.tenantId);
   }

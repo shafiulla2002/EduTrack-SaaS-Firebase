@@ -428,60 +428,70 @@ export default function AttendanceMgmtPage() {
         </div>
       )}
 
-      {/* Select Filters Form */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+      {!loading && classes.length === 0 ? (
+        <div className="bg-amber-50/80 p-6 text-center rounded-3xl border border-amber-200/80 shadow-xs space-y-2">
+          <ShieldAlert className="w-8 h-8 text-amber-500 mx-auto" />
+          <h3 className="font-bold text-amber-900 text-sm">No classes assigned</h3>
+          <p className="text-xs text-amber-700 font-medium max-w-sm mx-auto">
+            No classes are currently assigned to you. Please contact your school administrator if you need class assignments.
+          </p>
+        </div>
+      ) : (
+        /* Select Filters Form */
+        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Class/Course</label>
+              <select
+                value={selectedClass}
+                onChange={(e) => {
+                  setSelectedClass(e.target.value);
+                  setSelectedSection('');
+                  setStudents([]);
+                }}
+                className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+              >
+                <option value="">Select Class...</option>
+                {classes.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Section/Batch</label>
+              <select
+                value={selectedSection}
+                onChange={(e) => {
+                  setSelectedSection(e.target.value);
+                  setStudents([]);
+                }}
+                className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!selectedClass || sections.length === 0}
+              >
+                <option value="">{sections.length === 0 && selectedClass ? 'No sections available' : 'Select Section...'}</option>
+                {sections.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select>
+            </div>
+          </div>
+
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Class/Course</label>
-            <select
-              value={selectedClass}
-              onChange={(e) => {
-                setSelectedClass(e.target.value);
-                setSelectedSection('');
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Date</label>
+            <DatePickerInput
+              value={selectedDate}
+              onChange={(val) => {
+                setSelectedDate(val);
                 setStudents([]);
               }}
-              className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-            >
-              <option value="">Select...</option>
-              {classes.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
+            />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Section/Batch</label>
-            <select
-              value={selectedSection}
-              onChange={(e) => {
-                setSelectedSection(e.target.value);
-                setStudents([]);
-              }}
-              className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-              disabled={!selectedClass}
-            >
-              <option value="">Select...</option>
-              {sections.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </div>
-        </div>
 
-        <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Date</label>
-          <DatePickerInput
-            value={selectedDate}
-            onChange={(val) => {
-              setSelectedDate(val);
-              setStudents([]);
-            }}
-          />
+          <button
+            onClick={handleLoadRoster}
+            disabled={!selectedClass || !selectedSection || loadingStudents}
+            className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 transition-all"
+          >
+            {loadingStudents ? 'Loading Roster...' : '🔍 Load Roster'}
+          </button>
         </div>
-
-        <button
-          onClick={handleLoadRoster}
-          disabled={!selectedClass || !selectedSection || loadingStudents}
-          className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50"
-        >
-          {loadingStudents ? 'Loading Roster...' : '🔍 Load Roster'}
-        </button>
-      </div>
+      )}
 
       {/* Roster & marking section */}
       {students.length > 0 && (

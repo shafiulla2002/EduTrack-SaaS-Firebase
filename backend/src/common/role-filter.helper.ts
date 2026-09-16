@@ -46,7 +46,7 @@ export class RoleFilterHelper {
       );
     }
 
-    const [assignments, periods] = await Promise.all([
+    const [assignments, periods, advisorSections] = await Promise.all([
       this.prisma.teacherAssignment.findMany({
         where: { tenantId, teacherId: staff.id },
         select: { classSectionId: true, subjectId: true },
@@ -55,11 +55,16 @@ export class RoleFilterHelper {
         where: { tenantId, teacherId: staff.id },
         select: { classSectionId: true, subjectId: true },
       }),
+      this.prisma.classSection.findMany({
+        where: { tenantId, teacherId: staff.id },
+        select: { id: true },
+      }),
     ]);
 
     const assignedClassSectionIds = [...new Set([
       ...assignments.map(a => a.classSectionId),
       ...periods.map(p => p.classSectionId),
+      ...advisorSections.map(c => c.id),
     ])];
     const assignedSubjectIds = [...new Set([
       ...assignments.map(a => a.subjectId),
