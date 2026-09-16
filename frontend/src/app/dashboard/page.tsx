@@ -735,8 +735,15 @@ function TeacherDashboardView() {
   useEffect(() => {
     async function loadStats() {
       try {
-        const res = await api.get('/teacher-portal/dashboard');
-        setData(res.data);
+        const res = await fastGet('/teacher-portal/dashboard', undefined, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh) setData(fresh);
+          },
+        });
+        if (res?.data) {
+          setData(res.data);
+        }
       } catch (err) {
         console.error('Failed to load teacher stats:', err);
       } finally {
@@ -745,15 +752,6 @@ function TeacherDashboardView() {
     }
     loadStats();
   }, []);
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="w-10 h-10 border-4 border-t-blue-600 border-slate-200 rounded-full animate-spin"></div>
-        <p className="text-sm font-semibold text-slate-500">Loading Portal Dashboard...</p>
-      </div>
-    );
-  }
 
   const rawTeacherName =
     data?.teacherName ||

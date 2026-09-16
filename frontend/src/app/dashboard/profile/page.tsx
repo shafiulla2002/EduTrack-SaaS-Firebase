@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useTenant } from '../../providers/TenantContext';
-import { User, KeyRound, CheckCircle, AlertCircle, Sparkles, Mail, Phone, BookOpen, Shield, ShieldCheck, Lock, PhoneCall, Check } from 'lucide-react';
+import { User, KeyRound, CheckCircle, AlertCircle, Sparkles, Mail, Phone, BookOpen, Shield, ShieldCheck, Lock, PhoneCall } from 'lucide-react';
 
 export default function ProfilePage() {
   const { refresh } = useTenant();
@@ -17,11 +17,6 @@ export default function ProfilePage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [qualification, setQualification] = useState('');
-
-  // Mobile OTP Security verification states
-  const [otpStep, setOtpStep] = useState<'IDLE' | 'SENDING' | 'OTP_SENT' | 'VERIFIED'>('IDLE');
-  const [otpCode, setOtpCode] = useState('');
-  const [otpMessage, setOtpMessage] = useState('');
 
   async function loadProfile() {
     try {
@@ -56,31 +51,6 @@ export default function ProfilePage() {
     } finally {
       setUpdating(false);
     }
-  };
-
-  const handleSendOtp = () => {
-    setOtpStep('SENDING');
-    setOtpMessage('');
-    setErrorMsg('');
-    setTimeout(() => {
-      setOtpStep('OTP_SENT');
-      setOtpMessage(`Verification OTP sent to +91 ${phone || profile?.user?.phone}`);
-    }, 1000);
-  };
-
-  const handleVerifyOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpCode || otpCode.length < 4) {
-      setErrorMsg('Please enter a valid verification code.');
-      return;
-    }
-    setUpdating(true);
-    setTimeout(() => {
-      setUpdating(false);
-      setOtpStep('VERIFIED');
-      setSuccessMsg('Mobile authentication credentials verified successfully.');
-      setOtpMessage('');
-    }, 1000);
   };
 
   if (loading) {
@@ -251,80 +221,6 @@ export default function ProfilePage() {
               </p>
             </div>
 
-            {/* OTP Verification Flow */}
-            {otpStep === 'VERIFIED' ? (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-center space-y-2">
-                <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto shadow-sm">
-                  <Check className="w-5 h-5" />
-                </div>
-                <h4 className="text-xs font-bold text-emerald-900">Security Credentials Verified</h4>
-                <p className="text-[11px] text-emerald-700">
-                  Login mobile number +91 {phone || profile?.user?.phone} is active and authenticated.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setOtpStep('IDLE')}
-                  className="mt-1 text-[11px] text-emerald-700 underline font-semibold cursor-pointer"
-                >
-                  Done
-                </button>
-              </div>
-            ) : otpStep === 'OTP_SENT' ? (
-              <form onSubmit={handleVerifyOtp} className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-                <label className="block text-xs font-bold text-slate-700">
-                  Enter Verification OTP
-                </label>
-                {otpMessage && (
-                  <p className="text-[11px] text-blue-600 font-medium">{otpMessage}</p>
-                )}
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Enter 6-digit OTP"
-                  className="block w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-mono text-center tracking-widest font-bold focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-                  required
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={updating}
-                    className="flex-1 py-2 px-3 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl font-semibold text-xs transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    Verify OTP
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-semibold text-xs transition-all cursor-pointer"
-                  >
-                    Resend
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={handleSendOtp}
-                  disabled={otpStep === 'SENDING'}
-                  className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-semibold text-xs transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {otpStep === 'SENDING' ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-t-white border-r-white border-b-transparent border-l-transparent rounded-full animate-spin" />
-                      <span>Sending Verification OTP...</span>
-                    </>
-                  ) : (
-                    <>
-                      <PhoneCall className="w-4 h-4 text-blue-400" />
-                      <span>Verify Login Credentials via OTP</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
           </div>
         </div>
 

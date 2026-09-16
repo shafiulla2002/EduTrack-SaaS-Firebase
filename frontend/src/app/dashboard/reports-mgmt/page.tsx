@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
-import { FileBarChart, Printer, Users, TrendingUp, AlertTriangle, Star, CheckCircle } from 'lucide-react';
+import { api, fastGet } from '@/lib/api';
+import { FileBarChart, Printer, Users, TrendingUp, AlertTriangle, Star, CheckCircle, Loader2 } from 'lucide-react';
 import { PDFService } from '@/lib/pdf';
 
 export default function ReportsMgmtPage() {
@@ -16,8 +16,15 @@ export default function ReportsMgmtPage() {
   useEffect(() => {
     async function loadClasses() {
       try {
-        const res = await api.get('/teacher-portal/classes');
-        setClasses(res.data);
+        const res = await fastGet('/teacher-portal/classes', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh) setClasses(fresh);
+          },
+        });
+        if (res?.data) {
+          setClasses(res.data);
+        }
       } catch (err) {
         console.error('Failed to load classes:', err);
       } finally {
@@ -77,14 +84,9 @@ export default function ReportsMgmtPage() {
 
   const { tops, focuses } = getMetricsSummary();
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="w-10 h-10 border-4 border-t-[#2E5BFF] border-slate-200 rounded-full animate-spin"></div>
-        <p className="text-sm font-semibold text-slate-500">Loading configurations...</p>
-      </div>
-    );
-  }
+  const uniqueClasses = Array.from(
+    new Map(classes.map(c => [c.classSectionId, c])).values()
+  );
 
   return (
     <div className="space-y-6 max-w-md mx-auto sm:max-w-none pb-20">
@@ -108,17 +110,27 @@ export default function ReportsMgmtPage() {
       {/* Select Filters Form (Print view ignores it) */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4 print:hidden">
         <div>
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Class Section</label>
+          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center">
+            <span>Class Section</span>
+            {loading && classes.length === 0 && (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#2E5BFF] ml-2" />
+            )}
+          </label>
           <select
             value={selectedClass}
+            disabled={loading && classes.length === 0}
             onChange={(e) => {
               setSelectedClass(e.target.value);
               setReportData([]);
             }}
-            className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
+            className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm disabled:opacity-70"
           >
-            <option value="">Select Class Section...</option>
-            {classes.map(c => <option key={c.classSectionId} value={c.classSectionId}>{c.className}</option>)}
+            {loading && classes.length === 0 ? (
+              <option value="">Loading class sections...</option>
+            ) : (
+              <option value="">Select Class Section...</option>
+            )}
+            {uniqueClasses.map(c => <option key={c.classSectionId} value={c.classSectionId}>{c.className}</option>)}
           </select>
         </div>
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, ChevronRight, User } from 'lucide-react';
 
 export default function StudentProgressPage() {
@@ -29,8 +29,15 @@ export default function StudentProgressPage() {
   useEffect(() => {
     async function loadClasses() {
       try {
-        const res = await api.get('/teacher-portal/classes');
-        setClasses(res.data);
+        const res = await fastGet('/teacher-portal/classes', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh) setClasses(fresh);
+          },
+        });
+        if (res?.data) {
+          setClasses(res.data);
+        }
       } catch (err) {
         console.error('Failed to load classes:', err);
       } finally {
