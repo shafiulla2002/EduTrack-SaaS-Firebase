@@ -62,7 +62,7 @@ export const PDFLayout: React.FC<PDFLayoutProps> = ({
       }}
     >
       {/* ── Document Header Block ── */}
-      <div style={{ borderBottom: '4px solid #2563eb', paddingBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="border-b-4 border-blue-600 pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', textAlign: 'left' }}>
           <div style={{ width: '4rem', height: '4rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
             {schoolLogo ? (
@@ -93,7 +93,7 @@ export const PDFLayout: React.FC<PDFLayoutProps> = ({
 
       {/* ── Metadata Grid Roster Details ── */}
       {metadata.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', padding: '1rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '1rem', fontSize: '0.75rem', textAlign: 'left' }}>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-left">
           {metadata.map((item, idx) => (
             <div key={idx} style={{ minWidth: 0 }}>
               <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', lineHeight: 1.4 }}>
