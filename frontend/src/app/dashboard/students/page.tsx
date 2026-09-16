@@ -259,6 +259,16 @@ export default function StudentsDirectory() {
     loadStudents(page);
   }, [page, search, selectedClass, selectedSection, selectedYear, loadStudents]);
 
+  // Scroll active page number into view in horizontal scroll container
+  useEffect(() => {
+    if (page) {
+      const el = document.getElementById(`student-page-btn-${page}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+    }
+  }, [page]);
+
   useEffect(() => {
     setSelectedIds([]);
   }, [search, selectedClass, selectedSection, selectedYear]);
@@ -952,48 +962,45 @@ export default function StudentsDirectory() {
 
             {/* Pagination Controls */}
             {!loading && totalPages > 1 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 px-6 py-4 bg-slate-50/50">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 px-4 sm:px-6 py-4 bg-slate-50/50">
                 <div className="text-[12px] text-slate-550 font-medium text-center sm:text-left">
                   Showing <span className="font-bold text-slate-800">{((page - 1) * limit) + 1}</span> to{' '}
                   <span className="font-bold text-slate-800">{Math.min(page * limit, total)}</span> of{' '}
                   <span className="font-bold text-slate-800">{total}</span> records (Page <span className="font-bold text-slate-800">{page}</span> of <span className="font-bold text-slate-800">{totalPages}</span>)
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5 justify-center max-w-full">
+                <div className="flex items-center justify-between gap-1.5 sm:gap-2 w-full sm:w-auto max-w-full min-w-0">
                   <button
                     disabled={page === 1}
                     onClick={() => loadStudents(page - 1)}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
+                    className="shrink-0 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
                   >
                     Previous
                   </button>
-                  
-                  {Array.from({ length: totalPages }).map((_, i) => {
-                    const pNum = i + 1;
-                    if (totalPages > 5 && Math.abs(page - pNum) > 1 && pNum !== 1 && pNum !== totalPages) {
-                      if (pNum === 2 || pNum === totalPages - 1) {
-                        return <span key={pNum} className="text-slate-400 text-xs px-1 select-none">...</span>;
-                      }
-                      return null;
-                    }
-                    return (
-                      <button
-                        key={pNum}
-                        onClick={() => loadStudents(pNum)}
-                        className={`px-3 py-1.5 rounded-lg border text-xs font-bold min-h-[38px] transition-all cursor-pointer ${
-                          page === pNum
-                            ? 'bg-[#2E5BFF] border-[#2E5BFF] text-white'
-                            : 'border-slate-200 bg-white text-slate-650 hover:bg-slate-50'
-                        }`}
-                      >
-                        {pNum}
-                      </button>
-                    );
-                  })}
+
+                  <div className="flex items-center gap-1.5 overflow-x-auto scroll-smooth px-1 py-1 flex-1 min-w-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                    {Array.from({ length: totalPages }).map((_, i) => {
+                      const pNum = i + 1;
+                      return (
+                        <button
+                          key={pNum}
+                          id={`student-page-btn-${pNum}`}
+                          onClick={() => loadStudents(pNum)}
+                          className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-bold min-h-[38px] transition-all cursor-pointer ${
+                            page === pNum
+                              ? 'bg-[#2E5BFF] border-[#2E5BFF] text-white'
+                              : 'border-slate-200 bg-white text-slate-650 hover:bg-slate-50'
+                          }`}
+                        >
+                          {pNum}
+                        </button>
+                      );
+                    })}
+                  </div>
 
                   <button
                     disabled={page === totalPages}
                     onClick={() => loadStudents(page + 1)}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
+                    className="shrink-0 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
                   >
                     Next
                   </button>
