@@ -497,8 +497,11 @@ export class TeacherPortalService {
   }
 
   async getStudentsForClassSection(userId: string, tenantId: string, classSectionId: string) {
-    const staff = await this.getStaffProfile(userId, tenantId);
-    await this.verifyTeacherAssignment(staff.id, classSectionId);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user && user.role === Role.TEACHER) {
+      const staff = await this.getStaffProfile(userId, tenantId);
+      await this.verifyTeacherAssignment(staff.id, classSectionId);
+    }
 
     return this.prisma.studentProfile.findMany({
       where: { tenantId, classSectionId, user: { isActive: true } },
@@ -1674,30 +1677,45 @@ export class TeacherPortalService {
 
   // 11. Unified Calendar & Timeline Timeline Aggregation
   async getCalendarTimeline(userId: string, tenantId: string, month: number, year: number) {
-    const staff = await this.getStaffProfile(userId, tenantId);
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    let staffId: string | null = null;
+    if (user && user.role === Role.TEACHER) {
+      const staff = await this.getStaffProfile(userId, tenantId);
+      staffId = staff.id;
+    }
+
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0, 23, 59, 59);
 
-    const [assignments, periods] = await Promise.all([
-      this.prisma.teacherAssignment.findMany({
-        where: { tenantId, teacherId: staff.id },
-        select: { classSectionId: true },
-      }),
-      this.prisma.period.findMany({
-        where: { tenantId, teacherId: staff.id },
-        select: { classSectionId: true },
-      }),
-    ]);
-    const classSectionIds = Array.from(new Set([
-      ...assignments.map(a => a.classSectionId),
-      ...periods.map(p => p.classSectionId),
-    ]));
+    let classSectionIds: string[] = [];
+    if (staffId) {
+      const [assignments, periods] = await Promise.all([
+        this.prisma.teacherAssignment.findMany({
+          where: { tenantId, teacherId: staffId },
+          select: { classSectionId: true },
+        }),
+        this.prisma.period.findMany({
+          where: { tenantId, teacherId: staffId },
+          select: { classSectionId: true },
+        }),
+      ]);
+      classSectionIds = Array.from(new Set([
+        ...assignments.map(a => a.classSectionId),
+        ...periods.map(p => p.classSectionId),
+      ]));
+    } else {
+      const allClassSections = await this.prisma.classSection.findMany({
+        where: { tenantId },
+        select: { id: true },
+      });
+      classSectionIds = allClassSections.map(cs => cs.id);
+    }
 
     // Fetch Homeworks due in this range
     const homeworks = await this.prisma.homework.findMany({
       where: {
         tenantId,
-        teacherId: staff.id,
+        ...(staffId ? { teacherId: staffId } : {}),
         dueDate: { gte: start, lte: end },
       },
       include: { classSection: { include: { class: true, section: true } } },
@@ -1717,7 +1735,7 @@ export class TeacherPortalService {
     const leaves = await this.prisma.leaveRequest.findMany({
       where: {
         tenantId,
-        teacherId: staff.id,
+        ...(staffId ? { teacherId: staffId } : {}),
         OR: [
           { startDate: { gte: start, lte: end } },
           { endDate: { gte: start, lte: end } },
@@ -1756,12 +1774,25 @@ export class TeacherPortalService {
       }
     }
 
+    const formatYMD = (d: Date | string) => {
+      if (!d) return '';
+      if (typeof d === 'string') {
+        const match = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+        d = new Date(d);
+      }
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
     homeworks.forEach(hw => {
       items.push({
         id: hw.id,
         type: 'HOMEWORK',
         title: `Homework Due: ${hw.title}`,
-        date: hw.dueDate.toISOString().split('T')[0],
+        date: formatYMD(hw.dueDate),
         description: `Class: ${hw.classSection.class.name} - ${hw.classSection.section.name}`,
         color: 'blue',
       });
@@ -1772,7 +1803,7 @@ export class TeacherPortalService {
         id: ex.id,
         type: 'EXAM',
         title: `Exam: ${ex.name}`,
-        date: ex.date.toISOString().split('T')[0],
+        date: formatYMD(ex.date),
         description: `Class: ${ex.classSection.class.name} - ${ex.classSection.section.name}`,
         color: 'red',
       });
@@ -1783,7 +1814,7 @@ export class TeacherPortalService {
         id: lv.id,
         type: 'LEAVE',
         title: `Leave: ${lv.leaveType} (${lv.status})`,
-        date: lv.startDate.toISOString().split('T')[0],
+        date: formatYMD(lv.startDate),
         description: `Reason: ${lv.reason}`,
         color: 'amber',
       });
@@ -1794,7 +1825,7 @@ export class TeacherPortalService {
         id: ev.id,
         type: 'EVENT',
         title: `Announcement/Event: ${ev.title}`,
-        date: ev.createdAt.toISOString().split('T')[0],
+        date: formatYMD(ev.createdAt),
         description: ev.content,
         color: 'purple',
       });
@@ -1805,9 +1836,9 @@ export class TeacherPortalService {
 
   // 12. Student Progress & Reports
   async getStudentProgressDetails(userId: string, tenantId: string, studentId: string) {
-    const staff = await this.getStaffProfile(userId, tenantId);
-    if (!staff) {
-      throw new NotFoundException('Staff profile not found.');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
     }
 
     const student = await this.prisma.studentProfile.findUnique({
@@ -1822,8 +1853,10 @@ export class TeacherPortalService {
       throw new NotFoundException('Student profile not found.');
     }
 
-    // Verify teacher is assigned to this class section
-    await this.verifyTeacherAssignment(staff.id, student.classSectionId);
+    if (user.role === Role.TEACHER) {
+      const staff = await this.getStaffProfile(userId, tenantId);
+      await this.verifyTeacherAssignment(staff.id, student.classSectionId);
+    }
 
     // Execute dependent queries concurrently
     const [attendances, examMarks, homeworksList] = await Promise.all([

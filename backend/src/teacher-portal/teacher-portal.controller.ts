@@ -41,7 +41,7 @@ export class TeacherPortalController {
   }
 
   @Get('classes/:classSectionId/students')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
   async getStudents(@Req() req: any, @Param('classSectionId') classSectionId: string) {
     return this.portalService.getStudentsForClassSection(req.user.sub, req.user.tenantId, classSectionId);
   }
@@ -196,7 +196,7 @@ export class TeacherPortalController {
   }
 
   @Get('calendar')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
   async getCalendar(
     @Req() req: any,
     @Query('month') month: string,
@@ -211,7 +211,7 @@ export class TeacherPortalController {
   }
 
   @Get('student-progress/:studentId')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
   async getStudentProgress(@Req() req: any, @Param('studentId') studentId: string) {
     return this.portalService.getStudentProgressDetails(req.user.sub, req.user.tenantId, studentId);
   }

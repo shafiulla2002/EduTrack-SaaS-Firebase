@@ -63,6 +63,9 @@ export default function ReportsMgmtPage() {
         };
       });
 
+      // Sort enriched list so top performers are presented first
+      enriched.sort((a: any, b: any) => b.averageScore - a.averageScore);
+
       setReportData(enriched);
     } catch (err) {
       console.error('Generate report error:', err);
@@ -76,13 +79,17 @@ export default function ReportsMgmtPage() {
   };
 
   const getMetricsSummary = () => {
-    if (reportData.length === 0) return { tops: 0, focuses: 0 };
+    if (reportData.length === 0) return { tops: 0, focuses: 0, avgScore: 0, avgAttendance: 0 };
     const tops = reportData.filter(r => r.classification === 'Top Performer').length;
     const focuses = reportData.filter(r => r.classification === 'Needs Focus').length;
-    return { tops, focuses };
+    const totalScore = reportData.reduce((sum, r) => sum + r.averageScore, 0);
+    const totalAtt = reportData.reduce((sum, r) => sum + r.attendanceRate, 0);
+    const avgScore = Math.round(totalScore / reportData.length);
+    const avgAttendance = Math.round(totalAtt / reportData.length);
+    return { tops, focuses, avgScore, avgAttendance };
   };
 
-  const { tops, focuses } = getMetricsSummary();
+  const { tops, focuses, avgScore, avgAttendance } = getMetricsSummary();
 
   const uniqueClasses = Array.from(
     new Map(classes.map(c => [c.classSectionId, c])).values()
@@ -147,57 +154,71 @@ export default function ReportsMgmtPage() {
       {reportData.length > 0 && (
         <div className="space-y-6">
           
-          {/* Summary Widgets */}
-          <div className="grid grid-cols-2 gap-4 print:hidden">
+          {/* Summary Widgets in Order: 1. Top Performers -> 2. Class Average -> 3. Needs Focus */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:hidden">
             <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-3xl flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
                 <Star className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] text-emerald-600 font-bold block uppercase">Top Performers</span>
+                <span className="text-[10px] text-emerald-600 font-bold block uppercase tracking-wider">1. Top Performers</span>
                 <span className="text-lg font-black text-emerald-800">{tops} Students</span>
               </div>
             </div>
+
+            <div className="bg-blue-50 border border-blue-100 p-4 rounded-3xl flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] text-blue-600 font-bold block uppercase tracking-wider">2. Class Average</span>
+                <span className="text-lg font-black text-blue-900">{avgScore}% <span className="text-xs font-semibold text-blue-600 font-mono">({avgAttendance}% Att.)</span></span>
+              </div>
+            </div>
+
             <div className="bg-rose-50 border border-rose-100 p-4 rounded-3xl flex items-center gap-3">
-              <div className="w-10 h-10 bg-rose-500 text-white rounded-2xl flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 bg-rose-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-sm">
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] text-rose-600 font-bold block uppercase">Needs Focus</span>
+                <span className="text-[10px] text-rose-600 font-bold block uppercase tracking-wider">3. Needs Focus</span>
                 <span className="text-lg font-black text-rose-800">{focuses} Students</span>
               </div>
             </div>
           </div>
 
           {/* Report Sheet Table Card */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <h3 className="font-extrabold text-slate-800 text-[14px] leading-none uppercase tracking-wide border-b border-slate-100 pb-3">
-              Academic Summary Sheet
-            </h3>
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-800 text-[14px] leading-none uppercase tracking-wide">
+                3. Academic Summary Sheet
+              </h3>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Sorted by Top Performance</span>
+            </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto -mx-2 sm:mx-0">
+              <table className="w-full text-left border-collapse min-w-[500px]">
                 <thead>
                   <tr className="border-b border-slate-200 text-[10px] text-slate-400 font-black uppercase tracking-wider">
-                    <th className="py-2.5">Student Name</th>
-                    <th className="py-2.5">Roll</th>
-                    <th className="py-2.5 text-center">Marks Avg</th>
-                    <th className="py-2.5 text-center">Attendance</th>
-                    <th className="py-2.5 text-right">Remarks</th>
+                    <th className="py-2.5 px-2">Student Name</th>
+                    <th className="py-2.5 px-2">Roll</th>
+                    <th className="py-2.5 px-2 text-center">Marks Avg</th>
+                    <th className="py-2.5 px-2 text-center">Attendance</th>
+                    <th className="py-2.5 px-2 text-right">Remarks</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-600">
                   {reportData.map((row) => (
                     <tr key={row.id}>
-                      <td className="py-3 font-bold text-slate-800">{row.name}</td>
-                      <td className="py-3">{row.rollNo}</td>
-                      <td className="py-3 text-center text-blue-600 font-mono font-bold">{row.averageScore}%</td>
-                      <td className="py-3 text-center text-emerald-600 font-mono font-bold">{row.attendanceRate}%</td>
-                      <td className="py-3 text-right">
+                      <td className="py-3 px-2 font-bold text-slate-800">{row.name}</td>
+                      <td className="py-3 px-2">{row.rollNo}</td>
+                      <td className="py-3 px-2 text-center text-blue-600 font-mono font-bold">{row.averageScore}%</td>
+                      <td className="py-3 px-2 text-center text-emerald-600 font-mono font-bold">{row.attendanceRate}%</td>
+                      <td className="py-3 px-2 text-right">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          row.classification === 'Top Performer' ? 'bg-emerald-50 text-emerald-600' :
-                          row.classification === 'Needs Focus' ? 'bg-rose-50 text-rose-600' :
-                          'bg-slate-50 text-slate-500'
+                          row.classification === 'Top Performer' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                          row.classification === 'Needs Focus' ? 'bg-rose-50 text-rose-600 border border-rose-100' :
+                          'bg-slate-50 text-slate-500 border border-slate-200/60'
                         }`}>
                           {row.classification}
                         </span>
