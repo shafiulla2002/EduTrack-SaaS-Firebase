@@ -728,6 +728,7 @@ function AdminDashboardOverview() {
 }
 
 function TeacherDashboardView() {
+  const { currentUser, adminName } = useTenant();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -754,6 +755,31 @@ function TeacherDashboardView() {
     );
   }
 
+  const rawTeacherName =
+    data?.teacherName ||
+    currentUser?.name ||
+    adminName ||
+    (typeof window !== 'undefined' ? (localStorage.getItem('teacher_userName') || localStorage.getItem('admin_userName') || '') : '') ||
+    '';
+
+  const getTimeBasedGreeting = (name: string) => {
+    const hour = new Date().getHours();
+    let salutation = 'Good Morning';
+    if (hour >= 12 && hour < 17) {
+      salutation = 'Good Afternoon';
+    } else if (hour >= 17 && hour < 21) {
+      salutation = 'Good Evening';
+    } else if (hour >= 21 || hour < 5) {
+      salutation = 'Good Night';
+    }
+
+    const cleanName = name ? name.trim() : '';
+    if (!cleanName || cleanName.toLowerCase() === 'teacher') {
+      return `${salutation}! 👋`;
+    }
+    return `${salutation}, ${cleanName}! 👋`;
+  };
+
   const statsList = [
     { name: 'Assigned Students', val: data?.stats?.assignedStudents || 0, desc: 'Across all sections', icon: '👥', color: 'from-blue-500 to-indigo-500' },
     { name: 'Attendance Rate', val: `${data?.stats?.attendanceRate || 100}%`, desc: 'Average active rate', icon: '📈', color: 'from-emerald-500 to-teal-500' },
@@ -766,7 +792,9 @@ function TeacherDashboardView() {
       {/* Welcome header */}
       <div className="bg-gradient-to-tr from-[#1E293B] to-[#0F172A] p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-[20%] right-[-10%] w-[150px] h-[150px] rounded-full bg-blue-500/10 blur-xl pointer-events-none" />
-        <h2 className="text-xl font-bold tracking-tight">Hello Teacher! 👋</h2>
+        <h2 className="text-xl sm:text-2xl font-semibold font-serif italic tracking-tight leading-snug break-words text-white">
+          {getTimeBasedGreeting(rawTeacherName)}
+        </h2>
         <p className="text-[13px] text-slate-300 font-light mt-1">Here is your timeline schedule and tasks overview for today.</p>
         
         {/* Today status badges */}

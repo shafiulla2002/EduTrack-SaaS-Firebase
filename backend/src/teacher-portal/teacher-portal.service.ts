@@ -261,6 +261,7 @@ export class TeacherPortalService {
     const pendingMarksCount = examsInClassSections.filter(e => e.examMarks.length === 0).length;
 
     const result = {
+      teacherName: staff.user?.name || '',
       today: {
         classes: todayClasses
           .map(p => ({
