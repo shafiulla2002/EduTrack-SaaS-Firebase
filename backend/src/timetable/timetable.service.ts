@@ -960,18 +960,14 @@ export class TimetableService {
       },
     });
 
-    // Get class subjects
-    const classSubjects = await this.prisma.classSubject.findMany({
-      where: { classSectionId: id, tenantId },
-      include: { subject: true },
-    });
-
-    const subjects = [];
-    let totalTeachers = 0;
-    for (const cs of classSubjects) {
-      // Find assigned teachers from TeacherAssignment
-      const assignments = await this.prisma.teacherAssignment.findMany({
-        where: { classSectionId: id, subjectId: cs.subjectId, tenantId },
+    // Get class subjects and all teacher assignments for this classSection in parallel batch queries
+    const [classSubjects, allAssignments] = await Promise.all([
+      this.prisma.classSubject.findMany({
+        where: { classSectionId: id, tenantId },
+        include: { subject: true },
+      }),
+      this.prisma.teacherAssignment.findMany({
+        where: { classSectionId: id, tenantId },
         include: {
           teacher: {
             include: {
@@ -979,8 +975,22 @@ export class TimetableService {
             },
           },
         },
-      });
+      }),
+    ]);
 
+    // Group assignments by subjectId in memory (eliminating N+1 queries)
+    const assignmentMap = new Map<string, typeof allAssignments>();
+    for (const a of allAssignments) {
+      if (!a.subjectId) continue;
+      const list = assignmentMap.get(a.subjectId) || [];
+      list.push(a);
+      assignmentMap.set(a.subjectId, list);
+    }
+
+    const subjects = [];
+    let totalTeachers = 0;
+    for (const cs of classSubjects) {
+      const assignments = assignmentMap.get(cs.subjectId) || [];
       const teachers = assignments.map(a => ({
         assignmentId: a.id,
         teacherId: a.teacherId,

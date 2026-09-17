@@ -7,7 +7,7 @@ import { useSchoolSetupUpdate } from '@/lib/events';
 import { 
   Plus, X, Search, ChevronDown, ChevronUp, Users, 
   BookOpen, Grid3X3, BarChart3, Clock, Upload, 
-  Calendar, Layers, Trash2, Edit2, AlertCircle, ArrowLeft, ArrowRight, Check, Award, Settings
+  Calendar, Layers, Trash2, Edit2, AlertCircle, ArrowLeft, ArrowRight, Check, Award, Settings, Loader2, RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import BulkTeacherImportModal from '@/components/BulkTeacherImportModal';
@@ -65,6 +65,8 @@ export default function TeacherClassManagement() {
   const [currentStep, setCurrentStep] = useState(0); // 0: Dashboard, 1: Step1, 2: Step2, 3: Step3
   const [isTimetableView, setIsTimetableView] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTimetableLoading, setIsTimetableLoading] = useState(false);
+  const [timetableError, setTimetableError] = useState<string | null>(null);
   
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<ClassSection[]>([]);
@@ -1033,7 +1035,10 @@ export default function TeacherClassManagement() {
       return;
     }
     try {
-      setIsLoading(true);
+      setIsTimetableLoading(true);
+      setTimetableError(null);
+      setShowTimetableGrid(false);
+
       // Fetch subjects, timings, workload & current timetable in parallel
       const [workloadRes, timingsRes, timetableRes, subjectsRes, configRes] = await Promise.all([
         api.get(`/timetable/workload/class-section/${ttSelectedClassSectionId}`),
@@ -1066,6 +1071,7 @@ export default function TeacherClassManagement() {
         };
       });
       setTimings(mappedTimings);
+
       // Always refresh the full subjects list so the dropdown is never empty
       if (subjectsRes.data && subjectsRes.data.length > 0) {
         setAllSubjects(subjectsRes.data);
@@ -1093,7 +1099,7 @@ export default function TeacherClassManagement() {
 
       // Fill backend scheduled periods (flat array mapping)
       const backendData = Array.isArray(timetableRes.data) ? timetableRes.data : [];
-      const cachedSubjectTeachers: Record<string, any[]> = {};
+      const uniqueSubIds = new Set<string>();
 
       for (const p of backendData) {
         const backDay = p.day;
@@ -1108,28 +1114,38 @@ export default function TeacherClassManagement() {
             subject: subId,
             teacherId: tId
           };
-
-          // Cache subject teachers
-          if (subId && !cachedSubjectTeachers[subId]) {
-            try {
-              const res = await api.get(`/timetable/teachers/subject-in-class?subjectId=${subId}&classSectionId=${ttSelectedClassSectionId}`);
-              cachedSubjectTeachers[subId] = res.data || [];
-            } catch (e) {
-              console.error('Failed to pre-cache teachers:', e);
-            }
-          }
+          if (subId) uniqueSubIds.add(subId);
         }
+      }
+
+      // Pre-cache subject teachers concurrently in parallel (eliminating sequential HTTP requests)
+      const cachedSubjectTeachers: Record<string, any[]> = {};
+      if (uniqueSubIds.size > 0) {
+        const teacherPromises = Array.from(uniqueSubIds).map(async (subId) => {
+          try {
+            const res = await api.get(`/timetable/teachers/subject-in-class?subjectId=${subId}&classSectionId=${ttSelectedClassSectionId}`);
+            return { subId, teachers: res.data || [] };
+          } catch (e) {
+            return { subId, teachers: [] };
+          }
+        });
+        const results = await Promise.all(teacherPromises);
+        results.forEach(item => {
+          cachedSubjectTeachers[item.subId] = item.teachers;
+        });
       }
 
       setSubjectTeachers(prev => ({ ...prev, ...cachedSubjectTeachers }));
       setTimetableData(formattedData);
       setShowTimetableGrid(true);
       showToast('Timetable loaded successfully!', 'success');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Timetable load failed:', err);
+      const errMsg = err?.response?.data?.message || err?.message || 'Unable to load timetable. Please try again.';
+      setTimetableError(errMsg);
       showToast('Failed to load timetable matrix.', 'error');
     } finally {
-      setIsLoading(false);
+      setIsTimetableLoading(false);
     }
   };
 
@@ -2756,16 +2772,57 @@ export default function TeacherClassManagement() {
               <div>
                 <button
                   onClick={loadTimetableGrid}
-                  className="w-full px-4 py-2.5 rounded-xl border border-blue-600 hover:bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  disabled={isTimetableLoading}
+                  className="w-full px-4 py-2.5 rounded-xl border border-blue-600 hover:bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  🔍 Load Timetable
+                  {isTimetableLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                      <span>Loading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🔍 Load Timetable</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Timetable Editor Grid Matrix */}
-          {showTimetableGrid && (
+          {/* Timetable Editor Grid Matrix / Loading / Error / Empty States */}
+          {isTimetableLoading ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 text-blue-600 mb-4 animate-pulse">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">Loading Timetable Matrix...</h3>
+              <p className="text-xs text-slate-500 mt-1">Fetching period timings, subject allocations, and teacher assignments</p>
+            </div>
+          ) : timetableError ? (
+            <div className="bg-white border border-rose-200 rounded-2xl p-10 text-center shadow-sm">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-50 text-rose-600 mb-4">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">Unable to load timetable</h3>
+              <p className="text-xs text-rose-600 mt-1 max-w-md mx-auto">{timetableError}</p>
+              <button
+                onClick={loadTimetableGrid}
+                className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Try Again
+              </button>
+            </div>
+          ) : showTimetableGrid ? (
+            (workingDays.length === 0 || timings.length === 0) ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 text-slate-400 mb-4">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-700">No timetable found</h3>
+                <p className="text-xs text-slate-400 mt-1">No period timings or working days configured for the selected class/date range.</p>
+              </div>
+            ) : (
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left border-collapse min-w-[1200px]">
@@ -2872,7 +2929,16 @@ export default function TeacherClassManagement() {
                 </button>
               </div>
             </div>
-          )}
+          )
+        ) : (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 text-blue-600 mb-4">
+              <Calendar className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-700">Select Class & Date Range</h3>
+            <p className="text-xs text-slate-400 mt-1">Select your class section and click "Load Timetable" to display the timetable matrix grid.</p>
+          </div>
+        )}
         </div>
       )}
 
