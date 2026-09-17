@@ -12,8 +12,8 @@ export class BillingService {
     private storageService: StorageService,
   ) {}
 
-  private getTenantId(): string {
-    const tenantId = TenantContext.getTenantId();
+  private getTenantId(overrideTenantId?: string): string {
+    const tenantId = overrideTenantId || TenantContext.getTenantId();
     if (!tenantId) {
       throw new BadRequestException('No active school tenant context found');
     }
@@ -403,8 +403,8 @@ export class BillingService {
 
   // ── OPTIONS RETRIEVAL ──────────────────────────────────────────────────────
 
-  async getAcademicYearOptions() {
-    const tenantId = this.getTenantId();
+  async getAcademicYearOptions(overrideTenantId?: string) {
+    const tenantId = this.getTenantId(overrideTenantId);
     const ays = await this.prisma.academicYear.findMany({
       where: { tenantId, isActive: true },
       orderBy: { startDate: 'asc' },
@@ -412,8 +412,8 @@ export class BillingService {
     return ays.map(ay => ({ label: ay.name, value: ay.id }));
   }
 
-  async getClassOptions() {
-    const tenantId = this.getTenantId();
+  async getClassOptions(overrideTenantId?: string) {
+    const tenantId = this.getTenantId(overrideTenantId);
     const classes = await this.prisma.class.findMany({
       where: { tenantId, isActive: true },
       orderBy: { name: 'asc' },
@@ -421,8 +421,8 @@ export class BillingService {
     return classes.map(c => ({ label: c.name, value: c.id }));
   }
 
-  async getSectionOptions(classId?: string) {
-    const tenantId = this.getTenantId();
+  async getSectionOptions(classId?: string, overrideTenantId?: string) {
+    const tenantId = this.getTenantId(overrideTenantId);
     const sections = await this.prisma.section.findMany({
       where: { tenantId, isActive: true },
       orderBy: { name: 'asc' },

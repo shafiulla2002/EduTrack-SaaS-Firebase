@@ -307,7 +307,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
           '/teacher-portal/dashboard',
           '/academics/classes',
         ];
-      } else {
+      } else if (role === 'SCHOOL_ADMIN' || role === 'SUPER_ADMIN') {
         prefetchUrls = [
           '/academics/academic-years',
           '/academics/classes',

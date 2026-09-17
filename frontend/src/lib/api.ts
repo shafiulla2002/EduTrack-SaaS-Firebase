@@ -16,7 +16,31 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL
 
 export function getActiveRole(): 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' {
   if (typeof window === 'undefined') return 'SCHOOL_ADMIN';
-  
+
+  const pathname = window.location.pathname || '';
+  if (pathname.startsWith('/parent')) {
+    if (localStorage.getItem('parent_token')) {
+      sessionStorage.setItem('active_role', 'PARENT');
+      return 'PARENT';
+    }
+  } else if (pathname.startsWith('/teacher')) {
+    if (localStorage.getItem('teacher_token')) {
+      sessionStorage.setItem('active_role', 'TEACHER');
+      return 'TEACHER';
+    }
+  } else if (
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/academics') ||
+    pathname.startsWith('/students') ||
+    pathname.startsWith('/billing') ||
+    pathname.startsWith('/settings')
+  ) {
+    if (localStorage.getItem('admin_token')) {
+      sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+      return 'SCHOOL_ADMIN';
+    }
+  }
+
   let role = sessionStorage.getItem('active_role') as 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' | null;
   if (!role) {
     if (localStorage.getItem('parent_token')) {

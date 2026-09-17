@@ -40,9 +40,9 @@ interface PreviewState {
 }
 
 export default function HomeworkPage() {
-  const { selectedChild } = useParent();
   const [homeworkList, setHomeworkList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState(false);
   
   // Submit modal states
   const [submittingHomework, setSubmittingHomework] = useState<any>(null);
@@ -227,16 +227,25 @@ export default function HomeworkPage() {
   };
 
   const fetchHomework = async (childId: string) => {
+    setLoading(true);
+    setApiError(false);
     try {
       const res = await fastGet(`/parent-portal/children/${childId}/homework`, {
         ttlMs: 60000,
         onRevalidate: (fresh: any) => {
-          if (fresh) setHomeworkList(fresh?.data || fresh);
+          if (fresh) {
+            const list = Array.isArray(fresh) ? fresh : (fresh.data || []);
+            setHomeworkList(list);
+          }
         },
       });
-      if (res?.data) setHomeworkList(res.data);
+      if (res) {
+        const list = Array.isArray(res) ? res : (res.data || []);
+        setHomeworkList(list);
+      }
     } catch (err) {
       console.error('Failed to fetch homework:', err);
+      setApiError(true);
     } finally {
       setLoading(false);
     }
@@ -316,7 +325,7 @@ export default function HomeworkPage() {
     );
   }
 
-  if (loading && homeworkList.length === 0) {
+  if (loading && homeworkList.length === 0 && !apiError) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin"></div>
@@ -334,7 +343,18 @@ export default function HomeworkPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {homeworkList.length === 0 ? (
+        {apiError ? (
+          <div className="col-span-2 bg-rose-50 border border-rose-200 p-10 rounded-3xl text-center text-rose-700 shadow-sm space-y-3">
+            <AlertCircle className="w-10 h-10 text-rose-500 mx-auto" />
+            <p className="text-sm font-bold">Unable to load homework. Please try again.</p>
+            <button
+              onClick={() => fetchHomework(selectedChild.id)}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+            >
+              Retry Loading
+            </button>
+          </div>
+        ) : homeworkList.length === 0 ? (
           <div className="col-span-2 bg-white border border-slate-200 p-12 rounded-3xl text-center text-slate-500 shadow-sm">
             <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <p className="text-sm font-semibold">No homework assigned yet.</p>

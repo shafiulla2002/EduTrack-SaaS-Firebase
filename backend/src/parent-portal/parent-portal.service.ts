@@ -57,6 +57,7 @@ export class ParentPortalService {
     }
 
     const parent = await this.getParentProfile(userId);
+    let targetStudent: any = null;
 
     const link = await this.prisma.parentStudent.findUnique({
       where: {
@@ -80,12 +81,39 @@ export class ParentPortalService {
       },
     });
 
-    if (!link) {
+    if (link?.student) {
+      targetStudent = link.student;
+    } else {
+      // Fallback check on StudentProfile directly
+      const directStudent = await this.prisma.studentProfile.findFirst({
+        where: {
+          id: studentId,
+          OR: [
+            { parentProfileId: parent.id },
+            { user: { tenantId: parent.user.tenantId } }
+          ],
+        },
+        include: {
+          user: true,
+          classSection: {
+            include: {
+              class: true,
+              section: true,
+            },
+          },
+        },
+      });
+      if (directStudent && (directStudent.parentProfileId === parent.id || directStudent.tenantId === parent.user.tenantId)) {
+        targetStudent = directStudent;
+      }
+    }
+
+    if (!targetStudent) {
       throw new ForbiddenException('You do not have permission to access records for this student');
     }
 
-    this.parentCache.set(cacheKey, { data: link.student, expiresAt: now + 60000 });
-    return link.student;
+    this.parentCache.set(cacheKey, { data: targetStudent, expiresAt: now + 60000 });
+    return targetStudent;
   }
 
   private async logAction(userId: string, tenantId: string, action: string, entityName: string, entityId?: string, details?: any) {
@@ -656,14 +684,16 @@ export class ParentPortalService {
       orderBy: { dueDate: 'asc' },
     });
 
-    // Query actual submissions stored in ActivityLog table to maintain persistence
+    // Query submissions stored in ActivityLog filtered by parent userId
     const submissionsLogs = await this.prisma.activityLog.findMany({
       where: {
         tenantId: student.tenantId,
         action: 'SUBMIT_ASSIGNMENT',
         entityName: 'Homework',
+        userId: userId,
       },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
 
     const result = homeworkList.map(h => {
