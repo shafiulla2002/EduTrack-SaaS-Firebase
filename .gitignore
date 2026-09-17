@@ -18,6 +18,7 @@ build
 *firebase-service-account*.json
 # Scratch backups
 backend/scratch/
+scratch/
 # Vercel
 .vercel
 .env.vercel.*

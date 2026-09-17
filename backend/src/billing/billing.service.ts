@@ -680,28 +680,43 @@ export class BillingService {
       currentYearStart = openOpp.academicYear.startDate;
     }
 
-    // Retrieve all opportunities starting BEFORE currentYearStart
-    const prevOpps = await this.prisma.opportunity.findMany({
-      where: {
-        studentId,
-        tenantId,
-        academicYear: {
-          startDate: {
+    // Retrieve all opportunities starting BEFORE currentYearStart AND standalone invoices concurrently
+    const [prevOpps, prevOrphanInvoices] = await Promise.all([
+      this.prisma.opportunity.findMany({
+        where: {
+          studentId,
+          tenantId,
+          academicYear: {
+            startDate: {
+              lt: currentYearStart
+            }
+          }
+        },
+        include: {
+          academicYear: true,
+          opportunityLineItems: true,
+          invoices: {
+            where: {
+              tenantId,
+              status: { not: PaymentStatus.VOIDED }
+            }
+          }
+        }
+      }),
+      this.prisma.invoice.findMany({
+        where: {
+          studentId,
+          tenantId,
+          opportunityId: null,
+          invoiceDate: {
             lt: currentYearStart
+          },
+          status: {
+            in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID]
           }
         }
-      },
-      include: {
-        academicYear: true,
-        opportunityLineItems: true,
-        invoices: {
-          where: {
-            tenantId,
-            status: { not: PaymentStatus.VOIDED }
-          }
-        }
-      }
-    });
+      })
+    ]);
 
     const prevYearDuesMap = new Map<string, number>();
 
@@ -720,21 +735,7 @@ export class BillingService {
       }
     }
 
-    // 2. Retrieve standalone invoices starting BEFORE currentYearStart (where opportunityId === null)
-    const prevOrphanInvoices = await this.prisma.invoice.findMany({
-      where: {
-        studentId,
-        tenantId,
-        opportunityId: null,
-        invoiceDate: {
-          lt: currentYearStart
-        },
-        status: {
-          in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID]
-        }
-      }
-    });
-
+    // 2. Process standalone invoices starting BEFORE currentYearStart
     for (const inv of prevOrphanInvoices) {
       const yearName = 'Previous Years';
       const balance = Number(inv.remainingBalance);
@@ -804,7 +805,8 @@ export class BillingService {
       paidPercentage,
       financialStatus,
       totalPaidAmount: totalPaid,
-      feeSummary
+      feeSummary,
+      rawOpportunity: openOpp,
     };
   }
 

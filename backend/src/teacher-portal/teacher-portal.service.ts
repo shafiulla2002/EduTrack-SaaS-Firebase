@@ -2,8 +2,9 @@ import { Injectable, BadRequestException, UnauthorizedException, NotFoundExcepti
 import { PrismaService } from '../prisma.service';
 import { AttendanceService } from '../attendance/attendance.service';
 import { ExamsService } from '../exams/exams.service';
+import { formatAttendanceDate } from '../attendance/date.utils';
 import * as bcrypt from 'bcrypt';
-import { Role } from '@prisma/client';
+import { Role, Prisma } from '@prisma/client';
 
 @Injectable()
 export class TeacherPortalService {
@@ -30,13 +31,21 @@ export class TeacherPortalService {
 
   // Centralized helper to get teacher staff profile by userId and ensure multi-tenant safety
   async getStaffProfile(userId: string, tenantId: string) {
+    const now = Date.now();
+    const cacheKey = `${tenantId}:${userId}:staff_profile`;
+    const cached = this.teacherCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const staff = await this.prisma.staffProfile.findFirst({
-      where: { userId, tenantId, user: { isActive: true } },
+      where: { userId, user: { tenantId, isActive: true } },
       include: { user: true },
     });
     if (!staff) {
       throw new UnauthorizedException('Active Teacher profile not found for this user.');
     }
+    this.teacherCache.set(cacheKey, { data: staff, expiresAt: now + 60000 });
     return staff;
   }
 
@@ -91,7 +100,7 @@ export class TeacherPortalService {
     });
   }
 
-  // 1. Dashboard Stats
+  // 1. Dashboard Stats (Optimized cold-load path with DB-level aggregations and 100% data parity)
   async getDashboardStats(userId: string, tenantId: string) {
     const cacheKey = `${tenantId}:${userId}:dashboard`;
     const cached = this.teacherCache.get(cacheKey);
@@ -108,14 +117,13 @@ export class TeacherPortalService {
     const todayDay = days[today.getDay()];
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-    // Execute staff-dependent queries concurrently
+    // Batch 1: Concurrent execution of staff-scoped items
     const [
       todayClasses,
       assignments,
       weeklyPeriods,
-      homeworkPendingCount,
+      homeworkCounts,
       currentLeave,
-      homeworkCreated,
       announcementsSent,
       upcomingEvents
     ] = await Promise.all([
@@ -137,7 +145,7 @@ export class TeacherPortalService {
       // 2. Assignments
       this.prisma.teacherAssignment.findMany({
         where: { tenantId, teacherId: staff.id },
-        include: { classSection: true },
+        select: { classSectionId: true, subjectId: true },
       }),
 
       // 2b. Timetable Periods
@@ -146,14 +154,14 @@ export class TeacherPortalService {
         select: { classSectionId: true, subjectId: true },
       }),
 
-      // 3. Today's Homework Pending
-      this.prisma.homework.count({
-        where: {
-          tenantId,
-          teacherId: staff.id,
-          dueDate: todayStart,
-        },
-      }),
+      // 3. Consolidated Homework counts (due today + total created in single DB aggregation)
+      this.prisma.$queryRaw<Array<{ homeworkPendingCount: number; homeworkCreated: number }>>`
+        SELECT
+          COUNT(CASE WHEN "dueDate" = ${todayStart} THEN 1 END)::int AS "homeworkPendingCount",
+          COUNT(*)::int AS "homeworkCreated"
+        FROM "Homework"
+        WHERE "tenantId" = ${tenantId} AND "teacherId" = ${staff.id}
+      `,
 
       // 4. Leave status today
       this.prisma.leaveRequest.findFirst({
@@ -163,28 +171,28 @@ export class TeacherPortalService {
           startDate: { lte: todayStart },
           endDate: { gte: todayStart },
         },
+        select: { status: true },
       }),
 
-      // 5. Homework created
-      this.prisma.homework.count({
-        where: { tenantId, teacherId: staff.id },
-      }),
-
-      // 6. Announcements sent
+      // 5. Announcements sent
       this.prisma.announcement.count({
         where: { tenantId, teacherId: staff.id },
       }),
 
-      // 7. Today's Events / Notice Board
+      // 6. Today's Events / Notice Board
       this.prisma.announcement.findMany({
         where: {
           tenantId,
           priority: 'High',
           createdAt: { gte: todayStart },
         },
+        select: { id: true, title: true, content: true },
         take: 3,
       }),
     ]);
+
+    const homeworkPendingCount = Number(homeworkCounts[0]?.homeworkPendingCount || 0);
+    const homeworkCreated = Number(homeworkCounts[0]?.homeworkCreated || 0);
 
     // Unique class-section and subject IDs for bulk queries
     const uniqueClassSectionIds = Array.from(
@@ -201,20 +209,54 @@ export class TeacherPortalService {
     );
     const totalSubjects = uniqueSubjectIds.length;
 
-    // Execute bulk queries concurrently across class-sections
+    if (uniqueClassSectionIds.length === 0) {
+      const emptyResult = {
+        teacherName: staff.user?.name || '',
+        today: {
+          classes: todayClasses
+            .map(p => ({
+              id: p.id,
+              classSectionId: p.classSectionId,
+              subjectId: p.subjectId,
+              className: `${p.classSection.class.name} - ${p.classSection.section.name}`,
+              subjectName: p.subject.name,
+              time: `${p.periodTiming.startTime} - ${p.periodTiming.endTime}`,
+              periodNumber: p.periodTiming.periodNumber,
+            }))
+            .sort((a, b) => (a.periodNumber || 0) - (b.periodNumber || 0)),
+          attendancePending: 0,
+          homeworkPending: homeworkPendingCount,
+          exams: [],
+          leaveStatus: currentLeave ? currentLeave.status : 'None Active',
+          events: upcomingEvents.map(e => ({ id: e.id, title: e.title, content: e.content })),
+        },
+        stats: {
+          assignedStudents: 0,
+          assignedSubjects: totalSubjects,
+          attendanceRate: 100,
+          marksPending: 0,
+          homeworkCreated,
+          announcementsSent,
+        },
+      };
+      this.teacherCache.set(cacheKey, { data: emptyResult, expiresAt: now + 30000 });
+      return emptyResult;
+    }
+
+    // Batch 2: Bulk queries across authorized class-sections with DB-level aggregation
     const [
       totalStudents,
       todaySessions,
       todayExams,
-      sessions,
-      examsInClassSections
+      attendanceAgg,
+      marksPendingResult
     ] = await Promise.all([
-      // 8. Stats - Assigned Students
+      // 7. Stats - Assigned Students
       this.prisma.studentProfile.count({
         where: { tenantId, classSectionId: { in: uniqueClassSectionIds } },
       }),
 
-      // 9. Today's Attendance Sessions
+      // 8. Today's Attendance Sessions
       this.prisma.attendanceSession.findMany({
         where: {
           tenantId,
@@ -224,7 +266,7 @@ export class TeacherPortalService {
         select: { classSectionId: true },
       }),
 
-      // 10. Exams Today
+      // 9. Exams Today
       this.prisma.exam.findMany({
         where: {
           tenantId,
@@ -238,27 +280,37 @@ export class TeacherPortalService {
         },
       }),
 
-      // 11. Performance Average (Attendance Sessions)
-      this.prisma.attendanceSession.findMany({
-        where: { tenantId, classSectionId: { in: uniqueClassSectionIds } },
-        select: { presentCount: true, totalStudents: true },
-      }),
+      // 10. Performance Average (Aggregated directly in PostgreSQL)
+      this.prisma.$queryRaw<Array<{ totalPresent: bigint; totalRoster: bigint }>>`
+        SELECT
+          COALESCE(SUM("presentCount"), 0)::bigint AS "totalPresent",
+          COALESCE(SUM("totalStudents"), 0)::bigint AS "totalRoster"
+        FROM "AttendanceSession"
+        WHERE "tenantId" = ${tenantId}
+          AND "classSectionId" IN (${Prisma.join(uniqueClassSectionIds)})
+      `,
 
-      // 12. Pending Marks (Exams)
-      this.prisma.exam.findMany({
-        where: { tenantId, classSectionId: { in: uniqueClassSectionIds } },
-        include: { examMarks: true },
-      })
+      // 11. Pending Marks (Counted directly in PostgreSQL via anti-join check)
+      this.prisma.$queryRaw<Array<{ pendingMarksCount: number }>>`
+        SELECT
+          COUNT(*)::int AS "pendingMarksCount"
+        FROM "Exam" e
+        WHERE e."tenantId" = ${tenantId}
+          AND e."classSectionId" IN (${Prisma.join(uniqueClassSectionIds)})
+          AND NOT EXISTS (
+            SELECT 1 FROM "ExamMark" em WHERE em."examId" = e.id AND em."tenantId" = ${tenantId}
+          )
+      `
     ]);
 
     const completedSessionIds = new Set(todaySessions.map(s => s.classSectionId));
     const pendingAttendanceCount = uniqueClassSectionIds.filter(id => !completedSessionIds.has(id)).length;
 
-    const totalPresent = sessions.reduce((sum, s) => sum + s.presentCount, 0);
-    const totalRoster = sessions.reduce((sum, s) => sum + s.totalStudents, 0);
+    const totalPresent = Number(attendanceAgg[0]?.totalPresent || 0);
+    const totalRoster = Number(attendanceAgg[0]?.totalRoster || 0);
     const attendancePercentage = totalRoster > 0 ? Math.round((totalPresent / totalRoster) * 1000) / 10 : 100;
 
-    const pendingMarksCount = examsInClassSections.filter(e => e.examMarks.length === 0).length;
+    const pendingMarksCount = Number(marksPendingResult[0]?.pendingMarksCount || 0);
 
     const result = {
       teacherName: staff.user?.name || '',
@@ -297,6 +349,7 @@ export class TeacherPortalService {
     this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
     return result;
   }
+
 
   // 2. Profile Management
   async getProfile(userId: string, tenantId: string) {
@@ -396,15 +449,15 @@ export class TeacherPortalService {
       return cached.data;
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) return [];
+    const staff = await this.getStaffProfile(userId, tenantId);
 
-    if (user.role === Role.SCHOOL_ADMIN) {
+    if (staff.user?.role === Role.SCHOOL_ADMIN || staff.user?.role === Role.SUPER_ADMIN) {
       const classSections = await this.prisma.classSection.findMany({
         where: { tenantId },
-        include: {
-          class: true,
-          section: true,
+        select: {
+          id: true,
+          class: { select: { name: true } },
+          section: { select: { name: true } },
           _count: {
             select: { students: true }
           }
@@ -422,36 +475,40 @@ export class TeacherPortalService {
       return result;
     }
 
-    const staff = await this.getStaffProfile(userId, tenantId);
     const [assignments, periods] = await Promise.all([
       this.prisma.teacherAssignment.findMany({
         where: { tenantId, teacherId: staff.id },
-        include: {
+        select: {
+          classSectionId: true,
+          subjectId: true,
+          periodsPerWeek: true,
           classSection: {
-            include: {
-              class: true,
-              section: true,
+            select: {
+              class: { select: { name: true } },
+              section: { select: { name: true } },
               _count: {
                 select: { students: true },
               },
             },
           },
-          subject: true,
+          subject: { select: { name: true } },
         },
       }),
       this.prisma.period.findMany({
         where: { tenantId, teacherId: staff.id },
-        include: {
+        select: {
+          classSectionId: true,
+          subjectId: true,
           classSection: {
-            include: {
-              class: true,
-              section: true,
+            select: {
+              class: { select: { name: true } },
+              section: { select: { name: true } },
               _count: {
                 select: { students: true },
               },
             },
           },
-          subject: true,
+          subject: { select: { name: true } },
         },
       }),
     ]);
@@ -464,12 +521,12 @@ export class TeacherPortalService {
         uniqueAssignments.set(key, {
           classSectionId: a.classSectionId,
           subjectId: a.subjectId,
-          className: `${a.classSection.class.name} - ${a.classSection.section.name}`,
-          classOnlyName: a.classSection.class.name,
-          sectionOnlyName: a.classSection.section.name,
-          subjectName: a.subject.name,
+          className: `${a.classSection?.class?.name || ''} - ${a.classSection?.section?.name || ''}`,
+          classOnlyName: a.classSection?.class?.name || '',
+          sectionOnlyName: a.classSection?.section?.name || '',
+          subjectName: a.subject?.name || '',
           periodsPerWeek: a.periodsPerWeek,
-          strength: a.classSection._count.students,
+          strength: a.classSection?._count?.students || 0,
         });
       }
     }
@@ -480,12 +537,12 @@ export class TeacherPortalService {
         uniqueAssignments.set(key, {
           classSectionId: p.classSectionId,
           subjectId: p.subjectId,
-          className: `${p.classSection.class.name} - ${p.classSection.section.name}`,
-          classOnlyName: p.classSection.class.name,
-          sectionOnlyName: p.classSection.section.name,
-          subjectName: p.subject.name,
+          className: `${p.classSection?.class?.name || ''} - ${p.classSection?.section?.name || ''}`,
+          classOnlyName: p.classSection?.class?.name || '',
+          sectionOnlyName: p.classSection?.section?.name || '',
+          subjectName: p.subject?.name || '',
           periodsPerWeek: 1,
-          strength: p.classSection._count.students,
+          strength: p.classSection?._count?.students || 0,
         });
       }
     }
@@ -497,15 +554,16 @@ export class TeacherPortalService {
   }
 
   async getStudentsForClassSection(userId: string, tenantId: string, classSectionId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (user && user.role === Role.TEACHER) {
-      const staff = await this.getStaffProfile(userId, tenantId);
+    const staff = await this.getStaffProfile(userId, tenantId);
+    if (staff.user?.role === Role.TEACHER) {
       await this.verifyTeacherAssignment(staff.id, classSectionId);
     }
 
     return this.prisma.studentProfile.findMany({
       where: { tenantId, classSectionId, user: { isActive: true } },
-      include: {
+      select: {
+        id: true,
+        rollNo: true,
         user: { select: { name: true, email: true, phone: true, avatarUrl: true } },
       },
       orderBy: { user: { name: 'asc' } },
@@ -514,31 +572,41 @@ export class TeacherPortalService {
 
   // 4. Attendance (Strict permission checked proxy to existing service)
   async getClassesForAttendance(userId: string, tenantId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (user?.role === Role.SCHOOL_ADMIN || user?.role === Role.SUPER_ADMIN) {
-      const classes = await this.prisma.class.findMany({
-        where: { tenantId, isActive: true },
-        orderBy: { name: 'asc' },
-      });
-      return classes.map((c) => ({
-        label: c.name,
-        value: c.name,
-      }));
+    const cacheKey = `${tenantId}:${userId}:attendance_classes`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
     }
 
     const staff = await this.getStaffProfile(userId, tenantId);
+
+    if (staff.user?.role === Role.SCHOOL_ADMIN || staff.user?.role === Role.SUPER_ADMIN) {
+      const classes = await this.prisma.class.findMany({
+        where: { tenantId, isActive: true },
+        select: { name: true },
+        orderBy: { name: 'asc' },
+      });
+      const result = classes.map((c) => ({
+        label: c.name,
+        value: c.name,
+      }));
+      this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+      return result;
+    }
+
     const [assignments, periods, advisorSections] = await Promise.all([
       this.prisma.teacherAssignment.findMany({
         where: { tenantId, teacherId: staff.id },
-        include: { classSection: { include: { class: true } } },
+        select: { classSection: { select: { class: { select: { id: true, name: true } } } } },
       }),
       this.prisma.period.findMany({
         where: { tenantId, teacherId: staff.id },
-        include: { classSection: { include: { class: true } } },
+        select: { classSection: { select: { class: { select: { id: true, name: true } } } } },
       }),
       this.prisma.classSection.findMany({
         where: { tenantId, teacherId: staff.id },
-        include: { class: true },
+        select: { class: { select: { id: true, name: true } } },
       }),
     ]);
 
@@ -559,33 +627,45 @@ export class TeacherPortalService {
       }
     });
 
-    return Array.from(classesMap.values()).map((c: any) => ({
+    const result = Array.from(classesMap.values()).map((c: any) => ({
       label: c.name,
       value: c.name,
     }));
+
+    this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getSectionsForAttendance(userId: string, tenantId: string, classVal: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (user?.role === Role.SCHOOL_ADMIN || user?.role === Role.SUPER_ADMIN) {
+    const cacheKey = `${tenantId}:${userId}:attendance_sections:${classVal}`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const staff = await this.getStaffProfile(userId, tenantId);
+
+    if (staff.user?.role === Role.SCHOOL_ADMIN || staff.user?.role === Role.SUPER_ADMIN) {
       const classSections = await this.prisma.classSection.findMany({
         where: {
           tenantId,
           class: { name: { equals: classVal, mode: 'insensitive' } },
         },
-        include: { section: true },
+        select: { section: { select: { id: true, name: true } } },
       });
       const sectionsMap = new Map();
       classSections.forEach(cs => {
         if (cs.section) sectionsMap.set(cs.section.id, cs.section);
       });
-      return Array.from(sectionsMap.values()).map((s: any) => ({
+      const result = Array.from(sectionsMap.values()).map((s: any) => ({
         label: s.name,
         value: s.name,
       }));
+      this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+      return result;
     }
 
-    const staff = await this.getStaffProfile(userId, tenantId);
     const [assignments, periods, advisorSections] = await Promise.all([
       this.prisma.teacherAssignment.findMany({
         where: {
@@ -593,7 +673,7 @@ export class TeacherPortalService {
           teacherId: staff.id,
           classSection: { class: { name: { equals: classVal, mode: 'insensitive' } } },
         },
-        include: { classSection: { include: { section: true } } },
+        select: { classSection: { select: { section: { select: { id: true, name: true } } } } },
       }),
       this.prisma.period.findMany({
         where: {
@@ -601,7 +681,7 @@ export class TeacherPortalService {
           teacherId: staff.id,
           classSection: { class: { name: { equals: classVal, mode: 'insensitive' } } },
         },
-        include: { classSection: { include: { section: true } } },
+        select: { classSection: { select: { section: { select: { id: true, name: true } } } } },
       }),
       this.prisma.classSection.findMany({
         where: {
@@ -609,7 +689,7 @@ export class TeacherPortalService {
           teacherId: staff.id,
           class: { name: { equals: classVal, mode: 'insensitive' } },
         },
-        include: { section: true },
+        select: { section: { select: { id: true, name: true } } },
       }),
     ]);
 
@@ -630,10 +710,13 @@ export class TeacherPortalService {
       }
     });
 
-    return Array.from(sectionsMap.values()).map((s: any) => ({
+    const result = Array.from(sectionsMap.values()).map((s: any) => ({
       label: s.name,
       value: s.name,
     }));
+
+    this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getStudentsForAttendance(userId: string, tenantId: string, classVal: string, sectionVal: string) {
@@ -686,26 +769,44 @@ export class TeacherPortalService {
   }
 
   async getAttendanceHistory(userId: string, tenantId: string) {
+    const now = Date.now();
+    const cacheKey = `${tenantId}:${userId}:attendance_history`;
+    const cached = this.teacherCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const staff = await this.getStaffProfile(userId, tenantId);
     const sessions = await this.prisma.attendanceSession.findMany({
       where: { tenantId, takenById: staff.id },
-      include: {
+      select: {
+        id: true,
+        date: true,
+        presentCount: true,
+        absentCount: true,
+        totalStudents: true,
         classSection: {
-          include: { class: true, section: true },
+          select: {
+            class: { select: { name: true } },
+            section: { select: { name: true } },
+          },
         },
       },
       orderBy: { date: 'desc' },
       take: 100,
     });
 
-    return sessions.map(s => ({
+    const result = sessions.map(s => ({
       id: s.id,
-      date: s.date.toISOString().split('T')[0],
-      className: `${s.classSection.class.name} - ${s.classSection.section.name}`,
+      date: formatAttendanceDate(s.date),
+      className: `${s.classSection?.class?.name || ''} - ${s.classSection?.section?.name || ''}`,
       presentCount: s.presentCount,
       absentCount: s.absentCount,
       totalStudents: s.totalStudents,
     }));
+
+    this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   // 5. Marks & Exam Management (Strict permission checked proxy to existing service)
@@ -1189,53 +1290,87 @@ export class TeacherPortalService {
 
   // 8. Announcements CRUD
   async getAnnouncements(userId: string, tenantId: string) {
+    const cacheKey = `${tenantId}:${userId}:announcements`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) return [];
 
+    let announcements: any[] = [];
+
     if (user.role === Role.SCHOOL_ADMIN) {
-      return this.prisma.announcement.findMany({
+      announcements = await this.prisma.announcement.findMany({
         where: { tenantId },
         include: {
-          classSection: { include: { class: true, section: true } },
-          teacher: { include: { user: { select: { id: true, name: true } } } }
+          classSection: {
+            select: {
+              id: true,
+              class: { select: { id: true, name: true } },
+              section: { select: { id: true, name: true } },
+            }
+          },
+          teacher: {
+            select: {
+              id: true,
+              user: { select: { id: true, name: true } }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    } else {
+      const staff = await this.prisma.staffProfile.findFirst({
+        where: { userId, tenantId },
+        include: {
+          classSections: { select: { id: true } },
+          teacherAssignments: { select: { classSectionId: true } },
+          periods: { select: { classSectionId: true } },
+        }
+      });
+      if (!staff) return [];
+
+      const advisorClassIds = staff.classSections.map(cs => cs.id);
+      const assignedClassIds = staff.teacherAssignments.map(ta => ta.classSectionId);
+      const periodClassIds = staff.periods.map(p => p.classSectionId);
+      const classSectionIds = Array.from(new Set([...advisorClassIds, ...assignedClassIds, ...periodClassIds]));
+
+      announcements = await this.prisma.announcement.findMany({
+        where: {
+          tenantId,
+          OR: [
+            // Created by/for this teacher
+            { teacherId: staff.id },
+            // Targeted to classes this teacher teaches
+            { classSectionId: { in: classSectionIds } },
+            // Targeted to the teaching staff, entire school, or target scopes that are not non-teaching staff
+            { audienceType: { in: ['INSTITUTION', 'TEACHERS', 'STUDENTS', 'PARENTS', 'CLASS'] } }
+          ]
+        },
+        include: {
+          classSection: {
+            select: {
+              id: true,
+              class: { select: { id: true, name: true } },
+              section: { select: { id: true, name: true } },
+            }
+          },
+          teacher: {
+            select: {
+              id: true,
+              user: { select: { id: true, name: true } }
+            }
+          }
         },
         orderBy: { createdAt: 'desc' },
       });
     }
 
-    const staff = await this.prisma.staffProfile.findFirst({
-      where: { userId, tenantId },
-      include: {
-        classSections: { select: { id: true } },
-        teacherAssignments: { select: { classSectionId: true } },
-        periods: { select: { classSectionId: true } },
-      }
-    });
-    if (!staff) return [];
-
-    const advisorClassIds = staff.classSections.map(cs => cs.id);
-    const assignedClassIds = staff.teacherAssignments.map(ta => ta.classSectionId);
-    const periodClassIds = staff.periods.map(p => p.classSectionId);
-    const classSectionIds = Array.from(new Set([...advisorClassIds, ...assignedClassIds, ...periodClassIds]));
-
-    return this.prisma.announcement.findMany({
-      where: {
-        tenantId,
-        OR: [
-          // Created by/for this teacher
-          { teacherId: staff.id },
-          // Targeted to classes this teacher teaches
-          { classSectionId: { in: classSectionIds } },
-          // Targeted to the teaching staff, entire school, or target scopes that are not non-teaching staff
-          { audienceType: { in: ['INSTITUTION', 'TEACHERS', 'STUDENTS', 'PARENTS', 'CLASS'] } }
-        ]
-      },
-      include: {
-        classSection: { include: { class: true, section: true } },
-        teacher: { include: { user: { select: { id: true, name: true } } } }
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    this.teacherCache.set(cacheKey, { data: announcements, expiresAt: now + 30000 });
+    return announcements;
   }
 
   async createAnnouncement(userId: string, tenantId: string, data: any) {
@@ -1307,6 +1442,7 @@ export class TeacherPortalService {
       });
     }
 
+    this.invalidateCache(tenantId);
     await this.logAction(userId, tenantId, 'RECORD_CREATE', 'Announcement', announcement.id, data);
     return announcement;
   }
@@ -1323,6 +1459,7 @@ export class TeacherPortalService {
         throw new NotFoundException('Announcement not found.');
       }
       await this.prisma.announcement.delete({ where: { id } });
+      this.invalidateCache(tenantId);
       await this.logAction(userId, tenantId, 'RECORD_DELETE', 'Announcement', id);
       return { success: true };
     }
@@ -1336,6 +1473,7 @@ export class TeacherPortalService {
     }
 
     await this.prisma.announcement.delete({ where: { id } });
+    this.invalidateCache(tenantId);
     await this.logAction(userId, tenantId, 'RECORD_DELETE', 'Announcement', id);
     return { success: true };
   }
@@ -1356,28 +1494,65 @@ export class TeacherPortalService {
         data: { readStatus },
       });
     }
+    this.invalidateCache(tenantId);
     return { success: true };
   }
 
   // 9. Leave Management CRUD
   async getLeaveRequests(userId: string, tenantId: string) {
+    const cacheKey = `${tenantId}:${userId}:leave_requests`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) return [];
 
-    let leaves = [];
+    let leaves: any[] = [];
     if (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN) {
       leaves = await this.prisma.leaveRequest.findMany({
         where: { tenantId },
-        include: {
+        select: {
+          id: true,
+          teacherId: true,
+          studentId: true,
+          classSectionId: true,
+          submittedById: true,
+          applicantType: true,
+          leaveType: true,
+          startDate: true,
+          endDate: true,
+          reason: true,
+          status: true,
+          attachment: true,
+          approver: true,
+          approvedById: true,
+          approvedRole: true,
+          comments: true,
+          approvedDate: true,
+          rejectedDate: true,
+          tenantId: true,
+          createdAt: true,
+          updatedAt: true,
           teacher: {
-            include: {
+            select: {
+              id: true,
               user: { select: { id: true, name: true, email: true } }
             }
           },
           student: {
-            include: {
+            select: {
+              id: true,
               user: { select: { id: true, name: true, email: true } },
-              classSection: { include: { class: true, section: true } }
+              classSection: {
+                select: {
+                  id: true,
+                  class: { select: { id: true, name: true } },
+                  section: { select: { id: true, name: true } }
+                }
+              }
             }
           },
           submittedBy: { select: { id: true, name: true, email: true } },
@@ -1387,14 +1562,17 @@ export class TeacherPortalService {
       });
     } else {
       const staff = await this.getStaffProfile(userId, tenantId);
-      const teacherAssignments = await this.prisma.teacherAssignment.findMany({
-        where: { teacherId: staff.id, tenantId },
-        select: { classSectionId: true },
-      });
-      const advisorClasses = await this.prisma.classSection.findMany({
-        where: { teacherId: staff.id, tenantId },
-        select: { id: true },
-      });
+      const [teacherAssignments, advisorClasses] = await Promise.all([
+        this.prisma.teacherAssignment.findMany({
+          where: { teacherId: staff.id, tenantId },
+          select: { classSectionId: true },
+        }),
+        this.prisma.classSection.findMany({
+          where: { teacherId: staff.id, tenantId },
+          select: { id: true },
+        }),
+      ]);
+
       const assignedSectionIds = Array.from(new Set([
         ...teacherAssignments.map(a => a.classSectionId),
         ...advisorClasses.map(c => c.id),
@@ -1408,16 +1586,45 @@ export class TeacherPortalService {
             { classSectionId: { in: assignedSectionIds } },
           ]
         },
-        include: {
+        select: {
+          id: true,
+          teacherId: true,
+          studentId: true,
+          classSectionId: true,
+          submittedById: true,
+          applicantType: true,
+          leaveType: true,
+          startDate: true,
+          endDate: true,
+          reason: true,
+          status: true,
+          attachment: true,
+          approver: true,
+          approvedById: true,
+          approvedRole: true,
+          comments: true,
+          approvedDate: true,
+          rejectedDate: true,
+          tenantId: true,
+          createdAt: true,
+          updatedAt: true,
           teacher: {
-            include: {
+            select: {
+              id: true,
               user: { select: { id: true, name: true, email: true } }
             }
           },
           student: {
-            include: {
+            select: {
+              id: true,
               user: { select: { id: true, name: true, email: true } },
-              classSection: { include: { class: true, section: true } }
+              classSection: {
+                select: {
+                  id: true,
+                  class: { select: { id: true, name: true } },
+                  section: { select: { id: true, name: true } }
+                }
+              }
             }
           },
           submittedBy: { select: { id: true, name: true, email: true } },
@@ -1428,11 +1635,20 @@ export class TeacherPortalService {
     }
 
     const leaveIds = leaves.map(l => l.id);
-    const histories = await this.prisma.statusHistory.findMany({
+    const histories = leaveIds.length > 0 ? await this.prisma.statusHistory.findMany({
       where: { entityType: 'LEAVE_REQUEST', entityId: { in: leaveIds } },
-      include: { updatedBy: { select: { id: true, name: true, role: true } } },
+      select: {
+        id: true,
+        entityId: true,
+        previousStatus: true,
+        currentStatus: true,
+        remarks: true,
+        updatedById: true,
+        createdAt: true,
+        updatedBy: { select: { id: true, name: true, role: true } },
+      },
       orderBy: { createdAt: 'asc' },
-    });
+    }) : [];
 
     const historyMap = new Map<string, any[]>();
     for (const h of histories) {
@@ -1440,10 +1656,13 @@ export class TeacherPortalService {
       historyMap.get(h.entityId)!.push(h);
     }
 
-    return leaves.map(l => ({
+    const result = leaves.map(l => ({
       ...l,
       statusHistories: historyMap.get(l.id) || [],
     }));
+
+    this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async updateLeaveStatus(userId: string, tenantId: string, id: string, data: any) {
@@ -1532,6 +1751,7 @@ export class TeacherPortalService {
       }
     }).catch(() => {});
 
+    this.invalidateCache(tenantId);
     await this.logAction(userId, tenantId, 'RECORD_UPDATE', 'LeaveRequest', id, data);
     return updated;
   }
@@ -1599,6 +1819,7 @@ export class TeacherPortalService {
       });
     }
 
+    this.invalidateCache(tenantId);
     await this.logAction(userId, tenantId, 'RECORD_CREATE', 'LeaveRequest', leave.id, data);
     return leave;
   }
@@ -1613,6 +1834,7 @@ export class TeacherPortalService {
     }
 
     await this.prisma.leaveRequest.delete({ where: { id } });
+    this.invalidateCache(tenantId);
     await this.logAction(userId, tenantId, 'RECORD_DELETE', 'LeaveRequest', id);
     return { success: true };
   }

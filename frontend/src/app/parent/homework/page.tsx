@@ -104,8 +104,8 @@ export default function HomeworkPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const loadAttachmentDetails = (attachmentsList: string[], index: number): PreviewState => {
-    const att = attachmentsList[index] || '';
+  const loadAttachmentDetails = (attachmentsList: string[], index: number, overrideContent?: string): PreviewState => {
+    const att = overrideContent || attachmentsList[index] || '';
     let category: 'pdf' | 'image' | 'text' | 'unsupported' = 'unsupported';
     let extension = 'file';
     let blobUrl: string | undefined = undefined;
@@ -169,8 +169,16 @@ export default function HomeworkPage() {
         category = 'text';
         extension = cleanUrl.split('.').pop() || 'txt';
       } else {
-        category = 'unsupported';
-        extension = cleanUrl.split('.').pop() || 'file';
+        const extMatch = att.match(/[?&]ext=([a-zA-Z0-9]+)/);
+        if (extMatch) {
+          extension = extMatch[1].toLowerCase();
+          if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(extension)) category = 'image';
+          else if (extension === 'pdf') category = 'pdf';
+          else if (['txt', 'csv', 'json', 'log', 'md'].includes(extension)) category = 'text';
+        } else {
+          category = 'unsupported';
+          extension = cleanUrl.split('.').pop() || 'file';
+        }
       }
     }
 
@@ -189,14 +197,51 @@ export default function HomeworkPage() {
     };
   };
 
-  const handleOpenPreview = (attachmentsList: string[], index: number) => {
+  const handleOpenPreview = async (attachmentsList: string[], index: number) => {
     if (!attachmentsList || attachmentsList.length === 0) return;
     setZoomLevel(100);
-    const details = loadAttachmentDetails(attachmentsList, index);
-    setPreviewAttachment(details);
+    const att = attachmentsList[index] || '';
+
+    if (att.includes('/attachment?')) {
+      const extMatch = att.match(/[?&]ext=([a-zA-Z0-9]+)/);
+      const hintExt = extMatch ? extMatch[1].toLowerCase() : 'file';
+
+      setPreviewAttachment({
+        attachmentsList,
+        currentIndex: index,
+        url: att,
+        fileName: `Attachment File ${index + 1}`,
+        category: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(hintExt) ? 'image' : (hintExt === 'pdf' ? 'pdf' : 'unsupported'),
+        extension: hintExt,
+        loading: true,
+        error: false,
+      });
+
+      try {
+        const res = await api.get(att);
+        const rawContent = res.data?.attachment || res.data?.url || att;
+        const details = loadAttachmentDetails(attachmentsList, index, rawContent);
+        setPreviewAttachment(details);
+      } catch (err) {
+        console.error('Failed to fetch attachment from endpoint:', err);
+        setPreviewAttachment({
+          attachmentsList,
+          currentIndex: index,
+          url: att,
+          fileName: `Attachment File ${index + 1}`,
+          category: 'unsupported',
+          extension: hintExt,
+          loading: false,
+          error: true,
+        });
+      }
+    } else {
+      const details = loadAttachmentDetails(attachmentsList, index);
+      setPreviewAttachment(details);
+    }
   };
 
-  const handleNavAttachment = (newIndex: number) => {
+  const handleNavAttachment = async (newIndex: number) => {
     if (!previewAttachment) return;
     if (newIndex < 0 || newIndex >= previewAttachment.attachmentsList.length) return;
 
@@ -205,8 +250,45 @@ export default function HomeworkPage() {
     }
 
     setZoomLevel(100);
-    const details = loadAttachmentDetails(previewAttachment.attachmentsList, newIndex);
-    setPreviewAttachment(details);
+    const att = previewAttachment.attachmentsList[newIndex] || '';
+
+    if (att.includes('/attachment?')) {
+      const extMatch = att.match(/[?&]ext=([a-zA-Z0-9]+)/);
+      const hintExt = extMatch ? extMatch[1].toLowerCase() : 'file';
+
+      setPreviewAttachment({
+        attachmentsList: previewAttachment.attachmentsList,
+        currentIndex: newIndex,
+        url: att,
+        fileName: `Attachment File ${newIndex + 1}`,
+        category: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(hintExt) ? 'image' : (hintExt === 'pdf' ? 'pdf' : 'unsupported'),
+        extension: hintExt,
+        loading: true,
+        error: false,
+      });
+
+      try {
+        const res = await api.get(att);
+        const rawContent = res.data?.attachment || res.data?.url || att;
+        const details = loadAttachmentDetails(previewAttachment.attachmentsList, newIndex, rawContent);
+        setPreviewAttachment(details);
+      } catch (err) {
+        console.error('Failed to navigate attachment:', err);
+        setPreviewAttachment({
+          attachmentsList: previewAttachment.attachmentsList,
+          currentIndex: newIndex,
+          url: att,
+          fileName: `Attachment File ${newIndex + 1}`,
+          category: 'unsupported',
+          extension: hintExt,
+          loading: false,
+          error: true,
+        });
+      }
+    } else {
+      const details = loadAttachmentDetails(previewAttachment.attachmentsList, newIndex);
+      setPreviewAttachment(details);
+    }
   };
 
   const handleDownloadAttachment = async (preview: PreviewState) => {
@@ -253,19 +335,10 @@ export default function HomeworkPage() {
   };
 
   useEffect(() => {
-    if (selectedChild) {
+    if (selectedChild?.id) {
       fetchHomework(selectedChild.id);
     }
-  }, [selectedChild]);
-
-  // Listen to switcher events
-  useEffect(() => {
-    const handleChildChange = (e: any) => {
-      fetchHomework(e.detail);
-    };
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, []);
+  }, [selectedChild?.id]);
 
   const handleSubmitAssignment = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -54,85 +54,36 @@ export class DashboardService {
     sixMonthsAgo.setDate(1);
     sixMonthsAgo.setHours(0, 0, 0, 0);
 
-    // Execute database-side aggregations and targeted lookups concurrently
+    // Execute unified database aggregations and targeted lookups concurrently
     const [
-      studentsCount,
-      teachersCount,
-      classesCount,
-      revenueAggRaw,
-      expenseAgg,
-      attendanceRaw,
+      metricsRaw,
       scoreRaw,
-      leaveRequestsAgg,
-      studentTrendsAgg,
       recentStudents,
       invoices,
       salaryExpenses,
       monthlyInvoicesRaw,
       monthlyExpensesRaw
     ] = await Promise.all([
-      // 1. Total Students
-      this.prisma.studentProfile.count({
-        where: {
-          user: {
-            tenantId,
-            isActive: true,
-          },
-        },
-      }).catch(() => 0),
+      // 1. Single Unified Query for primary counts, revenue, expenses, attendance & leave metrics
+      this.prisma.$queryRaw<Array<any>>`
+        SELECT
+          (SELECT COUNT(*)::int FROM "StudentProfile" sp JOIN "User" u ON sp."userId" = u.id WHERE u."tenantId" = ${tenantId} AND u."isActive" = true) AS "studentsCount",
+          (SELECT COUNT(*)::int FROM "StaffProfile" sp JOIN "User" u ON sp."userId" = u.id WHERE u."tenantId" = ${tenantId} AND u."isActive" = true AND u.role::text IN ('TEACHER', 'STAFF')) AS "teachersCount",
+          (SELECT COUNT(*)::int FROM "ClassSection" cs JOIN "Class" c ON cs."classId" = c.id WHERE cs."tenantId" = ${tenantId} AND c."isActive" = true) AS "classesCount",
+          (SELECT COALESCE(SUM("paidAmount"), 0)::float FROM "Invoice" WHERE "tenantId" = ${tenantId} AND status::text = 'PAID') AS "totalRevenue",
+          (SELECT COALESCE(SUM(CASE WHEN "invoiceDate" >= ${thisMonthStart} THEN "paidAmount" ELSE 0 END), 0)::float FROM "Invoice" WHERE "tenantId" = ${tenantId} AND status::text = 'PAID') AS "revThisMonth",
+          (SELECT COALESCE(SUM(CASE WHEN "invoiceDate" >= ${lastMonthStart} AND "invoiceDate" <= ${lastMonthEnd} THEN "paidAmount" ELSE 0 END), 0)::float FROM "Invoice" WHERE "tenantId" = ${tenantId} AND status::text = 'PAID') AS "revLastMonth",
+          (SELECT COALESCE(SUM("amount"), 0)::float FROM "Expense" WHERE "tenantId" = ${tenantId} AND status::text = 'PAID') AS "totalExpenses",
+          (SELECT COALESCE(SUM("presentCount"), 0)::float FROM "AttendanceSession" WHERE "tenantId" = ${tenantId}) AS "totalPresent",
+          (SELECT COALESCE(SUM("totalStudents"), 0)::float FROM "AttendanceSession" WHERE "tenantId" = ${tenantId}) AS "totalRoster",
+          (SELECT COUNT(CASE WHEN status::text = 'PENDING' THEN 1 END)::int FROM "LeaveRequest" WHERE "tenantId" = ${tenantId}) AS "pendingLeaveRequests",
+          (SELECT COUNT(CASE WHEN status::text = 'APPROVED' AND "approvedDate" >= ${todayStart} THEN 1 END)::int FROM "LeaveRequest" WHERE "tenantId" = ${tenantId}) AS "approvedToday",
+          (SELECT COUNT(CASE WHEN status::text = 'REJECTED' AND "rejectedDate" >= ${todayStart} THEN 1 END)::int FROM "LeaveRequest" WHERE "tenantId" = ${tenantId}) AS "rejectedToday",
+          (SELECT COUNT(CASE WHEN u."createdAt" >= ${thisMonthStart} THEN 1 END)::int FROM "StudentProfile" sp JOIN "User" u ON sp."userId" = u.id WHERE u."tenantId" = ${tenantId} AND u."isActive" = true) AS "studentsThisMonth",
+          (SELECT COUNT(CASE WHEN u."createdAt" >= ${lastMonthStart} AND u."createdAt" <= ${lastMonthEnd} THEN 1 END)::int FROM "StudentProfile" sp JOIN "User" u ON sp."userId" = u.id WHERE u."tenantId" = ${tenantId} AND u."isActive" = true) AS "studentsLastMonth"
+      `.catch(() => [{}]),
 
-      // 2. Total Teachers
-      this.prisma.staffProfile.count({
-        where: {
-          user: {
-            tenantId,
-            isActive: true,
-            role: { in: ['TEACHER', 'STAFF'] },
-          },
-        },
-      }).catch(() => 0),
-
-      // 3. Total Classes
-      this.prisma.classSection.count({
-        where: {
-          tenantId,
-          class: {
-            isActive: true,
-          },
-        },
-      }).catch(() => 0),
-
-      // 4. Combined Revenue (Total, This Month, Last Month) in 1 query
-      this.prisma.$queryRaw<Array<{ totalRevenue: number; revThisMonth: number; revLastMonth: number }>>`
-        SELECT 
-          COALESCE(SUM("paidAmount"), 0)::float AS "totalRevenue",
-          COALESCE(SUM(CASE WHEN "invoiceDate" >= ${thisMonthStart} THEN "paidAmount" ELSE 0 END), 0)::float AS "revThisMonth",
-          COALESCE(SUM(CASE WHEN "invoiceDate" >= ${lastMonthStart} AND "invoiceDate" <= ${lastMonthEnd} THEN "paidAmount" ELSE 0 END), 0)::float AS "revLastMonth"
-        FROM "Invoice"
-        WHERE "tenantId" = ${tenantId} AND status::text = 'PAID'
-      `.catch(() => [{ totalRevenue: 0, revThisMonth: 0, revLastMonth: 0 }]),
-
-      // 5. Total Expenses
-      this.prisma.expense.aggregate({
-        where: {
-          tenantId,
-          status: 'PAID',
-        },
-        _sum: {
-          amount: true,
-        },
-      }).catch(() => ({ _sum: { amount: 0 } })),
-
-      // 6. Average Attendance Rate (Database-side SUM aggregation preserving exact formula)
-      this.prisma.$queryRaw<Array<{ totalPresent: string | number; totalRoster: string | number }>>`
-        SELECT 
-          COALESCE(SUM("presentCount"), 0)::bigint AS "totalPresent",
-          COALESCE(SUM("totalStudents"), 0)::bigint AS "totalRoster"
-        FROM "AttendanceSession"
-        WHERE "tenantId" = ${tenantId}
-      `.catch(() => [{ totalPresent: 0, totalRoster: 0 }]),
-
-      // 7. Avg. Academic Score (Database-side percentage aggregation preserving exact formula)
+      // 2. Avg. Academic Score
       this.prisma.$queryRaw<Array<{ avgScore: number | null }>>`
         SELECT 
           COALESCE(
@@ -154,27 +105,7 @@ export class DashboardService {
         WHERE em."tenantId" = ${tenantId}
       `.catch(() => [{ avgScore: 0 }]),
 
-      // 8. Leave requests counts (Combined into 1 single query)
-      this.prisma.$queryRaw<Array<{ pendingCount: number; approvedToday: number; rejectedToday: number }>>`
-        SELECT
-          COUNT(CASE WHEN status::text = 'PENDING' THEN 1 END)::int AS "pendingCount",
-          COUNT(CASE WHEN status::text = 'APPROVED' AND "approvedDate" >= ${todayStart} THEN 1 END)::int AS "approvedToday",
-          COUNT(CASE WHEN status::text = 'REJECTED' AND "rejectedDate" >= ${todayStart} THEN 1 END)::int AS "rejectedToday"
-        FROM "LeaveRequest"
-        WHERE "tenantId" = ${tenantId}
-      `.catch(() => [{ pendingCount: 0, approvedToday: 0, rejectedToday: 0 }]),
-
-      // 9. Student trends (Combined into 1 single query)
-      this.prisma.$queryRaw<Array<{ thisMonth: number; lastMonth: number }>>`
-        SELECT
-          COUNT(CASE WHEN u."createdAt" >= ${thisMonthStart} THEN 1 END)::int AS "thisMonth",
-          COUNT(CASE WHEN u."createdAt" >= ${lastMonthStart} AND u."createdAt" <= ${lastMonthEnd} THEN 1 END)::int AS "lastMonth"
-        FROM "StudentProfile" sp
-        JOIN "User" u ON sp."userId" = u.id
-        WHERE u."tenantId" = ${tenantId} AND u."isActive" = true
-      `.catch(() => [{ thisMonth: 0, lastMonth: 0 }]),
-
-      // 10. Recent Admissions (Targeted field selection, top 10)
+      // 3. Recent Admissions (Targeted field selection, top 10)
       this.prisma.studentProfile.findMany({
         where: {
           user: {
@@ -206,7 +137,7 @@ export class DashboardService {
         },
       }).catch(() => []),
 
-      // 11. Recent Payments - Invoices (Targeted field selection, top 10)
+      // 4. Recent Payments - Invoices (Targeted field selection, top 10)
       this.prisma.invoice.findMany({
         where: {
           tenantId,
@@ -232,7 +163,7 @@ export class DashboardService {
         take: 10,
       }).catch(() => []),
 
-      // 12. Recent Payments - Salary Expenses (Targeted field selection, top 10)
+      // 5. Recent Payments - Salary Expenses (Targeted field selection, top 10)
       this.prisma.expense.findMany({
         where: {
           tenantId,
@@ -251,7 +182,7 @@ export class DashboardService {
         take: 10,
       }).catch(() => []),
 
-      // 13. Monthly chart invoices aggregations in database (Last 6 months)
+      // 6. Monthly chart invoices aggregations in database (Last 6 months)
       this.prisma.$queryRaw<Array<{ month: string; totalPaid: number }>>`
         SELECT 
           to_char("invoiceDate", 'YYYY-MM') AS "month",
@@ -263,7 +194,7 @@ export class DashboardService {
         GROUP BY to_char("invoiceDate", 'YYYY-MM')
       `.catch(() => []),
 
-      // 14. Monthly chart salary expenses aggregations in database (Last 6 months)
+      // 7. Monthly chart salary expenses aggregations in database (Last 6 months)
       this.prisma.$queryRaw<Array<{ month: string; totalSalary: number }>>`
         SELECT 
           to_char(date, 'YYYY-MM') AS "month",
@@ -277,25 +208,29 @@ export class DashboardService {
       `.catch(() => []),
     ]);
 
-    const totalRevenue = Number(revenueAggRaw[0]?.totalRevenue || 0);
-    const revThisMonth = Number(revenueAggRaw[0]?.revThisMonth || 0);
-    const revLastMonth = Number(revenueAggRaw[0]?.revLastMonth || 0);
+    const m = metricsRaw[0] || {};
+    const studentsCount = Number(m.studentsCount || 0);
+    const teachersCount = Number(m.teachersCount || 0);
+    const classesCount = Number(m.classesCount || 0);
+    const totalRevenue = Number(m.totalRevenue || 0);
+    const revThisMonth = Number(m.revThisMonth || 0);
+    const revLastMonth = Number(m.revLastMonth || 0);
 
-    const totalExpenses = Number(expenseAgg._sum.amount || 0);
+    const totalExpenses = Number(m.totalExpenses || 0);
     const netIncome = totalRevenue - totalExpenses;
 
-    const totalPresent = Number(attendanceRaw[0]?.totalPresent || 0);
-    const totalRoster = Number(attendanceRaw[0]?.totalRoster || 0);
+    const totalPresent = Number(m.totalPresent || 0);
+    const totalRoster = Number(m.totalRoster || 0);
     const attendanceRate = totalRoster > 0 ? Math.round((totalPresent / totalRoster) * 1000) / 10 : 0;
 
     const academicAverage = scoreRaw[0]?.avgScore ? Math.round(Number(scoreRaw[0].avgScore) * 10) / 10 : 0;
 
-    const pendingLeaveRequests = Number(leaveRequestsAgg[0]?.pendingCount || 0);
-    const approvedToday = Number(leaveRequestsAgg[0]?.approvedToday || 0);
-    const rejectedToday = Number(leaveRequestsAgg[0]?.rejectedToday || 0);
+    const pendingLeaveRequests = Number(m.pendingLeaveRequests || 0);
+    const approvedToday = Number(m.approvedToday || 0);
+    const rejectedToday = Number(m.rejectedToday || 0);
 
-    const studentsThisMonth = Number(studentTrendsAgg[0]?.thisMonth || 0);
-    const studentsLastMonth = Number(studentTrendsAgg[0]?.lastMonth || 0);
+    const studentsThisMonth = Number(m.studentsThisMonth || 0);
+    const studentsLastMonth = Number(m.studentsLastMonth || 0);
 
     const recentAdmissions = recentStudents.map(s => ({
       id: s.id,
@@ -335,12 +270,12 @@ export class DashboardService {
     const invoicesByMonth = new Map((monthlyInvoicesRaw || []).map(r => [r.month, Number(r.totalPaid)]));
     const expensesByMonth = new Map((monthlyExpensesRaw || []).map(r => [r.month, Number(r.totalSalary)]));
 
-    const chartData = last6Months.map(m => {
-      const monthKey = `${m.year}-${String(m.month + 1).padStart(2, '0')}`;
+    const chartData = last6Months.map(mon => {
+      const monthKey = `${mon.year}-${String(mon.month + 1).padStart(2, '0')}`;
       const collections = invoicesByMonth.get(monthKey) || 0;
       const salaries = expensesByMonth.get(monthKey) || 0;
       return {
-        month: m.label,
+        month: mon.label,
         feeCollection: collections,
         salaryExpense: salaries,
         netRevenue: collections - salaries,

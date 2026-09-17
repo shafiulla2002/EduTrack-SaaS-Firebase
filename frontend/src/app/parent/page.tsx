@@ -69,7 +69,7 @@ export default function ParentDashboard() {
   }, [children]);
 
   useEffect(() => {
-    if (!selectedChild) return;
+    if (!selectedChild?.id) return;
     fetchChildDashboard(selectedChild.id);
 
     // Refresh when tab/window gains focus
@@ -88,17 +88,7 @@ export default function ParentDashboard() {
       window.removeEventListener('focus', handleFocus);
       clearInterval(interval);
     };
-  }, [selectedChild]);
-
-  // Listen to switcher events
-  useEffect(() => {
-    const handleChildChange = (e: any) => {
-      fetchChildDashboard(e.detail);
-      fetchStats();
-    };
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, []);
+  }, [selectedChild?.id]);
 
   return (
     <div className="space-y-8 animate-fade-in">

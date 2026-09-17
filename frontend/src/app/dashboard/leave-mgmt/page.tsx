@@ -180,8 +180,8 @@ function LeaveMgmtContent() {
         setTotalPages(leavesRes.data.totalPages || 1);
         setStats(statsRes.data);
       } else {
-        const res = await api.get('/teacher-portal/leave');
-        setLeaves(res.data || []);
+        const res = await fastGet('/teacher-portal/leave', undefined, { ttlMs: 15000 });
+        setLeaves(res?.data || res || []);
       }
     } catch (err) {
       console.error('Failed to load leaves:', err);

@@ -25,7 +25,7 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    if (!selectedChild) return;
+    if (!selectedChild?.id) return;
     fetchAttendance(selectedChild.id);
 
     // Refresh when tab/window gains focus
@@ -43,16 +43,7 @@ export default function AttendancePage() {
       window.removeEventListener('focus', handleFocus);
       clearInterval(interval);
     };
-  }, [selectedChild]);
-
-  // Listen to switcher events
-  useEffect(() => {
-    const handleChildChange = (e: any) => {
-      fetchAttendance(e.detail);
-    };
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, []);
+  }, [selectedChild?.id]);
 
   if (!selectedChild) {
     return (

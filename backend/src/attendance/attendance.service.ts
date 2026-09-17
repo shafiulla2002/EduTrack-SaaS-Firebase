@@ -201,15 +201,21 @@ export class AttendanceService {
     const tenantId = this.getTenantId();
     const sessions = await this.prisma.attendanceSession.findMany({
       where: { tenantId },
-      include: {
+      select: {
+        id: true,
+        date: true,
+        presentCount: true,
+        absentCount: true,
+        totalStudents: true,
+        takenById: true,
         classSection: {
-          include: {
-            class: true,
-            section: true,
+          select: {
+            class: { select: { name: true } },
+            section: { select: { name: true } },
           },
         },
         takenBy: {
-          include: {
+          select: {
             user: {
               select: { name: true },
             },

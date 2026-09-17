@@ -37,19 +37,10 @@ export default function AnnouncementsPage() {
   };
 
   useEffect(() => {
-    if (selectedChild) {
+    if (selectedChild?.id) {
       fetchAnnouncements(selectedChild.id);
     }
-  }, [selectedChild]);
-
-  // Listen to switcher events
-  useEffect(() => {
-    const handleChildChange = (e: any) => {
-      fetchAnnouncements(e.detail);
-    };
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, []);
+  }, [selectedChild?.id]);
 
   const handleAcknowledge = (id: string, title: string) => {
     setAcknowledgedIds(prev => {

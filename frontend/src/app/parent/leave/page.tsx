@@ -49,21 +49,12 @@ export default function LeavePage() {
   };
 
   useEffect(() => {
-    if (selectedChild) {
+    if (selectedChild?.id) {
       fetchLeaves(selectedChild.id);
       const interval = setInterval(() => fetchLeaves(selectedChild.id), 15000);
       return () => clearInterval(interval);
     }
-  }, [selectedChild]);
-
-  // Listen to switcher events
-  useEffect(() => {
-    const handleChildChange = (e: any) => {
-      fetchLeaves(e.detail);
-    };
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, []);
+  }, [selectedChild?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

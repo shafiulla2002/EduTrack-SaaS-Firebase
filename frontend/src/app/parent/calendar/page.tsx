@@ -28,19 +28,10 @@ export default function CalendarPage() {
   };
 
   useEffect(() => {
-    if (selectedChild) {
+    if (selectedChild?.id) {
       fetchTimetable(selectedChild.id);
     }
-  }, [selectedChild]);
-
-  // Listen to switcher events
-  useEffect(() => {
-    const handleChildChange = (e: any) => {
-      fetchTimetable(e.detail);
-    };
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, []);
+  }, [selectedChild?.id]);
 
   if (!selectedChild) {
     return (

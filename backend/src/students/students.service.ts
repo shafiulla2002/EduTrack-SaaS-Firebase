@@ -269,60 +269,65 @@ export class StudentsService implements OnModuleInit {
   async getStudentsBillingInfoBatch(studentIds: string[], tenantId: string, academicYearId?: string) {
     if (studentIds.length === 0) return {};
 
-    // 1. Concurrently fetch opportunities and orphan invoices with targeted selects
-    const [allOpps, allOrphanInvoices, targetAcademicYear] = await Promise.all([
-      this.prisma.opportunity.findMany({
-        where: {
-          studentId: { in: studentIds },
-          tenantId,
-        },
-        select: {
-          id: true,
-          studentId: true,
-          stageName: true,
-          academicYearId: true,
-          classId: true,
-          createdAt: true,
-          academicYear: {
-            select: {
-              id: true,
-              name: true,
-              startDate: true,
-            },
-          },
-          opportunityLineItems: {
-            select: {
-              unitPrice: true,
-              quantity: true,
-              discount: true,
-            },
-          },
-          invoices: {
-            where: {
-              tenantId,
-              status: { not: 'VOIDED' },
-            },
-            select: {
-              paidAmount: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.invoice.findMany({
-        where: {
-          studentId: { in: studentIds },
-          tenantId,
-          opportunityId: null,
-          status: { in: ['UNPAID', 'PARTIALLY_PAID'] },
-        },
-        select: {
-          id: true,
-          studentId: true,
-          remainingBalance: true,
-          invoiceDate: true,
-        },
-      }),
+    // 1. Concurrently fetch opportunities with DB-aggregated fees/payments and orphan invoices
+    const [oppRows, orphanInvoices, targetAcademicYear] = await Promise.all([
+      this.prisma.$queryRaw<Array<{
+        id: string;
+        studentId: string;
+        stageName: string;
+        academicYearId: string | null;
+        classId: string | null;
+        createdAt: Date;
+        ay_id: string | null;
+        ay_name: string | null;
+        ay_startDate: Date | null;
+        lineItemCount: number;
+        totalFee: number;
+        totalPaid: number;
+      }>>`
+        SELECT 
+          o.id,
+          o."studentId",
+          o."stageName",
+          o."academicYearId",
+          o."classId",
+          o."createdAt",
+          ay.id AS "ay_id",
+          ay.name AS "ay_name",
+          ay."startDate" AS "ay_startDate",
+          COUNT(oli.id)::int AS "lineItemCount",
+          COALESCE(SUM((oli."unitPrice" * oli.quantity) - ((oli."unitPrice" * oli.quantity * oli.discount) / 100.0)), 0)::float AS "totalFee",
+          COALESCE(inv_agg."paidAmount", 0)::float AS "totalPaid"
+        FROM "Opportunity" o
+        LEFT JOIN "AcademicYear" ay ON o."academicYearId" = ay.id
+        LEFT JOIN "OpportunityLineItem" oli ON o.id = oli."opportunityId"
+        LEFT JOIN (
+          SELECT "opportunityId", COALESCE(SUM("paidAmount"), 0)::float AS "paidAmount"
+          FROM "Invoice"
+          WHERE "tenantId" = ${tenantId} AND status::text != 'VOIDED' AND "opportunityId" IS NOT NULL
+          GROUP BY "opportunityId"
+        ) inv_agg ON o.id = inv_agg."opportunityId"
+        WHERE o."tenantId" = ${tenantId} AND o."studentId" IN (${Prisma.join(studentIds)})
+        GROUP BY o.id, o."studentId", o."stageName", o."academicYearId", o."classId", o."createdAt", ay.id, ay.name, ay."startDate", inv_agg."paidAmount"
+        ORDER BY o."createdAt" DESC
+      `,
+      this.prisma.$queryRaw<Array<{
+        id: string;
+        studentId: string;
+        remainingBalance: number;
+        invoiceDate: Date;
+      }>>`
+        SELECT 
+          id,
+          "studentId",
+          "remainingBalance"::float AS "remainingBalance",
+          "invoiceDate"
+        FROM "Invoice"
+        WHERE "tenantId" = ${tenantId} 
+          AND "studentId" IN (${Prisma.join(studentIds)})
+          AND "opportunityId" IS NULL
+          AND status::text IN ('UNPAID', 'PARTIALLY_PAID')
+      `,
       academicYearId
         ? this.prisma.academicYear.findUnique({
             where: { id: academicYearId },
@@ -331,18 +336,18 @@ export class StudentsService implements OnModuleInit {
         : Promise.resolve(null),
     ]);
 
-    // Map to group opportunities by studentId
-    const oppsByStudent = new Map<string, typeof allOpps>();
-    for (const opp of allOpps) {
+    // Group opportunities by studentId
+    const oppsByStudent = new Map<string, typeof oppRows>();
+    for (const opp of oppRows) {
       if (!oppsByStudent.has(opp.studentId)) {
         oppsByStudent.set(opp.studentId, []);
       }
       oppsByStudent.get(opp.studentId)!.push(opp);
     }
 
-    // Map to group orphan invoices by studentId
-    const orphansByStudent = new Map<string, typeof allOrphanInvoices>();
-    for (const inv of allOrphanInvoices) {
+    // Group orphan invoices by studentId
+    const orphansByStudent = new Map<string, typeof orphanInvoices>();
+    for (const inv of orphanInvoices) {
       if (!orphansByStudent.has(inv.studentId)) {
         orphansByStudent.set(inv.studentId, []);
       }
@@ -372,7 +377,7 @@ export class StudentsService implements OnModuleInit {
         : studentOpps.find(opp => !['Closed Won', 'Closed Lost'].includes(opp.stageName));
       if (!openOpp) openOpp = studentOpps[0] || null;
 
-      if (openOpp && openOpp.classId && (!openOpp.opportunityLineItems || openOpp.opportunityLineItems.length === 0)) {
+      if (openOpp && openOpp.classId && (!openOpp.lineItemCount || openOpp.lineItemCount === 0)) {
         const key = `${openOpp.classId}-${openOpp.academicYearId || 'default'}`;
         if (!neededProductKeys.has(key)) {
           neededProductKeys.add(key);
@@ -412,16 +417,11 @@ export class StudentsService implements OnModuleInit {
       let totalPaid = 0;
 
       if (openOpp) {
-        totalFee = openOpp.opportunityLineItems.reduce((sum, oli) => {
-          const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
-          const itemDiscount = (itemTotal * Number(oli.discount)) / 100;
-          return sum + (itemTotal - itemDiscount);
-        }, 0);
-
-        totalPaid = openOpp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+        totalFee = openOpp.totalFee || 0;
+        totalPaid = openOpp.totalPaid || 0;
 
         // Fallback: If no line items, compute from class pricebook
-        if (totalFee === 0 && openOpp.classId) {
+        if (totalFee === 0 && openOpp.classId && (!openOpp.lineItemCount || openOpp.lineItemCount === 0)) {
           const pricebookProducts = await getActiveProductsCached(
             openOpp.classId,
             openOpp.academicYearId || undefined,
@@ -433,28 +433,26 @@ export class StudentsService implements OnModuleInit {
       // Determine currentYearStart
       let currentYearStart = new Date(0);
       if (academicYearId) {
-        const cy = openOpp?.academicYearId === academicYearId ? openOpp.academicYear : allOpps.find(opp => opp.academicYearId === academicYearId)?.academicYear;
-        if (cy) {
-          currentYearStart = cy.startDate;
+        const cy = openOpp?.academicYearId === academicYearId
+          ? openOpp
+          : studentOpps.find(opp => opp.academicYearId === academicYearId);
+        if (cy && cy.ay_startDate) {
+          currentYearStart = cy.ay_startDate;
         } else if (targetAcademicYear) {
           currentYearStart = targetAcademicYear.startDate;
         }
-      } else if (openOpp && openOpp.academicYear) {
-        currentYearStart = openOpp.academicYear.startDate;
+      } else if (openOpp && openOpp.ay_startDate) {
+        currentYearStart = openOpp.ay_startDate;
       }
 
       // Previous opportunities (lt currentYearStart)
-      const prevOpps = studentOpps.filter(opp => opp.academicYear && new Date(opp.academicYear.startDate) < currentYearStart);
+      const prevOpps = studentOpps.filter(opp => opp.ay_startDate && new Date(opp.ay_startDate) < currentYearStart);
 
       const prevYearDuesMap = new Map<string, number>();
       for (const opp of prevOpps) {
-        const yearName = opp.academicYear?.name || 'Previous Years';
-        const oppFee = opp.opportunityLineItems.reduce((sum, oli) => {
-          const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
-          const itemDiscount = (itemTotal * Number(oli.discount)) / 100;
-          return sum + (itemTotal - itemDiscount);
-        }, 0);
-        const oppPaid = opp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+        const yearName = opp.ay_name || 'Previous Years';
+        const oppFee = opp.totalFee || 0;
+        const oppPaid = opp.totalPaid || 0;
         const balance = Math.max(0, oppFee - oppPaid);
         if (balance > 0) {
           prevYearDuesMap.set(yearName, (prevYearDuesMap.get(yearName) || 0) + balance);
@@ -523,6 +521,7 @@ export class StudentsService implements OnModuleInit {
 
     return billingMap;
   }
+
 
   async searchStudents(
     searchTerm?: string,

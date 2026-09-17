@@ -93,9 +93,6 @@ export function ParentProvider({ children }: { children: React.ReactNode }) {
   const handleSetSelectedChildId = (id: string) => {
     setSelectedChildId(id);
     localStorage.setItem('parent_selected_child_id', id);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('parentChildChanged', { detail: id }));
-    }
   };
 
   const selectedChild = childrenList.find(c => c.id === selectedChildId) || null;

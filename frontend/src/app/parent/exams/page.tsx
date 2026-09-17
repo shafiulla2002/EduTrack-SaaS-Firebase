@@ -347,14 +347,8 @@ export default function ExamsPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedChild) fetchExams(selectedChild.id);
-  }, [selectedChild, fetchExams]);
-
-  useEffect(() => {
-    const handleChildChange = (e: any) => fetchExams(e.detail);
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, [fetchExams]);
+    if (selectedChild?.id) fetchExams(selectedChild.id);
+  }, [selectedChild?.id, fetchExams]);
 
   if (!selectedChild) {
     return <div className="text-slate-500 text-sm text-center py-12">Please select a child to view examinations.</div>;

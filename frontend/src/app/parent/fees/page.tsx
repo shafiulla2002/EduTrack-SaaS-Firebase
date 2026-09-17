@@ -77,14 +77,8 @@ export default function FeesPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedChild) fetchFees(selectedChild.id);
-  }, [selectedChild, fetchFees]);
-
-  useEffect(() => {
-    const handleChildChange = (e: any) => fetchFees(e.detail);
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, [fetchFees]);
+    if (selectedChild?.id) fetchFees(selectedChild.id);
+  }, [selectedChild?.id, fetchFees]);
 
   // ── Item selection helpers ────────────────────────────────────────────────
   const toggleItem = (item: any) => {

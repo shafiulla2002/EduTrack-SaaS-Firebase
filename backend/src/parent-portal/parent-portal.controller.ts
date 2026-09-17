@@ -36,6 +36,17 @@ export class ParentPortalController {
     return this.portalService.getHomework(req.user.sub, studentId);
   }
 
+  @Get('children/:studentId/homework/:homeworkId/attachment')
+  async getHomeworkAttachment(
+    @Req() req: any,
+    @Param('studentId') studentId: string,
+    @Param('homeworkId') homeworkId: string,
+    @Query('index') index?: string,
+  ) {
+    const idx = index ? parseInt(index, 10) : 0;
+    return this.portalService.getHomeworkAttachment(req.user.sub, studentId, homeworkId, idx);
+  }
+
   @Post('children/:studentId/homework/:homeworkId/submit')
   async submitAssignment(
     @Req() req: any,
