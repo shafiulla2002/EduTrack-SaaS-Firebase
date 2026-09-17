@@ -243,19 +243,20 @@ export class AttendanceService {
     const tenantId = this.getTenantId();
     if (!classVal || !sectionVal) return [];
 
-    const cls = await this.prisma.class.findFirst({
-      where: {
-        tenantId,
-        name: { equals: classVal.trim(), mode: 'insensitive' },
-      },
-    });
-
-    const sec = await this.prisma.section.findFirst({
-      where: {
-        tenantId,
-        name: { equals: sectionVal.trim(), mode: 'insensitive' },
-      },
-    });
+    const [cls, sec] = await Promise.all([
+      this.prisma.class.findFirst({
+        where: {
+          tenantId,
+          name: { equals: classVal.trim(), mode: 'insensitive' },
+        },
+      }),
+      this.prisma.section.findFirst({
+        where: {
+          tenantId,
+          name: { equals: sectionVal.trim(), mode: 'insensitive' },
+        },
+      }),
+    ]);
 
     if (!cls || !sec) return [];
 
@@ -308,19 +309,20 @@ export class AttendanceService {
       return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
     }
 
-    const cls = await this.prisma.class.findFirst({
-      where: {
-        tenantId,
-        name: { equals: classVal.trim(), mode: 'insensitive' },
-      },
-    });
-
-    const sec = await this.prisma.section.findFirst({
-      where: {
-        tenantId,
-        name: { equals: sectionVal.trim(), mode: 'insensitive' },
-      },
-    });
+    const [cls, sec] = await Promise.all([
+      this.prisma.class.findFirst({
+        where: {
+          tenantId,
+          name: { equals: classVal.trim(), mode: 'insensitive' },
+        },
+      }),
+      this.prisma.section.findFirst({
+        where: {
+          tenantId,
+          name: { equals: sectionVal.trim(), mode: 'insensitive' },
+        },
+      }),
+    ]);
 
     if (!cls || !sec) {
       return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };

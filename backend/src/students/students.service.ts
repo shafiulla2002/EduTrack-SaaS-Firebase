@@ -576,13 +576,14 @@ export class StudentsService implements OnModuleInit {
     }
 
     const isPaginated = page !== undefined && limit !== undefined;
-    const skip = isPaginated ? (page - 1) * limit : undefined;
-    const take = isPaginated ? limit : undefined;
+    const maxFallbackLimit = 500;
+    const pageNum = isPaginated ? Math.max(1, page) : 1;
+    const limitNum = isPaginated ? Math.max(1, limit) : maxFallbackLimit;
+    const skip = (pageNum - 1) * limitNum;
+    const take = limitNum;
 
     const [total, students] = await Promise.all([
-      isPaginated
-        ? this.prisma.studentProfile.count({ where })
-        : Promise.resolve(0),
+      this.prisma.studentProfile.count({ where }),
       this.prisma.studentProfile.findMany({
         where,
         select: {

@@ -8,11 +8,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   constructor() {
     let dbUrl = process.env.DATABASE_URL;
     if (dbUrl) {
+      const connLimit = process.env.DB_CONNECTION_LIMIT || '10';
       if (dbUrl.includes('connection_limit=')) {
-        dbUrl = dbUrl.replace(/connection_limit=\d+/, 'connection_limit=3');
+        dbUrl = dbUrl.replace(/connection_limit=\d+/, `connection_limit=${connLimit}`);
       } else {
         const sep = dbUrl.includes('?') ? '&' : '?';
-        dbUrl += `${sep}connection_limit=3&pool_timeout=10`;
+        dbUrl += `${sep}connection_limit=${connLimit}&pool_timeout=15`;
       }
     }
 

@@ -40,6 +40,7 @@ interface PreviewState {
 }
 
 export default function HomeworkPage() {
+  const { selectedChild } = useParent();
   const [homeworkList, setHomeworkList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState(false);

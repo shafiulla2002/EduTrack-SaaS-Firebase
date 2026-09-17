@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { RoleFilterHelper } from '../common/role-filter.helper';
 
 @Injectable()
 export class TeachersService {
@@ -292,6 +293,7 @@ export class TeachersService {
     periodsPerWeek: number,
   ) {
     const tenantId = this.getTenantId();
+    RoleFilterHelper.clearCache(tenantId);
 
     // ── Multi-Tenant Verification Guards ──
     const teacher = await this.prisma.staffProfile.findFirst({

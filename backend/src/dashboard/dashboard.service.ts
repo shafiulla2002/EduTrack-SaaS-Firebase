@@ -31,13 +31,6 @@ export class DashboardService {
 
   async getDashboardSummary() {
     const tenantId = this.getTenantId();
-    const cacheKey = `dashboard-summary-${tenantId}`;
-    const cached = this.dashboardCache.get(cacheKey);
-    const nowTime = Date.now();
-
-    if (cached && cached.expiresAt > nowTime) {
-      return cached.data;
-    }
 
     // Prepare date ranges for last 6 months
     const last6Months: { year: number; month: number; label: string }[] = [];
@@ -398,11 +391,6 @@ export class DashboardService {
       recentPayments,
       chartData,
     };
-
-    this.dashboardCache.set(cacheKey, {
-      data: summaryData,
-      expiresAt: nowTime + 60 * 1000, // 60s cache with instant eviction on mutations
-    });
 
     return summaryData;
   }

@@ -114,13 +114,15 @@ export class HomeworkService {
     }
 
     // Admin: all class-section × subject combinations
-    const classSections = await this.prisma.classSection.findMany({
-      where: { tenantId },
-      include: { class: true, section: true },
-    });
-    const subjects = await this.prisma.subject.findMany({
-      where: { tenantId, isActive: true },
-    });
+    const [classSections, subjects] = await Promise.all([
+      this.prisma.classSection.findMany({
+        where: { tenantId },
+        include: { class: true, section: true },
+      }),
+      this.prisma.subject.findMany({
+        where: { tenantId, isActive: true },
+      }),
+    ]);
     const results = [];
     classSections.forEach(cs => {
       subjects.forEach(sub => {
@@ -351,50 +353,50 @@ export class HomeworkService {
       }
     }
 
-    // Fetch all enrolled students in this class section
-    const students = await this.prisma.studentProfile.findMany({
-      where: {
-        classSectionId: homework.classSectionId,
-        tenantId,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            avatarUrl: true,
-          }
+    // Parallelize fetching enrolled students and submission logs
+    const [students, submissionLogs] = await Promise.all([
+      this.prisma.studentProfile.findMany({
+        where: {
+          classSectionId: homework.classSectionId,
+          tenantId,
         },
-        parentProfile: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                phone: true,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              avatarUrl: true,
+            }
+          },
+          parentProfile: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                }
               }
             }
           }
-        }
-      },
-      orderBy: [
-        { rollNo: 'asc' },
-        { user: { name: 'asc' } }
-      ]
-    });
-
-    // Fetch all submissions recorded for this homework in this tenant
-    const submissionLogs = await this.prisma.activityLog.findMany({
-      where: {
-        tenantId,
-        action: 'SUBMIT_ASSIGNMENT',
-        entityName: 'Homework',
-        entityId: homeworkId,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        },
+        orderBy: [
+          { rollNo: 'asc' },
+          { user: { name: 'asc' } }
+        ]
+      }),
+      this.prisma.activityLog.findMany({
+        where: {
+          tenantId,
+          action: 'SUBMIT_ASSIGNMENT',
+          entityName: 'Homework',
+          entityId: homeworkId,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
     const studentSubmissions = students.map((student) => {
       // Find logs matching this studentId

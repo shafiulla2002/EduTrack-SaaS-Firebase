@@ -202,6 +202,8 @@ model User {
   @@index([name])
   @@index([phone])
   @@index([tenantId, name, isActive])
+  @@index([tenantId, isActive])
+  @@index([tenantId, role, isActive])
 }
 
 model StaffProfile {
@@ -250,6 +252,8 @@ model StaffProfile {
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+  @@index([tenantId, userId])
+  @@index([tenantId, staffCategory])
 }
 
 model ParentProfile {
@@ -303,6 +307,7 @@ model StudentProfile {
   @@index([rollNo])
   @@index([tenantId, classSectionId])
   @@index([tenantId, rollNo])
+  @@index([tenantId, userId])
 }
 
 model AcademicYear {
@@ -463,6 +468,7 @@ model AttendanceSession {
   @@index([classSectionId])
   @@index([date])
   @@index([tenantId, classSectionId, date])
+  @@index([tenantId, date])
 }
 
 model Attendance {
@@ -575,6 +581,7 @@ model Invoice {
   @@index([invoiceDate])
   @@index([tenantId, studentId])
   @@index([tenantId, status, invoiceDate])
+  @@index([tenantId, studentId, status])
 }
 
 model InvoiceItem {
@@ -865,6 +872,8 @@ model Opportunity {
 
   @@index([tenantId, studentId])
   @@index([tenantId, academicYearId])
+  @@index([tenantId, stageName])
+  @@index([tenantId, studentId, stageName])
 }
 
 model OpportunityLineItem {

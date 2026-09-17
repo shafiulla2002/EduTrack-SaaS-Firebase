@@ -387,25 +387,25 @@ export class ExamsService {
       );
     }
 
-    // Get all active students in the section
-    const students = await this.prisma.studentProfile.findMany({
-      where: {
-        classSectionId: resolvedClassSectionId,
-        user: { tenantId, isActive: true },
-      },
-      include: {
-        user: {
-          select: { name: true },
+    // Parallelize fetching student roster and classSection context
+    const [students, classSection] = await Promise.all([
+      this.prisma.studentProfile.findMany({
+        where: {
+          classSectionId: resolvedClassSectionId,
+          user: { tenantId, isActive: true },
         },
-      },
-      orderBy: { user: { name: 'asc' } },
-    });
-
-    // Resolve classSection context
-    const classSection = await this.prisma.classSection.findUnique({
-      where: { id: resolvedClassSectionId },
-      include: { class: true },
-    });
+        include: {
+          user: {
+            select: { name: true },
+          },
+        },
+        orderBy: { user: { name: 'asc' } },
+      }),
+      this.prisma.classSection.findUnique({
+        where: { id: resolvedClassSectionId },
+        include: { class: true },
+      }),
+    ]);
     const classId = classSection?.classId;
     const academicYearId = classSection?.class?.academicYearId;
 

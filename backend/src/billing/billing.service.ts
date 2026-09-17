@@ -444,8 +444,8 @@ export class BillingService {
 
     const students = await this.prisma.studentProfile.findMany({
       where: {
+        tenantId,
         user: {
-          tenantId,
           isActive: true,
           OR: [
             { name: { contains: cleanSearch, mode: 'insensitive' } },
