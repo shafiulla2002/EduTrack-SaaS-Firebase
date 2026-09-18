@@ -70,6 +70,8 @@ export default function ParentDashboard() {
 
   useEffect(() => {
     if (!selectedChild?.id) return;
+    setChildDashboard(null);
+    setLoading(true);
     fetchChildDashboard(selectedChild.id);
 
     // Refresh when tab/window gains focus
@@ -316,7 +318,7 @@ export default function ParentDashboard() {
                 </div>
               </div>
 
-              {/* Homework due */}
+              {/* Dynamic Authoritative Homework List */}
               <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                   <h3 className="font-bold text-sm text-slate-800">Active Homeworks</h3>
@@ -325,34 +327,30 @@ export default function ParentDashboard() {
                   </Link>
                 </div>
                 <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
-                  {childDashboard.metrics.pendingHomework === 0 ? (
+                  {!childDashboard.activeHomeworks || childDashboard.activeHomeworks.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 text-slate-500">
                       <CheckCircle className="w-8 h-8 text-slate-300 mb-2" />
                       <p className="text-xs font-light">All caught up! No pending homework.</p>
                     </div>
                   ) : (
                     <div className="space-y-2.5">
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                        <div className="flex justify-between text-[10px]">
-                          <span className="font-bold text-blue-600">Mathematics</span>
-                          <span className="text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" /> Due Tomorrow
-                          </span>
-                        </div>
-                        <h4 className="text-xs font-bold text-slate-700">Algebra Quadratic Equations Worksheet</h4>
-                        <p className="text-[11px] text-slate-500 font-light truncate">Solve problems 1 to 15 in notebook.</p>
-                      </div>
-
-                      <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                        <div className="flex justify-between text-[10px]">
-                          <span className="font-bold text-indigo-600">Science</span>
-                          <span className="text-slate-400 flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" /> Due in 3 days
-                          </span>
-                        </div>
-                        <h4 className="text-xs font-bold text-slate-700">Photosynthesis Experiment Model</h4>
-                        <p className="text-[11px] text-slate-500 font-light truncate">Bring model along with observation chart.</p>
-                      </div>
+                      {childDashboard.activeHomeworks.map((hw: any) => {
+                        const dueDateObj = new Date(hw.dueDate);
+                        const isOverdue = dueDateObj < new Date();
+                        const formattedDueDate = dueDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+                        return (
+                          <div key={hw.id} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                            <div className="flex justify-between text-[10px]">
+                              <span className="font-bold text-blue-600">{hw.subject}</span>
+                              <span className={`flex items-center gap-1 font-semibold ${isOverdue ? 'text-rose-600' : 'text-slate-400'}`}>
+                                <Clock className="w-3.5 h-3.5" /> {isOverdue ? 'Overdue' : `Due ${formattedDueDate}`}
+                              </span>
+                            </div>
+                            <h4 className="text-xs font-bold text-slate-700 truncate">{hw.title}</h4>
+                            <p className="text-[11px] text-slate-500 font-light truncate">{hw.description || 'No additional instructions.'}</p>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

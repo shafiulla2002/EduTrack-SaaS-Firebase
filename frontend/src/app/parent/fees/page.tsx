@@ -32,7 +32,14 @@ function inr(n: number) {
 export default function FeesPage() {
   const { selectedChild } = useParent();
   const [feesData, setFeesData] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  /**
+   * Payment State Machine:
+   * IDLE -> INITIATING -> PENDING / PROCESSING -> SUCCESS / FAILED / CANCELLED
+   */
+  const [paymentState, setPaymentState] = useState<'IDLE' | 'INITIATING' | 'PROCESSING' | 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'>('IDLE');
+  const [orderInfo, setOrderInfo] = useState<{ orderId?: string; transactionId?: string } | null>(null);
 
   /**
    * itemPayAmounts: Map<itemId, customAmount>
@@ -77,7 +84,18 @@ export default function FeesPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedChild?.id) fetchFees(selectedChild.id);
+    if (selectedChild?.id) {
+      setFeesData(null);
+      setLoading(true);
+      setItemPayAmounts(new Map());
+      setItemErrors(new Map());
+      setActiveInvoice(null);
+      setViewingReceipt(null);
+      setPaymentState('IDLE');
+      setOrderInfo(null);
+      setMessage('');
+      fetchFees(selectedChild.id);
+    }
   }, [selectedChild?.id, fetchFees]);
 
   // ── Item selection helpers ────────────────────────────────────────────────
@@ -215,8 +233,8 @@ export default function FeesPage() {
     }
   };
 
-  // Step 1: Open UPI App / Show QR and transition to verification step
-  const handleInitiatePayment = (e: React.FormEvent) => {
+  // Step 1: Create Payment Order & Transition to Verification Step
+  const handleInitiatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChild || !activeInvoice) return;
 
@@ -230,14 +248,70 @@ export default function FeesPage() {
       return;
     }
 
-    if (paymentMethod !== 'BANK' && targetUpiId) {
-      // Auto launch UPI on mobile
-      handleLaunchUpiApp();
+    const itemAmounts = Array.from(itemPayAmounts.entries())
+      .filter(([, amt]) => amt > 0)
+      .map(([id, amount]) => ({ id, amount }));
+
+    setPayLoading(true);
+    setPaymentState('INITIATING');
+    setMessage('');
+
+    try {
+      const res = await api.post(
+        `/parent-portal/children/${selectedChild.id}/payments/initiate`,
+        {
+          invoiceId: activeInvoice.id,
+          itemAmounts,
+          paymentMethod,
+        }
+      );
+
+      if (res.data?.success) {
+        setOrderInfo({
+          orderId: res.data.orderId,
+          transactionId: res.data.transactionId,
+        });
+        setPaymentState('PENDING');
+        setCheckoutStep('PAY_AND_VERIFY');
+
+        if (paymentMethod !== 'BANK' && targetUpiId) {
+          handleLaunchUpiApp();
+        }
+      } else {
+        setPaymentState('FAILED');
+        setMessage(res.data?.message || 'Failed to initiate payment order.');
+      }
+    } catch (err: any) {
+      console.error('Failed to initiate payment order:', err);
+      setPaymentState('FAILED');
+      setMessage(err.response?.data?.message || 'Payment initiation failed.');
+    } finally {
+      setPayLoading(false);
     }
-    setCheckoutStep('PAY_AND_VERIFY');
   };
 
-  // Step 2: Confirm Payment & Save into Database
+  // User explicitly cancels payment attempt
+  const handleCancelPayment = async () => {
+    if (!selectedChild || !activeInvoice) return;
+    if (orderInfo?.orderId || orderInfo?.transactionId) {
+      try {
+        await api.post(`/parent-portal/children/${selectedChild.id}/payments/verify`, {
+          orderId: orderInfo.orderId,
+          transactionId: orderInfo.transactionId,
+          status: 'CANCELLED',
+          paymentMethod,
+        });
+      } catch {}
+    }
+    setPaymentState('CANCELLED');
+    setActiveInvoice(null);
+    setCheckoutStep('SELECT');
+    setOrderInfo(null);
+    setUtrNumber('');
+    setMessage('Payment was cancelled. Outstanding dues remain unchanged.');
+  };
+
+  // Step 2: Confirm Payment & Authoritatively Verify on Backend
   const handleConfirmAndRecordPayment = async () => {
     if (!selectedChild || !activeInvoice || payLoading) return;
 
@@ -246,32 +320,53 @@ export default function FeesPage() {
       .map(([id, amount]) => ({ id, amount }));
 
     setPayLoading(true);
+    setPaymentState('PROCESSING');
     setMessage('');
+
     try {
       const res = await api.post(
-        `/parent-portal/children/${selectedChild.id}/invoices/${activeInvoice.id}/pay`,
+        `/parent-portal/children/${selectedChild.id}/payments/verify`,
         {
+          orderId: orderInfo?.orderId,
+          transactionId: orderInfo?.transactionId,
+          utrNumber: utrNumber.trim(),
           paymentMethod,
           itemAmounts,
-          utrNumber: utrNumber.trim(),
+          invoiceId: activeInvoice.id,
+          status: 'PENDING',
         },
       );
 
-      setMessage(res.data?.message || 'Payment confirmed successfully!');
-      dispatchSchoolSetupUpdated();
-      await fetchFees(selectedChild.id);
+      if (res.data?.status === 'SUCCESS' || res.data?.success) {
+        setPaymentState('SUCCESS');
+        setMessage(res.data?.message || 'Payment confirmed and verified successfully!');
+        dispatchSchoolSetupUpdated();
+        await fetchFees(selectedChild.id);
 
-      setTimeout(() => {
-        if (res.data?.invoice) {
-          setViewingReceipt(res.data.invoice);
-        }
-        setActiveInvoice(null);
-        setCheckoutStep('SELECT');
-        setUtrNumber('');
-        setMessage('');
-      }, 1500);
+        setTimeout(() => {
+          if (res.data?.invoice) {
+            setViewingReceipt(res.data.invoice);
+          }
+          setActiveInvoice(null);
+          setCheckoutStep('SELECT');
+          setUtrNumber('');
+          setPaymentState('IDLE');
+          setOrderInfo(null);
+          setMessage('');
+        }, 1500);
+      } else if (res.data?.status === 'PENDING') {
+        setPaymentState('PENDING');
+        setMessage(
+          res.data?.message ||
+          'Payment is currently pending authoritative confirmation. Your statement will update once confirmed.'
+        );
+      } else {
+        setPaymentState('FAILED');
+        setMessage(res.data?.message || 'Payment verification failed.');
+      }
     } catch (err: any) {
       console.error('Payment processing failed:', err);
+      setPaymentState('FAILED');
       setMessage(err.response?.data?.message || 'Payment recording failed. Please verify details.');
     } finally {
       setPayLoading(false);
@@ -349,7 +444,7 @@ export default function FeesPage() {
     );
   }
 
-  if (loading) {
+  if (loading || !feesData) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin"></div>
@@ -401,7 +496,7 @@ export default function FeesPage() {
               )}
             </div>
 
-            {unpaidInvoices.length === 0 || allItems.length === 0 ? (
+            {unpaidInvoices.length === 0 ? (
               <div className="bg-white border border-[#2E5BFF]/20 p-8 rounded-3xl text-center shadow-sm space-y-2">
                 <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold">
                   🎉
@@ -974,6 +1069,15 @@ export default function FeesPage() {
                       <span>I Have Transferred — Confirm Payment</span>
                     </>
                   )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCancelPayment}
+                  disabled={payLoading}
+                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancel Transaction
                 </button>
               </div>
             )}
