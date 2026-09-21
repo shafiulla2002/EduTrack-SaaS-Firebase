@@ -218,7 +218,7 @@ export default function SubscriptionPage() {
           <!-- Header -->
           <div style="background-color: #0f172a; color: #ffffff; padding: 32px; border-bottom: 5px solid #2563eb; display: flex; justify-content: space-between; align-items: center;">
             <div>
-              <h1 style="margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; text-transform: uppercase; color: #ffffff;">EduTrack SaaS Platform</h1>
+              <h1 style="margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; text-transform: uppercase; color: #ffffff;">CS EduTrack SaaS Platform</h1>
               <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8; font-weight: 600;">Official Tax Invoice & Payment Receipt</p>
             </div>
             <div style="text-align: right;">
@@ -256,7 +256,7 @@ export default function SubscriptionPage() {
               </thead>
               <tbody style="font-size: 13px;">
                 <tr style="border-bottom: 1px solid #f1f5f9;">
-                  <td style="padding: 16px; font-weight: 700; color: #0f172a;">EduTrack SaaS ${inv.planId || 'BASIC'} Plan Subscription Renewal</td>
+                  <td style="padding: 16px; font-weight: 700; color: #0f172a;">CS EduTrack SaaS ${inv.planId || 'BASIC'} Plan Subscription Renewal</td>
                   <td style="padding: 16px; text-align: center; color: #475569;">Standard Tier</td>
                   <td style="padding: 16px; text-align: right; font-family: monospace;">₹${subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                   <td style="padding: 16px; text-align: right; font-family: monospace;">₹${gst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
@@ -269,7 +269,7 @@ export default function SubscriptionPage() {
           <!-- Footer -->
           <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 32px; display: flex; justify-content: space-between; align-items: center;">
             <div style="font-size: 11px; color: #64748b; font-weight: 500; max-width: 400px; line-height: 1.4;">
-              This is an official computer generated tax invoice issued by EduTrack SaaS Platforms.<br/>No physical signature is required.
+              This is an official computer generated tax invoice issued by CS EduTrack SaaS Platform.<br/>No physical signature is required.
             </div>
             <div style="background-color: #0f172a; color: #ffffff; border-radius: 10px; padding: 14px 24px; text-align: right;">
               <div style="font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 700;">Grand Total Paid</div>
@@ -335,9 +335,9 @@ export default function SubscriptionPage() {
         amount,
         currency,
         order_id: orderId,
-        name: 'EduTrack SaaS',
+        name: 'CS EduTrack',
         description: `BASIC Plan – ${billingMonths} Months`,
-        image: typeof window !== 'undefined' ? `${window.location.origin}/logo.png` : undefined,
+        image: typeof window !== 'undefined' ? `${window.location.origin}/cs-edutrack-logo.jpg` : undefined,
         handler: async (response: any) => {
           // 4. Verify payment on backend
           try {

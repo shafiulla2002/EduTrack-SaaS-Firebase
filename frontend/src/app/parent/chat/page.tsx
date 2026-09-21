@@ -190,7 +190,7 @@ export default function ChatPage() {
         <div className="p-4 border-b border-slate-200 bg-slate-50/30 shrink-0 flex items-center justify-between">
           <div>
             <h4 className="text-xs font-bold text-slate-700">
-              {activeChannel === 'TEACHER' ? 'Conversation with Mrs. Ananya Sharma' : 'EduTrack Helpdesk Support'}
+              {activeChannel === 'TEACHER' ? 'Conversation with Mrs. Ananya Sharma' : 'CS EduTrack Helpdesk Support'}
             </h4>
             <span className="text-[9px] text-indigo-600 font-bold uppercase tracking-wider block mt-0.5">Secure Encryption Enabled</span>
           </div>

@@ -196,7 +196,7 @@ export default function FeesPage() {
   );
 
   // Target School UPI ID Resolution
-  const schoolName = paymentDetails?.name || 'EduTrack School';
+  const schoolName = paymentDetails?.name || 'CS EduTrack';
   const targetUpiId = paymentMethod === 'GPAY'
     ? (paymentDetails?.googlePayId || paymentDetails?.upiQrId || paymentDetails?.phonePeId || '')
     : paymentMethod === 'PHONEPE'

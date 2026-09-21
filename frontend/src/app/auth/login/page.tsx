@@ -326,16 +326,17 @@ if (isSchoolSubdomain) {
       <div className="absolute bottom-[20%] right-[10%] w-[300px] h-[300px] rounded-full bg-indigo-500/10 blur-[100px] pointer-events-none" />
 
       {/* Main Card */}
-      <div className="w-full max-w-md z-10">
-        <div className="flex flex-col items-center justify-center mb-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20 mb-3">
-            <span className="font-extrabold text-white text-xl tracking-tight">ET</span>
-          </div>
-          <h1 className="font-black text-2xl bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent tracking-tight max-w-sm">
-            EduTrack Application
-          </h1>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">
-            Powered By Covenant Synergy
+      <div className="w-full max-w-md z-10 my-8">
+        <div className="flex flex-col items-center justify-center mb-6 text-center">
+          <Link href="/" className="inline-block transition-transform hover:scale-105 mb-2">
+            <img 
+              src="/cs-edutrack-logo.jpg" 
+              alt="CS EduTrack - Smarter Institute Management" 
+              className="h-16 sm:h-20 w-auto object-contain mx-auto rounded-xl shadow-lg shadow-brand-500/10" 
+            />
+          </Link>
+          <p className="text-xs text-slate-400 font-medium tracking-wide">
+            by Covenant Synergy Private Limited
           </p>
         </div>
 
@@ -404,6 +405,18 @@ if (isSchoolSubdomain) {
           </form>
           <div id="recaptcha-container"></div>
         </div>
+
+        {/* Footer */}
+        <footer className="mt-6 text-center text-xs text-slate-500 space-y-1.5 font-light">
+          <p>&copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved.</p>
+          <div className="flex justify-center items-center gap-3 text-slate-400">
+            <span className="font-semibold text-slate-300">CS EduTrack</span>
+            <span className="text-slate-700">•</span>
+            <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
+              Privacy Policy
+            </Link>
+          </div>
+        </footer>
       </div>
     </main>
   );

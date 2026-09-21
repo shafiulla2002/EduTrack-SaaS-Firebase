@@ -1,7 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const tenantId = '51900d01-1e46-4f36-9625-9759285d5f64'; // Vikas Senior Secondary School (demo-school) with active data
+const tenantId = process.env.BENCHMARK_TENANT_ID || '51900d01-1e46-4f36-9625-9759285d5f64'; // Target school tenant with active benchmark data
 
 async function measureQuery(label, queryFn) {
   const start = performance.now();

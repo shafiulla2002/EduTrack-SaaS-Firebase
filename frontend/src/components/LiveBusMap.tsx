@@ -57,7 +57,7 @@ export default function LiveBusMap({ buses, height = '450px', zoom = 13, center,
         mapInstanceRef.current = L.map(mapContainerRef.current).setView(defaultCenter, zoom);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap contributors | EduTrack Transport',
+          attribution: '&copy; OpenStreetMap contributors | CS EduTrack Transport',
           maxZoom: 19,
         }).addTo(mapInstanceRef.current);
       } else {

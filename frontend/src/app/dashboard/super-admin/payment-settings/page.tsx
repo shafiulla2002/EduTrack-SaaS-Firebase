@@ -7,18 +7,18 @@ export default function PaymentSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [formData, setFormData] = useState({
-    companyName: 'EduTrack Inc.',
+    companyName: 'Covenant Synergy Private Limited',
     companyLogoUrl: '',
     address: '',
-    website: 'https://edutrack.com',
-    supportEmail: 'support@edutrack.com',
+    website: 'https://edutrackapplication.covenantsynergy.in',
+    supportEmail: 'support@covenantsynergy.in',
     supportPhone: '+91 9876543210',
     gstNumber: '',
     panNumber: '',
     gstPercentage: 18.0,
     invoicePrefix: 'INV-SUB-',
     invoiceNumberFormat: 'INV-{YYYY}-{MM}-{NUMBER}',
-    footer: 'Thank you for choosing EduTrack SaaS platform!',
+    footer: 'Thank you for choosing CS EduTrack SaaS platform!',
     termsAndConditions: 'Payment due within 15 days of invoice date.',
     defaultCurrency: 'INR',
     timeZone: 'Asia/Kolkata',
@@ -167,7 +167,7 @@ export default function PaymentSettingsPage() {
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">UPI VPA / QR ID</label>
-              <input type="text" name="upiId" value={formData.upiId} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-sky-500" placeholder="edutrack@upi" />
+              <input type="text" name="upiId" value={formData.upiId} onChange={handleChange} className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-sky-500" placeholder="csedutrack@upi" />
             </div>
           </div>
         </section>

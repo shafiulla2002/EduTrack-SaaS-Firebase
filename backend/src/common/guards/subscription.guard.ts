@@ -132,12 +132,12 @@ export class SubscriptionGuard implements CanActivate {
       if (isAdmin) {
         throw new ForbiddenException({
           code: 'SUBSCRIPTION_EXPIRED',
-          message: "Your school's EduTrack subscription has expired. The application is in read-only mode. Please renew your subscription to restore full access.",
+          message: "Your school's CS EduTrack subscription has expired. The application is in read-only mode. Please renew your subscription to restore full access.",
         });
       } else {
         throw new ForbiddenException({
           code: 'SUBSCRIPTION_EXPIRED',
-          message: "Your school's EduTrack subscription has expired. Please reach out to your school admin to restore full access.",
+          message: "Your school's CS EduTrack subscription has expired. Please reach out to your school admin to restore full access.",
         });
       }
     } else {

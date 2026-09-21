@@ -147,7 +147,7 @@ async function main() {
       firstName: t.first,
       lastName: t.last,
       email: t.email,
-      phone: `900000000${i + 1}`,
+      phone: `880000000${i + 1}`,
       qualification: 'M.Ed',
       designation: 'Senior Teacher',
       basicSalary: 45000,

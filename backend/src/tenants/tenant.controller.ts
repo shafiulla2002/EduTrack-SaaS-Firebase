@@ -21,10 +21,10 @@ export class TenantController {
     if (!tenantId) {
       return {
         id: null,
-        name: 'EduTrack Application',
+        name: 'CS EduTrack',
         subdomain: null,
         logoUrl: null,
-        subtitle: 'School Management Platform',
+        subtitle: 'Smarter Institute Management',
       };
     }
 

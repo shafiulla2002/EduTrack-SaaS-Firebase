@@ -103,7 +103,7 @@ export function ParentProvider({ children }: { children: React.ReactNode }) {
         <div className="flex flex-col items-center gap-6 animate-pulse">
           <div className="w-14 h-14 border-4 border-t-[#2E5BFF] border-r-indigo-500 border-b-purple-500 border-l-slate-200 rounded-full animate-spin"></div>
           <div className="text-center mt-2">
-            <h2 className="text-sm font-bold tracking-widest text-slate-900 uppercase font-sans">EduTrack Parent Portal</h2>
+            <h2 className="text-sm font-bold tracking-widest text-slate-900 uppercase font-sans">CS EduTrack Parent Portal</h2>
             <p className="text-[11px] text-slate-500 font-semibold mt-1">Verifying linked student profiles...</p>
           </div>
         </div>

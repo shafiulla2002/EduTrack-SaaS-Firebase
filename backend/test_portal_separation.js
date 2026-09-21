@@ -45,10 +45,11 @@ async function testPortalSeparation() {
     }
 
     // 3. School Admin Logging in to Platform Portal (targetPortal: 'PLATFORM') -> Expected 403 Forbidden
+    const schoolAdminEmail = process.env.TEST_SCHOOL_ADMIN_EMAIL || 'testadmin@example.test';
     console.log('\n[3/4] Testing School Admin Login Attempt on Platform Super Admin Portal (targetPortal: PLATFORM)...');
     try {
       await axios.post(`${API_URL}/auth/login`, {
-        email: 'demoadmin@edutrack.com',
+        email: schoolAdminEmail,
         password: 'SchoolAdminPassword123!',
         targetPortal: 'PLATFORM',
       });
@@ -67,7 +68,7 @@ async function testPortalSeparation() {
     console.log('\n[4/4] Testing School Admin Login on School SaaS Portal (targetPortal: SCHOOL)...');
     try {
       const res = await axios.post(`${API_URL}/auth/login`, {
-        email: 'demoadmin@edutrack.com',
+        email: schoolAdminEmail,
         password: 'SchoolAdminPassword123!',
         targetPortal: 'SCHOOL',
       });

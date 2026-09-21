@@ -1008,7 +1008,7 @@ export default function FeesBillingPage() {
                       </span>
                       {isMockUpi && (
                         <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 block">
-                          ⚠️ Demo Mode: Configure your merchant UPI ID in Settings
+                          ⚠️ Configure your merchant UPI ID in Settings
                         </span>
                       )}
                     </div>

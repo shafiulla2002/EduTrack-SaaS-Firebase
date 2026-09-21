@@ -10,7 +10,7 @@ const { LibraryService } = require('./dist/src/library/library.service');
 const { ExamsService } = require('./dist/src/exams/exams.service');
 const { TenantContext } = require('./dist/src/tenants/tenant.context');
 
-const tenantId = '51900d01-1e46-4f36-9625-9759285d5f64'; // demo-school
+const tenantId = process.env.BENCHMARK_TENANT_ID || '51900d01-1e46-4f36-9625-9759285d5f64'; // Target school tenant for benchmarks
 
 // Instantiate services
 const dashboardService = new DashboardService(prisma);

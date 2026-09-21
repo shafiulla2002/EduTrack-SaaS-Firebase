@@ -5,8 +5,17 @@ import { ToastProvider } from '@/components/Toast';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'EduTrack SaaS Platform',
-  description: 'Independent Multi-Tenant School & College Management Platform',
+  title: 'CS EduTrack - Smarter Institute Management',
+  description: 'CS EduTrack is a school and college management platform that connects administrators, teachers, students, and parents through a unified digital platform by Covenant Synergy Private Limited.',
+  applicationName: 'CS EduTrack',
+  authors: [{ name: 'Covenant Synergy Private Limited' }],
+  keywords: ['CS EduTrack', 'School Management Platform', 'College ERP', 'Covenant Synergy'],
+  openGraph: {
+    title: 'CS EduTrack - Smarter Institute Management',
+    description: 'CS EduTrack is a school and college management platform by Covenant Synergy Private Limited.',
+    siteName: 'CS EduTrack',
+    type: 'website',
+  },
 };
 
 export default function RootLayout({

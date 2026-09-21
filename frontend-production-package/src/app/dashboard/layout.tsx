@@ -569,7 +569,7 @@ export default function DashboardLayout({
           </div>
           <h2 className="text-xl font-bold text-slate-100 font-sans tracking-wide">Subscription Expired</h2>
           <p className="text-sm text-slate-400 mt-3 leading-relaxed">
-            Your school's EduTrack subscription has expired. Please contact the administration to renew the service.
+            Your school's CS EduTrack subscription has expired. Please contact the administration to renew the service.
           </p>
           <button
             onClick={() => {

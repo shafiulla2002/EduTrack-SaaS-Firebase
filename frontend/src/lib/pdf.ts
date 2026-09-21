@@ -194,10 +194,10 @@ export class PDFService {
       // Embed PDF metadata
       pdf.setProperties({
         title: metadata.title || filename.replace(/_/g, ' '),
-        author: metadata.author || 'EduTrack SaaS Platform',
+        author: metadata.author || 'CS EduTrack by Covenant Synergy Private Limited',
         subject: metadata.subject || 'Official School Document',
-        keywords: metadata.keywords || 'EduTrack, School Report, PDF',
-        creator: 'EduTrack PDF Service',
+        keywords: metadata.keywords || 'CS EduTrack, School Report, PDF',
+        creator: 'CS EduTrack PDF Service',
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();

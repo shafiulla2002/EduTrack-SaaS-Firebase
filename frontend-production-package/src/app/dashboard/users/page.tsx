@@ -11,11 +11,11 @@ export default function UserManagementPage() {
 
   // Initial user list
   const [users, setUsers] = useState([
-    { id: 'usr-1', name: 'Sarah Jenkins', email: 'admin@demoschool.com', role: 'SCHOOL_ADMIN', status: 'ACTIVE' },
-    { id: 'usr-2', name: 'James Smith', email: 'teacher.james@school.com', role: 'TEACHER', status: 'ACTIVE' },
-    { id: 'usr-3', name: 'Mary Garcia', email: 'parent.mary@example.com', role: 'PARENT', status: 'ACTIVE' },
-    { id: 'usr-4', name: 'John Doe', email: 'john.doe@school.com', role: 'STUDENT', status: 'ACTIVE' },
-    { id: 'usr-5', name: 'Marie Curie', email: 'teacher.marie@school.com', role: 'TEACHER', status: 'LOCKED' },
+    { id: 'usr-1', name: 'Sarah Jenkins', email: 'admin@example.test', role: 'SCHOOL_ADMIN', status: 'ACTIVE' },
+    { id: 'usr-2', name: 'James Smith', email: 'teacher.james@example.test', role: 'TEACHER', status: 'ACTIVE' },
+    { id: 'usr-3', name: 'Mary Garcia', email: 'parent.mary@example.test', role: 'PARENT', status: 'ACTIVE' },
+    { id: 'usr-4', name: 'John Doe', email: 'john.doe@example.test', role: 'STUDENT', status: 'ACTIVE' },
+    { id: 'usr-5', name: 'Marie Curie', email: 'teacher.marie@example.test', role: 'TEACHER', status: 'LOCKED' },
   ]);
 
   const triggerToast = (msg: string) => {

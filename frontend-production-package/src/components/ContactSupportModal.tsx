@@ -101,7 +101,7 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
     <Modal
       isOpen={true}
       onClose={onClose}
-      title="Contact EduTrack Support"
+      title="Contact CS EduTrack Support"
       subtitle="Fill in details about your query. Our support team will get back to you shortly."
       size="xl"
     >

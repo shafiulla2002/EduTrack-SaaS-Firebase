@@ -13,11 +13,11 @@ export function SubscriptionExpiredPortalLock() {
         <div>
           <h2 className="text-xl font-black text-slate-900 tracking-tight">Portal Access Restricted</h2>
           <p className="text-sm font-semibold text-rose-600 mt-2 bg-rose-50 py-3 px-4 rounded-2xl border border-rose-100">
-            Your school's EduTrack subscription has expired. Please reach out to your school admin.
+            Your school's CS EduTrack subscription has expired. Please reach out to your school admin.
           </p>
         </div>
         <p className="text-xs text-slate-500 leading-relaxed">
-          Access to student records, attendance, grades, fees, and communication modules is temporarily locked until your school administrator renews the EduTrack SaaS subscription.
+          Access to student records, attendance, grades, fees, and communication modules is temporarily locked until your school administrator renews the CS EduTrack SaaS subscription.
         </p>
         <div className="pt-2 flex items-center justify-center gap-2 text-[11px] text-slate-400 font-mono">
           <ShieldAlert className="w-3.5 h-3.5" /> Code: SUBSCRIPTION_EXPIRED

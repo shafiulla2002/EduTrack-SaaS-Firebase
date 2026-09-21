@@ -40,7 +40,7 @@ export default function BulkTeacherImportModal({ isOpen, onClose, onImportSucces
 
     const element = document.createElement('a');
     element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent));
-    element.setAttribute('download', 'EduTrack_Teacher_Import_Template.csv');
+    element.setAttribute('download', 'CS_EduTrack_Teacher_Import_Template.csv');
     element.style.display = 'none';
     document.body.appendChild(element);
     element.click();

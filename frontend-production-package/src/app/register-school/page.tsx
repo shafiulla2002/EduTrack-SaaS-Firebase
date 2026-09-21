@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { School, User, Mail, MapPin, Calendar, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -105,14 +106,18 @@ function RegisterSchoolContent() {
 
       {/* Main Form container */}
       <div className="w-full max-w-2xl z-10">
-        <div className="flex justify-center mb-8">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
-              <span className="font-extrabold text-white text-xl tracking-tight">ET</span>
-            </div>
-            <span className="font-bold text-xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-              EduTrack <span className="text-brand-400 font-medium text-xs px-2 py-0.5 rounded-full bg-brand-500/10 border border-brand-500/20 ml-1">SaaS</span>
-            </span>
+        <div className="flex justify-center mb-6">
+          <div className="flex flex-col items-center text-center">
+            <Link href="/" className="inline-block transition-transform hover:scale-105 mb-2">
+              <img 
+                src="/cs-edutrack-logo.jpg" 
+                alt="CS EduTrack Logo" 
+                className="h-16 sm:h-20 w-auto object-contain mx-auto rounded-xl shadow-lg shadow-brand-500/10" 
+              />
+            </Link>
+            <p className="text-xs text-slate-400 font-medium tracking-wide">
+              by Covenant Synergy Private Limited
+            </p>
           </div>
         </div>
 
@@ -327,6 +332,18 @@ function RegisterSchoolContent() {
             </div>
           </form>
         </div>
+
+        {/* Footer */}
+        <footer className="mt-8 text-center text-xs text-slate-500 space-y-1.5 font-light">
+          <p>&copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved.</p>
+          <div className="flex justify-center items-center gap-3 text-slate-400">
+            <span className="font-semibold text-slate-300">CS EduTrack</span>
+            <span className="text-slate-700">•</span>
+            <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
+              Privacy Policy
+            </Link>
+          </div>
+        </footer>
       </div>
     </main>
   );

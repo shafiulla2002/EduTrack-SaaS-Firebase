@@ -572,7 +572,7 @@ export default function FeesBillingPage() {
 
       // Compose share message with receipt details and link
       const shareText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n`
-        + `🏫 *School:* ${data.schoolName || schoolName || 'EduTrack School Portal'}\n`
+        + `🏫 *School:* ${data.schoolName || schoolName || 'CS EduTrack Portal'}\n`
         + `📄 *Receipt No:* ${data.invoiceNo || invoiceId}\n`
         + `👤 *Student:* ${data.studentName || lastPaidStudentName} (${data.className || ''} ${data.sectionName || ''})\n`
         + `📅 *Date & Time:* ${data.invoiceDate || successPaymentDate}\n\n`
@@ -613,7 +613,7 @@ export default function FeesBillingPage() {
         ? `${window.location.origin}/dashboard/billing/invoices/${invoiceId}`
         : `/dashboard/billing/invoices/${invoiceId}`;
       const fallbackText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n`
-        + `🏫 *School:* ${schoolName || 'EduTrack School Portal'}\n`
+        + `🏫 *School:* ${schoolName || 'CS EduTrack Portal'}\n`
         + `📄 *Receipt No:* ${invoiceId}\n`
         + `👤 *Student:* ${lastPaidStudentName}\n`
         + `📅 *Date & Time:* ${successPaymentDate}\n\n`
@@ -1018,7 +1018,7 @@ export default function FeesBillingPage() {
                       </span>
                       {isMockUpi && (
                         <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 block">
-                          ⚠️ Demo Mode: Configure your merchant UPI ID in Settings
+                          ⚠️ Configure your merchant UPI ID in Settings
                         </span>
                       )}
                     </div>

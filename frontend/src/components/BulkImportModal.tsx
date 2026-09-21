@@ -40,7 +40,7 @@ export default function BulkImportModal({ isOpen, onClose, onImportSuccess }: Bu
 
     const element = document.createElement('a');
     element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent));
-    element.setAttribute('download', 'EduTrack_Student_Import_Template.csv');
+    element.setAttribute('download', 'CS_EduTrack_Student_Import_Template.csv');
     element.style.display = 'none';
     document.body.appendChild(element);
     element.click();

@@ -42,7 +42,7 @@ function OtpContent() {
   }, [searchParams]);
 
   // Refs for auto-focusing next input
-  const inputRefs = useRef<HTMLInputElement[]>([]);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
     if (!phone) {
@@ -68,6 +68,22 @@ function OtpContent() {
     if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').trim();
+    if (!/^\d+$/.test(pastedData)) return;
+
+    const digits = pastedData.slice(0, 6).split('');
+    const newOtp = [...otpCode];
+    digits.forEach((digit, idx) => {
+      newOtp[idx] = digit;
+    });
+    setOtpCode(newOtp);
+
+    const focusIndex = Math.min(digits.length, 5);
+    inputRefs.current[focusIndex]?.focus();
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -243,22 +259,26 @@ function OtpContent() {
       <div className="absolute bottom-[20%] right-[10%] w-[300px] h-[300px] rounded-full bg-indigo-500/10 blur-[100px] pointer-events-none" />
 
       {/* Main card wrapper */}
-      <div className="w-full max-w-md z-10">
-         <div className="flex flex-col items-center justify-center mb-8 text-center">
+      <div className="w-full max-w-md z-10 my-8">
+         <div className="flex flex-col items-center justify-center mb-6 text-center">
           {logoUrl ? (
-            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-800 p-2 overflow-hidden shadow-lg mb-3">
+            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-800 p-2 overflow-hidden shadow-lg mb-2">
               <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
             </div>
           ) : (
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20 mb-3">
-              <span className="font-extrabold text-white text-xl tracking-tight">ET</span>
-            </div>
+            <Link href="/" className="inline-block transition-transform hover:scale-105 mb-2">
+              <img 
+                src="/cs-edutrack-logo.jpg" 
+                alt="CS EduTrack - Smarter Institute Management" 
+                className="h-16 sm:h-20 w-auto object-contain mx-auto rounded-xl shadow-lg shadow-brand-500/10" 
+              />
+            </Link>
           )}
-          <h1 className="font-black text-2xl bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent tracking-tight max-w-sm">
-            {schoolName || 'EduTrack Application'}
+          <h1 className="font-bold text-xl text-white tracking-tight">
+            {schoolName || 'CS EduTrack'}
           </h1>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">
-            {schoolName ? 'School Portal' : 'Powered By Covenant Synergy'}
+          <p className="text-xs text-slate-400 font-medium tracking-wide mt-0.5">
+            {schoolName ? 'School Portal' : 'by Covenant Synergy Private Limited'}
           </p>
         </div>
 
@@ -293,19 +313,18 @@ function OtpContent() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex justify-between gap-2.5">
+            <div className="flex justify-between gap-2 my-4">
               {otpCode.map((digit, idx) => (
                 <input
                   key={idx}
+                  ref={(el) => { inputRefs.current[idx] = el; }}
                   type="text"
                   maxLength={1}
                   value={digit}
                   onChange={(e) => handleChange(idx, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(idx, e)}
-                  ref={(el) => {
-                    inputRefs.current[idx] = el as HTMLInputElement;
-                  }}
-                  className="w-full h-13 text-center bg-slate-950/80 border border-slate-800 rounded-xl text-white text-lg font-bold focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all placeholder-slate-700"
+                  onPaste={handlePaste}
+                  className="w-11 h-12 text-center text-xl font-bold bg-slate-950/80 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all"
                   disabled={loading}
                 />
               ))}
@@ -319,25 +338,39 @@ function OtpContent() {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Verifying OTP...
+                  Verifying...
                 </>
               ) : (
-                'Verify & Proceed'
+                'Verify & Continue'
               )}
             </button>
           </form>
-          <div id="recaptcha-container"></div>
 
-          <div className="text-center mt-6">
+          <div className="mt-6 text-center text-xs text-slate-400 font-light">
+            Didn't receive the code?{' '}
             <button
               onClick={handleResend}
               disabled={loading}
-              className="text-xs font-semibold text-brand-400 hover:text-brand-300 transition-colors bg-none border-none p-0 cursor-pointer disabled:opacity-50"
+              className="text-brand-400 font-semibold hover:text-brand-300 transition-colors disabled:opacity-50 cursor-pointer"
             >
-              Didn't receive code? Resend OTP
+              Resend Code
             </button>
           </div>
+          <div id="recaptcha-container"></div>
         </div>
+
+        {/* Footer */}
+        <footer className="mt-6 text-center text-xs text-slate-500 space-y-1.5 font-light">
+          <p>&copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved.</p>
+          <div className="flex justify-center items-center gap-3 text-slate-400">
+            <span className="font-semibold text-slate-300">CS EduTrack</span>
+            <span className="text-slate-700">•</span>
+            <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
+              Privacy Policy
+            </Link>
+          </div>
+        </footer>
+      </div>
       </div>
     </main>
   );

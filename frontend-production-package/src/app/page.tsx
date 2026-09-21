@@ -46,19 +46,26 @@ export default function LandingPage() {
       <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
 
       {/* Header */}
-      <header className="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
-            <span className="font-extrabold text-white text-xl tracking-tight">ET</span>
+      <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-3.5 sm:py-6 flex justify-between items-center z-10">
+        <div className="flex items-center gap-3">
+          <img 
+            src="/cs-edutrack-logo.jpg" 
+            alt="CS EduTrack Logo" 
+            className="h-10 sm:h-12 w-auto object-contain rounded-xl shadow-md" 
+          />
+          <div className="flex flex-col text-left">
+            <span className="font-extrabold text-base sm:text-lg text-white tracking-tight">
+              CS EduTrack
+            </span>
+            <span className="text-[10px] sm:text-xs text-slate-400 font-medium">
+              by Covenant Synergy Private Limited
+            </span>
           </div>
-          <span className="font-bold text-xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-            EduTrack <span className="text-brand-400 font-medium text-sm px-1.5 py-0.5 rounded-full bg-brand-500/10 border border-brand-500/20 ml-1">SaaS</span>
-          </span>
         </div>
 
         <button
           onClick={() => setSupportModalOpen(true)}
-          className="px-5 py-2 rounded-xl text-sm font-semibold glass-panel text-slate-300 hover:text-white transition-all cursor-pointer"
+          className="px-3.5 py-1.5 sm:px-5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold glass-panel text-slate-300 hover:text-white transition-all cursor-pointer"
         >
           Contact Support
         </button>
@@ -66,40 +73,42 @@ export default function LandingPage() {
 
 
       {/* Main Content */}
-      <section className="flex-1 max-w-7xl mx-auto px-6 flex flex-col justify-center items-center text-center py-12 z-10">
+      <section className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 flex flex-col justify-center items-center text-center py-4 sm:py-12 z-10">
         <div className="max-w-3xl">
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
+          <h1 className="text-3xl sm:text-5xl md:text-7xl font-extrabold tracking-tight mb-3 sm:mb-6">
             School Management{' '}
             <span className="bg-gradient-to-r from-brand-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
               Redefined.
             </span>
           </h1>
-          <p className="text-slate-400 text-lg md:text-xl mb-12 max-w-2xl mx-auto font-light leading-relaxed">
-            Welcome to the independent multi-tenant portal for EduTrack. Log in to access your modules, manage classes, and track scholastic reports.
+          <p className="text-slate-400 text-xs sm:text-lg md:text-xl mb-4 sm:mb-12 max-w-2xl mx-auto font-light leading-relaxed">
+            Welcome to CS EduTrack. Log in to access your role-based portal, manage academic schedules, track attendance, and process scholastic reports.
           </p>
         </div>
 
         {/* Roles Grid */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-6 w-full max-w-4xl mt-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-6 w-full max-w-4xl mt-2 sm:mt-4">
           {roles.map((role, idx) => {
             const Icon = role.icon;
             return (
               <Link
                 key={idx}
                 href={`/auth/login?portal=${role.portal}`}
-                className="glass-card p-3.5 sm:p-6 rounded-2xl text-left flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5 cursor-pointer relative group"
+                className="glass-card p-3 sm:p-6 rounded-2xl text-left flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-5 cursor-pointer relative group h-full justify-between"
               >
-                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr ${role.color} flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform`}>
-                  <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-sm sm:text-lg text-slate-200 group-hover:text-white transition-colors flex items-center gap-1">
-                    <span className="truncate">{role.title}</span>
-                    <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all shrink-0" />
-                  </h3>
-                  <p className="text-slate-400 text-xs sm:text-sm mt-1 font-light leading-snug line-clamp-2 sm:line-clamp-none">
-                    {role.description}
-                  </p>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-5 w-full">
+                  <div className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr ${role.color} flex items-center justify-center text-white shrink-0 shadow-md group-hover:scale-105 transition-transform`}>
+                    <Icon className="w-4.5 h-4.5 sm:w-6 sm:h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-xs sm:text-lg text-slate-200 group-hover:text-white transition-colors flex items-center gap-1 leading-tight">
+                      <span className="truncate">{role.title}</span>
+                      <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all shrink-0 hidden sm:inline-block" />
+                    </h3>
+                    <p className="text-slate-400 text-[11px] sm:text-sm mt-1 font-light leading-snug line-clamp-3 sm:line-clamp-none">
+                      {role.description}
+                    </p>
+                  </div>
                 </div>
               </Link>
             );
@@ -108,10 +117,17 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="w-full max-w-7xl mx-auto px-6 py-6 text-center border-t border-slate-900/50 z-10">
-        <p className="text-slate-500 text-xs font-light">
-          &copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved. EduTrack is a registered trademark.
+      <footer className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 border-t border-slate-900/50 z-10 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500 text-[11px] sm:text-xs font-light">
+        <p>
+          &copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved.
         </p>
+        <div className="flex items-center gap-4">
+          <span className="font-semibold text-slate-300">CS EduTrack</span>
+          <span>•</span>
+          <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
+            Privacy Policy
+          </Link>
+        </div>
       </footer>
 
       {supportModalOpen && (

@@ -294,7 +294,7 @@ export default function HomeworkPage() {
   const generateHomeworkMessage = (hw: any) => {
     if (!hw) return '';
     const dateStr = hw.dueDate ? hw.dueDate.split('T')[0] : '';
-    const displaySchoolName = schoolName || 'EduTrack School';
+    const displaySchoolName = schoolName || 'CS EduTrack';
     return `📚 Homework Assignment
 
 School: ${displaySchoolName}

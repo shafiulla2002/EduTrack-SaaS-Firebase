@@ -47,13 +47,20 @@ export default function LandingPage() {
 
       {/* Header */}
       <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-3.5 sm:py-6 flex justify-between items-center z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
-            <span className="font-extrabold text-white text-lg sm:text-xl tracking-tight">ET</span>
+        <div className="flex items-center gap-3">
+          <img 
+            src="/cs-edutrack-logo.jpg" 
+            alt="CS EduTrack Logo" 
+            className="h-10 sm:h-12 w-auto object-contain rounded-xl shadow-md" 
+          />
+          <div className="flex flex-col text-left">
+            <span className="font-extrabold text-base sm:text-lg text-white tracking-tight">
+              CS EduTrack
+            </span>
+            <span className="text-[10px] sm:text-xs text-slate-400 font-medium">
+              by Covenant Synergy Private Limited
+            </span>
           </div>
-          <span className="font-bold text-lg sm:text-xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-            EduTrack <span className="text-brand-400 font-medium text-xs sm:text-sm px-1.5 py-0.5 rounded-full bg-brand-500/10 border border-brand-500/20 ml-1">SaaS</span>
-          </span>
         </div>
 
         <button
@@ -74,7 +81,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="text-slate-400 text-xs sm:text-lg md:text-xl mb-4 sm:mb-12 max-w-2xl mx-auto font-light leading-relaxed">
-            Welcome to the independent multi-tenant portal for EduTrack. Log in to access your modules, manage classes, and track scholastic reports.
+            Welcome to CS EduTrack. Log in to access your role-based portal, manage academic schedules, track attendance, and process scholastic reports.
           </p>
         </div>
 
@@ -109,10 +116,17 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-3.5 sm:py-6 text-center border-t border-slate-900/50 z-10">
-        <p className="text-slate-500 text-[11px] sm:text-xs font-light leading-normal">
-          &copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved. EduTrack is a registered trademark.
+      <footer className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 border-t border-slate-900/50 z-10 flex flex-col sm:flex-row items-center justify-between gap-3 text-slate-500 text-[11px] sm:text-xs font-light">
+        <p>
+          &copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved.
         </p>
+        <div className="flex items-center gap-4">
+          <span className="font-semibold text-slate-300">CS EduTrack</span>
+          <span>•</span>
+          <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
+            Privacy Policy
+          </Link>
+        </div>
       </footer>
 
       {supportModalOpen && (

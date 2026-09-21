@@ -537,7 +537,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 Student Behavior Submission
               </h1>
               <p className="text-white/90 text-[11px] sm:text-sm font-medium">
-                Submit complaints or praises for student behavior logs in the EduTrack Package
+                Submit complaints or praises for student behavior logs in CS EduTrack
               </p>
             </div>
           </div>
@@ -1847,7 +1847,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             Back to Dashboard
           </Link>
           <span className="text-[11px] font-bold text-slate-400 font-mono uppercase tracking-wider select-none">
-            EduTrack SaaS Parity Portal
+            CS EduTrack Portal
           </span>
         </div>
 

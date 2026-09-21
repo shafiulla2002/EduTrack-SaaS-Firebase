@@ -36,7 +36,6 @@ export default function ParentDashboard() {
 
   const fetchStats = async () => {
     try {
-      const tenantId = localStorage.getItem('parent_tenantId') || 'demo-school';
       const res = await api.get('/parent-portal/dashboard');
       setStats(res.data);
     } catch (err) {
