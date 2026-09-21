@@ -320,28 +320,25 @@ if (isSchoolSubdomain) {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 relative overflow-hidden">
+    <main className="min-h-[100dvh] h-auto lg:h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 py-4 sm:py-6 relative overflow-y-auto lg:overflow-hidden box-border">
       {/* Background Ornaments */}
       <div className="absolute top-[20%] left-[10%] w-[300px] h-[300px] rounded-full bg-brand-500/10 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-[20%] right-[10%] w-[300px] h-[300px] rounded-full bg-indigo-500/10 blur-[100px] pointer-events-none" />
 
       {/* Main Card */}
-      <div className="w-full max-w-md z-10 my-8">
-        <div className="flex flex-col items-center justify-center mb-6 text-center">
-          <Link href="/" className="inline-block transition-transform hover:scale-105 mb-2">
+      <div className="w-full max-w-md z-10 my-auto flex flex-col justify-center">
+        <div className="flex flex-col items-center justify-center mb-4 text-center">
+          <Link href="/" className="inline-block transition-transform hover:scale-105">
             <img 
               src="/cs-edutrack-logo.jpg" 
               alt="CS EduTrack - Smarter Institute Management" 
-              className="h-16 sm:h-20 w-auto object-contain mx-auto rounded-xl shadow-lg shadow-brand-500/10" 
+              className="h-14 sm:h-16 w-auto object-contain mx-auto rounded-xl" 
             />
           </Link>
-          <p className="text-xs text-slate-400 font-medium tracking-wide">
-            by Covenant Synergy Private Limited
-          </p>
         </div>
 
-        <div className="glass-card p-8 rounded-3xl border border-slate-900/50 bg-slate-900/40 backdrop-blur-xl relative">
-          <div className="flex justify-between items-center mb-6">
+        <div className="glass-card p-6 sm:p-7 rounded-2xl border border-slate-900/50 bg-slate-900/40 backdrop-blur-xl relative">
+          <div className="flex justify-between items-center mb-4">
             <Link href="/" className="text-xs font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-1">
               <ArrowLeft className="w-3.5 h-3.5" /> Portal Selection
             </Link>
@@ -350,28 +347,28 @@ if (isSchoolSubdomain) {
             </span>
           </div>
 
-          <div className="mb-6 text-center">
-            <h2 className="text-2xl font-bold text-white tracking-tight">{portalTitle}</h2>
-            <p className="text-slate-400 text-sm mt-1.5 font-light">
+          <div className="mb-4 text-center">
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">{portalTitle}</h2>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1 font-light leading-relaxed">
               {portalSubtitle}
             </p>
           </div>
 
           {error && (
-            <div className="flex items-start gap-2.5 p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs mb-5">
-              <AlertCircle className="w-4.5 h-4.5 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs mb-4">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3.5">
             <div>
-              <label htmlFor="phone" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <label htmlFor="phone" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
                 Mobile Number
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                  <Phone className="w-4.5 h-4.5" />
+                  <Phone className="w-4 h-4" />
                 </div>
                 <input
                   type="tel"
@@ -379,7 +376,7 @@ if (isSchoolSubdomain) {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="e.g. 9876543210"
-                  className="block w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 text-sm transition-all font-light"
+                  className="block w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 text-sm transition-all font-light"
                   disabled={loading}
                 />
               </div>
@@ -388,7 +385,7 @@ if (isSchoolSubdomain) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-brand-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:from-brand-500 hover:to-indigo-500 shadow-lg shadow-brand-500/15 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-slate-950 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-brand-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:from-brand-500 hover:to-indigo-500 shadow-lg shadow-brand-500/15 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-slate-950 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -398,7 +395,7 @@ if (isSchoolSubdomain) {
               ) : (
                 <>
                   Get OTP Code
-                  <ArrowRight className="w-4.5 h-4.5" />
+                  <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
@@ -407,15 +404,12 @@ if (isSchoolSubdomain) {
         </div>
 
         {/* Footer */}
-        <footer className="mt-6 text-center text-xs text-slate-500 space-y-1.5 font-light">
+        <footer className="mt-4 text-center text-xs text-slate-500 flex flex-col items-center gap-1 font-light">
           <p>&copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved.</p>
-          <div className="flex justify-center items-center gap-3 text-slate-400">
-            <span className="font-semibold text-slate-300">CS EduTrack</span>
-            <span className="text-slate-700">•</span>
-            <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
-              Privacy Policy
-            </Link>
-          </div>
+          <span className="font-semibold text-slate-300">CS EduTrack</span>
+          <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
+            Privacy Policy
+          </Link>
         </footer>
       </div>
     </main>

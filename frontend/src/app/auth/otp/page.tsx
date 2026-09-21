@@ -243,16 +243,16 @@ function OtpContent() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 relative overflow-hidden">
+    <main className="min-h-[100dvh] h-auto lg:h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center px-4 py-4 sm:py-6 relative overflow-y-auto lg:overflow-hidden box-border">
       {/* Background Ornamentations */}
       <div className="absolute top-[20%] left-[10%] w-[300px] h-[300px] rounded-full bg-brand-500/10 blur-[100px] pointer-events-none" />
       <div className="absolute bottom-[20%] right-[10%] w-[300px] h-[300px] rounded-full bg-indigo-500/10 blur-[100px] pointer-events-none" />
 
       {/* Main card wrapper */}
-      <div className="w-full max-w-md z-10 my-8">
-         <div className="flex flex-col items-center justify-center mb-6 text-center">
+      <div className="w-full max-w-md z-10 my-auto flex flex-col justify-center">
+         <div className="flex flex-col items-center justify-center mb-4 text-center">
           {logoUrl ? (
-            <div className="w-16 h-16 rounded-2xl bg-white border border-slate-800 p-2 overflow-hidden shadow-lg mb-2">
+            <div className="w-14 h-14 rounded-2xl bg-white/10 border border-slate-800 p-2 overflow-hidden mb-2">
               <img src={logoUrl} alt={schoolName} className="w-full h-full object-cover" />
             </div>
           ) : (
@@ -260,50 +260,49 @@ function OtpContent() {
               <img 
                 src="/cs-edutrack-logo.jpg" 
                 alt="CS EduTrack - Smarter Institute Management" 
-                className="h-16 sm:h-20 w-auto object-contain mx-auto rounded-xl shadow-lg shadow-brand-500/10" 
+                className="h-14 sm:h-16 w-auto object-contain mx-auto rounded-xl" 
               />
             </Link>
           )}
-          <h1 className="font-bold text-xl text-white tracking-tight">
-            {schoolName || 'CS EduTrack'}
-          </h1>
-          <p className="text-xs text-slate-400 font-medium tracking-wide mt-0.5">
-            {schoolName ? 'School Portal' : 'by Covenant Synergy Private Limited'}
-          </p>
+          {schoolName && (
+            <h1 className="font-bold text-lg text-white tracking-tight">
+              {schoolName}
+            </h1>
+          )}
         </div>
 
-        <div className="glass-card p-8 rounded-3xl border border-slate-900/50 bg-slate-900/40 backdrop-blur-xl relative">
+        <div className="glass-card p-6 sm:p-7 rounded-2xl border border-slate-900/50 bg-slate-900/40 backdrop-blur-xl relative">
           <button
             onClick={() => router.push('/auth/login')}
-            className="absolute top-6 left-6 text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+            className="absolute top-5 left-5 text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             Back
           </button>
 
-          <div className="mb-6 mt-4 text-center">
-            <h2 className="text-2xl font-bold text-white tracking-tight">Verify Code</h2>
-            <p className="text-slate-400 text-sm mt-1.5 font-light">
+          <div className="mb-4 mt-2 text-center">
+            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Verify Code</h2>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1 font-light">
               We sent a 6-digit OTP code to <span className="text-slate-200 font-normal">{phone}</span>.
             </p>
           </div>
 
           {error && (
-            <div className="flex items-start gap-2.5 p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs mb-5">
-              <AlertCircle className="w-4.5 h-4.5 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs mb-4">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="flex items-start gap-2.5 p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs mb-5">
-              <ShieldCheck className="w-4.5 h-4.5 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-xs mb-4">
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{successMsg}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex justify-between gap-2 my-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="flex justify-between gap-2 my-2">
               {otpCode.map((digit, idx) => (
                 <input
                   key={idx}
@@ -314,7 +313,7 @@ function OtpContent() {
                   onChange={(e) => handleChange(idx, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(idx, e)}
                   onPaste={handlePaste}
-                  className="w-11 h-12 text-center text-xl font-bold bg-slate-950/80 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all"
+                  className="w-10 sm:w-11 h-11 sm:h-12 text-center text-xl font-bold bg-slate-950/80 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all"
                   disabled={loading}
                 />
               ))}
@@ -323,7 +322,7 @@ function OtpContent() {
             <button
               type="submit"
               disabled={loading || otpCode.join('').length < 6}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-brand-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:from-brand-500 hover:to-indigo-500 shadow-lg shadow-brand-500/15 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-slate-950 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-brand-600 to-indigo-600 text-white rounded-xl font-semibold text-sm hover:from-brand-500 hover:to-indigo-500 shadow-lg shadow-brand-500/15 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-slate-950 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -336,7 +335,7 @@ function OtpContent() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-xs text-slate-400 font-light">
+          <div className="mt-4 text-center text-xs text-slate-400 font-light">
             Didn't receive the code?{' '}
             <button
               onClick={handleResend}
@@ -350,15 +349,12 @@ function OtpContent() {
         </div>
 
         {/* Footer */}
-        <footer className="mt-6 text-center text-xs text-slate-500 space-y-1.5 font-light">
+        <footer className="mt-4 text-center text-xs text-slate-500 flex flex-col items-center gap-1 font-light">
           <p>&copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved.</p>
-          <div className="flex justify-center items-center gap-3 text-slate-400">
-            <span className="font-semibold text-slate-300">CS EduTrack</span>
-            <span className="text-slate-700">•</span>
-            <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
-              Privacy Policy
-            </Link>
-          </div>
+          <span className="font-semibold text-slate-300">CS EduTrack</span>
+          <Link href="/privacy-policy" className="text-brand-400 hover:text-brand-300 transition-colors underline">
+            Privacy Policy
+          </Link>
         </footer>
       </div>
     </main>

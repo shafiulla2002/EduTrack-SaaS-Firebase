@@ -607,6 +607,18 @@ export default function DashboardLayout({
       <div className="flex-1 flex min-h-screen">
       {/* Sidebar - Fix position matching .sidebar in LWC CSS */}
       <aside className="hidden lg:block w-[280px] bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-50 py-6 select-none shadow-sm print:hidden">
+        {/* Sidebar Brand Header */}
+        <div className="flex items-center gap-2.5 px-6 mb-5">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+            <span className="font-extrabold text-white text-base tracking-tight">ET</span>
+          </div>
+          <div className="text-left">
+            <h1 className="font-extrabold text-[15px] text-slate-900 tracking-tight leading-none">CS EduTrack</h1>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-1">Institute Platform</p>
+          </div>
+        </div>
+        <hr className="border-t border-slate-100 mx-5 mb-5" />
+
         {/* Sidebar Nav section blocks */}
         <nav className="space-y-6 px-4">
           {navSections.map((section) => (

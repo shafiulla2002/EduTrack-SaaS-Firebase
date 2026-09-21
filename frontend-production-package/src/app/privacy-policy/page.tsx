@@ -6,18 +6,18 @@ import { ArrowLeft, Shield } from 'lucide-react';
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between overflow-x-hidden relative">
+    <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col relative">
       {/* Background Ornaments */}
       <div className="absolute top-[-10%] left-[-5%] w-[600px] h-[600px] rounded-full bg-brand-500/10 blur-[140px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-5%] w-[600px] h-[600px] rounded-full bg-indigo-500/10 blur-[140px] pointer-events-none" />
 
       {/* Header Bar */}
-      <header className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex justify-between items-center z-10 border-b border-slate-900/60">
+      <header className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex justify-between items-center z-10 border-b border-slate-900/60">
         <Link href="/" className="flex items-center gap-3 group">
           <img 
             src="/cs-edutrack-logo.jpg" 
             alt="CS EduTrack Logo" 
-            className="h-10 sm:h-12 w-auto object-contain rounded-lg shadow-md group-hover:scale-105 transition-transform" 
+            className="h-10 sm:h-12 w-auto object-contain rounded-lg group-hover:scale-105 transition-transform" 
           />
           <div className="flex flex-col text-left">
             <span className="font-extrabold text-base sm:text-lg text-white tracking-tight">
@@ -30,7 +30,7 @@ export default function PrivacyPolicyPage() {
         </Link>
 
         <Link
-          href="/auth/login"
+          href="/"
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold glass-panel text-slate-300 hover:text-white transition-all cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -39,7 +39,7 @@ export default function PrivacyPolicyPage() {
       </header>
 
       {/* Main Content Area */}
-      <section className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-14 z-10 w-full">
+      <section className="w-full max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-10 z-10">
         {/* Title Badge */}
         <div className="text-center mb-10 sm:mb-14">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-xs font-semibold uppercase tracking-wider mb-4">
