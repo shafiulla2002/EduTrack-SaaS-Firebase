@@ -372,8 +372,10 @@ export default function ExamsAndMarksPage() {
       const backendMsg = err.response?.data?.message;
       if (backendMsg === 'Exam not found' || err.response?.status === 404) {
         setErrorMsg('No exam has been configured for the selected Class, Subject, and Exam Term. Please create or configure the exam before entering marks.');
+      } else if (backendMsg && backendMsg !== 'Internal server error') {
+        setErrorMsg(backendMsg);
       } else {
-        setErrorMsg(backendMsg || 'Failed to load students roster for mark entry.');
+        setErrorMsg('Failed to load students roster for mark entry. Please click Retry.');
       }
     } finally {
       setIsLoadingRoster(false);
@@ -703,7 +705,10 @@ export default function ExamsAndMarksPage() {
             <span className="font-semibold">{errorMsg}</span>
           </div>
           <button
-            onClick={() => fetchMetadata(0)}
+            onClick={() => {
+              setErrorMsg('');
+              fetchMetadata(0);
+            }}
             className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
           >
             <RefreshCw className="w-3.5 h-3.5" />

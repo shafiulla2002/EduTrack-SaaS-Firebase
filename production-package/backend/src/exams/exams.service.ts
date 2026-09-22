@@ -353,7 +353,7 @@ export class ExamsService {
     let resolvedExamId = examId;
     let resolvedClassSectionId = classSectionId;
 
-    if (!resolvedExamId && resolvedClassSectionId) {
+    if (!resolvedExamId && resolvedClassSectionId && examName) {
       const exam = await this.prisma.exam.findFirst({
         where: {
           tenantId,
@@ -375,6 +375,12 @@ export class ExamsService {
 
     if (!resolvedClassSectionId) {
       throw new BadRequestException('Could not resolve Class Section');
+    }
+    if (!subjectId) {
+      throw new BadRequestException('Subject ID is required');
+    }
+    if (!examName) {
+      throw new BadRequestException('Exam Name is required');
     }
 
     // Verify teacher assignment (getStudentsForMarksEntry)
@@ -429,14 +435,14 @@ export class ExamsService {
       }
       
       const examSub = await this.examConfigService.getOrInitializeExamSubject(resolvedExamId, subjectId, subjectType, tenantId);
-      maxMarks = examSub.maxMarks;
-      passingPercentage = Number(examSub.passingPercentage);
-      passMarks = examSub.passMarks !== null && examSub.passMarks !== undefined
+      maxMarks = examSub?.maxMarks || 100;
+      passingPercentage = Number(examSub?.passingPercentage || 35);
+      passMarks = examSub?.passMarks !== null && examSub?.passMarks !== undefined
         ? Number(examSub.passMarks)
         : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
     } else {
       const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
-      const subRec = await this.prisma.subject.findUnique({ where: { id: subjectId } });
+      const subRec = subjectId ? await this.prisma.subject.findUnique({ where: { id: subjectId } }) : null;
       const resolved = this.examConfigService.resolveSubjectConfig(cfg, subjectId, subjectType, subRec?.name);
       maxMarks = resolved.maxMarks;
       passingPercentage = resolved.passingPercentage;
@@ -448,7 +454,7 @@ export class ExamsService {
         const markRecord = marksMap.get(s.id);
         return {
           studentId: s.id,
-          name: s.user.name,
+          name: s.user?.name || 'Student',
           rollNo: s.rollNo || 'N/A',
           hasMarks: !!markRecord,
           marksObtained: markRecord ? Number(markRecord.marksObtained) : null,
