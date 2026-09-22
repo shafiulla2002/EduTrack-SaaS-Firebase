@@ -586,6 +586,16 @@ export default function DashboardLayout({
     );
   }
 
+  const prefetchRouteData = (href: string) => {
+    if (!href || href === '#') return;
+    try {
+      router.prefetch(href);
+    } catch {}
+    if (href.startsWith('/dashboard/student-progress')) {
+      fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans overflow-x-hidden">
       {isImpersonating && (
@@ -648,11 +658,8 @@ export default function DashboardLayout({
                       key={item.name}
                       href={isLocked ? '#' : item.href}
                       prefetch={true}
-                      onMouseEnter={() => {
-                        if (!isLocked && item.href && item.href !== '#') {
-                          router.prefetch(item.href);
-                        }
-                      }}
+                      onMouseEnter={() => prefetchRouteData(item.href)}
+                      onTouchStart={() => prefetchRouteData(item.href)}
                       onClick={(e) => {
                         if (isLocked) {
                           e.preventDefault();

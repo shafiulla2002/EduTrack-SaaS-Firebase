@@ -204,15 +204,125 @@ export const updateStudent = (id: string, data: Partial<any>) => api.patch(`/stu
 const inFlightRequests = new Map<string, Promise<any>>();
 const lookupCache = new Map<string, { data: any; expiresAt: number; cachedAt: number }>();
 
-export function invalidateLookupCache(tenantId?: string) {
-  if (tenantId) {
+function getPersistedSWR<T>(cacheKey: string, tenantId: string): { data: T; expiresAt: number; cachedAt: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(`edutrack_swr:${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.tenantId !== tenantId) {
+      sessionStorage.removeItem(`edutrack_swr:${cacheKey}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function setPersistedSWR<T>(cacheKey: string, tenantId: string, data: T, ttlMs: number) {
+  if (typeof window === 'undefined') return;
+  try {
+    const entry = {
+      data,
+      expiresAt: Date.now() + ttlMs,
+      cachedAt: Date.now(),
+      tenantId,
+    };
+    sessionStorage.setItem(`edutrack_swr:${cacheKey}`, JSON.stringify(entry));
+  } catch {}
+}
+
+/**
+ * Synchronously retrieves cached SWR data if available in memory or persisted sessionStorage.
+ * Use inside useState(() => getCachedData(...)) for instant 0ms initial render without blank spinners.
+ */
+export function getCachedData<T = any>(url: string, params?: any): T | null {
+  if (typeof window === 'undefined') return null;
+  const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
+  const paramStr = params ? JSON.stringify(params) : '';
+  const cacheKey = `${tenantId}:${url}:${paramStr}`;
+  const cached = lookupCache.get(cacheKey);
+  if (cached && cached.data !== undefined) return cached.data;
+  const persisted = getPersistedSWR<T>(cacheKey, tenantId);
+  if (persisted && persisted.data !== undefined) {
+    lookupCache.set(cacheKey, persisted);
+    return persisted.data;
+  }
+  return null;
+}
+
+/**
+ * Synchronously populates the SWR cache in memory and sessionStorage.
+ * Useful for pre-seeding detail views from list views or pre-warming routes on hover.
+ */
+export function setCachedData<T = any>(url: string, data: T, params?: any, ttlMs = 60000): void {
+  if (typeof window === 'undefined' || data === undefined) return;
+  const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
+  const paramStr = params ? JSON.stringify(params) : '';
+  const cacheKey = `${tenantId}:${url}:${paramStr}`;
+  const entry = {
+    data,
+    expiresAt: Date.now() + ttlMs,
+    cachedAt: Date.now(),
+  };
+  lookupCache.set(cacheKey, entry);
+  setPersistedSWR(cacheKey, tenantId, data, ttlMs);
+}
+
+export function invalidateLookupCache(tenantId?: string, urlPrefix?: string) {
+  const tid = tenantId || getTenantFromHostname() || getStoredTenantId() || '';
+  if (urlPrefix) {
+    const prefix = `${tid}:${urlPrefix}`;
     lookupCache.forEach((_, key) => {
-      if (key.startsWith(`${tenantId}:`)) {
+      if (key.startsWith(prefix)) {
         lookupCache.delete(key);
       }
     });
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith(`edutrack_swr:${prefix}`)) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach((k) => sessionStorage.removeItem(k));
+      } catch {}
+    }
+  } else if (tid) {
+    lookupCache.forEach((_, key) => {
+      if (key.startsWith(`${tid}:`)) {
+        lookupCache.delete(key);
+      }
+    });
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith(`edutrack_swr:${tid}:`)) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach((k) => sessionStorage.removeItem(k));
+      } catch {}
+    }
   } else {
     lookupCache.clear();
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith('edutrack_swr:')) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach((k) => sessionStorage.removeItem(k));
+      } catch {}
+    }
   }
 }
 
@@ -229,7 +339,7 @@ export interface FastGetOptions<T = any> {
 
 /**
  * Fast SWR (Stale-While-Revalidate) GET request engine:
- * 1. If cached data exists in memory, returns immediately in 0ms without UI delay.
+ * 1. If cached data exists in memory or sessionStorage, returns immediately in 0ms without UI delay.
  * 2. Concurrently in the background, fetches fresh data from the server.
  * 3. Calls `onRevalidate` with fresh data if changes are detected, keeping UI 100% accurate.
  */
@@ -243,7 +353,15 @@ export async function fastGet<T = any>(
   const paramStr = config?.params ? JSON.stringify(config.params) : '';
   const cacheKey = `${tenantId}:${url}:${paramStr}`;
 
-  const cached = lookupCache.get(cacheKey);
+  let cached = lookupCache.get(cacheKey);
+  if (!cached) {
+    const persisted = getPersistedSWR<T>(cacheKey, tenantId);
+    if (persisted) {
+      lookupCache.set(cacheKey, persisted);
+      cached = persisted;
+    }
+  }
+
   const now = Date.now();
 
   // Background fetch helper with deduplication
@@ -256,11 +374,13 @@ export async function fastGet<T = any>(
     const promise = api.get<T>(url, config)
       .then((res) => {
         const freshData = res.data;
-        lookupCache.set(cacheKey, {
+        const entry = {
           data: freshData,
           expiresAt: Date.now() + ttlMs,
           cachedAt: Date.now(),
-        });
+        };
+        lookupCache.set(cacheKey, entry);
+        setPersistedSWR(cacheKey, tenantId, freshData, ttlMs);
 
         if (onRevalidate && cached) {
           try {
@@ -283,7 +403,6 @@ export async function fastGet<T = any>(
 
   // If valid cache exists and not forced refresh, return cached data immediately and revalidate in background
   if (!forceRefresh && cached && cached.expiresAt > now) {
-    // Non-blocking background revalidation if data is older than 5 seconds
     if (now - cached.cachedAt > 5000) {
       fetchFresh().catch(() => {});
     }

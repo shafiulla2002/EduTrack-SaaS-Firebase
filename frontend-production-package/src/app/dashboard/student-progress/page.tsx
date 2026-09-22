@@ -1,19 +1,75 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
-import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, ChevronRight, User } from 'lucide-react';
+import { api, fastGet, getCachedData } from '@/lib/api';
+import LoadingSpinner from '@/components/loading/LoadingSpinner';
+import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, ChevronRight, User, Sparkles, BarChart3 } from 'lucide-react';
 
 export default function StudentProgressPage() {
-  const [classes, setClasses] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
+  // Synchronous cache initialization for instant 0ms load
+  const [classes, setClasses] = useState<any[]>(() => getCachedData<any[]>('/teacher-portal/classes') || []);
   
-  const [selectedClass, setSelectedClass] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState('');
-  
-  const [loading, setLoading] = useState(true);
-  const [loadingStudentData, setLoadingStudentData] = useState(false);
-  const [progress, setProgress] = useState<any | null>(null);
+  const [selectedClass, setSelectedClass] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_progress_class');
+      if (saved) return saved;
+    }
+    const cachedClasses = getCachedData<any[]>('/teacher-portal/classes');
+    return cachedClasses && cachedClasses.length > 0 ? cachedClasses[0].classSectionId : '';
+  });
+
+  const [students, setStudents] = useState<any[]>(() => {
+    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_progress_class')) ||
+      (getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId);
+    if (initialClass) {
+      return getCachedData<any[]>(`/teacher-portal/classes/${initialClass}/students`) || [];
+    }
+    return [];
+  });
+
+  const [selectedStudent, setSelectedStudent] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_progress_student');
+      if (saved) return saved;
+    }
+    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_progress_class')) ||
+      (getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId);
+    if (initialClass) {
+      const cachedStudents = getCachedData<any[]>(`/teacher-portal/classes/${initialClass}/students`);
+      return cachedStudents && cachedStudents.length > 0 ? cachedStudents[0].id : '';
+    }
+    return '';
+  });
+
+  const [progress, setProgress] = useState<any | null>(() => {
+    const savedStudent = typeof window !== 'undefined' ? sessionStorage.getItem('last_progress_student') : '';
+    const initialStudent = savedStudent ||
+      (getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId
+        ? getCachedData<any[]>(`/teacher-portal/classes/${getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId}/students`)?.[0]?.id
+        : '');
+    if (initialStudent) {
+      return getCachedData<any>(`/teacher-portal/student-progress/${initialStudent}`) || null;
+    }
+    return null;
+  });
+
+  const [loading, setLoading] = useState<boolean>(() => {
+    const cached = getCachedData<any[]>('/teacher-portal/classes');
+    return !cached || cached.length === 0;
+  });
+
+  const [loadingStudentData, setLoadingStudentData] = useState<boolean>(() => {
+    const savedStudent = typeof window !== 'undefined' ? sessionStorage.getItem('last_progress_student') : '';
+    const initialStudent = savedStudent ||
+      (getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId
+        ? getCachedData<any[]>(`/teacher-portal/classes/${getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId}/students`)?.[0]?.id
+        : '');
+    if (initialStudent) {
+      return !getCachedData(`/teacher-portal/student-progress/${initialStudent}`);
+    }
+    return false;
+  });
+
   const [hoveredBar, setHoveredBar] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -26,11 +82,27 @@ export default function StudentProgressPage() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // 1. Fetch Classes with fast SWR
   useEffect(() => {
     async function loadClasses() {
       try {
-        const res = await api.get('/teacher-portal/classes');
-        setClasses(res.data);
+        const res = await fastGet('/teacher-portal/classes', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh && fresh.length > 0) {
+              setClasses(fresh);
+              if (!selectedClass) {
+                setSelectedClass(fresh[0].classSectionId);
+              }
+            }
+          },
+        });
+        if (res?.data && res.data.length > 0) {
+          setClasses(res.data);
+          if (!selectedClass) {
+            setSelectedClass(res.data[0].classSectionId);
+          }
+        }
       } catch (err) {
         console.error('Failed to load classes:', err);
       } finally {
@@ -40,6 +112,7 @@ export default function StudentProgressPage() {
     loadClasses();
   }, []);
 
+  // 2. Fetch Students when selectedClass changes
   useEffect(() => {
     if (!selectedClass) {
       setStudents([]);
@@ -47,12 +120,43 @@ export default function StudentProgressPage() {
       setProgress(null);
       return;
     }
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('last_progress_class', selectedClass);
+    }
+
+    // Check synchronous cache first for instant reflection
+    const cachedStudents = getCachedData<any[]>(`/teacher-portal/classes/${selectedClass}/students`);
+    if (cachedStudents && cachedStudents.length > 0) {
+      setStudents(cachedStudents);
+      if (!selectedStudent || !cachedStudents.some(s => s.id === selectedStudent)) {
+        setSelectedStudent(cachedStudents[0].id);
+      }
+    }
+
     async function loadStudents() {
       try {
-        const res = await api.get(`/teacher-portal/classes/${selectedClass}/students`);
-        setStudents(res.data);
-        setSelectedStudent('');
-        setProgress(null);
+        const res = await fastGet(`/teacher-portal/classes/${selectedClass}/students`, undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh && fresh.length > 0) {
+              setStudents(fresh);
+              if (!selectedStudent || !fresh.some((s: any) => s.id === selectedStudent)) {
+                setSelectedStudent(fresh[0].id);
+              }
+            }
+          },
+        });
+        if (res?.data && res.data.length > 0) {
+          setStudents(res.data);
+          if (!selectedStudent || !res.data.some((s: any) => s.id === selectedStudent)) {
+            setSelectedStudent(res.data[0].id);
+          }
+          // Background pre-fetch: pre-warm progress for other students in the class
+          res.data.slice(0, 5).forEach((st: any) => {
+            fastGet(`/teacher-portal/student-progress/${st.id}`, undefined, { ttlMs: 60000 }).catch(() => {});
+          });
+        }
       } catch (err) {
         console.error('Failed to load students:', err);
       }
@@ -60,16 +164,38 @@ export default function StudentProgressPage() {
     loadStudents();
   }, [selectedClass]);
 
+  // 3. Fetch Student Progress Details when selectedStudent changes
   useEffect(() => {
     if (!selectedStudent) {
       setProgress(null);
+      setLoadingStudentData(false);
       return;
     }
-    async function loadProgressDetails() {
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('last_progress_student', selectedStudent);
+    }
+
+    // Check synchronous cache first for 0ms instant display without lazy-loading skeleton
+    const cachedProgress = getCachedData<any>(`/teacher-portal/student-progress/${selectedStudent}`);
+    if (cachedProgress) {
+      setProgress(cachedProgress);
+      setLoadingStudentData(false);
+    } else {
       setLoadingStudentData(true);
+    }
+
+    async function loadProgressDetails() {
       try {
-        const res = await api.get(`/teacher-portal/student-progress/${selectedStudent}`);
-        setProgress(res.data);
+        const res = await fastGet(`/teacher-portal/student-progress/${selectedStudent}`, undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh) setProgress(fresh);
+          },
+        });
+        if (res?.data) {
+          setProgress(res.data);
+        }
       } catch (err) {
         console.error('Failed to load progress details:', err);
       } finally {
@@ -79,29 +205,81 @@ export default function StudentProgressPage() {
     loadProgressDetails();
   }, [selectedStudent]);
 
+  // Initial Page Loading State with Dual Spinner + Skeleton Loading
   if (loading) {
     return (
-      <div className="space-y-4 max-w-md mx-auto sm:max-w-none">
-        {/* Filter skeleton */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm animate-pulse">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="h-10 bg-slate-200 rounded-xl"></div>
-            <div className="h-10 bg-slate-200 rounded-xl"></div>
+      <div className="relative space-y-6 max-w-md mx-auto sm:max-w-none pb-20">
+        {/* Centered Glassmorphic Spinner & Status Card */}
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center min-h-[420px] pointer-events-none">
+          <div className="bg-white/95 backdrop-blur-md border border-blue-100/90 shadow-2xl shadow-blue-500/15 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-4 text-center max-w-sm mx-4 animate-in fade-in zoom-in duration-300">
+            <div className="relative flex items-center justify-center">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center shadow-inner">
+                <LoadingSpinner size="lg" variant="brand" />
+              </div>
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-blue-600"></span>
+              </span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 tracking-tight">Loading Performance Analytics</h3>
+              <p className="text-xs font-medium text-slate-500 mt-1">Retrieving classes, students, and academic progress...</p>
+            </div>
+            <div className="w-36 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse w-3/4"></div>
+            </div>
           </div>
         </div>
-        {/* Stats skeleton */}
-        <div className="grid grid-cols-3 gap-3">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm animate-pulse text-center">
-              <div className="h-3 bg-slate-200 rounded w-16 mx-auto mb-2"></div>
+
+        {/* Header skeleton */}
+        <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+          <div className="h-7 bg-slate-200 rounded-xl w-64 animate-pulse"></div>
+        </div>
+
+        {/* Filter skeleton */}
+        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm opacity-60 animate-pulse">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="h-3.5 bg-slate-200 rounded w-24"></div>
+              <div className="h-10 bg-slate-100 rounded-xl"></div>
+            </div>
+            <div className="space-y-2">
+              <div className="h-3.5 bg-slate-200 rounded w-20"></div>
+              <div className="h-10 bg-slate-100 rounded-xl"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI stats skeleton */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3 opacity-60 animate-pulse">
+          {[...Array(7)].map((_, i) => (
+            <div key={i} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-center">
+              <div className="h-2.5 bg-slate-200 rounded w-14 mx-auto mb-2.5"></div>
               <div className="h-6 bg-slate-200 rounded w-12 mx-auto"></div>
             </div>
           ))}
         </div>
-        {/* Chart skeleton */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm animate-pulse">
-          <div className="h-4 bg-slate-200 rounded w-1/3 mb-4"></div>
-          <div className="h-48 bg-slate-100 rounded-2xl"></div>
+
+        {/* Chart & Subject skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 opacity-60 animate-pulse">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <div className="h-4 bg-slate-200 rounded w-1/3"></div>
+            <div className="h-56 bg-slate-100 rounded-2xl"></div>
+          </div>
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <div className="h-4 bg-slate-200 rounded w-1/3"></div>
+            <div className="space-y-4 pt-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex justify-between">
+                    <div className="h-3 bg-slate-200 rounded w-24"></div>
+                    <div className="h-3 bg-slate-200 rounded w-10"></div>
+                  </div>
+                  <div className="h-2.5 bg-slate-100 rounded-full"></div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -381,20 +559,31 @@ export default function StudentProgressPage() {
               value={selectedStudent}
               onChange={(e) => setSelectedStudent(e.target.value)}
               className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-              disabled={!selectedClass}
+              disabled={!selectedClass || students.length === 0}
             >
-              <option value="">Select student...</option>
-              {students.map(s => <option key={s.id} value={s.id}>{s.user.name}</option>)}
+              <option value="">{students.length === 0 ? 'No students found' : 'Select student...'}</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.user?.name || 'Student'}</option>)}
             </select>
           </div>
         </div>
       </div>
 
-      {/* Loading state */}
+      {/* Student Data Loading State with Dual Spinner + Skeleton Loading */}
       {loadingStudentData && (
-        <div className="space-y-4">
+        <div className="relative space-y-4">
+          {/* Centered Spinner Badge for Student Switching */}
+          <div className="absolute inset-0 z-20 flex items-center justify-center min-h-[320px] pointer-events-none">
+            <div className="bg-white/95 backdrop-blur-md border border-blue-100 shadow-xl shadow-blue-500/10 rounded-2xl px-6 py-4 flex items-center gap-3.5 animate-in fade-in zoom-in duration-200">
+              <LoadingSpinner size="md" variant="brand" />
+              <div>
+                <div className="text-xs font-bold text-slate-800">Fetching Student Analytics...</div>
+                <div className="text-[10px] font-medium text-slate-500">Calculating marks, attendance & rank</div>
+              </div>
+            </div>
+          </div>
+
           {/* Student profile skeleton */}
-          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-3 animate-pulse">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center gap-3 opacity-60 animate-pulse">
             <div className="w-12 h-12 bg-slate-200 rounded-2xl shrink-0"></div>
             <div className="space-y-2 w-full">
               <div className="h-4 bg-slate-200 rounded w-1/3"></div>
@@ -402,24 +591,37 @@ export default function StudentProgressPage() {
             </div>
           </div>
           {/* Stats skeleton */}
-          <div className="grid grid-cols-3 gap-3">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm animate-pulse text-center">
-                <div className="h-3 bg-slate-200 rounded w-16 mx-auto mb-2"></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3 opacity-60 animate-pulse">
+            {[...Array(7)].map((_, i) => (
+              <div key={i} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm text-center">
+                <div className="h-2.5 bg-slate-200 rounded w-14 mx-auto mb-2.5"></div>
                 <div className="h-6 bg-slate-200 rounded w-12 mx-auto"></div>
               </div>
             ))}
           </div>
           {/* Chart skeleton */}
-          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm animate-pulse">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm opacity-60 animate-pulse">
             <div className="h-4 bg-slate-200 rounded w-1/3 mb-4"></div>
             <div className="h-48 bg-slate-100 rounded-2xl"></div>
           </div>
         </div>
       )}
 
+      {/* Empty State when no student is selected or no progress data exists */}
+      {!loadingStudentData && !progress && (
+        <div className="bg-white p-12 rounded-3xl border border-slate-200 shadow-sm text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+            <User className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-bold text-slate-800">No Student Selected</h3>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Please select a class and student from the dropdowns above to view detailed performance metrics, exam trends, and teacher insights.
+          </p>
+        </div>
+      )}
+
       {/* Dashboard analytics */}
-      {progress && (() => {
+      {!loadingStudentData && progress && (() => {
         // Calculations
         const validMarks = progress.marksHistory?.filter((m: any) => m.score !== null) || [];
         const scores = validMarks.map((m: any) => m.score);

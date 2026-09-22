@@ -1747,9 +1747,9 @@ export class TeacherPortalService {
 
   // 12. Student Progress & Reports
   async getStudentProgressDetails(userId: string, tenantId: string, studentId: string) {
-    const staff = await this.getStaffProfile(userId, tenantId);
-    if (!staff) {
-      throw new NotFoundException('Staff profile not found.');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new UnauthorizedException('User not found.');
     }
 
     const student = await this.prisma.studentProfile.findUnique({
@@ -1764,8 +1764,12 @@ export class TeacherPortalService {
       throw new NotFoundException('Student profile not found.');
     }
 
-    // Verify teacher is assigned to this class section
-    await this.verifyTeacherAssignment(staff.id, student.classSectionId);
+    if (user.role === Role.TEACHER) {
+      const staff = await this.getStaffProfile(userId, tenantId);
+      if (staff) {
+        await this.verifyTeacherAssignment(staff.id, student.classSectionId);
+      }
+    }
 
     // Execute dependent queries concurrently
     const [attendances, examMarks, homeworksList] = await Promise.all([
