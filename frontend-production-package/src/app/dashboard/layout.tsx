@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTenant } from '../providers/TenantContext';
 import { useTheme } from '../providers/ThemeContext';
-import ToastProvider from '@/components/Toast';
+import ToastProvider, { useToast } from '@/components/Toast';
+import { PencilSpinner } from '@/components/loading';
 import { clearStoredAuth, api, fastGet } from '@/lib/api';
 import { SubscriptionExpiryBanner } from '@/components/SubscriptionExpiryBanner';
 import { SubscriptionExpiredPortalLock } from '@/components/SubscriptionExpiredPortalLock';
@@ -1251,6 +1252,168 @@ function parseComplaintMessage(message: string) {
   return { complaintId, parentName, title, category };
 }
 
+function NotificationLeaveItem({
+  notification,
+  details,
+  onRead,
+  onRefresh,
+  onDelete,
+}: {
+  notification: any;
+  details: any;
+  onRead: (id: string) => Promise<void>;
+  onRefresh: () => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const { showToast } = useToast();
+  const [actionLoading, setActionLoading] = useState<'APPROVING' | 'REJECTING' | null>(null);
+
+  // Extract requester name dynamically from notification title or message
+  const getRequesterName = () => {
+    if (notification?.title) {
+      const titleMatch = notification.title.match(/Leave\s+(?:Application|Request)\s*[:\-]\s*(.+)$/i);
+      if (titleMatch && titleMatch[1].trim()) {
+        return titleMatch[1].trim();
+      }
+    }
+    if (notification?.message) {
+      const studentMatch = notification.message.match(/student\s+([A-Za-z0-9\s\.\-_]+?)(?:\s*\(|\s+from|\s+has|\n|$)/i);
+      if (studentMatch && studentMatch[1].trim()) return studentMatch[1].trim();
+      const applicantMatch = notification.message.match(/(?:Applicant|Staff|Teacher|Requester|From|Name):\s*([^\n,]+)/i);
+      if (applicantMatch && applicantMatch[1].trim()) return applicantMatch[1].trim();
+    }
+    return 'Requester';
+  };
+
+  const handleAction = async (status: 'Approved' | 'Rejected') => {
+    if (!details.leaveRequestId || actionLoading !== null) return;
+    const actionKey = status === 'Approved' ? 'APPROVING' : 'REJECTING';
+    setActionLoading(actionKey);
+
+    const requesterName = getRequesterName();
+
+    try {
+      await api.patch(`/teacher-portal/leave/${details.leaveRequestId}/status`, {
+        status,
+        comments: `${status} via Notification Center`,
+      });
+
+      // Show toast dynamically after confirmed successful API response
+      if (status === 'Approved') {
+        showToast(`Leave request from ${requesterName} has been approved successfully.`, 'success');
+      } else {
+        showToast(`Leave request from ${requesterName} has been rejected successfully.`, 'success');
+      }
+
+      // Smooth state update without full page reload
+      await onRead(notification.id);
+      await onRefresh();
+    } catch (err: any) {
+      console.error(`Failed to ${status.toLowerCase()} leave request:`, err);
+      const actionWord = status === 'Approved' ? 'approve' : 'reject';
+      showToast(`Could not ${actionWord} ${requesterName}'s leave request. Please try again.`, 'error');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const isPending = !notification.isRead && details.leaveRequestId;
+
+  return (
+    <div
+      className={`p-4 hover:bg-slate-50 transition-colors flex flex-col gap-2 ${
+        !notification.isRead ? 'bg-blue-50/20 font-semibold' : ''
+      }`}
+    >
+      <div className="flex justify-between items-start gap-2">
+        <span className="text-slate-800 font-extrabold text-xs">
+          {notification.title}
+        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {!notification.isRead && (
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0" />
+          )}
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              onDelete(notification.id);
+            }}
+            disabled={actionLoading !== null}
+            className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Delete notification"
+            aria-label="Delete notification"
+          >
+            <svg className="w-3.5 h-3.5 stroke-current fill-none" viewBox="0 0 24 24">
+              <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-slate-50/80 p-2.5 rounded-lg border border-slate-100 space-y-1 text-[11px] font-medium text-slate-600">
+        {details.leaveType && <div><strong className="text-slate-500 font-bold">Leave Type:</strong> {details.leaveType}</div>}
+        {(details.fromDate || details.toDate) && <div><strong className="text-slate-500 font-bold">Dates:</strong> {details.fromDate} to {details.toDate}</div>}
+        {details.reason && <div className="whitespace-pre-wrap"><strong className="text-slate-500 font-bold">Reason:</strong> {details.reason}</div>}
+      </div>
+
+      {isPending ? (
+        <div className="flex gap-2 mt-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAction('Approved');
+            }}
+            disabled={actionLoading !== null}
+            className={`flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+              actionLoading !== null ? 'opacity-75 cursor-not-allowed' : 'cursor-pointer'
+            }`}
+            aria-label={actionLoading === 'APPROVING' ? 'Approving leave request...' : 'Approve leave request'}
+          >
+            {actionLoading === 'APPROVING' ? (
+              <>
+                <PencilSpinner size="xs" />
+                <span>Approving...</span>
+              </>
+            ) : (
+              'Approve'
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAction('Rejected');
+            }}
+            disabled={actionLoading !== null}
+            className={`flex-1 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-extrabold flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+              actionLoading !== null ? 'opacity-75 cursor-not-allowed' : 'cursor-pointer'
+            }`}
+            aria-label={actionLoading === 'REJECTING' ? 'Rejecting leave request...' : 'Reject leave request'}
+          >
+            {actionLoading === 'REJECTING' ? (
+              <>
+                <PencilSpinner size="xs" />
+                <span>Rejecting...</span>
+              </>
+            ) : (
+              'Reject'
+            )}
+          </button>
+        </div>
+      ) : (
+        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mt-0.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+          Processed &amp; Archived
+        </div>
+      )}
+      <span className="text-[9px] text-slate-400 font-mono mt-0.5">
+        {new Date(notification.createdAt).toLocaleDateString()}
+      </span>
+    </div>
+  );
+}
+
 function NotificationComplaintItem({ notification, details, onRead, onRefresh, onDelete }: { notification: any, details: any, onRead: () => void, onRefresh: () => void, onDelete: (id: string) => void }) {
   const [reply, setReply] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1471,90 +1634,14 @@ function NotificationBell() {
                 if (isLeaveNotification) {
                   const details = parseLeaveRequestMessage(n.message || '');
                   return (
-                    <div
+                    <NotificationLeaveItem
                       key={n.id}
-                      className={`p-4 hover:bg-slate-50 transition-colors flex flex-col gap-2 ${
-                        !n.isRead ? 'bg-blue-50/20 font-semibold' : ''
-                      }`}
-                    >
-                      <div className="flex justify-between items-start gap-2">
-                        <span className="text-slate-800 font-extrabold text-xs">
-                          {n.title}
-                        </span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {!n.isRead && (
-                            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0" />
-                          )}
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              handleDelete(n.id);
-                            }}
-                            className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-slate-100 transition-colors cursor-pointer"
-                            title="Delete notification"
-                          >
-                            <svg className="w-3.5 h-3.5 stroke-current fill-none" viewBox="0 0 24 24">
-                              <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="bg-slate-50/80 p-2.5 rounded-lg border border-slate-100 space-y-1 text-[11px] font-medium text-slate-600">
-                        {details.leaveType && <div><strong className="text-slate-500 font-bold">Leave Type:</strong> {details.leaveType}</div>}
-                        {(details.fromDate || details.toDate) && <div><strong className="text-slate-500 font-bold">Dates:</strong> {details.fromDate} to {details.toDate}</div>}
-                        {details.reason && <div className="whitespace-pre-wrap"><strong className="text-slate-500 font-bold">Reason:</strong> {details.reason}</div>}
-                      </div>
-
-                      {!n.isRead && details.leaveRequestId ? (
-                        <div className="flex gap-2 mt-1">
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                await api.patch(`/teacher-portal/leave/${details.leaveRequestId}/status`, {
-                                  status: 'Approved',
-                                  comments: 'Approved via Notification Center'
-                                });
-                                await handleMarkAsRead(n.id);
-                                await fetchNotifications();
-                              } catch (err) {
-                                console.error('Approval failed:', err);
-                              }
-                            }}
-                            className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-xs"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                await api.patch(`/teacher-portal/leave/${details.leaveRequestId}/status`, {
-                                  status: 'Rejected',
-                                  comments: 'Rejected via Notification Center'
-                                });
-                                await handleMarkAsRead(n.id);
-                                await fetchNotifications();
-                              } catch (err) {
-                                console.error('Rejection failed:', err);
-                              }
-                            }}
-                            className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-extrabold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-xs"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mt-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                          Processed &amp; Archived
-                        </div>
-                      )}
-                      <span className="text-[9px] text-slate-400 font-mono mt-0.5">
-                        {new Date(n.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
+                      notification={n}
+                      details={details}
+                      onRead={handleMarkAsRead}
+                      onRefresh={fetchNotifications}
+                      onDelete={handleDelete}
+                    />
                   );
                 }
 
