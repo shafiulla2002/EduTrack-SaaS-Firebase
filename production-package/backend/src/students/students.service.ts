@@ -6,6 +6,41 @@ import * as bcrypt from 'bcrypt';
 import { StorageService } from '../common/storage.service';
 import { BillingService } from '../billing/billing.service';
 
+// High-speed in-memory cache for Student Details (20s TTL)
+const studentDetailsMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+// High-speed in-memory cache for Promotion Candidates (30s TTL)
+const promotionCandidatesMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateStudentDetailsCache(studentId?: string, tenantId?: string) {
+  if (studentId) {
+    studentDetailsMemoryCache.forEach((_, key) => {
+      if (key.includes(studentId)) {
+        studentDetailsMemoryCache.delete(key);
+      }
+    });
+  } else if (tenantId) {
+    studentDetailsMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        studentDetailsMemoryCache.delete(key);
+      }
+    });
+  } else {
+    studentDetailsMemoryCache.clear();
+  }
+}
+
+export function invalidatePromotionCandidatesCache(tenantId?: string) {
+  if (tenantId) {
+    promotionCandidatesMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        promotionCandidatesMemoryCache.delete(key);
+      }
+    });
+  } else {
+    promotionCandidatesMemoryCache.clear();
+  }
+}
+
 @Injectable()
 export class StudentsService implements OnModuleInit {
   constructor(
@@ -269,80 +304,91 @@ export class StudentsService implements OnModuleInit {
   async getStudentsBillingInfoBatch(studentIds: string[], tenantId: string, academicYearId?: string) {
     if (studentIds.length === 0) return {};
 
-    // 1. Concurrently fetch opportunities and orphan invoices with targeted selects
-    const [allOpps, allOrphanInvoices, targetAcademicYear] = await Promise.all([
-      this.prisma.opportunity.findMany({
-        where: {
-          studentId: { in: studentIds },
-          tenantId,
-        },
-        select: {
-          id: true,
-          studentId: true,
-          stageName: true,
-          academicYearId: true,
-          classId: true,
-          createdAt: true,
-          academicYear: {
-            select: {
-              id: true,
-              name: true,
-              startDate: true,
-            },
-          },
-          opportunityLineItems: {
-            select: {
-              unitPrice: true,
-              quantity: true,
-              discount: true,
-            },
-          },
-          invoices: {
-            where: {
-              tenantId,
-              status: { not: 'VOIDED' },
-            },
-            select: {
-              paidAmount: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
+    // 1. Concurrently fetch opportunities with DB-aggregated fees/payments and orphan invoices
+    const [oppRows, orphanInvoices, targetAcademicYear] = await Promise.all([
+      this.prisma.$queryRaw<Array<{
+        id: string;
+        studentId: string;
+        stageName: string;
+        academicYearId: string | null;
+        classId: string | null;
+        createdAt: Date;
+        ay_id: string | null;
+        ay_name: string | null;
+        ay_startDate: Date | null;
+        lineItemCount: number;
+        totalFee: number;
+        totalPaid: number;
+      }>>`
+        SELECT 
+          o.id,
+          o."studentId",
+          o."stageName",
+          o."academicYearId",
+          o."classId",
+          o."createdAt",
+          ay.id AS "ay_id",
+          ay.name AS "ay_name",
+          ay."startDate" AS "ay_startDate",
+          COUNT(oli.id)::int AS "lineItemCount",
+          COALESCE(SUM((oli."unitPrice" * COALESCE(oli.quantity, 1)) - ((oli."unitPrice" * COALESCE(oli.quantity, 1) * COALESCE(oli.discount, 0)) / 100.0)), 0)::float AS "totalFee",
+          COALESCE(inv_agg."paidAmount", 0)::float AS "totalPaid"
+        FROM "Opportunity" o
+        LEFT JOIN "AcademicYear" ay ON o."academicYearId" = ay.id
+        LEFT JOIN "OpportunityLineItem" oli ON o.id = oli."opportunityId"
+        LEFT JOIN (
+          SELECT "opportunityId", COALESCE(SUM("paidAmount"), 0)::float AS "paidAmount"
+          FROM "Invoice"
+          WHERE "tenantId" = ${tenantId} AND status::text != 'VOIDED' AND "opportunityId" IS NOT NULL
+          GROUP BY "opportunityId"
+        ) inv_agg ON o.id = inv_agg."opportunityId"
+        WHERE o."tenantId" = ${tenantId} AND o."studentId" IN (${Prisma.join(studentIds)})
+        GROUP BY o.id, o."studentId", o."stageName", o."academicYearId", o."classId", o."createdAt", ay.id, ay.name, ay."startDate", inv_agg."paidAmount"
+        ORDER BY o."createdAt" DESC
+      `.catch((err) => {
+        console.error('[getStudentsBillingInfoBatch] oppRows query error:', err);
+        return [];
       }),
-      this.prisma.invoice.findMany({
-        where: {
-          studentId: { in: studentIds },
-          tenantId,
-          opportunityId: null,
-          status: { in: ['UNPAID', 'PARTIALLY_PAID'] },
-        },
-        select: {
-          id: true,
-          studentId: true,
-          remainingBalance: true,
-          invoiceDate: true,
-        },
+      this.prisma.$queryRaw<Array<{
+        id: string;
+        studentId: string;
+        remainingBalance: number;
+        invoiceDate: Date;
+      }>>`
+        SELECT 
+          id,
+          "studentId",
+          "remainingBalance"::float AS "remainingBalance",
+          "invoiceDate"
+        FROM "Invoice"
+        WHERE "tenantId" = ${tenantId} 
+          AND "studentId" IN (${Prisma.join(studentIds)})
+          AND "opportunityId" IS NULL
+          AND status::text IN ('UNPAID', 'PARTIALLY_PAID')
+      `.catch((err) => {
+        console.error('[getStudentsBillingInfoBatch] orphanInvoices query error:', err);
+        return [];
       }),
       academicYearId
         ? this.prisma.academicYear.findUnique({
             where: { id: academicYearId },
             select: { id: true, startDate: true },
-          })
+          }).catch(() => null)
         : Promise.resolve(null),
     ]);
 
-    // Map to group opportunities by studentId
-    const oppsByStudent = new Map<string, typeof allOpps>();
-    for (const opp of allOpps) {
+    // Group opportunities by studentId
+    const oppsByStudent = new Map<string, typeof oppRows>();
+    for (const opp of oppRows) {
       if (!oppsByStudent.has(opp.studentId)) {
         oppsByStudent.set(opp.studentId, []);
       }
       oppsByStudent.get(opp.studentId)!.push(opp);
     }
 
-    // Map to group orphan invoices by studentId
-    const orphansByStudent = new Map<string, typeof allOrphanInvoices>();
-    for (const inv of allOrphanInvoices) {
+    // Group orphan invoices by studentId
+    const orphansByStudent = new Map<string, typeof orphanInvoices>();
+    for (const inv of orphanInvoices) {
       if (!orphansByStudent.has(inv.studentId)) {
         orphansByStudent.set(inv.studentId, []);
       }
@@ -360,6 +406,36 @@ export class StudentsService implements OnModuleInit {
       activeProductsCache.set(cacheKey, products);
       return products;
     };
+
+    // Pre-resolve required active products for all fallback candidates concurrently
+    const neededProductKeys = new Set<string>();
+    const neededLookups: { classId: string; ayId?: string }[] = [];
+
+    for (const studentId of studentIds) {
+      const studentOpps = oppsByStudent.get(studentId) || [];
+      let openOpp = academicYearId
+        ? studentOpps.find(opp => opp.academicYearId === academicYearId)
+        : studentOpps.find(opp => !['Closed Won', 'Closed Lost'].includes(opp.stageName));
+      if (!openOpp) openOpp = studentOpps[0] || null;
+
+      if (openOpp && openOpp.classId && (!openOpp.lineItemCount || openOpp.lineItemCount === 0)) {
+        const key = `${openOpp.classId}-${openOpp.academicYearId || 'default'}`;
+        if (!neededProductKeys.has(key)) {
+          neededProductKeys.add(key);
+          neededLookups.push({ classId: openOpp.classId, ayId: openOpp.academicYearId || undefined });
+        }
+      }
+    }
+
+    if (neededLookups.length > 0) {
+      const productResults = await Promise.all(
+        neededLookups.map(l => this.billingService.getActiveProducts(l.classId, l.ayId))
+      );
+      neededLookups.forEach((l, i) => {
+        const key = `${l.classId}-${l.ayId || 'default'}`;
+        activeProductsCache.set(key, productResults[i]);
+      });
+    }
 
     for (const studentId of studentIds) {
       const studentOpps = oppsByStudent.get(studentId) || [];
@@ -382,16 +458,11 @@ export class StudentsService implements OnModuleInit {
       let totalPaid = 0;
 
       if (openOpp) {
-        totalFee = openOpp.opportunityLineItems.reduce((sum, oli) => {
-          const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
-          const itemDiscount = (itemTotal * Number(oli.discount)) / 100;
-          return sum + (itemTotal - itemDiscount);
-        }, 0);
-
-        totalPaid = openOpp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+        totalFee = openOpp.totalFee || 0;
+        totalPaid = openOpp.totalPaid || 0;
 
         // Fallback: If no line items, compute from class pricebook
-        if (totalFee === 0 && openOpp.classId) {
+        if (totalFee === 0 && openOpp.classId && (!openOpp.lineItemCount || openOpp.lineItemCount === 0)) {
           const pricebookProducts = await getActiveProductsCached(
             openOpp.classId,
             openOpp.academicYearId || undefined,
@@ -403,28 +474,26 @@ export class StudentsService implements OnModuleInit {
       // Determine currentYearStart
       let currentYearStart = new Date(0);
       if (academicYearId) {
-        const cy = openOpp?.academicYearId === academicYearId ? openOpp.academicYear : allOpps.find(opp => opp.academicYearId === academicYearId)?.academicYear;
-        if (cy) {
-          currentYearStart = cy.startDate;
+        const cy = openOpp?.academicYearId === academicYearId
+          ? openOpp
+          : studentOpps.find(opp => opp.academicYearId === academicYearId);
+        if (cy && cy.ay_startDate) {
+          currentYearStart = cy.ay_startDate;
         } else if (targetAcademicYear) {
           currentYearStart = targetAcademicYear.startDate;
         }
-      } else if (openOpp && openOpp.academicYear) {
-        currentYearStart = openOpp.academicYear.startDate;
+      } else if (openOpp && openOpp.ay_startDate) {
+        currentYearStart = openOpp.ay_startDate;
       }
 
       // Previous opportunities (lt currentYearStart)
-      const prevOpps = studentOpps.filter(opp => opp.academicYear && new Date(opp.academicYear.startDate) < currentYearStart);
+      const prevOpps = studentOpps.filter(opp => opp.ay_startDate && new Date(opp.ay_startDate) < currentYearStart);
 
       const prevYearDuesMap = new Map<string, number>();
       for (const opp of prevOpps) {
-        const yearName = opp.academicYear?.name || 'Previous Years';
-        const oppFee = opp.opportunityLineItems.reduce((sum, oli) => {
-          const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
-          const itemDiscount = (itemTotal * Number(oli.discount)) / 100;
-          return sum + (itemTotal - itemDiscount);
-        }, 0);
-        const oppPaid = opp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+        const yearName = opp.ay_name || 'Previous Years';
+        const oppFee = opp.totalFee || 0;
+        const oppPaid = opp.totalPaid || 0;
         const balance = Math.max(0, oppFee - oppPaid);
         if (balance > 0) {
           prevYearDuesMap.set(yearName, (prevYearDuesMap.get(yearName) || 0) + balance);
@@ -493,6 +562,7 @@ export class StudentsService implements OnModuleInit {
 
     return billingMap;
   }
+
 
   async searchStudents(
     searchTerm?: string,
@@ -767,73 +837,90 @@ export class StudentsService implements OnModuleInit {
 
   async getStudentDetails(studentId: string, academicYearId?: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:${studentId}:${academicYearId || ''}`;
 
-    const profile = await this.prisma.studentProfile.findUnique({
-      where: { id: studentId },
-      include: {
-        user: true,
-        classSection: {
-          include: {
-            class: true,
-            section: true,
-          }
-        },
-        parentProfile: {
-          include: {
-            user: true,
-          }
-        },
-        invoices: {
-          where: { tenantId },
-          include: { 
-            invoiceItems: true,
-            opportunity: {
-              include: {
-                academicYear: true
+    // Check in-memory cache (60s TTL)
+    const cached = studentDetailsMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
+    const [profile, billingInfo] = await Promise.all([
+      this.prisma.studentProfile.findUnique({
+        where: { id: studentId },
+        include: {
+          user: true,
+          classSection: {
+            include: {
+              class: true,
+              section: true,
+            }
+          },
+          parentProfile: {
+            include: {
+              user: true,
+            }
+          },
+          invoices: {
+            where: { tenantId },
+            include: { 
+              invoiceItems: true,
+              opportunity: {
+                include: {
+                  academicYear: true
+                }
+              }
+            },
+            orderBy: { invoiceDate: 'desc' }
+          },
+          opportunities: {
+            where: {
+              tenantId,
+            },
+            include: {
+              opportunityLineItems: {
+                include: { product: true }
               }
             }
           },
-          orderBy: { invoiceDate: 'desc' }
-        },
-        opportunities: {
-          where: {
-            tenantId,
-          },
-          include: {
-            opportunityLineItems: {
-              include: { product: true }
-            }
+          examMarks: {
+            where: { tenantId },
+            include: { exam: true, subject: true },
+            orderBy: { exam: { date: 'desc' } }
           }
-        },
-        examMarks: {
-          where: { tenantId },
-          include: { exam: true, subject: true },
-          orderBy: { exam: { date: 'desc' } }
-        },
-        attendances: {
-          where: { tenantId },
-          include: { attendanceSession: true },
-          orderBy: { attendanceSession: { date: 'desc' } },
-          take: 50,
         }
-      }
-    });
+      }),
+      this.billingService.getStudentById(studentId, academicYearId).catch((err) => {
+        console.error(`[getStudentDetails] Billing lookup error for ${studentId}:`, err?.message || err);
+        return {
+          paidAmount: 0,
+          totalPendingBalance: 0,
+          totalFees: 0,
+          pendingPercentage: 0,
+          paidPercentage: 0,
+          financialStatus: 'Pending',
+          feeSummary: null,
+        };
+      })
+    ]);
 
     if (!profile || profile.user.tenantId !== tenantId) {
       throw new NotFoundException('Student profile not found');
     }
-
-    const billingInfo = await this.billingService.getStudentById(studentId, academicYearId);
 
     const selectedYear = academicYearId || profile.classSection?.class.academicYearId;
     const refOpp = profile.opportunities.find(opp => opp.academicYearId === selectedYear);
 
     let unpaidFees = [];
     if (refOpp) {
-      unpaidFees = await this.billingService.getUnpaidFees(refOpp.id);
+      try {
+        unpaidFees = await this.billingService.getUnpaidFees(refOpp.id);
+      } catch (err: any) {
+        console.error(`[getStudentDetails] Unpaid fees lookup error for opp ${refOpp.id}:`, err?.message || err);
+      }
     }
 
-    return {
+    const result = {
       ...profile,
       paidAmount: billingInfo.paidAmount,
       balanceDue: billingInfo.totalPendingBalance,
@@ -844,6 +931,13 @@ export class StudentsService implements OnModuleInit {
       feeSummary: billingInfo.feeSummary,
       feeItems: unpaidFees
     };
+
+    studentDetailsMemoryCache.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + 60000,
+    });
+
+    return result;
   }
 
   // ── CSV BULK IMPORT FRAMEWORK ───────────────────────────────────────────────
@@ -1179,6 +1273,17 @@ export class StudentsService implements OnModuleInit {
   async getPromotionCandidates(sourceYearId?: string, className?: string, sectionName?: string) {
     const tenantId = this.getTenantId();
 
+    const normalizedSourceYear = sourceYearId || 'ALL';
+    const normalizedClass = className || 'ALL';
+    const normalizedSectionParam = (sectionName || '').trim() || 'ALL';
+    const cacheKey = `${tenantId}:${normalizedSourceYear}:${normalizedClass}:${normalizedSectionParam}`;
+
+    const now = Date.now();
+    const cached = promotionCandidatesMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const whereYear = (sourceYearId && sourceYearId !== 'ALL')
       ? Prisma.sql`AND c."academicYearId" = ${sourceYearId}`
       : Prisma.empty;
@@ -1212,25 +1317,33 @@ export class StudentsService implements OnModuleInit {
         COALESCE(u.phone, '') AS phone,
         COALESCE(c.name, '') AS "className",
         COALESCE(s.name, '') AS "sectionName",
-        COALESCE(SUM(inv."totalAmount"), 0)::numeric AS "totalFees",
-        COALESCE(SUM(inv."paidAmount"), 0)::numeric AS "paidAmount",
-        COALESCE(SUM(inv."remainingBalance"), 0)::numeric AS "balanceDue"
+        COALESCE(inv_agg."totalFees", 0)::numeric AS "totalFees",
+        COALESCE(inv_agg."paidAmount", 0)::numeric AS "paidAmount",
+        COALESCE(inv_agg."balanceDue", 0)::numeric AS "balanceDue"
       FROM "StudentProfile" sp
       JOIN "User" u ON sp."userId" = u.id
       JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
       JOIN "Class" c ON cs."classId" = c.id
       JOIN "Section" s ON cs."sectionId" = s.id
-      LEFT JOIN "Invoice" inv ON sp.id = inv."studentId" AND inv."tenantId" = ${tenantId}
+      LEFT JOIN (
+        SELECT 
+          "studentId",
+          SUM("totalAmount") AS "totalFees",
+          SUM("paidAmount") AS "paidAmount",
+          SUM("remainingBalance") AS "balanceDue"
+        FROM "Invoice"
+        WHERE "tenantId" = ${tenantId}
+        GROUP BY "studentId"
+      ) inv_agg ON sp.id = inv_agg."studentId"
       WHERE sp."tenantId" = ${tenantId}
         AND u."isActive" = true
         ${whereYear}
         ${whereClass}
         ${whereSection}
-      GROUP BY sp.id, u.id, c.id, s.id
       ORDER BY u.name ASC
     `;
 
-    return rows.map(r => {
+    const result = rows.map(r => {
       const totalFees = Number(r.totalFees || 0);
       const paidAmount = Number(r.paidAmount || 0);
       const balanceDue = Number(r.balanceDue || 0);
@@ -1259,6 +1372,9 @@ export class StudentsService implements OnModuleInit {
         profilePhotoUrl: r.profilePhotoUrl || null,
       };
     });
+
+    promotionCandidatesMemoryCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async promoteStudents(payload: {
@@ -1552,6 +1668,9 @@ export class StudentsService implements OnModuleInit {
           await this.billingService.syncPriceBookToStudents(pair.classId, pair.targetYearId, tx);
         }
 
+        invalidatePromotionCandidatesCache(tenantId);
+        invalidateStudentDetailsCache(undefined, tenantId);
+
         return {
           success: true,
           promotedCount,
@@ -1686,6 +1805,7 @@ export class StudentsService implements OnModuleInit {
         where: { id: profile.userId },
     });
 
+    invalidateStudentDetailsCache(studentId, tenantId);
     return { success: true };
   }
 
@@ -1777,6 +1897,7 @@ export class StudentsService implements OnModuleInit {
       }
     });
 
+    invalidateStudentDetailsCache(studentId, tenantId);
     // Return refreshed details after transaction commits and releases locks
     return this.getStudentDetails(studentId);
   }
@@ -1923,6 +2044,8 @@ export class StudentsService implements OnModuleInit {
         tenantId,
       }
     });
+
+    invalidatePromotionCandidatesCache(tenantId);
 
     return {
       success: true,
@@ -2210,6 +2333,8 @@ export class StudentsService implements OnModuleInit {
         tenantId,
       }
     });
+
+    invalidatePromotionCandidatesCache(tenantId);
 
     return {
       success: true,

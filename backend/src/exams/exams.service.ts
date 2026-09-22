@@ -561,6 +561,12 @@ export class ExamsService {
 
   async getGradesReport(classSectionId: string, examName: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:grades_report:${classSectionId}:${examName}`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
 
     const exam = await this.prisma.exam.findFirst({
       where: {
@@ -708,9 +714,12 @@ export class ExamsService {
 
     // Calculate Ranks based on total marks
     reportRows.sort((a, b) => b.totalMarks - a.totalMarks);
-    return reportRows.map((row, idx) => ({
+    const result = reportRows.map((row, idx) => ({
       ...row,
       rank: idx + 1,
     }));
+
+    this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 }

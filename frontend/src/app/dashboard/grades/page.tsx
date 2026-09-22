@@ -7,7 +7,8 @@ import {
   TrendingUp, CheckCircle, AlertTriangle, Trophy, BookOpen,
   Download, Printer
 } from 'lucide-react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
+import LoadingSpinner from '@/components/loading/LoadingSpinner';
 import { useTenant } from '../../providers/TenantContext';
 import { PDFService } from '@/lib/pdf';
 import { PDFLayout } from '@/components/PDFLayout';
@@ -55,17 +56,54 @@ export default function GradesMarksPage() {
   const [search, setSearch] = useState('');
   const { schoolName } = useTenant();
   
-  // Metadata options
-  const [classes, setClasses] = useState<ClassSectionOption[]>([]);
-  const [examTypes, setExamTypes] = useState<string[]>([]);
+  // Metadata options initialized from synchronous SWR cache for 0ms render
+  const [classes, setClasses] = useState<ClassSectionOption[]>(() => getCachedData<ClassSectionOption[]>('/exams/classes') || []);
+  const [examTypes, setExamTypes] = useState<string[]>(() => getCachedData<string[]>('/exams/exam-types') || []);
 
   // Selection filters
-  const [selectedClassSectionId, setSelectedClassSectionId] = useState('');
-  const [selectedExamName, setSelectedExamName] = useState('');
+  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_grades_class');
+      if (saved) return saved;
+    }
+    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
+    return cachedClasses && cachedClasses.length > 0 ? cachedClasses[0].value : '';
+  });
+
+  const [selectedExamName, setSelectedExamName] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_grades_exam');
+      if (saved) return saved;
+    }
+    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
+    return cachedTypes && cachedTypes.length > 0 ? cachedTypes[0] : '';
+  });
 
   // Results list
-  const [records, setRecords] = useState<GradeRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [records, setRecords] = useState<GradeRecord[]>(() => {
+    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
+    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
+    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_class')) || cachedClasses?.[0]?.value;
+    const initialExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_exam')) || cachedTypes?.[0];
+    if (initialClass && initialExam) {
+      return getCachedData<GradeRecord[]>(`/exams/grades-report?classSectionId=${initialClass}&examName=${encodeURIComponent(initialExam)}`) || [];
+    }
+    return [];
+  });
+
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
+    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
+    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_class')) || cachedClasses?.[0]?.value;
+    const initialExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_exam')) || cachedTypes?.[0];
+    if (initialClass && initialExam) {
+      const cachedReport = getCachedData(`/exams/grades-report?classSectionId=${initialClass}&examName=${encodeURIComponent(initialExam)}`);
+      return !cachedReport;
+    }
+    return true;
+  });
+
+  const [isFetchingRoster, setIsFetchingRoster] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
@@ -122,26 +160,54 @@ export default function GradesMarksPage() {
   const fetchMetadata = async () => {
     try {
       const [classRes, typeRes] = await Promise.all([
-        fastGet('/exams/classes', undefined, { ttlMs: 60000 }),
-        fastGet('/exams/exam-types', undefined, { ttlMs: 60000 })
+        fastGet('/exams/classes', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh && fresh.length > 0) {
+              setClasses(fresh);
+              if (!selectedClassSectionId) {
+                setSelectedClassSectionId(fresh[0].value);
+              }
+            }
+          }
+        }),
+        fastGet('/exams/exam-types', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh && fresh.length > 0) {
+              setExamTypes(fresh);
+              if (!selectedExamName) {
+                setSelectedExamName(fresh[0]);
+              }
+            }
+          }
+        })
       ]);
       const classList = classRes.data || [];
       const typeList = typeRes.data || [];
-      setClasses(classList);
-      setExamTypes(typeList);
+      if (classList.length > 0) setClasses(classList);
+      if (typeList.length > 0) setExamTypes(typeList);
 
-      const defaultClassId = classList.length > 0 ? classList[0].value : '';
-      const defaultExamName = typeList.length > 0 ? typeList[0] : '';
+      const targetClassId = selectedClassSectionId || (classList.length > 0 ? classList[0].value : '');
+      const targetExamName = selectedExamName || (typeList.length > 0 ? typeList[0] : '');
 
-      if (defaultClassId) setSelectedClassSectionId(defaultClassId);
-      if (defaultExamName) setSelectedExamName(defaultExamName);
+      if (!selectedClassSectionId && targetClassId) setSelectedClassSectionId(targetClassId);
+      if (!selectedExamName && targetExamName) setSelectedExamName(targetExamName);
 
-      if (defaultClassId && defaultExamName) {
-        fetchGrades(defaultClassId, defaultExamName);
+      if (targetClassId && targetExamName) {
+        fetchGrades(targetClassId, targetExamName);
+        // Pre-warm reports for other exam types in the same class
+        typeList.forEach((et: string) => {
+          if (et !== targetExamName) {
+            fastGet(`/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(et)}`, undefined, { ttlMs: 60000 }).catch(() => {});
+          }
+        });
       }
     } catch (err: any) {
       console.error('Error fetching grades metadata:', err);
       setErrorMsg('Failed to load class or exam type filters.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -156,6 +222,21 @@ export default function GradesMarksPage() {
     const targetExamName = examName || selectedExamName;
     if (!targetClassId || !targetExamName) return;
 
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('last_grades_class', targetClassId);
+      sessionStorage.setItem('last_grades_exam', targetExamName);
+    }
+
+    const cached = getCachedData<GradeRecord[]>(`/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(targetExamName)}`);
+    if (cached && cached.length > 0) {
+      setRecords(cached);
+      setIsLoading(false);
+    } else if (records.length === 0) {
+      setIsLoading(true);
+    } else {
+      setIsFetchingRoster(true);
+    }
+
     setErrorMsg('');
     try {
       const res = await fastGet(
@@ -163,15 +244,12 @@ export default function GradesMarksPage() {
           targetExamName
         )}`,
         {
-          ttlMs: 30000,
+          ttlMs: 60000,
           onRevalidate: (fresh: any) => {
             if (fresh) setRecords(fresh?.data || fresh);
           }
         }
       );
-      if (!res.isFromCache) {
-        setIsLoading(false);
-      }
       if (res.data) {
         setRecords(res.data);
       }
@@ -180,6 +258,7 @@ export default function GradesMarksPage() {
       setErrorMsg('Failed to load marks roster report.');
     } finally {
       setIsLoading(false);
+      setIsFetchingRoster(false);
     }
   };
 
@@ -229,6 +308,85 @@ export default function GradesMarksPage() {
   };
 
   const classLabel = classes.find(c => c.value === selectedClassSectionId)?.label || 'Class Section';
+
+  // Initial Page Loading State with Dual Spinner + Skeleton Loading
+  if (isLoading && records.length === 0) {
+    return (
+      <div className="relative space-y-6 animate-in pb-20">
+        {/* Centered Glassmorphic Dual Spinner & Status Card */}
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center min-h-[420px] pointer-events-none">
+          <div className="bg-white/95 backdrop-blur-md border border-blue-100/90 shadow-2xl shadow-blue-500/15 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-4 text-center max-w-sm mx-4 animate-in fade-in zoom-in duration-300">
+            <div className="relative flex items-center justify-center">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center shadow-inner">
+                <LoadingSpinner size="lg" variant="brand" />
+              </div>
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-blue-600"></span>
+              </span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 tracking-tight">Loading Grades &amp; Marks Roster</h3>
+              <p className="text-xs font-medium text-slate-500 mt-1">Compiling student evaluation summaries, grade ranks &amp; performance averages...</p>
+            </div>
+            <div className="w-36 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse w-3/4"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
+          <div className="space-y-2">
+            <div className="h-7 bg-slate-200 rounded-xl w-64 animate-pulse"></div>
+            <div className="h-4 bg-slate-100 rounded w-96 animate-pulse"></div>
+          </div>
+          <div className="flex gap-2">
+            <div className="h-10 w-24 bg-slate-100 rounded-xl animate-pulse"></div>
+            <div className="h-10 w-20 bg-slate-100 rounded-xl animate-pulse"></div>
+          </div>
+        </div>
+
+        {/* Filters Config Bar Skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 opacity-60 animate-pulse">
+          <div className="h-10 bg-slate-100 border border-slate-200 rounded-xl sm:col-span-2"></div>
+          <div className="h-10 bg-slate-100 border border-slate-200 rounded-xl"></div>
+          <div className="h-10 bg-slate-100 border border-slate-200 rounded-xl"></div>
+        </div>
+
+        {/* 5 KPI Stats Skeleton */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6 opacity-60 animate-pulse">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-2">
+              <div className="h-3 bg-slate-200 rounded w-20"></div>
+              <div className="h-7 bg-slate-100 rounded w-16"></div>
+              <div className="h-2.5 bg-slate-100 rounded w-28"></div>
+            </div>
+          ))}
+        </div>
+
+        {/* Roster Table Skeleton */}
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm opacity-60 animate-pulse">
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div className="h-4 bg-slate-200 rounded w-56"></div>
+            <div className="h-3 bg-slate-200 rounded w-36"></div>
+          </div>
+          <div className="p-6 space-y-4">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex justify-between items-center py-2.5 border-b border-slate-100">
+                <div className="h-4 bg-slate-200 rounded w-40"></div>
+                <div className="h-4 bg-slate-100 rounded w-20"></div>
+                <div className="h-6 bg-slate-100 rounded-lg w-28"></div>
+                <div className="h-4 bg-slate-200 rounded w-16"></div>
+                <div className="h-4 bg-slate-100 rounded w-32"></div>
+                <div className="h-6 bg-slate-100 rounded-lg w-12"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-in">
@@ -341,9 +499,19 @@ export default function GradesMarksPage() {
       </div>
 
       {/* Student Performance List */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm print:hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm print:hidden relative">
+        {isFetchingRoster && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600 animate-pulse z-10"></div>
+        )}
         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between sm:items-center gap-1">
-          <h3 className="text-sm font-bold text-slate-700">Student Performance Marks Roster</h3>
+          <div className="flex items-center gap-2.5">
+            <h3 className="text-sm font-bold text-slate-700">Student Performance Marks Roster</h3>
+            {isFetchingRoster && (
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 flex items-center gap-1 animate-pulse">
+                <RefreshCw className="w-3 h-3 animate-spin" /> Updating...
+              </span>
+            )}
+          </div>
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tap a card to view report card</span>
         </div>
 

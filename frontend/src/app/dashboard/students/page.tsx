@@ -711,7 +711,12 @@ export default function StudentsDirectory() {
                   const pendingPercentage = student.pendingPercentage ?? (totalFees > 0 ? Math.round((student.balanceDue / totalFees) * 100) : 0);
                   const financialStatus = student.financialStatus || (hasDue ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
                   return (
-                    <tr key={student.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr
+                      key={student.id}
+                      onMouseEnter={() => prefetchProfile(student)}
+                      onTouchStart={() => prefetchProfile(student)}
+                      className="hover:bg-slate-50/80 transition-colors"
+                    >
                       <td className="px-3.5 py-3">
                         <input 
                           type="checkbox" 

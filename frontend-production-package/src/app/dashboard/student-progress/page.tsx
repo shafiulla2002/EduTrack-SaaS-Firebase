@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { api, fastGet, getCachedData } from '@/lib/api';
 import LoadingSpinner from '@/components/loading/LoadingSpinner';
-import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, ChevronRight, User, Sparkles, BarChart3 } from 'lucide-react';
+import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, ChevronRight, User, Sparkles, BarChart3, RefreshCw } from 'lucide-react';
 
 export default function StudentProgressPage() {
   // Synchronous cache initialization for instant 0ms load
@@ -129,8 +129,14 @@ export default function StudentProgressPage() {
     const cachedStudents = getCachedData<any[]>(`/teacher-portal/classes/${selectedClass}/students`);
     if (cachedStudents && cachedStudents.length > 0) {
       setStudents(cachedStudents);
-      if (!selectedStudent || !cachedStudents.some(s => s.id === selectedStudent)) {
-        setSelectedStudent(cachedStudents[0].id);
+      const nextStudentId = (!selectedStudent || !cachedStudents.some(s => s.id === selectedStudent))
+        ? cachedStudents[0].id
+        : selectedStudent;
+      setSelectedStudent(nextStudentId);
+      const cachedStudentProgress = getCachedData<any>(`/teacher-portal/student-progress/${nextStudentId}`);
+      if (cachedStudentProgress) {
+        setProgress(cachedStudentProgress);
+        setLoadingStudentData(false);
       }
     }
 
@@ -152,9 +158,9 @@ export default function StudentProgressPage() {
           if (!selectedStudent || !res.data.some((s: any) => s.id === selectedStudent)) {
             setSelectedStudent(res.data[0].id);
           }
-          // Background pre-fetch: pre-warm progress for other students in the class
-          res.data.slice(0, 5).forEach((st: any) => {
-            fastGet(`/teacher-portal/student-progress/${st.id}`, undefined, { ttlMs: 60000 }).catch(() => {});
+          // Background pre-fetch: pre-warm progress for ALL students in this class section
+          res.data.forEach((st: any) => {
+            fastGet(`/teacher-portal/student-progress/${st.id}`, undefined, { ttlMs: 120000 }).catch(() => {});
           });
         }
       } catch (err) {
@@ -176,7 +182,7 @@ export default function StudentProgressPage() {
       sessionStorage.setItem('last_progress_student', selectedStudent);
     }
 
-    // Check synchronous cache first for 0ms instant display without lazy-loading skeleton
+    // Check synchronous cache first for 0ms instant display
     const cachedProgress = getCachedData<any>(`/teacher-portal/student-progress/${selectedStudent}`);
     if (cachedProgress) {
       setProgress(cachedProgress);
@@ -188,7 +194,7 @@ export default function StudentProgressPage() {
     async function loadProgressDetails() {
       try {
         const res = await fastGet(`/teacher-portal/student-progress/${selectedStudent}`, undefined, {
-          ttlMs: 60000,
+          ttlMs: 120000,
           onRevalidate: (fresh) => {
             if (fresh) setProgress(fresh);
           },
@@ -568,8 +574,8 @@ export default function StudentProgressPage() {
         </div>
       </div>
 
-      {/* Student Data Loading State with Dual Spinner + Skeleton Loading */}
-      {loadingStudentData && (
+      {/* Student Data Loading State with Skeleton Loading ONLY when no progress data exists yet */}
+      {loadingStudentData && !progress && (
         <div className="relative space-y-4">
           {/* Centered Spinner Badge for Student Switching */}
           <div className="absolute inset-0 z-20 flex items-center justify-center min-h-[320px] pointer-events-none">
@@ -621,7 +627,7 @@ export default function StudentProgressPage() {
       )}
 
       {/* Dashboard analytics */}
-      {!loadingStudentData && progress && (() => {
+      {progress && (() => {
         // Calculations
         const validMarks = progress.marksHistory?.filter((m: any) => m.score !== null) || [];
         const scores = validMarks.map((m: any) => m.score);
@@ -739,13 +745,23 @@ export default function StudentProgressPage() {
           <div className="space-y-6">
             
             {/* Card Summary Profile */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between gap-3">
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between gap-3 relative overflow-hidden">
+              {loadingStudentData && (
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600 animate-pulse"></div>
+              )}
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-blue-50 text-[#2E5BFF] rounded-2xl flex items-center justify-center font-bold text-lg shrink-0">
                   <User className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-800 text-[15px]">{progress.student?.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-800 text-[15px]">{progress.student?.name}</h3>
+                    {loadingStudentData && (
+                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 flex items-center gap-1 animate-pulse">
+                        <RefreshCw className="w-3 h-3 animate-spin" /> Updating...
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">Roll No: {progress.student?.rollNo || 'N/A'}</p>
                 </div>
               </div>

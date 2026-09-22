@@ -839,7 +839,7 @@ export class StudentsService implements OnModuleInit {
     const tenantId = this.getTenantId();
     const cacheKey = `${tenantId}:${studentId}:${academicYearId || ''}`;
 
-    // Check in-memory cache (20s TTL)
+    // Check in-memory cache (60s TTL)
     const cached = studentDetailsMemoryCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
@@ -887,12 +887,6 @@ export class StudentsService implements OnModuleInit {
             where: { tenantId },
             include: { exam: true, subject: true },
             orderBy: { exam: { date: 'desc' } }
-          },
-          attendances: {
-            where: { tenantId },
-            include: { attendanceSession: true },
-            orderBy: { attendanceSession: { date: 'desc' } },
-            take: 50,
           }
         }
       }),
@@ -940,7 +934,7 @@ export class StudentsService implements OnModuleInit {
 
     studentDetailsMemoryCache.set(cacheKey, {
       data: result,
-      expiresAt: Date.now() + 20000,
+      expiresAt: Date.now() + 60000,
     });
 
     return result;

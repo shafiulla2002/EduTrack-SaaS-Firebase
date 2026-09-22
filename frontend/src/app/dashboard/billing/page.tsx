@@ -80,6 +80,8 @@ export default function FeesBillingPage() {
   const [transactions, setTransactions] = useState<StagedInvoice[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [matchingStudents, setMatchingStudents] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isStudentLoading, setIsStudentLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [successModalOpen, setSuccessModalOpen] = useState(false);
@@ -133,29 +135,49 @@ export default function FeesBillingPage() {
 
   // Search students
   useEffect(() => {
+    if (search.trim().length >= 2) {
+      setIsSearching(true);
+    } else {
+      setIsSearching(false);
+      setMatchingStudents([]);
+      return;
+    }
+
     const delayDebounce = setTimeout(async () => {
-      if (search.trim().length >= 2) {
-        try {
-          const res = await api.get(`/billing/students/search`, {
-            params: { searchTerm: search }
-          });
-          setMatchingStudents(res.data);
-        } catch (err) {
-          console.error('Error searching students', err);
-        }
-      } else {
-        setMatchingStudents([]);
+      try {
+        const res = await fastGet(`/billing/students/search`, {
+          params: { searchTerm: search.trim() }
+        }, { ttlMs: 30000 });
+        setMatchingStudents(res.data || []);
+      } catch (err) {
+        console.error('Error searching students', err);
+      } finally {
+        setIsSearching(false);
       }
-    }, 300);
+    }, 250);
 
     return () => clearTimeout(delayDebounce);
   }, [search]);
 
+  const prefetchStudentBilling = (s: any) => {
+    if (!s?.account?.id) return;
+    fastGet(`/billing/students/${s.account.id}`, undefined, { ttlMs: 60000 }).catch(() => {});
+    const oppId = s.account.opportunities?.[0]?.id;
+    if (oppId) {
+      fastGet(`/billing/unpaid-fees/${oppId}`, undefined, { ttlMs: 60000 }).catch(() => {});
+    }
+  };
+
+  const prefetchInvoicePDF = (invoiceId: string) => {
+    if (!invoiceId) return;
+    fastGet(`/billing/invoices/${invoiceId}/pdf`, undefined, { ttlMs: 60000 }).catch(() => {});
+  };
+
   const loadUnpaidFees = async (oppId: string) => {
     try {
       setIsLoading(true);
-      const res = await api.get(`/billing/unpaid-fees/${oppId}`);
-      setFeeItems(res.data.map((item: any) => ({
+      const res = await fastGet(`/billing/unpaid-fees/${oppId}`, undefined, { ttlMs: 60000 });
+      setFeeItems((res.data || []).map((item: any) => ({
         id: item.oliId,
         name: item.productName,
         total: item.totalAmount,
@@ -178,20 +200,47 @@ export default function FeesBillingPage() {
 
   const handleSelectStudent = async (student: any) => {
     try {
+      setIsStudentLoading(true);
       setIsLoading(true);
-      const res = await api.get(`/billing/students/${student.account.id}`);
-      const openOpp = res.data.account.opportunities?.[0];
-      
-      const key = `${student.account.id}-${openOpp?.academicYearId || ''}`;
+      const studentId = student.account.id;
+      const initialOppId = student.account.opportunities?.[0]?.id;
+
+      // Parallelize student billing details and unpaid fees lookup
+      const [studentRes, unpaidRes] = await Promise.all([
+        fastGet(`/billing/students/${studentId}`, undefined, { ttlMs: 60000 }),
+        initialOppId
+          ? fastGet(`/billing/unpaid-fees/${initialOppId}`, undefined, { ttlMs: 60000 }).catch(() => ({ data: [] }))
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const studentData = studentRes.data;
+      const openOpp = studentData.account.opportunities?.[0];
+      const key = `${studentId}-${openOpp?.academicYearId || ''}`;
       setLoadedBillingKey(key);
-      
-      setSelectedStudent(res.data);
+
+      setSelectedStudent(studentData);
       setSearch('');
       setMatchingStudents([]);
-      
+
       if (openOpp) {
         setSelectedYear(openOpp.academicYearId);
-        await loadUnpaidFees(openOpp.id);
+        const unpaidData = (unpaidRes.data && unpaidRes.data.length > 0)
+          ? unpaidRes.data
+          : (openOpp.id !== initialOppId
+              ? (await fastGet(`/billing/unpaid-fees/${openOpp.id}`, undefined, { ttlMs: 60000 }).catch(() => ({ data: [] }))).data || []
+              : []);
+        setFeeItems(unpaidData.map((item: any) => ({
+          id: item.oliId,
+          name: item.productName,
+          total: item.totalAmount,
+          discount: item.discountAmount,
+          paid: item.paidAmount,
+          balance: item.balanceDue,
+          input: item.balanceDue,
+          isSelected: item.balanceDue > 0,
+          productId: item.productId,
+          discountPercent: item.discountPercent
+        })));
       } else {
         setSelectedYear('');
         setFeeItems([]);
@@ -200,6 +249,7 @@ export default function FeesBillingPage() {
       console.error('Failed to load student details', err);
     } finally {
       setIsLoading(false);
+      setIsStudentLoading(false);
     }
   };
 
@@ -699,14 +749,28 @@ export default function FeesBillingPage() {
       <div className="space-y-2 relative max-w-lg">
         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Quick Student Search</label>
         <div className="relative flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2.5 focus-within:border-[#2E5BFF] transition-all">
-          <Search className="w-4 h-4 text-slate-400 mr-2" />
+          {isSearching ? (
+            <div className="mr-2 shrink-0">
+              <PencilSpinner size="xs" />
+            </div>
+          ) : (
+            <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+          )}
           <input
             type="text"
-            placeholder="Type student name or phone..."
+            placeholder="Type student name, roll number, or phone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="bg-transparent border-none text-[13px] font-semibold text-slate-800 outline-none w-full placeholder-slate-400"
           />
+          {search && (
+            <button
+              onClick={() => { setSearch(''); setMatchingStudents([]); }}
+              className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Autocomplete Dropdown list */}
@@ -715,14 +779,21 @@ export default function FeesBillingPage() {
             {matchingStudents.map((s) => (
               <div
                 key={s.account.id}
+                onMouseEnter={() => prefetchStudentBilling(s)}
+                onTouchStart={() => prefetchStudentBilling(s)}
                 onClick={() => handleSelectStudent(s)}
-                className="p-3 hover:bg-slate-50 cursor-pointer flex justify-between items-center text-xs font-medium"
+                className="p-3 hover:bg-blue-50/50 cursor-pointer flex justify-between items-center text-xs font-medium transition-colors"
               >
                 <div>
                   <span className="font-bold text-slate-800 block">{s.account.name}</span>
                   <span className="text-slate-400 text-[10px]">{s.account.class} {s.account.section} · Roll: {s.account.rollNo || 'N/A'}</span>
                 </div>
-                <span className="text-amber-600 font-bold font-mono">Due: ₹{s.totalPendingBalance.toLocaleString()}</span>
+                <div className="text-right">
+                  <span className="text-amber-600 font-bold font-mono block">Due: ₹{s.totalPendingBalance.toLocaleString()}</span>
+                  {s.totalPaidAmount > 0 && (
+                    <span className="text-emerald-600 text-[10px] font-semibold">Paid: ₹{s.totalPaidAmount.toLocaleString()}</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -730,7 +801,17 @@ export default function FeesBillingPage() {
       </div>
 
       {/* ACTIVE BILLING SUITE PANEL */}
-      {selectedStudent ? (
+      {isStudentLoading && !selectedStudent ? (
+        <div className="p-8 text-center bg-white border border-slate-200 rounded-2xl space-y-3 max-w-lg shadow-sm animate-pulse">
+          <div className="flex items-center justify-center">
+            <PencilSpinner size="md" />
+          </div>
+          <h4 className="text-sm font-bold text-slate-700">Loading student billing ledger...</h4>
+          <p className="text-xs text-slate-400 font-light">
+            Retrieving fee products, invoices, and payment particulars.
+          </p>
+        </div>
+      ) : selectedStudent ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
             <div>
@@ -1157,7 +1238,9 @@ export default function FeesBillingPage() {
                           <div className="flex justify-end gap-2">
                             <Link
                               href={`/dashboard/billing/invoices/${t.id}`}
-                              className="px-2.5 py-1 rounded bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 text-[10px] font-bold border border-slate-200 inline-flex items-center gap-1 cursor-pointer"
+                              onMouseEnter={() => prefetchInvoicePDF(t.id)}
+                              onTouchStart={() => prefetchInvoicePDF(t.id)}
+                              className="px-2.5 py-1 rounded bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 text-[10px] font-bold border border-slate-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
                             >
                               <Printer className="w-3 h-3" /> Print
                             </Link>
@@ -1216,6 +1299,8 @@ export default function FeesBillingPage() {
                     <div className="flex gap-2 pt-0.5">
                       <Link
                         href={`/dashboard/billing/invoices/${t.id}`}
+                        onMouseEnter={() => prefetchInvoicePDF(t.id)}
+                        onTouchStart={() => prefetchInvoicePDF(t.id)}
                         className="flex-1 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 inline-flex items-center justify-center gap-1.5"
                       >
                         <Printer className="w-3.5 h-3.5" /> Print Invoice

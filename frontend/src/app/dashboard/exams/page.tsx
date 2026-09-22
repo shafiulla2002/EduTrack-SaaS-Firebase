@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Award, FileText, CheckCircle, Save, Plus, ArrowRight, X,
-  PlusCircle, MinusCircle, Info, TrendingUp, Sparkles, RefreshCw, Settings, AlertTriangle
+  PlusCircle, MinusCircle, Info, TrendingUp, Sparkles, RefreshCw, Settings, AlertTriangle, Users, Check
 } from 'lucide-react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
+import LoadingSpinner from '@/components/loading/LoadingSpinner';
 import { useToast } from '@/components/Toast';
 
 type ClassSectionOption = {
@@ -35,21 +36,110 @@ type StudentMarkRow = {
 export default function ExamsAndMarksPage() {
   const router = useRouter();
   const { showToast } = useToast();
-  // Metadata options
-  const [classes, setClasses] = useState<ClassSectionOption[]>([]);
-  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
-  const [examTypes, setExamTypes] = useState<string[]>([]);
 
-  // Selection states
-  const [selectedClassSectionId, setSelectedClassSectionId] = useState('');
-  const [selectedSubjectId, setSelectedSubjectId] = useState('');
-  const [selectedExamName, setSelectedExamName] = useState('');
-  const [selectedSubjectType, setSelectedSubjectType] = useState('');
-  const [components, setComponents] = useState<any[]>([]);
+  // Synchronous metadata cache initialization for instant 0ms load
+  const [classes, setClasses] = useState<ClassSectionOption[]>(() => getCachedData<ClassSectionOption[]>('/exams/classes') || []);
+  const [subjects, setSubjects] = useState<SubjectOption[]>(() => getCachedData<SubjectOption[]>('/exams/subjects') || []);
+  const [examTypes, setExamTypes] = useState<string[]>(() => getCachedData<string[]>('/exams/exam-types') || []);
+  const [components, setComponents] = useState<any[]>(() => getCachedData<any[]>('/exam-config/components') || []);
+
+  // Selection states with session persistence / instant default selection
+  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_exam_class');
+      if (saved) return saved;
+    }
+    const cached = getCachedData<ClassSectionOption[]>('/exams/classes');
+    return cached && cached.length > 0 ? cached[0].value : '';
+  });
+
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_exam_subject');
+      if (saved) return saved;
+    }
+    const cached = getCachedData<SubjectOption[]>('/exams/subjects');
+    return cached && cached.length > 0 ? cached[0].id : '';
+  });
+
+  const [selectedExamName, setSelectedExamName] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_exam_name');
+      if (saved) return saved;
+    }
+    const cached = getCachedData<string[]>('/exams/exam-types');
+    return cached && cached.length > 0 ? cached[0] : '';
+  });
+
+  const [selectedSubjectType, setSelectedSubjectType] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_exam_component');
+      if (saved) return saved;
+    }
+    const cached = getCachedData<any[]>('/exam-config/components');
+    return cached && cached.length > 0 ? cached[0].name : 'Theory';
+  });
 
   // Roster & marks list
-  const [roster, setRoster] = useState<StudentMarkRow[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [roster, setRoster] = useState<StudentMarkRow[]>(() => {
+    const initClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_class')) ||
+      (getCachedData<ClassSectionOption[]>('/exams/classes')?.[0]?.value);
+    const initSub = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_subject')) ||
+      (getCachedData<SubjectOption[]>('/exams/subjects')?.[0]?.id);
+    const initExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_name')) ||
+      (getCachedData<string[]>('/exams/exam-types')?.[0]);
+    const initType = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_component')) ||
+      (getCachedData<any[]>('/exam-config/components')?.[0]?.name || 'Theory');
+
+    if (initClass && initSub && initExam && initType) {
+      const url = `/exams/marks-entry?classSectionId=${initClass}&subjectId=${initSub}&examName=${encodeURIComponent(initExam)}&subjectType=${encodeURIComponent(initType)}`;
+      const cached = getCachedData<any>(url);
+      if (cached?.roster) return cached.roster;
+    }
+    return [];
+  });
+
+  // Exam configuration (pass % and max marks from ExamConfigService)
+  const [examConfig, setExamConfig] = useState<{ passingPercentage: number; maxMarks: number; passMarks?: number }>(() => {
+    const initClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_class')) ||
+      (getCachedData<ClassSectionOption[]>('/exams/classes')?.[0]?.value);
+    const initSub = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_subject')) ||
+      (getCachedData<SubjectOption[]>('/exams/subjects')?.[0]?.id);
+    const initExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_name')) ||
+      (getCachedData<string[]>('/exams/exam-types')?.[0]);
+    const initType = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_component')) ||
+      (getCachedData<any[]>('/exam-config/components')?.[0]?.name || 'Theory');
+
+    if (initClass && initSub && initExam && initType) {
+      const url = `/exams/marks-entry?classSectionId=${initClass}&subjectId=${initSub}&examName=${encodeURIComponent(initExam)}&subjectType=${encodeURIComponent(initType)}`;
+      const cached = getCachedData<any>(url);
+      if (cached?.config) return cached.config;
+    }
+    return { passingPercentage: 35, maxMarks: 100, passMarks: 35 };
+  });
+
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => {
+    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
+    return !cachedClasses || cachedClasses.length === 0;
+  });
+
+  const [isLoadingRoster, setIsLoadingRoster] = useState<boolean>(() => {
+    const initClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_class')) ||
+      (getCachedData<ClassSectionOption[]>('/exams/classes')?.[0]?.value);
+    const initSub = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_subject')) ||
+      (getCachedData<SubjectOption[]>('/exams/subjects')?.[0]?.id);
+    const initExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_name')) ||
+      (getCachedData<string[]>('/exams/exam-types')?.[0]);
+    const initType = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_component')) ||
+      (getCachedData<any[]>('/exam-config/components')?.[0]?.name || 'Theory');
+
+    if (initClass && initSub && initExam && initType) {
+      const url = `/exams/marks-entry?classSectionId=${initClass}&subjectId=${initSub}&examName=${encodeURIComponent(initExam)}&subjectType=${encodeURIComponent(initType)}`;
+      return !getCachedData<any>(url);
+    }
+    return false;
+  });
+
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -73,11 +163,6 @@ export default function ExamsAndMarksPage() {
   const [editingTypeName, setEditingTypeName] = useState('');
   const [isSavingType, setIsSavingType] = useState(false);
   const [typeError, setTypeError] = useState('');
-
-  // Exam configuration (pass % and max marks from ExamConfigService)
-  const [examConfig, setExamConfig] = useState<{ passingPercentage: number; maxMarks: number; passMarks?: number }>(
-    { passingPercentage: 35, maxMarks: 100, passMarks: 35 },
-  );
 
   // Fetch types for management modal
   const fetchManageTypes = async () => {
@@ -166,18 +251,18 @@ export default function ExamsAndMarksPage() {
       setComponents(compList);
       setExamTypes(typeList);
 
-      const defaultClassId = classList.length > 0 ? classList[0].value : '';
-      const defaultSubId = subList.length > 0 ? subList[0].id : '';
-      const defaultComp = compList.length > 0 ? compList[0].name : 'Theory';
-      const defaultExam = typeList.length > 0 ? typeList[0] : '';
+      const targetClassId = selectedClassSectionId || (classList.length > 0 ? classList[0].value : '');
+      const targetSubId = selectedSubjectId || (subList.length > 0 ? subList[0].id : '');
+      const targetComp = selectedSubjectType || (compList.length > 0 ? compList[0].name : 'Theory');
+      const targetExam = selectedExamName || (typeList.length > 0 ? typeList[0] : '');
 
-      if (defaultClassId) setSelectedClassSectionId(defaultClassId);
-      if (defaultSubId) setSelectedSubjectId(defaultSubId);
-      if (defaultComp) setSelectedSubjectType(defaultComp);
-      if (defaultExam) setSelectedExamName(defaultExam);
+      if (!selectedClassSectionId && targetClassId) setSelectedClassSectionId(targetClassId);
+      if (!selectedSubjectId && targetSubId) setSelectedSubjectId(targetSubId);
+      if (!selectedSubjectType && targetComp) setSelectedSubjectType(targetComp);
+      if (!selectedExamName && targetExam) setSelectedExamName(targetExam);
 
-      if (defaultClassId && defaultSubId && defaultExam && defaultComp) {
-        fetchRoster(defaultClassId, defaultSubId, defaultExam, defaultComp);
+      if (targetClassId && targetSubId && targetExam && targetComp) {
+        fetchRoster(targetClassId, targetSubId, targetExam, targetComp);
       }
     } catch (err: any) {
       console.error('Error fetching exams metadata:', err);
@@ -186,6 +271,8 @@ export default function ExamsAndMarksPage() {
       } else {
         setErrorMsg('Failed to load class, subject, or exam metadata.');
       }
+    } finally {
+      setIsInitialLoading(false);
     }
   };
 
@@ -212,8 +299,15 @@ export default function ExamsAndMarksPage() {
       .catch(() => {});
   }, [selectedExamName, selectedClassSectionId, selectedSubjectId, selectedSubjectType, subjects]);
 
+  // Fetch roster when filter changes
   useEffect(() => {
     if (selectedClassSectionId && selectedSubjectId && selectedExamName && selectedSubjectType) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('last_exam_class', selectedClassSectionId);
+        sessionStorage.setItem('last_exam_subject', selectedSubjectId);
+        sessionStorage.setItem('last_exam_name', selectedExamName);
+        sessionStorage.setItem('last_exam_component', selectedSubjectType);
+      }
       fetchRoster(selectedClassSectionId, selectedSubjectId, selectedExamName, selectedSubjectType);
     }
   }, [selectedClassSectionId, selectedSubjectId, selectedExamName, selectedSubjectType]);
@@ -226,12 +320,26 @@ export default function ExamsAndMarksPage() {
 
     if (!targetClassId || !targetSubId || !targetExamName || !targetSubType) return;
 
+    const url = `/exams/marks-entry?classSectionId=${targetClassId}&subjectId=${targetSubId}&examName=${encodeURIComponent(
+      targetExamName
+    )}&subjectType=${encodeURIComponent(targetSubType)}`;
+
+    // Instant SWR memory lookup (0ms reflection)
+    const cachedRosterData = getCachedData<any>(url);
+    if (cachedRosterData) {
+      setRoster(cachedRosterData.roster || []);
+      if (cachedRosterData.config) {
+        setExamConfig(cachedRosterData.config);
+      }
+      setIsLoadingRoster(false);
+    } else {
+      setIsLoadingRoster(true);
+    }
+
     setErrorMsg('');
     try {
       const res = await fastGet(
-        `/exams/marks-entry?classSectionId=${targetClassId}&subjectId=${targetSubId}&examName=${encodeURIComponent(
-          targetExamName
-        )}&subjectType=${encodeURIComponent(targetSubType)}`,
+        url,
         undefined,
         {
           ttlMs: 30000,
@@ -241,14 +349,23 @@ export default function ExamsAndMarksPage() {
           }
         }
       );
-      if (!res.isFromCache) {
-        setIsLoading(false);
-      }
       if (res.data) {
         setRoster(res.data.roster || []);
         if (res.data.config) {
           setExamConfig(res.data.config);
         }
+      }
+
+      // Background pre-fetch: pre-warm other subjects for this class and exam
+      if (subjects.length > 1) {
+        subjects.slice(0, 6).forEach(s => {
+          if (s.id !== targetSubId) {
+            const prefetchUrl = `/exams/marks-entry?classSectionId=${targetClassId}&subjectId=${s.id}&examName=${encodeURIComponent(
+              targetExamName
+            )}&subjectType=${encodeURIComponent(targetSubType)}`;
+            fastGet(prefetchUrl, undefined, { ttlMs: 60000 }).catch(() => {});
+          }
+        });
       }
     } catch (err: any) {
       console.error('Error fetching marks entry list:', err);
@@ -259,7 +376,7 @@ export default function ExamsAndMarksPage() {
         setErrorMsg(backendMsg || 'Failed to load students roster for mark entry.');
       }
     } finally {
-      setIsLoading(false);
+      setIsLoadingRoster(false);
     }
   };
 
@@ -301,7 +418,6 @@ export default function ExamsAndMarksPage() {
       });
       return;
     }
-    
     setRoster(prev =>
       prev.map(item =>
         item.studentId === studentId ? { ...item, marksObtained: valNum } : item
@@ -314,21 +430,18 @@ export default function ExamsAndMarksPage() {
     setRoster(prev =>
       prev.map(item => {
         if (item.studentId === studentId) {
-          const cur = item.marksObtained === null ? 0 : item.marksObtained;
-          if (cur + 1 > examConfig.maxMarks) {
-            const msg = `Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`;
-            setErrorMsg(msg);
-            showToast(msg, 'error');
+          const current = item.marksObtained ?? 0;
+          if (current >= examConfig.maxMarks) {
             setPopupAlert({
               show: true,
-              title: 'Maximum Marks Limit Exceeded',
-              message: `Increasing marks (${cur + 1}) exceeds the configured maximum limit of ${examConfig.maxMarks} marks for this exam.`,
+              title: 'Maximum Score Reached',
+              message: `Maximum marks for this subject is ${examConfig.maxMarks}. Score cannot be incremented further.`,
               maxMarks: examConfig.maxMarks,
-              enteredValue: cur + 1,
+              enteredValue: current + 1,
             });
             return item;
           }
-          return { ...item, marksObtained: cur + 1 };
+          return { ...item, marksObtained: Math.min(examConfig.maxMarks, current + 1) };
         }
         return item;
       })
@@ -340,8 +453,8 @@ export default function ExamsAndMarksPage() {
     setRoster(prev =>
       prev.map(item => {
         if (item.studentId === studentId) {
-          const cur = item.marksObtained === null ? 0 : item.marksObtained;
-          return { ...item, marksObtained: Math.max(0, cur - 1) };
+          const current = item.marksObtained ?? 0;
+          return { ...item, marksObtained: Math.max(0, current - 1) };
         }
         return item;
       })
@@ -349,54 +462,41 @@ export default function ExamsAndMarksPage() {
   };
 
   const handleSaveMarks = async () => {
-    setErrorMsg('');
-    setSaveSuccess(false);
-
-    // Frontend validation before submission
-    for (const item of roster) {
-      if (item.marksObtained !== null && item.marksObtained !== undefined) {
-        if (item.marksObtained < 0) {
-          const msg = 'Marks cannot be negative.';
-          setErrorMsg(msg);
-          showToast(msg, 'error');
-          setPopupAlert({
-            show: true,
-            title: 'Invalid Marks Found',
-            message: `Student "${item.name}" (Roll: ${item.rollNo}) has negative marks (${item.marksObtained}). Marks cannot be negative.`,
-            maxMarks: examConfig.maxMarks,
-            enteredValue: item.marksObtained,
-          });
-          return;
-        }
-        if (item.marksObtained > examConfig.maxMarks) {
-          const msg = `Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`;
-          setErrorMsg(msg);
-          showToast(msg, 'error');
-          setPopupAlert({
-            show: true,
-            title: 'Maximum Marks Exceeded',
-            message: `Marks entered for "${item.name}" (Roll: ${item.rollNo}) (${item.marksObtained}) exceed the configured maximum limit of ${examConfig.maxMarks}.`,
-            maxMarks: examConfig.maxMarks,
-            enteredValue: item.marksObtained,
-          });
-          return;
-        }
-      }
+    if (!selectedClassSectionId || !selectedSubjectId || !selectedExamName) {
+      showToast('Please select Class, Subject, and Exam Term before saving.', 'error');
+      return;
     }
 
+    // Pre-validate all entries against maximum marks
+    const invalidEntry = roster.find(r => r.marksObtained !== null && (r.marksObtained > examConfig.maxMarks || r.marksObtained < 0));
+    if (invalidEntry) {
+      const msg = `Student ${invalidEntry.name} has invalid marks (${invalidEntry.marksObtained}). Marks must be between 0 and ${examConfig.maxMarks}.`;
+      setErrorMsg(msg);
+      showToast(msg, 'error');
+      setPopupAlert({
+        show: true,
+        title: 'Validation Error Before Saving',
+        message: msg,
+        maxMarks: examConfig.maxMarks,
+        enteredValue: invalidEntry.marksObtained ?? undefined,
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMsg('');
     try {
-      setIsSaving(true);
-      const marksPayload = roster.map(item => ({
-        studentId: item.studentId,
-        marksObtained: item.marksObtained === null ? 0 : item.marksObtained,
-        remarks: item.remarks || '',
+      const marksPayload = roster.map(r => ({
+        studentId: r.studentId,
+        marksObtained: r.marksObtained,
+        remarks: r.remarks,
       }));
 
       await api.post('/exams/save-marks', {
-        marks: marksPayload,
-        examName: selectedExamName,
         classSectionId: selectedClassSectionId,
         subjectId: selectedSubjectId,
+        examName: selectedExamName,
+        marks: marksPayload,
         subjectType: selectedSubjectType,
       });
 
@@ -452,6 +552,96 @@ export default function ExamsAndMarksPage() {
 
   const highestMarks = validScores.length > 0 ? Math.max(...validScores) : 0;
 
+  // Initial Loading state with Dual Spinner + Skeleton Loading
+  if (isInitialLoading) {
+    return (
+      <div className="relative space-y-6 max-w-md mx-auto sm:max-w-none pb-20 lg:pb-6">
+        {/* Centered Glassmorphic Spinner & Status Card */}
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center min-h-[460px] pointer-events-none">
+          <div className="bg-white/95 backdrop-blur-md border border-blue-100/90 shadow-2xl shadow-blue-500/15 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-4 text-center max-w-sm mx-4 animate-in fade-in zoom-in duration-300">
+            <div className="relative flex items-center justify-center">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center shadow-inner">
+                <LoadingSpinner size="lg" variant="brand" />
+              </div>
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-blue-600"></span>
+              </span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 tracking-tight">Loading Exam Scoring System</h3>
+              <p className="text-xs font-medium text-slate-500 mt-1">Preparing student rosters, grading thresholds, and subjects...</p>
+            </div>
+            <div className="w-36 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse w-3/4"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Header skeleton */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
+          <div className="space-y-2">
+            <div className="h-7 bg-slate-200 rounded-xl w-56 animate-pulse"></div>
+            <div className="h-3.5 bg-slate-100 rounded w-80 animate-pulse"></div>
+          </div>
+          <div className="flex gap-3">
+            <div className="h-10 w-36 bg-slate-100 rounded-xl animate-pulse"></div>
+            <div className="h-10 w-36 bg-slate-100 rounded-xl animate-pulse"></div>
+          </div>
+        </div>
+
+        {/* Selectors card skeleton */}
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm opacity-60 animate-pulse">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-4">
+            <div className="space-y-2 col-span-2 sm:col-span-1">
+              <div className="h-3 bg-slate-200 rounded w-28"></div>
+              <div className="h-10 bg-slate-100 rounded-xl"></div>
+            </div>
+            <div className="space-y-2 col-span-1 sm:col-span-1">
+              <div className="h-3 bg-slate-200 rounded w-24"></div>
+              <div className="h-10 bg-slate-100 rounded-xl"></div>
+            </div>
+            <div className="space-y-2 col-span-1 sm:col-span-1">
+              <div className="h-3 bg-slate-200 rounded w-24"></div>
+              <div className="h-10 bg-slate-100 rounded-xl"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* 4 KPI cards skeleton */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 opacity-60 animate-pulse">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 shrink-0"></div>
+              <div className="space-y-1.5 flex-1">
+                <div className="h-2.5 bg-slate-200 rounded w-16"></div>
+                <div className="h-5 bg-slate-100 rounded w-12"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Table skeleton */}
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm opacity-60 animate-pulse">
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div className="h-4 bg-slate-200 rounded w-48"></div>
+            <div className="h-3 bg-slate-200 rounded w-28"></div>
+          </div>
+          <div className="p-6 space-y-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex justify-between items-center py-2 border-b border-slate-100">
+                <div className="h-4 bg-slate-100 rounded w-16"></div>
+                <div className="h-4 bg-slate-200 rounded w-36"></div>
+                <div className="h-8 bg-slate-100 rounded-lg w-28"></div>
+                <div className="h-6 bg-slate-100 rounded-lg w-32"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in pb-20 lg:pb-6">
       {/* Header */}
@@ -481,7 +671,7 @@ export default function ExamsAndMarksPage() {
           </button>
           <button
             onClick={handleSaveMarks}
-            disabled={roster.length === 0 || isLoading || isSaving || !!errorMsg}
+            disabled={roster.length === 0 || isLoadingRoster || isSaving || !!errorMsg}
             className="col-span-2 sm:col-span-1 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white font-semibold text-xs sm:text-[13px] flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer w-full sm:w-auto"
           >
             {isSaving ? (
@@ -627,10 +817,28 @@ export default function ExamsAndMarksPage() {
         </div>
 
         <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
-              <RefreshCw className="w-8 h-8 animate-spin" />
-              <span className="text-xs font-semibold">Loading student list...</span>
+          {isLoadingRoster ? (
+            <div className="relative min-h-[260px] flex flex-col justify-center">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/75 backdrop-blur-[2px]">
+                <div className="bg-white border border-blue-100 shadow-xl shadow-blue-500/10 rounded-2xl px-6 py-4 flex items-center gap-3.5 animate-in fade-in zoom-in duration-200">
+                  <LoadingSpinner size="md" variant="brand" />
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">Loading Student Scoresheet...</div>
+                    <div className="text-[10px] font-medium text-slate-500">Retrieving student roster & existing marks</div>
+                  </div>
+                </div>
+              </div>
+              {/* Shimmer skeleton table rows underneath */}
+              <div className="p-6 space-y-4 opacity-40 animate-pulse">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex justify-between items-center py-2.5 border-b border-slate-100">
+                    <div className="h-3.5 bg-slate-200 rounded w-20"></div>
+                    <div className="h-4 bg-slate-300 rounded w-44"></div>
+                    <div className="h-8 bg-slate-100 rounded-lg w-32"></div>
+                    <div className="h-7 bg-slate-100 rounded-lg w-36"></div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : roster.length === 0 ? (
             <div className="py-16 text-center text-slate-400 text-xs font-semibold">
@@ -658,7 +866,7 @@ export default function ExamsAndMarksPage() {
                         <div className="flex items-center justify-center gap-3">
                           <button
                             onClick={() => handleDecrement(s.studentId)}
-                            className="p-1 rounded-lg border border-slate-200 hover:bg-slate-100 hover:text-rose-600"
+                            className="p-1 rounded-lg border border-slate-200 hover:bg-slate-100 hover:text-rose-600 cursor-pointer"
                           >
                             <MinusCircle className="w-4.5 h-4.5 text-slate-450" />
                           </button>
@@ -672,7 +880,7 @@ export default function ExamsAndMarksPage() {
                           />
                           <button
                             onClick={() => handleIncrement(s.studentId)}
-                            className="p-1 rounded-lg border border-slate-200 hover:bg-slate-100 hover:text-emerald-600"
+                            className="p-1 rounded-lg border border-slate-200 hover:bg-slate-100 hover:text-emerald-600 cursor-pointer"
                           >
                             <PlusCircle className="w-4.5 h-4.5 text-slate-450" />
                           </button>

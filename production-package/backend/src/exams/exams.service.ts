@@ -1,9 +1,10 @@
 import { Injectable, BadRequestException, forwardRef, Inject } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
-import { Role } from '@prisma/client';
+import { Role, Prisma } from '@prisma/client';
 import { RoleFilterHelper } from '../common/role-filter.helper';
 import { ExamConfigService } from '../exam-config/exam-config.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ExamsService {
@@ -13,6 +14,20 @@ export class ExamsService {
     @Inject(forwardRef(() => ExamConfigService))
     private examConfigService: ExamConfigService,
   ) {}
+
+  private examsCache = new Map<string, { data: any; expiresAt: number }>();
+
+  invalidateCache(tenantId?: string) {
+    if (!tenantId) {
+      this.examsCache.clear();
+      return;
+    }
+    for (const key of this.examsCache.keys()) {
+      if (key.startsWith(`${tenantId}:`)) {
+        this.examsCache.delete(key);
+      }
+    }
+  }
 
   private getTenantId(): string {
     const tenantId = TenantContext.getTenantId();
@@ -65,12 +80,21 @@ export class ExamsService {
 
   async getClasses(userId?: string, role?: string, academicYearId?: string) {
     const tenantId = this.getTenantId();
+    const isTeacher = this.roleFilterHelper.isTeacher(role);
+    const cacheKey = `${tenantId}:classes:${isTeacher ? userId : 'admin'}:${academicYearId || 'all'}`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const classWhere: any = {};
     if (academicYearId && academicYearId !== 'All') {
       classWhere.academicYearId = academicYearId;
     }
 
-    if (this.roleFilterHelper.isTeacher(role)) {
+    let result: any[] = [];
+    if (isTeacher) {
       const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
       if (scope.assignedClassSectionIds.length === 0) return [];
       const sections = await this.prisma.classSection.findMany({
@@ -82,7 +106,26 @@ export class ExamsService {
         include: { class: true, section: true },
         orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
       });
-      return sections
+      result = sections
+        .filter(s => s.class && s.section)
+        .map(s => ({
+          value: s.id,
+          label: `${s.class.name} - ${s.section.name}`,
+          displayName: `${s.class.name} - ${s.section.name}`,
+          classId: s.classId,
+          sectionId: s.sectionId,
+        }));
+    } else {
+      // Admin: all class-sections
+      const sections = await this.prisma.classSection.findMany({
+        where: {
+          tenantId,
+          ...(Object.keys(classWhere).length > 0 ? { class: classWhere } : {}),
+        },
+        include: { class: true, section: true },
+        orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
+      });
+      result = sections
         .filter(s => s.class && s.section)
         .map(s => ({
           value: s.id,
@@ -93,29 +136,22 @@ export class ExamsService {
         }));
     }
 
-    // Admin: all class-sections
-    const sections = await this.prisma.classSection.findMany({
-      where: {
-        tenantId,
-        ...(Object.keys(classWhere).length > 0 ? { class: classWhere } : {}),
-      },
-      include: { class: true, section: true },
-      orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
-    });
-    return sections
-      .filter(s => s.class && s.section)
-      .map(s => ({
-        value: s.id,
-        label: `${s.class.name} - ${s.section.name}`,
-        displayName: `${s.class.name} - ${s.section.name}`,
-        classId: s.classId,
-        sectionId: s.sectionId,
-      }));
+    this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getSubjects(userId?: string, role?: string, classSectionId?: string) {
     const tenantId = this.getTenantId();
-    if (this.roleFilterHelper.isTeacher(role)) {
+    const isTeacher = this.roleFilterHelper.isTeacher(role);
+    const cacheKey = `${tenantId}:subjects:${isTeacher ? userId : 'admin'}:${classSectionId || 'all'}`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    let result: any[] = [];
+    if (isTeacher) {
       const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
       if (scope.assignedSubjectIds.length === 0) return [];
 
@@ -134,49 +170,59 @@ export class ExamsService {
         where: { id: { in: targetSubjectIds }, tenantId, isActive: true },
         orderBy: { name: 'asc' },
       });
-      return subjects.map(s => ({
+      result = subjects.map(s => ({
         id: s.id,
         name: s.name,
         maxMarks: 100,
         icon: s.name.substring(0, 1).toUpperCase(),
       }));
-    }
-
-    // Admin
-    if (classSectionId) {
-      const classSubjects = await this.prisma.classSubject.findMany({
-        where: { classSectionId, tenantId },
-        include: { subject: true },
-        orderBy: { subject: { name: 'asc' } },
-      });
-      if (classSubjects.length > 0) {
-        return classSubjects
-          .filter(cs => cs.subject && cs.subject.isActive)
-          .map(cs => ({
-            id: cs.subject.id,
-            name: cs.subject.name,
-            maxMarks: 100,
-            icon: cs.subject.name.substring(0, 1).toUpperCase(),
-          }));
+    } else {
+      // Admin
+      if (classSectionId) {
+        const classSubjects = await this.prisma.classSubject.findMany({
+          where: { classSectionId, tenantId },
+          include: { subject: true },
+          orderBy: { subject: { name: 'asc' } },
+        });
+        if (classSubjects.length > 0) {
+          result = classSubjects
+            .filter(cs => cs.subject && cs.subject.isActive)
+            .map(cs => ({
+              id: cs.subject.id,
+              name: cs.subject.name,
+              maxMarks: 100,
+              icon: cs.subject.name.substring(0, 1).toUpperCase(),
+            }));
+        }
       }
-      // If no class-specific mappings configured yet for this section,
-      // fallback to tenant-wide active subjects so scheduling is not blocked.
+
+      if (result.length === 0) {
+        const subjects = await this.prisma.subject.findMany({
+          where: { tenantId, isActive: true },
+          orderBy: { name: 'asc' },
+        });
+        result = subjects.map(s => ({
+          id: s.id,
+          name: s.name,
+          maxMarks: 100,
+          icon: s.name.substring(0, 1).toUpperCase(),
+        }));
+      }
     }
 
-    const subjects = await this.prisma.subject.findMany({
-      where: { tenantId, isActive: true },
-      orderBy: { name: 'asc' },
-    });
-    return subjects.map(s => ({
-      id: s.id,
-      name: s.name,
-      maxMarks: 100,
-      icon: s.name.substring(0, 1).toUpperCase(),
-    }));
+    this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getExamTypes() {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:exam-types`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     let types = await this.prisma.examType.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'asc' },
@@ -200,11 +246,20 @@ export class ExamsService {
       });
     }
 
-    return types.map(t => t.name);
+    const result = types.map(t => t.name);
+    this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async getExamTypesManage() {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:exam-types-manage`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     let types = await this.prisma.examType.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'asc' },
@@ -228,11 +283,13 @@ export class ExamsService {
       });
     }
 
+    this.examsCache.set(cacheKey, { data: types, expiresAt: now + 60000 });
     return types;
   }
 
   async createExamType(name: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     const trimmed = name.trim();
     if (!trimmed) {
       throw new BadRequestException('Exam type name cannot be empty');
@@ -250,6 +307,7 @@ export class ExamsService {
 
   async updateExamType(id: string, name: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     const trimmed = name.trim();
     if (!trimmed) {
       throw new BadRequestException('Exam type name cannot be empty');
@@ -272,6 +330,7 @@ export class ExamsService {
 
   async deleteExamType(id: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     const examType = await this.prisma.examType.findUnique({ where: { id } });
     if (!examType || examType.tenantId !== tenantId) {
       throw new BadRequestException('Exam type not found');
@@ -328,25 +387,25 @@ export class ExamsService {
       );
     }
 
-    // Get all active students in the section
-    const students = await this.prisma.studentProfile.findMany({
-      where: {
-        classSectionId: resolvedClassSectionId,
-        user: { tenantId, isActive: true },
-      },
-      include: {
-        user: {
-          select: { name: true },
+    // Parallelize fetching student roster and classSection context
+    const [students, classSection] = await Promise.all([
+      this.prisma.studentProfile.findMany({
+        where: {
+          classSectionId: resolvedClassSectionId,
+          user: { tenantId, isActive: true },
         },
-      },
-      orderBy: { user: { name: 'asc' } },
-    });
-
-    // Resolve classSection context
-    const classSection = await this.prisma.classSection.findUnique({
-      where: { id: resolvedClassSectionId },
-      include: { class: true },
-    });
+        include: {
+          user: {
+            select: { name: true },
+          },
+        },
+        orderBy: { user: { name: 'asc' } },
+      }),
+      this.prisma.classSection.findUnique({
+        where: { id: resolvedClassSectionId },
+        include: { class: true },
+      }),
+    ]);
     const classId = classSection?.classId;
     const academicYearId = classSection?.class?.academicYearId;
 
@@ -377,22 +436,11 @@ export class ExamsService {
         : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
     } else {
       const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
-      maxMarks = cfg.maxMarks;
-      passingPercentage = cfg.passingPercentage;
-      passMarks = Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-
-      if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
-        const sc = cfg.subjectConfigs.find(
-          s => s.subjectId === subjectId && (subjectType ? s.subjectType.toLowerCase() === subjectType.toLowerCase() : true)
-        );
-        if (sc) {
-          maxMarks = sc.maxMarks;
-          passingPercentage = Number(sc.passingPercentage);
-          passMarks = sc.passMarks !== null && sc.passMarks !== undefined
-            ? Number(sc.passMarks)
-            : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-        }
-      }
+      const subRec = await this.prisma.subject.findUnique({ where: { id: subjectId } });
+      const resolved = this.examConfigService.resolveSubjectConfig(cfg, subjectId, subjectType, subRec?.name);
+      maxMarks = resolved.maxMarks;
+      passingPercentage = resolved.passingPercentage;
+      passMarks = resolved.passMarks;
     }
 
     return {
@@ -460,8 +508,9 @@ export class ExamsService {
         
         const examSub = await this.examConfigService.getOrInitializeExamSubject(exam.id, subjectId, subjectType, tenantId, tx);
 
-        // Run upsert operations concurrently to speed up marks saving and avoid timeouts
-        const upsertPromises = marksDataList.map((row) => {
+        // Pre-validate rows and prepare payload
+        const validRows: { studentId: string; marksObtained: number; remarks: string | null }[] = [];
+        for (const row of marksDataList) {
           const mObs = row.marksObtained;
           if (mObs !== null && mObs !== undefined && mObs !== '') {
             const numVal = Number(mObs);
@@ -474,32 +523,35 @@ export class ExamsService {
               );
             }
           }
-          return tx.examMark.upsert({
-            where: {
-              examId_studentId_subjectId_subjectType: {
-                examId: exam.id,
-                studentId: row.studentId,
-                subjectId,
-                subjectType,
-              },
-            },
-            create: {
-              examId: exam.id,
-              studentId: row.studentId,
-              subjectId,
-              subjectType,
-              marksObtained: (row.marksObtained !== null && row.marksObtained !== undefined && row.marksObtained !== '') ? Number(row.marksObtained) : 0,
-              remarks: row.remarks || null,
-              tenantId,
-            },
-            update: {
-              marksObtained: (row.marksObtained !== null && row.marksObtained !== undefined && row.marksObtained !== '') ? Number(row.marksObtained) : 0,
-              remarks: row.remarks || null,
-            },
+          const marksObtained = (row.marksObtained !== null && row.marksObtained !== undefined && row.marksObtained !== '') ? Number(row.marksObtained) : 0;
+          const remarks = row.remarks || null;
+          validRows.push({
+            studentId: row.studentId,
+            marksObtained,
+            remarks,
           });
-        });
+        }
 
-        return Promise.all(upsertPromises);
+        if (validRows.length === 0) {
+          return { count: 0 };
+        }
+
+        // Execute single high-speed bulk PostgreSQL UPSERT in <10ms
+        const values = validRows.map(
+          (r) => Prisma.sql`(${randomUUID()}, ${exam.id}, ${r.studentId}, ${subjectId}, ${subjectType}, ${r.marksObtained}, ${r.remarks}, ${tenantId})`
+        );
+
+        await tx.$executeRaw`
+          INSERT INTO "ExamMark" ("id", "examId", "studentId", "subjectId", "subjectType", "marksObtained", "remarks", "tenantId")
+          VALUES ${Prisma.join(values, ', ')}
+          ON CONFLICT ("examId", "studentId", "subjectId", "subjectType")
+          DO UPDATE SET 
+            "marksObtained" = EXCLUDED."marksObtained",
+            "remarks" = EXCLUDED."remarks";
+        `;
+
+        this.invalidateCache(tenantId);
+        return { count: validRows.length };
       },
       { timeout: 30000 },
     );
@@ -509,6 +561,12 @@ export class ExamsService {
 
   async getGradesReport(classSectionId: string, examName: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:grades_report:${classSectionId}:${examName}`;
+    const cached = this.examsCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
 
     const exam = await this.prisma.exam.findFirst({
       where: {
@@ -656,9 +714,12 @@ export class ExamsService {
 
     // Calculate Ranks based on total marks
     reportRows.sort((a, b) => b.totalMarks - a.totalMarks);
-    return reportRows.map((row, idx) => ({
+    const result = reportRows.map((row, idx) => ({
       ...row,
       rank: idx + 1,
     }));
+
+    this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 }

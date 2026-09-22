@@ -5,6 +5,48 @@ import { PaymentStatus, PaymentMethod, Role, ExpenseStatus } from '@prisma/clien
 import * as bcrypt from 'bcrypt';
 import { StorageService } from '../common/storage.service';
 
+// High-speed in-memory cache for Student Billing Details (60s TTL)
+const studentBillingMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+// High-speed in-memory cache for Billing Search (60s TTL)
+const billingSearchMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+// High-speed in-memory cache for Invoice PDF Data (60s TTL)
+const invoicePdfMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateStudentBillingCache(studentId?: string, tenantId?: string) {
+  if (studentId) {
+    studentBillingMemoryCache.forEach((_, key) => {
+      if (key.includes(studentId)) {
+        studentBillingMemoryCache.delete(key);
+      }
+    });
+    invoicePdfMemoryCache.forEach((_, key) => {
+      if (key.includes(studentId)) {
+        invoicePdfMemoryCache.delete(key);
+      }
+    });
+  } else if (tenantId) {
+    studentBillingMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        studentBillingMemoryCache.delete(key);
+      }
+    });
+    billingSearchMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        billingSearchMemoryCache.delete(key);
+      }
+    });
+    invoicePdfMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        invoicePdfMemoryCache.delete(key);
+      }
+    });
+  } else {
+    studentBillingMemoryCache.clear();
+    billingSearchMemoryCache.clear();
+    invoicePdfMemoryCache.clear();
+  }
+}
+
 @Injectable()
 export class BillingService {
   constructor(
@@ -12,8 +54,8 @@ export class BillingService {
     private storageService: StorageService,
   ) {}
 
-  private getTenantId(): string {
-    const tenantId = TenantContext.getTenantId();
+  private getTenantId(overrideTenantId?: string): string {
+    const tenantId = overrideTenantId || TenantContext.getTenantId();
     if (!tenantId) {
       throw new BadRequestException('No active school tenant context found');
     }
@@ -75,6 +117,20 @@ export class BillingService {
     return totalPaid;
   }
 
+  private activeProductsCacheMap = new Map<string, { data: any[]; expiresAt: number }>();
+
+  invalidateActiveProductsCache(tenantId?: string) {
+    if (tenantId) {
+      this.activeProductsCacheMap.forEach((_, key) => {
+        if (key.startsWith(`${tenantId}:`)) {
+          this.activeProductsCacheMap.delete(key);
+        }
+      });
+    } else {
+      this.activeProductsCacheMap.clear();
+    }
+  }
+
   // ── ACTIVE PRODUCTS (Pricebook Entries) ────────────────────────────────────
 
   async getActiveProducts(classId: string, academicYearId?: string) {
@@ -82,6 +138,12 @@ export class BillingService {
 
     if (!classId) {
       return [];
+    }
+
+    const cacheKey = `${tenantId}:${classId}:${academicYearId || 'default'}`;
+    const cached = this.activeProductsCacheMap.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
     }
 
     // Get the class record so we know the class name for fallback lookups
@@ -177,7 +239,7 @@ export class BillingService {
       take: 1000,
     });
 
-    return (entries as any[]).map(entry => ({
+    const result = (entries as any[]).map(entry => ({
       id: entry.id,
       product2Id: entry.productId,
       productName: entry.product.name,
@@ -185,6 +247,13 @@ export class BillingService {
       unitPrice: Number(entry.unitPrice),
       pricebook2Id: entry.pricebookId,
     }));
+
+    this.activeProductsCacheMap.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + 60000,
+    });
+
+    return result;
   }
 
   // ── CREATE ADMISSION (Opportunities & Concessions) ─────────────────────────
@@ -376,8 +445,8 @@ export class BillingService {
 
   // ── OPTIONS RETRIEVAL ──────────────────────────────────────────────────────
 
-  async getAcademicYearOptions() {
-    const tenantId = this.getTenantId();
+  async getAcademicYearOptions(overrideTenantId?: string) {
+    const tenantId = this.getTenantId(overrideTenantId);
     const ays = await this.prisma.academicYear.findMany({
       where: { tenantId, isActive: true },
       orderBy: { startDate: 'asc' },
@@ -385,8 +454,8 @@ export class BillingService {
     return ays.map(ay => ({ label: ay.name, value: ay.id }));
   }
 
-  async getClassOptions() {
-    const tenantId = this.getTenantId();
+  async getClassOptions(overrideTenantId?: string) {
+    const tenantId = this.getTenantId(overrideTenantId);
     const classes = await this.prisma.class.findMany({
       where: { tenantId, isActive: true },
       orderBy: { name: 'asc' },
@@ -394,8 +463,8 @@ export class BillingService {
     return classes.map(c => ({ label: c.name, value: c.id }));
   }
 
-  async getSectionOptions(classId?: string) {
-    const tenantId = this.getTenantId();
+  async getSectionOptions(classId?: string, overrideTenantId?: string) {
+    const tenantId = this.getTenantId(overrideTenantId);
     const sections = await this.prisma.section.findMany({
       where: { tenantId, isActive: true },
       orderBy: { name: 'asc' },
@@ -408,63 +477,80 @@ export class BillingService {
   // ── STUDENT SEARCH WITH PENDING BALANCE CALCULATIONS ─────────────────────────
 
   async searchStudents(searchTerm: string) {
+    if (!searchTerm || !searchTerm.trim()) {
+      return [];
+    }
+
     const tenantId = this.getTenantId();
+    const cleanSearch = searchTerm.trim();
+    const cacheKey = `${tenantId}:billing_search:${cleanSearch.toLowerCase()}`;
+
+    const cached = billingSearchMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     const students = await this.prisma.studentProfile.findMany({
       where: {
-        user: {
-          tenantId,
-          OR: [
-            { name: { contains: searchTerm, mode: 'insensitive' } },
-            { phone: { contains: searchTerm, mode: 'insensitive' } },
-          ],
-        },
+        tenantId,
+        OR: [
+          { rollNo: { contains: cleanSearch, mode: 'insensitive' } },
+          { fatherName: { contains: cleanSearch, mode: 'insensitive' } },
+          { user: { isActive: true, name: { contains: cleanSearch, mode: 'insensitive' } } },
+          { user: { isActive: true, phone: { contains: cleanSearch, mode: 'insensitive' } } },
+        ],
       },
-      include: {
-        user: true,
+      select: {
+        id: true,
+        rollNo: true,
+        profilePhotoUrl: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          }
+        },
         classSection: {
-          include: {
-            class: true,
-            section: true,
-          },
+          select: {
+            id: true,
+            classId: true,
+            sectionId: true,
+            class: { select: { id: true, name: true, academicYearId: true } },
+            section: { select: { id: true, name: true } },
+          }
         },
         opportunities: {
           where: {
-            stageName: { notIn: ['Closed Won', 'Closed Lost'] }, // Opportunity is open
+            tenantId,
+            stageName: { notIn: ['Closed Won', 'Closed Lost'] },
           },
           orderBy: { createdAt: 'desc' },
           take: 1,
-          include: {
+          select: {
+            id: true,
+            academicYearId: true,
             opportunityLineItems: {
-              include: { product: true }
+              select: {
+                unitPrice: true,
+                quantity: true,
+                discount: true,
+              }
             },
             invoices: {
               where: {
                 tenantId,
                 status: { not: PaymentStatus.VOIDED }
               },
-              include: { invoiceItems: true }
+              select: {
+                paidAmount: true,
+                remainingBalance: true,
+              }
             }
           }
-        },
+        }
       },
       take: 20,
-    });
-
-    const studentIds = students.map(s => s.id);
-    const unpaidInvoices = await this.prisma.invoice.findMany({
-      where: {
-        studentId: { in: studentIds },
-        tenantId,
-        status: { in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID] }
-      },
-      include: {
-        opportunity: {
-          include: {
-            academicYear: true
-          }
-        }
-      }
     });
 
     const results = [];
@@ -472,6 +558,7 @@ export class BillingService {
       const openOpp = student.opportunities[0];
       let totalFee = 0;
       let totalPaid = 0;
+      let totalDue = 0;
 
       if (openOpp) {
         totalFee = openOpp.opportunityLineItems.reduce((sum, oli) => {
@@ -481,59 +568,42 @@ export class BillingService {
         }, 0);
 
         totalPaid = openOpp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+        totalDue = Math.max(0, totalFee - totalPaid);
       }
-
-      if (totalFee === 0 && student.classSection?.classId) {
-        const activeProducts = await this.getActiveProducts(
-          student.classSection.classId,
-          student.classSection.class?.academicYearId || undefined
-        );
-        totalFee = activeProducts.reduce((sum, p) => sum + p.unitPrice, 0);
-      }
-
-      // Calculate previous years unpaid balances
-      let currentYearStart = new Date(0);
-      if (openOpp && openOpp.academicYearId) {
-        const cy = await this.prisma.academicYear.findFirst({
-          where: { id: openOpp.academicYearId, tenantId }
-        });
-        if (cy) currentYearStart = cy.startDate;
-      }
-
-      const studentPrevUnpaid = unpaidInvoices.filter(inv => {
-        if (inv.studentId !== student.id) return false;
-        if (inv.opportunity?.academicYearId) {
-          if (inv.opportunity.academicYearId === openOpp?.academicYearId) return false;
-          return new Date(inv.opportunity.academicYear.startDate) < currentYearStart;
-        }
-        return new Date(inv.invoiceDate) < currentYearStart;
-      });
-
-      const totalPreviousYearDue = studentPrevUnpaid.reduce((sum, inv) => sum + Number(inv.remainingBalance), 0);
 
       results.push({
         account: {
           id: student.id,
-          name: student.user.name,
-          rollNo: student.rollNo,
-          phone: student.user.phone,
+          name: student.user?.name || 'Student',
+          rollNo: student.rollNo || 'N/A',
+          phone: student.user?.phone || '',
           profilePhotoUrl: student.profilePhotoUrl,
-          class: student.classSection?.class.name || '',
-          section: student.classSection?.section.name || '',
-          classId: student.classSection?.classId || '',
-          sectionId: student.classSection?.sectionId || '',
+          class: student.classSection?.class?.name || '',
+          section: student.classSection?.section?.name || '',
           opportunities: openOpp ? [{ id: openOpp.id, academicYearId: openOpp.academicYearId }] : [],
         },
-        totalPendingBalance: Math.max(0, totalFee - totalPaid) + totalPreviousYearDue,
+        totalPendingBalance: totalDue,
         totalPaidAmount: totalPaid,
       });
     }
+
+    billingSearchMemoryCache.set(cacheKey, {
+      data: results,
+      expiresAt: Date.now() + 60000,
+    });
 
     return results;
   }
 
   async getStudentById(studentId: string, academicYearId?: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:${studentId}:${academicYearId || ''}`;
+
+    // High-speed cache check (60s TTL)
+    const cached = studentBillingMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     let oppFilter: any = {
       tenantId,
@@ -667,28 +737,43 @@ export class BillingService {
       currentYearStart = openOpp.academicYear.startDate;
     }
 
-    // Retrieve all opportunities starting BEFORE currentYearStart
-    const prevOpps = await this.prisma.opportunity.findMany({
-      where: {
-        studentId,
-        tenantId,
-        academicYear: {
-          startDate: {
+    // Retrieve all opportunities starting BEFORE currentYearStart AND standalone invoices concurrently
+    const [prevOpps, prevOrphanInvoices] = await Promise.all([
+      this.prisma.opportunity.findMany({
+        where: {
+          studentId,
+          tenantId,
+          academicYear: {
+            startDate: {
+              lt: currentYearStart
+            }
+          }
+        },
+        include: {
+          academicYear: true,
+          opportunityLineItems: true,
+          invoices: {
+            where: {
+              tenantId,
+              status: { not: PaymentStatus.VOIDED }
+            }
+          }
+        }
+      }),
+      this.prisma.invoice.findMany({
+        where: {
+          studentId,
+          tenantId,
+          opportunityId: null,
+          invoiceDate: {
             lt: currentYearStart
+          },
+          status: {
+            in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID]
           }
         }
-      },
-      include: {
-        academicYear: true,
-        opportunityLineItems: true,
-        invoices: {
-          where: {
-            tenantId,
-            status: { not: PaymentStatus.VOIDED }
-          }
-        }
-      }
-    });
+      })
+    ]);
 
     const prevYearDuesMap = new Map<string, number>();
 
@@ -707,21 +792,7 @@ export class BillingService {
       }
     }
 
-    // 2. Retrieve standalone invoices starting BEFORE currentYearStart (where opportunityId === null)
-    const prevOrphanInvoices = await this.prisma.invoice.findMany({
-      where: {
-        studentId,
-        tenantId,
-        opportunityId: null,
-        invoiceDate: {
-          lt: currentYearStart
-        },
-        status: {
-          in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID]
-        }
-      }
-    });
-
+    // 2. Process standalone invoices starting BEFORE currentYearStart
     for (const inv of prevOrphanInvoices) {
       const yearName = 'Previous Years';
       const balance = Number(inv.remainingBalance);
@@ -766,7 +837,7 @@ export class BillingService {
       }
     };
 
-    return {
+    const result = {
       account: {
         id: student.id,
         name: student.user.name,
@@ -791,8 +862,16 @@ export class BillingService {
       paidPercentage,
       financialStatus,
       totalPaidAmount: totalPaid,
-      feeSummary
+      feeSummary,
+      rawOpportunity: openOpp,
     };
+
+    studentBillingMemoryCache.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + 60000,
+    });
+
+    return result;
   }
 
   // ── UNPAID FEES LISTING ────────────────────────────────────────────────────
@@ -1068,7 +1147,10 @@ export class BillingService {
     const invoices = await this.prisma.invoice.findMany({
       where: {
         tenantId,
-        status: { not: PaymentStatus.VOIDED },
+        OR: [
+          { status: { in: [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID] }, paidAmount: { gt: 0 } },
+          { status: PaymentStatus.VOIDED }
+        ],
         ...(studentId ? { studentId } : {}),
       },
       include: {
@@ -1079,16 +1161,22 @@ export class BillingService {
         },
       },
       orderBy: { invoiceDate: 'desc' },
-      take: 10,
+      take: 20,
     });
 
     return (invoices as any[]).map(inv => ({
       id: inv.id,
-      name: inv.student.user.name,
-      rollNo: inv.student.rollNo || '',
-      dateStr: inv.invoiceDate.toISOString().split('T')[0],
-      status: inv.status === PaymentStatus.VOIDED ? 'Cancelled' : 'Paid',
-      totalAmount: Number(inv.totalAmount),
+      name: inv.student?.user?.name || 'Student',
+      rollNo: inv.student?.rollNo || '',
+      dateStr: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().split('T')[0] : '',
+      status: inv.status === PaymentStatus.VOIDED 
+        ? 'Cancelled' 
+        : inv.status === PaymentStatus.PAID 
+          ? 'Paid' 
+          : inv.status === PaymentStatus.PARTIALLY_PAID 
+            ? 'Partially Paid' 
+            : 'Unpaid',
+      totalAmount: Number(inv.paidAmount) > 0 ? Number(inv.paidAmount) : Number(inv.totalAmount),
       paymentMethod: inv.paymentMethod || 'CASH',
     }));
   }
@@ -1159,6 +1247,12 @@ export class BillingService {
 
   async getInvoicePDFData(invoiceId: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:invoice_pdf:${invoiceId}`;
+
+    const cached = invoicePdfMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -1207,7 +1301,7 @@ export class BillingService {
     }
     const parentPhone = invoice.student.fatherPhone || invoice.student.motherPhone || invoice.student.user?.phone || '';
 
-    return {
+    const result = {
       schoolName: school?.name || 'Vikas Senior Secondary School',
       schoolAddress: school?.address || 'School Campus Address',
       schoolPhone: school?.phone || '+91 999 999 9999',
@@ -1225,15 +1319,21 @@ export class BillingService {
       studentDob: '', // Dob can be added to user/student profile if needed
       addressVillage: school?.address || '',
       totalAmount: Number(invoice.totalAmount),
-      paidAmount: Number(invoice.paidAmount),
+      paidAmount: Number(invoice.paidAmount ?? invoice.totalAmount),
       remainingBalance: totalRemainingBalance,
-      invoiceRemainingBalance: Number(invoice.remainingBalance || 0),
       parentPhone,
-      items: invoice.invoiceItems.map(item => ({
+      items: invoice.invoiceItems.map((item) => ({
         particulars: item.name,
         amount: Number(item.amount),
       })),
     };
+
+    invoicePdfMemoryCache.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + 60000,
+    });
+
+    return result;
   }
 
   async generateReceiptPdfStream(data: any, res: any) {

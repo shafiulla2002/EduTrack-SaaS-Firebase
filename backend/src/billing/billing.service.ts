@@ -5,6 +5,48 @@ import { PaymentStatus, PaymentMethod, Role, ExpenseStatus } from '@prisma/clien
 import * as bcrypt from 'bcrypt';
 import { StorageService } from '../common/storage.service';
 
+// High-speed in-memory cache for Student Billing Details (60s TTL)
+const studentBillingMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+// High-speed in-memory cache for Billing Search (60s TTL)
+const billingSearchMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+// High-speed in-memory cache for Invoice PDF Data (60s TTL)
+const invoicePdfMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateStudentBillingCache(studentId?: string, tenantId?: string) {
+  if (studentId) {
+    studentBillingMemoryCache.forEach((_, key) => {
+      if (key.includes(studentId)) {
+        studentBillingMemoryCache.delete(key);
+      }
+    });
+    invoicePdfMemoryCache.forEach((_, key) => {
+      if (key.includes(studentId)) {
+        invoicePdfMemoryCache.delete(key);
+      }
+    });
+  } else if (tenantId) {
+    studentBillingMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        studentBillingMemoryCache.delete(key);
+      }
+    });
+    billingSearchMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        billingSearchMemoryCache.delete(key);
+      }
+    });
+    invoicePdfMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        invoicePdfMemoryCache.delete(key);
+      }
+    });
+  } else {
+    studentBillingMemoryCache.clear();
+    billingSearchMemoryCache.clear();
+    invoicePdfMemoryCache.clear();
+  }
+}
+
 @Injectable()
 export class BillingService {
   constructor(
@@ -441,17 +483,22 @@ export class BillingService {
 
     const tenantId = this.getTenantId();
     const cleanSearch = searchTerm.trim();
+    const cacheKey = `${tenantId}:billing_search:${cleanSearch.toLowerCase()}`;
+
+    const cached = billingSearchMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     const students = await this.prisma.studentProfile.findMany({
       where: {
         tenantId,
-        user: {
-          isActive: true,
-          OR: [
-            { name: { contains: cleanSearch, mode: 'insensitive' } },
-            { phone: { contains: cleanSearch, mode: 'insensitive' } },
-          ],
-        },
+        OR: [
+          { rollNo: { contains: cleanSearch, mode: 'insensitive' } },
+          { fatherName: { contains: cleanSearch, mode: 'insensitive' } },
+          { user: { isActive: true, name: { contains: cleanSearch, mode: 'insensitive' } } },
+          { user: { isActive: true, phone: { contains: cleanSearch, mode: 'insensitive' } } },
+        ],
       },
       select: {
         id: true,
@@ -533,8 +580,6 @@ export class BillingService {
           profilePhotoUrl: student.profilePhotoUrl,
           class: student.classSection?.class?.name || '',
           section: student.classSection?.section?.name || '',
-          classId: student.classSection?.classId || '',
-          sectionId: student.classSection?.sectionId || '',
           opportunities: openOpp ? [{ id: openOpp.id, academicYearId: openOpp.academicYearId }] : [],
         },
         totalPendingBalance: totalDue,
@@ -542,11 +587,23 @@ export class BillingService {
       });
     }
 
+    billingSearchMemoryCache.set(cacheKey, {
+      data: results,
+      expiresAt: Date.now() + 60000,
+    });
+
     return results;
   }
 
   async getStudentById(studentId: string, academicYearId?: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:${studentId}:${academicYearId || ''}`;
+
+    // High-speed cache check (60s TTL)
+    const cached = studentBillingMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     let oppFilter: any = {
       tenantId,
@@ -780,7 +837,7 @@ export class BillingService {
       }
     };
 
-    return {
+    const result = {
       account: {
         id: student.id,
         name: student.user.name,
@@ -808,6 +865,13 @@ export class BillingService {
       feeSummary,
       rawOpportunity: openOpp,
     };
+
+    studentBillingMemoryCache.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + 60000,
+    });
+
+    return result;
   }
 
   // ── UNPAID FEES LISTING ────────────────────────────────────────────────────
@@ -1183,6 +1247,12 @@ export class BillingService {
 
   async getInvoicePDFData(invoiceId: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:invoice_pdf:${invoiceId}`;
+
+    const cached = invoicePdfMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -1231,7 +1301,7 @@ export class BillingService {
     }
     const parentPhone = invoice.student.fatherPhone || invoice.student.motherPhone || invoice.student.user?.phone || '';
 
-    return {
+    const result = {
       schoolName: school?.name || 'Vikas Senior Secondary School',
       schoolAddress: school?.address || 'School Campus Address',
       schoolPhone: school?.phone || '+91 999 999 9999',
@@ -1249,15 +1319,21 @@ export class BillingService {
       studentDob: '', // Dob can be added to user/student profile if needed
       addressVillage: school?.address || '',
       totalAmount: Number(invoice.totalAmount),
-      paidAmount: Number(invoice.paidAmount),
+      paidAmount: Number(invoice.paidAmount ?? invoice.totalAmount),
       remainingBalance: totalRemainingBalance,
-      invoiceRemainingBalance: Number(invoice.remainingBalance || 0),
       parentPhone,
-      items: invoice.invoiceItems.map(item => ({
+      items: invoice.invoiceItems.map((item) => ({
         particulars: item.name,
         amount: Number(item.amount),
       })),
     };
+
+    invoicePdfMemoryCache.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + 60000,
+    });
+
+    return result;
   }
 
   async generateReceiptPdfStream(data: any, res: any) {

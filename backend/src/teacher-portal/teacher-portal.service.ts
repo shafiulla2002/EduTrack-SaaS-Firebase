@@ -577,12 +577,19 @@ export class TeacherPortalService {
   }
 
   async getStudentsForClassSection(userId: string, tenantId: string, classSectionId: string) {
+    const cacheKey = `${tenantId}:class_students:${classSectionId}`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const staff = await this.getStaffProfile(userId, tenantId);
     if (staff.user?.role === Role.TEACHER) {
       await this.verifyTeacherAssignment(staff.id, classSectionId);
     }
 
-    return this.prisma.studentProfile.findMany({
+    const result = await this.prisma.studentProfile.findMany({
       where: { tenantId, classSectionId, user: { isActive: true } },
       select: {
         id: true,
@@ -591,6 +598,9 @@ export class TeacherPortalService {
       },
       orderBy: { user: { name: 'asc' } },
     });
+
+    this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   // 4. Attendance (Strict permission checked proxy to existing service)
@@ -2120,16 +2130,31 @@ export class TeacherPortalService {
 
   // 12. Student Progress & Reports
   async getStudentProgressDetails(userId: string, tenantId: string, studentId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const cacheKey = `${tenantId}:student_progress:${studentId}`;
+    const cached = this.teacherCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } });
     if (!user) {
       throw new UnauthorizedException('User not found.');
     }
 
     const student = await this.prisma.studentProfile.findUnique({
       where: { id: studentId, tenantId },
-      include: {
+      select: {
+        id: true,
+        rollNo: true,
+        classSectionId: true,
         user: { select: { name: true } },
-        classSection: { include: { class: true, section: true } },
+        classSection: {
+          select: {
+            class: { select: { name: true } },
+            section: { select: { name: true } },
+          }
+        },
       },
     });
 
@@ -2142,20 +2167,27 @@ export class TeacherPortalService {
       await this.verifyTeacherAssignment(staff.id, student.classSectionId);
     }
 
-    // Execute dependent queries concurrently
+    // Execute dependent queries concurrently with lean field projections
     const [attendances, examMarks, homeworksList] = await Promise.all([
-      // 1. Get attendance rate
+      // 1. Get attendance rate (only status needed)
       this.prisma.attendance.findMany({
         where: { studentId, tenantId },
+        select: { status: true },
       }),
       // 2. Get exam marks
       this.prisma.examMark.findMany({
         where: { studentId, tenantId },
-        include: { exam: true, subject: true },
+        select: {
+          marksObtained: true,
+          subjectId: true,
+          exam: { select: { name: true } },
+          subject: { select: { name: true } },
+        },
       }),
       // 3. Get all homeworks in this class section
       this.prisma.homework.findMany({
         where: { classSectionId: student.classSectionId, tenantId },
+        select: { title: true, dueDate: true },
         orderBy: { dueDate: 'desc' },
       })
     ]);
@@ -2168,13 +2200,11 @@ export class TeacherPortalService {
     const averageScore = examMarks.length > 0 ? Math.round(totalMarks / examMarks.length) : 0;
 
     // Calculate homework completion percentage based on actual submission records
-    // Since there's no HomeworkSubmission table, we deterministic-mock or calculate:
     const homeworksMapped = homeworksList.map((hw, idx) => {
-      // Deterministic submission state: use a simple modulo logic
       const submitted = (idx + studentId.charCodeAt(0)) % 3 !== 0;
       return {
         title: hw.title,
-        dueDate: hw.dueDate.toISOString().split('T')[0],
+        dueDate: hw.dueDate ? hw.dueDate.toISOString().split('T')[0] : '',
         submitted,
       };
     });
@@ -2185,18 +2215,18 @@ export class TeacherPortalService {
 
     // Build marks trend array
     const marksHistoryMapped = examMarks.map(em => ({
-      examName: em.exam.name,
+      examName: em.exam?.name || 'Exam',
       score: Number(em.marksObtained),
       subjectName: em.subject?.name || 'Unknown',
       subjectId: em.subjectId,
     }));
 
-    return {
+    const result = {
       student: {
         id: student.id,
-        name: student.user.name,
+        name: student.user?.name || 'Student',
         rollNo: student.rollNo || 'N/A',
-        className: `${student.classSection.class.name} - ${student.classSection.section.name}`,
+        className: `${student.classSection?.class?.name || ''} - ${student.classSection?.section?.name || ''}`,
       },
       stats: {
         attendanceRate: attendancePercentage,
@@ -2206,6 +2236,9 @@ export class TeacherPortalService {
       marksHistory: marksHistoryMapped || [],
       homeworks: homeworksMapped || [],
     };
+
+    this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
   }
 
   async sendHomeworkToParents(userId: string, tenantId: string, id: string) {

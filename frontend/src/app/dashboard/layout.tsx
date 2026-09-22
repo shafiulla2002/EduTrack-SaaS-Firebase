@@ -622,6 +622,7 @@ export default function DashboardLayout({
       fastGet('/students', { params: { page: 1, limit: 20 } }, { ttlMs: 30000 }).catch(() => {});
       fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/sections', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/staff')) {
       fastGet('/staff', undefined, { ttlMs: 30000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/teachers')) {
@@ -634,7 +635,18 @@ export default function DashboardLayout({
       fastGet('/billing/dashboard-summary', undefined, { ttlMs: 30000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/expenses')) {
       fastGet('/expenses', undefined, { ttlMs: 30000 }).catch(() => {});
-    } else if (href.startsWith('/dashboard/marks-mgmt')) {
+    } else if (href.startsWith('/dashboard/grades')) {
+      fastGet('/exams/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }).catch(() => {});
+      if (typeof window !== 'undefined') {
+        const lastClass = sessionStorage.getItem('last_grades_class');
+        const lastExam = sessionStorage.getItem('last_grades_exam');
+        if (lastClass && lastExam) {
+          fastGet(`/exams/grades-report?classSectionId=${lastClass}&examName=${encodeURIComponent(lastExam)}`, undefined, { ttlMs: 60000 }).catch(() => {});
+        }
+      }
+    } else if (href.startsWith('/dashboard/exams') || href.startsWith('/dashboard/marks-mgmt')) {
+      fastGet('/exams/classes', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/exams/subjects', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }).catch(() => {});
@@ -656,6 +668,16 @@ export default function DashboardLayout({
       fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      if (typeof window !== 'undefined') {
+        const lastClass = sessionStorage.getItem('last_progress_class');
+        if (lastClass) {
+          fastGet(`/teacher-portal/classes/${lastClass}/students`, undefined, { ttlMs: 60000 }).catch(() => {});
+        }
+        const lastStudent = sessionStorage.getItem('last_progress_student');
+        if (lastStudent) {
+          fastGet(`/teacher-portal/student-progress/${lastStudent}`, undefined, { ttlMs: 120000 }).catch(() => {});
+        }
+      }
     }
   };
 

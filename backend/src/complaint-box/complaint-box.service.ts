@@ -356,13 +356,19 @@ export class ComplaintBoxService {
   async getStudentCases(studentId: string, academicYear?: string) {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
+    const cacheKey = `${tenantId}:student_cases:${studentId}:${academicYear || ''}:${user?.id || 'admin'}`;
+
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     const filter: any = { tenantId, studentId };
     if (academicYear) {
       filter.academicYear = academicYear;
     }
 
-    if (user.role === 'TEACHER') {
+    if (user?.role === 'TEACHER') {
       const staffProfile = await this.prisma.staffProfile.findUnique({
         where: { userId: user.id },
         include: {
@@ -385,7 +391,7 @@ export class ComplaintBoxService {
       }
     }
 
-    return this.prisma.behaviorCase.findMany({
+    const result = await this.prisma.behaviorCase.findMany({
       where: filter,
       select: {
         id: true,
@@ -402,8 +408,11 @@ export class ComplaintBoxService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 50,
     });
+
+    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    return result;
   }
 
   /** Updates the status of a case. Enforces admin-only permission. */

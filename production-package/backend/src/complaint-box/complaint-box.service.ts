@@ -9,6 +9,8 @@ import { UpdateCaseStatusDto } from './dto/update-case-status.dto';
 
 @Injectable()
 export class ComplaintBoxService {
+  private cache = new Map<string, { data: any; expiresAt: number }>();
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(REQUEST) private readonly request: Request,
@@ -20,6 +22,18 @@ export class ComplaintBoxService {
       throw new BadRequestException('No active tenant context');
     }
     return tenantId;
+  }
+
+  private invalidateCache(tenantId?: string) {
+    if (tenantId) {
+      this.cache.forEach((_, key) => {
+        if (key.startsWith(`${tenantId}:`)) {
+          this.cache.delete(key);
+        }
+      });
+    } else {
+      this.cache.clear();
+    }
   }
 
   /** Returns the profile of the currently authenticated teacher. */
@@ -43,7 +57,13 @@ export class ComplaintBoxService {
   async getStudentClasses() {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
+    const cacheKey = `${tenantId}:student-classes:${user?.id || 'admin'}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
+    let result: any[];
     if (user.role === 'TEACHER') {
       const staffProfile = await this.prisma.staffProfile.findUnique({
         where: { userId: user.id },
@@ -61,30 +81,42 @@ export class ComplaintBoxService {
       const assignedClassIds = staffProfile.teacherAssignments.map(ta => ta.classSectionId);
       const classSectionIds = Array.from(new Set([...advisorClassIds, ...assignedClassIds]));
 
-      return this.prisma.classSection.findMany({
+      result = await this.prisma.classSection.findMany({
         where: { tenantId, id: { in: classSectionIds } },
+        include: { class: true, section: true },
+        orderBy: { class: { name: 'asc' } },
+      });
+    } else {
+      result = await this.prisma.classSection.findMany({
+        where: { tenantId },
         include: { class: true, section: true },
         orderBy: { class: { name: 'asc' } },
       });
     }
 
-    return this.prisma.classSection.findMany({
-      where: { tenantId },
-      include: { class: true, section: true },
-      orderBy: { class: { name: 'asc' } },
-    });
+    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 30000 });
+    return result;
   }
 
   /** Returns all teachers for the tenant. */
   async getTeachers() {
     const tenantId = this.getTenantId();
-    return this.prisma.staffProfile.findMany({
+    const cacheKey = `${tenantId}:teachers`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
+    const result = await this.prisma.staffProfile.findMany({
       where: { user: { tenantId, role: 'TEACHER', isActive: true } },
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
       },
       orderBy: { user: { name: 'asc' } },
     });
+
+    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    return result;
   }
 
   /** Returns students belonging to a specific class section. Enforces teacher-class assignment. */
@@ -229,7 +261,7 @@ export class ComplaintBoxService {
     }
 
     const priority = dto.behaviorType === 'Complaint' ? 'High' : 'Medium';
-    return this.prisma.behaviorCase.create({
+    const created = await this.prisma.behaviorCase.create({
       data: {
         tenantId,
         studentId: dto.studentId,
@@ -242,18 +274,33 @@ export class ComplaintBoxService {
         description: dto.description,
       },
     });
+    this.invalidateCache(tenantId);
+    return created;
   }
 
   /** Returns academic years for the tenant. */
   async getAcademicYears() {
     const tenantId = this.getTenantId();
-    return this.prisma.academicYear.findMany({ where: { tenantId }, orderBy: { name: 'desc' } });
+    const cacheKey = `${tenantId}:academic-years`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
+    const result = await this.prisma.academicYear.findMany({ where: { tenantId }, orderBy: { name: 'desc' } });
+    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    return result;
   }
 
   /** Returns behavior cases scoped by user permissions. */
   async getPendingCases(academicYear?: string) {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
+    const cacheKey = `${tenantId}:pending-cases:${academicYear || 'All'}:${user?.id || 'admin'}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     const filter: any = { tenantId };
     if (academicYear) {
@@ -283,7 +330,7 @@ export class ComplaintBoxService {
       }
     }
 
-    return this.prisma.behaviorCase.findMany({
+    const result = await this.prisma.behaviorCase.findMany({
       where: filter,
       include: {
         student: {
@@ -300,19 +347,28 @@ export class ComplaintBoxService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 20000 });
+    return result;
   }
 
   /** Returns cases for a specific student, enforcing permissions. */
   async getStudentCases(studentId: string, academicYear?: string) {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
+    const cacheKey = `${tenantId}:student_cases:${studentId}:${academicYear || ''}:${user?.id || 'admin'}`;
+
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
 
     const filter: any = { tenantId, studentId };
     if (academicYear) {
       filter.academicYear = academicYear;
     }
 
-    if (user.role === 'TEACHER') {
+    if (user?.role === 'TEACHER') {
       const staffProfile = await this.prisma.staffProfile.findUnique({
         where: { userId: user.id },
         include: {
@@ -335,23 +391,28 @@ export class ComplaintBoxService {
       }
     }
 
-    return this.prisma.behaviorCase.findMany({
+    const result = await this.prisma.behaviorCase.findMany({
       where: filter,
-      include: {
-        student: {
-          include: {
-            user: { select: { name: true } },
-            classSection: { include: { class: true, section: true } },
-          },
-        },
+      select: {
+        id: true,
+        behaviorType: true,
+        category: true,
+        priority: true,
+        status: true,
+        description: true,
+        createdAt: true,
         teacher: {
-          include: {
+          select: {
             user: { select: { name: true } },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 50,
     });
+
+    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    return result;
   }
 
   /** Updates the status of a case. Enforces admin-only permission. */
@@ -368,10 +429,12 @@ export class ComplaintBoxService {
       throw new NotFoundException('Case not found');
     }
 
-    return this.prisma.behaviorCase.update({
+    const res = await this.prisma.behaviorCase.update({
       where: { id: caseId },
       data: { status: dto.status },
     });
+    this.invalidateCache(tenantId);
+    return res;
   }
 
   /** Updates/Edits a behavior case. Enforces creator-ownership for teachers. */
@@ -394,7 +457,7 @@ export class ComplaintBoxService {
     }
 
     const priority = dto.behaviorType === 'Complaint' ? 'High' : 'Medium';
-    return this.prisma.behaviorCase.update({
+    const updated = await this.prisma.behaviorCase.update({
       where: { id: caseId },
       data: {
         studentId: dto.studentId,
@@ -406,6 +469,8 @@ export class ComplaintBoxService {
         priority,
       },
     });
+    this.invalidateCache(tenantId);
+    return updated;
   }
 
   /** Deletes a behavior case. Enforces creator-ownership for teachers. */
@@ -427,9 +492,11 @@ export class ComplaintBoxService {
       }
     }
 
-    return this.prisma.behaviorCase.delete({
+    const deleted = await this.prisma.behaviorCase.delete({
       where: { id: caseId },
     });
+    this.invalidateCache(tenantId);
+    return deleted;
   }
 
   /** Returns simple statistics for a student – total cases, complaints, praises, and resolved. */
@@ -477,6 +544,12 @@ export class ComplaintBoxService {
   /** Returns parent complaints for the tenant (Admin view). */
   async getParentComplaints(statusFilter?: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:parent-complaints:${statusFilter || 'All'}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
     const filter: any = { tenantId };
     if (statusFilter && statusFilter !== 'All') {
       filter.status = statusFilter;
@@ -493,11 +566,13 @@ export class ComplaintBoxService {
     });
 
     const complaintIds = complaints.map(c => c.id);
-    const histories = await this.prisma.statusHistory.findMany({
-      where: { entityType: 'COMPLAINT', entityId: { in: complaintIds } },
-      include: { updatedBy: { select: { id: true, name: true, role: true } } },
-      orderBy: { createdAt: 'asc' },
-    });
+    const histories = complaintIds.length > 0
+      ? await this.prisma.statusHistory.findMany({
+          where: { entityType: 'COMPLAINT', entityId: { in: complaintIds } },
+          include: { updatedBy: { select: { id: true, name: true, role: true } } },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
 
     const historyMap = new Map<string, any[]>();
     for (const h of histories) {
@@ -505,10 +580,13 @@ export class ComplaintBoxService {
       historyMap.get(h.entityId)!.push(h);
     }
 
-    return complaints.map(c => ({
+    const result = complaints.map(c => ({
       ...c,
       statusHistories: historyMap.get(c.id) || [],
     }));
+
+    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 });
+    return result;
   }
 
   /** Updates status, admin reply, resolution notes for a parent complaint. */
@@ -534,6 +612,8 @@ export class ComplaintBoxService {
         assignedToId: data.assignedToId !== undefined ? data.assignedToId : existing.assignedToId,
       },
     });
+
+    this.invalidateCache(tenantId);
 
     // Create StatusHistory record
     await this.prisma.statusHistory.create({

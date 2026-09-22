@@ -233,6 +233,16 @@ export default function DashboardLayout({
           ),
         },
         {
+          name: 'Student Progress',
+          href: '/dashboard/student-progress',
+          svg: (
+            <svg className="icon-svg" viewBox="0 0 24 24">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+              <polyline points="17 6 23 6 23 12"></polyline>
+            </svg>
+          ),
+        },
+        {
           name: 'Enter Marks',
           href: '/dashboard/exams',
           svg: (
@@ -587,12 +597,87 @@ export default function DashboardLayout({
   }
 
   const prefetchRouteData = (href: string) => {
-    if (!href || href === '#') return;
+    if (!href || href === '#' || isModuleLocked(href)) return;
     try {
       router.prefetch(href);
     } catch {}
-    if (href.startsWith('/dashboard/student-progress')) {
+
+    // Proactively warm up backend endpoints into SWR cache in background
+    if (href.startsWith('/dashboard/leave-mgmt')) {
+      const adminParams = {
+        page: 1,
+        limit: 20,
+        status: 'ALL',
+        applicantType: 'ALL',
+        leaveType: 'ALL',
+        academicYearId: 'ALL',
+        sortBy: 'appliedDate',
+        sortOrder: 'desc',
+      };
+      fastGet('/leave-management', { params: adminParams }, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/leave-management/stats', undefined, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/attendance/teachers', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/students')) {
+      fastGet('/students', { params: { page: 1, limit: 20 } }, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/sections', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/staff')) {
+      fastGet('/staff', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/teachers')) {
+      fastGet('/teachers', undefined, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/attendance-mgmt') || href.startsWith('/dashboard/attendance')) {
+      fastGet('/attendance/dashboard', undefined, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/billing') || href.startsWith('/dashboard/fee-mgmt')) {
+      fastGet('/billing/dashboard-summary', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/expenses')) {
+      fastGet('/expenses', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/grades')) {
+      fastGet('/exams/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }).catch(() => {});
+      if (typeof window !== 'undefined') {
+        const lastClass = sessionStorage.getItem('last_grades_class');
+        const lastExam = sessionStorage.getItem('last_grades_exam');
+        if (lastClass && lastExam) {
+          fastGet(`/exams/grades-report?classSectionId=${lastClass}&examName=${encodeURIComponent(lastExam)}`, undefined, { ttlMs: 60000 }).catch(() => {});
+        }
+      }
+    } else if (href.startsWith('/dashboard/exams') || href.startsWith('/dashboard/marks-mgmt')) {
+      fastGet('/exams/classes', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/exams/subjects', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/exam-config/components', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/announcements-mgmt') || href.startsWith('/dashboard/communication')) {
+      fastGet('/announcements', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/complaint-box') || href.startsWith('/dashboard/complaints')) {
+      fastGet('/complaint-box/parent-complaints', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/complaint-box/student-classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/complaint-box/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/complaint-box/teachers', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/complaint-box/pending-cases', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/promotions')) {
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/sections', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/students/promotion-candidates', { params: { className: 'ALL' } }, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/student-progress')) {
+      fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      if (typeof window !== 'undefined') {
+        const lastClass = sessionStorage.getItem('last_progress_class');
+        if (lastClass) {
+          fastGet(`/teacher-portal/classes/${lastClass}/students`, undefined, { ttlMs: 60000 }).catch(() => {});
+        }
+        const lastStudent = sessionStorage.getItem('last_progress_student');
+        if (lastStudent) {
+          fastGet(`/teacher-portal/student-progress/${lastStudent}`, undefined, { ttlMs: 120000 }).catch(() => {});
+        }
+      }
     }
   };
 
@@ -923,6 +1008,8 @@ export default function DashboardLayout({
                           key={item.name}
                           href={isLocked ? '#' : item.href}
                           prefetch={true}
+                          onMouseEnter={() => prefetchRouteData(item.href)}
+                          onTouchStart={() => prefetchRouteData(item.href)}
                           onClick={(e) => {
                             setMobileOpen(false);
                             if (isLocked) {

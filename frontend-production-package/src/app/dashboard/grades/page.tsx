@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Award, Search, Calendar, RefreshCw, X, ChevronRight,
   TrendingUp, CheckCircle, AlertTriangle, Trophy, BookOpen,
   Download, Printer
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
+import LoadingSpinner from '@/components/loading/LoadingSpinner';
 import { useTenant } from '../../providers/TenantContext';
 import { PDFService } from '@/lib/pdf';
 import { PDFLayout } from '@/components/PDFLayout';
@@ -49,20 +51,59 @@ type ClassSectionOption = {
 };
 
 export default function GradesMarksPage() {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   const [search, setSearch] = useState('');
   const { schoolName } = useTenant();
   
-  // Metadata options
-  const [classes, setClasses] = useState<ClassSectionOption[]>([]);
-  const [examTypes, setExamTypes] = useState<string[]>([]);
+  // Metadata options initialized from synchronous SWR cache for 0ms render
+  const [classes, setClasses] = useState<ClassSectionOption[]>(() => getCachedData<ClassSectionOption[]>('/exams/classes') || []);
+  const [examTypes, setExamTypes] = useState<string[]>(() => getCachedData<string[]>('/exams/exam-types') || []);
 
   // Selection filters
-  const [selectedClassSectionId, setSelectedClassSectionId] = useState('');
-  const [selectedExamName, setSelectedExamName] = useState('');
+  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_grades_class');
+      if (saved) return saved;
+    }
+    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
+    return cachedClasses && cachedClasses.length > 0 ? cachedClasses[0].value : '';
+  });
+
+  const [selectedExamName, setSelectedExamName] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('last_grades_exam');
+      if (saved) return saved;
+    }
+    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
+    return cachedTypes && cachedTypes.length > 0 ? cachedTypes[0] : '';
+  });
 
   // Results list
-  const [records, setRecords] = useState<GradeRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [records, setRecords] = useState<GradeRecord[]>(() => {
+    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
+    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
+    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_class')) || cachedClasses?.[0]?.value;
+    const initialExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_exam')) || cachedTypes?.[0];
+    if (initialClass && initialExam) {
+      return getCachedData<GradeRecord[]>(`/exams/grades-report?classSectionId=${initialClass}&examName=${encodeURIComponent(initialExam)}`) || [];
+    }
+    return [];
+  });
+
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
+    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
+    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_class')) || cachedClasses?.[0]?.value;
+    const initialExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_exam')) || cachedTypes?.[0];
+    if (initialClass && initialExam) {
+      const cachedReport = getCachedData(`/exams/grades-report?classSectionId=${initialClass}&examName=${encodeURIComponent(initialExam)}`);
+      return !cachedReport;
+    }
+    return true;
+  });
+
+  const [isFetchingRoster, setIsFetchingRoster] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
@@ -118,44 +159,106 @@ export default function GradesMarksPage() {
 
   const fetchMetadata = async () => {
     try {
-      const classRes = await api.get('/exams/classes');
-      setClasses(classRes.data);
-      if (classRes.data.length > 0) {
-        setSelectedClassSectionId(classRes.data[0].value);
-      }
+      const [classRes, typeRes] = await Promise.all([
+        fastGet('/exams/classes', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh && fresh.length > 0) {
+              setClasses(fresh);
+              if (!selectedClassSectionId) {
+                setSelectedClassSectionId(fresh[0].value);
+              }
+            }
+          }
+        }),
+        fastGet('/exams/exam-types', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh && fresh.length > 0) {
+              setExamTypes(fresh);
+              if (!selectedExamName) {
+                setSelectedExamName(fresh[0]);
+              }
+            }
+          }
+        })
+      ]);
+      const classList = classRes.data || [];
+      const typeList = typeRes.data || [];
+      if (classList.length > 0) setClasses(classList);
+      if (typeList.length > 0) setExamTypes(typeList);
 
-      const typeRes = await api.get('/exams/exam-types');
-      setExamTypes(typeRes.data);
-      if (typeRes.data.length > 0) {
-        setSelectedExamName(typeRes.data[0]);
+      const targetClassId = selectedClassSectionId || (classList.length > 0 ? classList[0].value : '');
+      const targetExamName = selectedExamName || (typeList.length > 0 ? typeList[0] : '');
+
+      if (!selectedClassSectionId && targetClassId) setSelectedClassSectionId(targetClassId);
+      if (!selectedExamName && targetExamName) setSelectedExamName(targetExamName);
+
+      if (targetClassId && targetExamName) {
+        fetchGrades(targetClassId, targetExamName);
+        // Pre-warm reports for other exam types in the same class
+        typeList.forEach((et: string) => {
+          if (et !== targetExamName) {
+            fastGet(`/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(et)}`, undefined, { ttlMs: 60000 }).catch(() => {});
+          }
+        });
       }
     } catch (err: any) {
       console.error('Error fetching grades metadata:', err);
       setErrorMsg('Failed to load class or exam type filters.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     if (selectedClassSectionId && selectedExamName) {
-      fetchGrades();
+      fetchGrades(selectedClassSectionId, selectedExamName);
     }
   }, [selectedClassSectionId, selectedExamName]);
 
-  const fetchGrades = async () => {
-    setIsLoading(true);
+  const fetchGrades = async (classSectionId?: string, examName?: string) => {
+    const targetClassId = classSectionId || selectedClassSectionId;
+    const targetExamName = examName || selectedExamName;
+    if (!targetClassId || !targetExamName) return;
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('last_grades_class', targetClassId);
+      sessionStorage.setItem('last_grades_exam', targetExamName);
+    }
+
+    const cached = getCachedData<GradeRecord[]>(`/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(targetExamName)}`);
+    if (cached && cached.length > 0) {
+      setRecords(cached);
+      setIsLoading(false);
+    } else if (records.length === 0) {
+      setIsLoading(true);
+    } else {
+      setIsFetchingRoster(true);
+    }
+
     setErrorMsg('');
     try {
-      const res = await api.get(
-        `/exams/grades-report?classSectionId=${selectedClassSectionId}&examName=${encodeURIComponent(
-          selectedExamName
-        )}`
+      const res = await fastGet(
+        `/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(
+          targetExamName
+        )}`,
+        {
+          ttlMs: 60000,
+          onRevalidate: (fresh: any) => {
+            if (fresh) setRecords(fresh?.data || fresh);
+          }
+        }
       );
-      setRecords(res.data);
+      if (res.data) {
+        setRecords(res.data);
+      }
     } catch (err: any) {
       console.error('Error loading grades report:', err);
       setErrorMsg('Failed to load marks roster report.');
     } finally {
       setIsLoading(false);
+      setIsFetchingRoster(false);
     }
   };
 
@@ -206,6 +309,85 @@ export default function GradesMarksPage() {
 
   const classLabel = classes.find(c => c.value === selectedClassSectionId)?.label || 'Class Section';
 
+  // Initial Page Loading State with Dual Spinner + Skeleton Loading
+  if (isLoading && records.length === 0) {
+    return (
+      <div className="relative space-y-6 animate-in pb-20">
+        {/* Centered Glassmorphic Dual Spinner & Status Card */}
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center min-h-[420px] pointer-events-none">
+          <div className="bg-white/95 backdrop-blur-md border border-blue-100/90 shadow-2xl shadow-blue-500/15 rounded-3xl p-6 sm:p-8 flex flex-col items-center gap-4 text-center max-w-sm mx-4 animate-in fade-in zoom-in duration-300">
+            <div className="relative flex items-center justify-center">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 flex items-center justify-center shadow-inner">
+                <LoadingSpinner size="lg" variant="brand" />
+              </div>
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-blue-600"></span>
+              </span>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 tracking-tight">Loading Grades &amp; Marks Roster</h3>
+              <p className="text-xs font-medium text-slate-500 mt-1">Compiling student evaluation summaries, grade ranks &amp; performance averages...</p>
+            </div>
+            <div className="w-36 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse w-3/4"></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
+          <div className="space-y-2">
+            <div className="h-7 bg-slate-200 rounded-xl w-64 animate-pulse"></div>
+            <div className="h-4 bg-slate-100 rounded w-96 animate-pulse"></div>
+          </div>
+          <div className="flex gap-2">
+            <div className="h-10 w-24 bg-slate-100 rounded-xl animate-pulse"></div>
+            <div className="h-10 w-20 bg-slate-100 rounded-xl animate-pulse"></div>
+          </div>
+        </div>
+
+        {/* Filters Config Bar Skeleton */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 opacity-60 animate-pulse">
+          <div className="h-10 bg-slate-100 border border-slate-200 rounded-xl sm:col-span-2"></div>
+          <div className="h-10 bg-slate-100 border border-slate-200 rounded-xl"></div>
+          <div className="h-10 bg-slate-100 border border-slate-200 rounded-xl"></div>
+        </div>
+
+        {/* 5 KPI Stats Skeleton */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6 opacity-60 animate-pulse">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-2">
+              <div className="h-3 bg-slate-200 rounded w-20"></div>
+              <div className="h-7 bg-slate-100 rounded w-16"></div>
+              <div className="h-2.5 bg-slate-100 rounded w-28"></div>
+            </div>
+          ))}
+        </div>
+
+        {/* Roster Table Skeleton */}
+        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm opacity-60 animate-pulse">
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div className="h-4 bg-slate-200 rounded w-56"></div>
+            <div className="h-3 bg-slate-200 rounded w-36"></div>
+          </div>
+          <div className="p-6 space-y-4">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex justify-between items-center py-2.5 border-b border-slate-100">
+                <div className="h-4 bg-slate-200 rounded w-40"></div>
+                <div className="h-4 bg-slate-100 rounded w-20"></div>
+                <div className="h-6 bg-slate-100 rounded-lg w-28"></div>
+                <div className="h-4 bg-slate-200 rounded w-16"></div>
+                <div className="h-4 bg-slate-100 rounded w-32"></div>
+                <div className="h-6 bg-slate-100 rounded-lg w-12"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in">
       {/* Header */}
@@ -220,7 +402,7 @@ export default function GradesMarksPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={fetchGrades}
+            onClick={() => fetchGrades()}
             className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[13px] flex items-center gap-2 shadow-xs transition-colors"
           >
             <RefreshCw className="w-4 h-4 text-slate-500" />
@@ -317,9 +499,19 @@ export default function GradesMarksPage() {
       </div>
 
       {/* Student Performance List */}
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm print:hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm print:hidden relative">
+        {isFetchingRoster && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-indigo-600 animate-pulse z-10"></div>
+        )}
         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between sm:items-center gap-1">
-          <h3 className="text-sm font-bold text-slate-700">Student Performance Marks Roster</h3>
+          <div className="flex items-center gap-2.5">
+            <h3 className="text-sm font-bold text-slate-700">Student Performance Marks Roster</h3>
+            {isFetchingRoster && (
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 flex items-center gap-1 animate-pulse">
+                <RefreshCw className="w-3 h-3 animate-spin" /> Updating...
+              </span>
+            )}
+          </div>
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tap a card to view report card</span>
         </div>
 
@@ -430,22 +622,22 @@ export default function GradesMarksPage() {
           </>
         )}
       </div>
-            {/* REPORT CARD MODAL */}
-      {activeReportStudent && (
+      {/* REPORT CARD MODAL */}
+      {isMounted && activeReportStudent && createPortal(
         <div 
-          className="fixed inset-0 flex items-center justify-center p-4 sm:p-6 z-[99999] bg-slate-900/60 backdrop-blur-sm overflow-hidden print:relative print:inset-0 print:bg-transparent print:p-0"
+          className="fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 animate-fade-in print:p-0 print:bg-transparent print:backdrop-blur-none"
           onClick={() => setActiveReportStudent(null)}
         >
           {/* Modal Container */}
           <div 
-            className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden transform transition-all animate-in zoom-in-95 print:relative print:max-h-none print:shadow-none print:border-none print:overflow-visible print:w-full"
+            className="w-full max-w-5xl h-[96dvh] sm:h-auto sm:max-h-[90vh] bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col transform transition-all animate-scale-in print:relative print:inset-auto print:translate-x-0 print:h-auto print:max-h-none print:shadow-none print:border-none print:overflow-visible print:w-full print:rounded-none"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Sticky Header */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 shrink-0 print:hidden bg-white rounded-t-2xl">
-              <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex justify-between items-center px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 shrink-0 print:hidden bg-white">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
                 <Trophy className="w-5 h-5 text-purple-600 shrink-0" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h3 className="font-extrabold text-slate-800 text-sm sm:text-base leading-tight truncate">Report Card</h3>
                   <p className="text-slate-400 text-[11px] font-semibold truncate">{selectedExamName} · {classLabel}</p>
                 </div>
@@ -454,7 +646,7 @@ export default function GradesMarksPage() {
                 <button
                   onClick={() => handleExportPDF(activeReportStudent)}
                   disabled={isGeneratingPDF}
-                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                  className="px-3 sm:px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span className="hidden xs:inline">{isGeneratingPDF ? 'Generating...' : 'Download PDF'}</span>
@@ -470,7 +662,7 @@ export default function GradesMarksPage() {
             </div>
 
             {/* Scrollable Body wrapped in PDFLayout */}
-            <div className="flex-1 overflow-y-auto print:overflow-visible">
+            <div className="flex-1 overflow-y-auto p-1 sm:p-0 print:overflow-visible">
               <PDFLayout
                 id={`report-card-print-${activeReportStudent.studentId}`}
                 schoolLogo={null}
@@ -486,32 +678,32 @@ export default function GradesMarksPage() {
                 ]}
                 footerText={`Official report card statement generated by ${schoolName}. Powered by Covenant Synergy.`}
               >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
                   {/* Left Column: Overall Results */}
                   <div className="space-y-4">
                     {/* GPA Summary */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
+                    <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 sm:p-4 text-center shadow-xs">
                         <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Total Marks</span>
-                        <span className="text-sm font-extrabold text-slate-800 block mt-1">
+                        <span className="text-xs sm:text-sm font-extrabold text-slate-800 block mt-1">
                           {activeReportStudent.totalMarks ?? activeReportStudent.subjectsList.reduce((sum, s) => sum + s.score, 0)} / {activeReportStudent.totalMaxMarks ?? activeReportStudent.subjectsList.reduce((sum, s) => sum + (s.max || 100), 0)}
                         </span>
                       </div>
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 sm:p-4 text-center shadow-xs">
                         <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Overall Avg</span>
-                        <span className="text-sm font-extrabold text-slate-800 block mt-1">{activeReportStudent.score}%</span>
+                        <span className="text-xs sm:text-sm font-extrabold text-slate-800 block mt-1">{activeReportStudent.score}%</span>
                       </div>
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center shadow-xs">
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 sm:p-4 text-center shadow-xs">
                         <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">GPA Grade</span>
-                        <span className="text-sm font-extrabold text-purple-600 block mt-1">{activeReportStudent.grade}</span>
+                        <span className="text-xs sm:text-sm font-extrabold text-purple-600 block mt-1">{activeReportStudent.grade}</span>
                       </div>
-                      <div className={`border rounded-2xl p-4 text-center shadow-xs ${
+                      <div className={`border rounded-2xl p-3 sm:p-4 text-center shadow-xs ${
                         (activeReportStudent.overallResult === 'PASSED' || activeReportStudent.isPassed === true)
                           ? 'bg-emerald-50 border-emerald-100'
                           : 'bg-rose-50 border-rose-100'
                       }`}>
                         <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider block">Final Result</span>
-                        <span className={`text-sm font-extrabold block mt-1 ${
+                        <span className={`text-xs sm:text-sm font-extrabold block mt-1 ${
                           (activeReportStudent.overallResult === 'PASSED' || activeReportStudent.isPassed === true) ? 'text-emerald-600' : 'text-rose-600'
                         }`}>
                           {activeReportStudent.overallResult || (activeReportStudent.isPassed ? 'PASSED' : 'FAILED')}
@@ -523,7 +715,7 @@ export default function GradesMarksPage() {
                   {/* Right Column: Subject-wise details */}
                   <div className="md:col-span-2 space-y-3">
                     <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Subject Wise Marks</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+                    <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                       {activeReportStudent.subjectsList.map((subj, idx) => {
                         const passMarks = subj.passMarks !== undefined
                           ? subj.passMarks
@@ -532,18 +724,50 @@ export default function GradesMarksPage() {
                         const letter = subj.grade || getSubjectGrade(subj.max > 0 ? (subj.score / subj.max) * 100 : subj.score);
                         const pct = subj.max > 0 ? Math.round((subj.score / subj.max) * 100) : 0;
                         return (
-                          <div key={idx} style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '1rem', padding: '0.75rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '80px', breakInside: 'avoid' }}>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.5rem', gap: '0.5rem' }}>
-                              <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.8125rem', lineHeight: 1.3, wordBreak: 'break-word', overflowWrap: 'break-word', minWidth: 0, flex: 1 }}>{subj.name}</span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0 }}>
-                                <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.875rem' }}>{letter}</span>
+                          <div 
+                            key={idx} 
+                            style={{ 
+                              backgroundColor: '#ffffff', 
+                              border: '1px solid #e2e8f0', 
+                              borderRadius: '1rem', 
+                              padding: '0.625rem 0.75rem', 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              justifyContent: 'space-between', 
+                              minHeight: '85px', 
+                              breakInside: 'avoid' 
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.5rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.25rem' }}>
+                                <span 
+                                  style={{ 
+                                    fontWeight: 800, 
+                                    color: '#1e293b', 
+                                    fontSize: '0.8125rem', 
+                                    lineHeight: 1.25, 
+                                    wordBreak: 'normal', 
+                                    overflowWrap: 'normal', 
+                                    hyphens: 'none', 
+                                    minWidth: 0, 
+                                    flex: 1 
+                                  }}
+                                >
+                                  {subj.name}
+                                </span>
+                                <span style={{ fontWeight: 900, color: '#2563eb', fontSize: '0.875rem', flexShrink: 0 }}>
+                                  {letter}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                                 <span style={{
-                                  padding: '0.125rem 0.5rem',
-                                  borderRadius: '0.5rem',
+                                  padding: '0.125rem 0.375rem',
+                                  borderRadius: '0.375rem',
                                   fontSize: '9px',
                                   fontWeight: 900,
                                   letterSpacing: '0.05em',
                                   border: '1px solid',
+                                  lineHeight: 1.2,
                                   ...(isPass
                                     ? { backgroundColor: '#f0fdf4', color: '#15803d', borderColor: '#bbf7d0' }
                                     : { backgroundColor: '#fef2f2', color: '#b91c1c', borderColor: '#fecaca' })
@@ -552,7 +776,7 @@ export default function GradesMarksPage() {
                                 </span>
                               </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <div style={{ flex: 1, backgroundColor: '#f1f5f9', height: '6px', borderRadius: '9999px', overflow: 'hidden' }}>
                                 <div
                                   style={{
@@ -563,7 +787,7 @@ export default function GradesMarksPage() {
                                   }}
                                 />
                               </div>
-                              <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', fontFamily: 'monospace', flexShrink: 0 }}>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: '#64748b', fontFamily: 'monospace', flexShrink: 0 }}>
                                 {subj.score} / {subj.max}
                               </span>
                             </div>
@@ -577,29 +801,34 @@ export default function GradesMarksPage() {
             </div>
 
             {/* Sticky Footer – always visible */}
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 shrink-0 bg-white sm:rounded-b-2xl print:hidden">
+            <div className="grid grid-cols-3 sm:flex sm:items-center sm:justify-end gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-100 shrink-0 bg-white print:hidden">
               <button
                 onClick={() => setActiveReportStudent(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-semibold text-sm transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-2 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs sm:text-sm transition-colors cursor-pointer text-center"
               >
                 Close
               </button>
               <button
                 onClick={() => PDFService.print()}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm transition-colors cursor-pointer flex items-center gap-2"
+                className="w-full sm:w-auto px-2 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-1 sm:gap-2 text-center"
               >
-                <Printer className="w-4 h-4" /> Print (Browser)
+                <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
+                <span>Print</span>
+                <span className="hidden xs:inline">(Browser)</span>
               </button>
               <button
                 onClick={() => handleExportPDF(activeReportStudent)}
                 disabled={isGeneratingPDF}
-                className="px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 disabled:opacity-50 text-white font-bold text-sm shadow-md shadow-blue-500/20 flex items-center gap-2 transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-2 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 disabled:opacity-50 text-white font-bold text-xs sm:text-sm shadow-md shadow-blue-500/20 flex items-center justify-center gap-1 sm:gap-2 transition-colors cursor-pointer text-center"
               >
-                <Download className="w-4 h-4" /> {isGeneratingPDF ? 'Generating PDF...' : 'Download PDF'}
+                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 
+                <span className="hidden xs:inline">{isGeneratingPDF ? 'Generating...' : 'Download PDF'}</span>
+                <span className="xs:hidden">{isGeneratingPDF ? '...' : 'PDF'}</span>
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

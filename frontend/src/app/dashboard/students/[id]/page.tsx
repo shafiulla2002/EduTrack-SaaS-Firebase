@@ -170,6 +170,11 @@ export default function StudentProfilePage() {
     return getCachedData<any>(`/students/${studentId}`);
   }, [studentId]);
 
+  const initialCases = useMemo(() => {
+    if (typeof window === 'undefined' || !studentId) return [];
+    return getCachedData<any[]>(`/complaint-box/student-cases/${studentId}`) || [];
+  }, [studentId]);
+
   const preseededStudent = useMemo(() => {
     if (typeof window === 'undefined' || !studentId) return null;
     try {
@@ -185,7 +190,7 @@ export default function StudentProfilePage() {
     return null;
   });
   const [studentDetails, setStudentDetails] = useState<any>(() => {
-    if (initialData) return parseDetailsFromData(initialData);
+    if (initialData) return parseDetailsFromData(initialData, initialCases);
     return null;
   });
   const [academicYears, setAcademicYears] = useState<any[]>(() => {
@@ -676,7 +681,17 @@ export default function StudentProfilePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-600 font-medium">
-                  {recFees.list.length === 0 ? (
+                  {!studentDetails ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <tr key={i} className="animate-pulse">
+                        <td className="px-4 py-3.5"><div className="h-4 w-36 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-14 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
+                      </tr>
+                    ))
+                  ) : recFees.list.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-6 text-center text-slate-400 text-xs">
                         No fee structure items recorded for this academic session.
@@ -796,7 +811,18 @@ export default function StudentProfilePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-600 font-medium">
-                  {!studentDetails?.invoices || studentDetails.invoices.length === 0 ? (
+                  {!studentDetails ? (
+                    Array.from({ length: 2 }).map((_, i) => (
+                      <tr key={i} className="animate-pulse">
+                        <td className="px-4 py-3.5"><div className="h-4 w-20 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5"><div className="h-4 w-24 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5"><div className="h-4 w-16 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5"><div className="h-4 w-20 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5"><div className="h-4 w-14 bg-slate-200 rounded-full" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-6 bg-slate-200 rounded ml-auto" /></td>
+                      </tr>
+                    ))
+                  ) : !studentDetails.invoices || studentDetails.invoices.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">
                         No invoice billing records on file.
@@ -927,8 +953,17 @@ export default function StudentProfilePage() {
             </div>
 
             {/* Exam Cards */}
-            <div className="space-y-3 pt-2">
-              {!studentDetails?.exams ||
+            <div className="space-y-3 pt-2 max-h-[380px] overflow-y-auto pr-1">
+              {!studentDetails ? (
+                Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="border border-slate-100 rounded-xl p-3.5 bg-slate-50/50 animate-pulse space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div className="h-4 w-28 bg-slate-200 rounded" />
+                      <div className="h-4 w-10 bg-slate-200 rounded" />
+                    </div>
+                  </div>
+                ))
+              ) : !studentDetails.exams ||
               studentDetails.exams.filter((ex: any) => ex.type === selectedExamTab).length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-4">No exam scores available for {selectedExamTab}.</p>
               ) : (
@@ -980,13 +1015,36 @@ export default function StudentProfilePage() {
 
           {/* Student Behaviour (incidents cases) */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <ShieldAlert className="w-5 h-5 text-blue-500" />
-              <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-blue-500" />
+                <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
+              </div>
+              {studentDetails?.cases && (
+                <span className="text-xs text-slate-500 font-bold bg-slate-50 border border-slate-100 px-2.5 py-0.5 rounded-lg">
+                  {studentDetails.cases.length} {studentDetails.cases.length === 1 ? 'Record' : 'Records'}
+                </span>
+              )}
             </div>
 
-            {studentDetails && studentDetails.cases && studentDetails.cases.length > 0 ? (
+            {!studentDetails ? (
               <div className="space-y-3">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="border border-slate-100 rounded-xl p-3 bg-slate-50/40 animate-pulse space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div className="h-4 w-32 bg-slate-200 rounded" />
+                      <div className="h-3 w-14 bg-slate-200 rounded" />
+                    </div>
+                    <div className="h-3 w-48 bg-slate-200 rounded" />
+                    <div className="flex justify-between pt-1">
+                      <div className="h-2.5 w-16 bg-slate-200 rounded" />
+                      <div className="h-2.5 w-16 bg-slate-200 rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : studentDetails.cases && studentDetails.cases.length > 0 ? (
+              <div className="max-h-[380px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
                 {studentDetails.cases.map((c: any) => (
                   <div key={c.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/30 space-y-2 text-xs">
                     <div className="flex justify-between items-start gap-2">
