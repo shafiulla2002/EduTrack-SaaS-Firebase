@@ -8,7 +8,7 @@ import {
   Activity, ArrowLeft, RefreshCw, Eye, X, Phone, GraduationCap,
   Edit, Trash2
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet, getCachedData, setCachedData } from '@/lib/api';
 import Link from 'next/link';
 import { useTenant } from '@/app/providers/TenantContext';
 
@@ -101,7 +101,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   const [activeTab, setActiveTab] = useState<'submit' | 'pending' | 'history' | 'parent-complaints'>('parent-complaints');
 
   // Parent complaints states
-  const [parentComplaints, setParentComplaints] = useState<any[]>([]);
+  const [parentComplaints, setParentComplaints] = useState<any[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<any[]>('/complaint-box/parent-complaints') || [];
+  });
   const [parentFilterStatus, setParentFilterStatus] = useState<string>('All');
   const [selectedParentComplaint, setSelectedParentComplaint] = useState<any | null>(null);
   const [parentReplyText, setParentReplyText] = useState<string>('');
@@ -111,10 +114,19 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const fetchParentComplaints = async () => {
     try {
-      const res = await api.get('/complaint-box/parent-complaints', {
+      const res = await fastGet('/complaint-box/parent-complaints', {
         params: parentFilterStatus !== 'All' ? { status: parentFilterStatus } : {}
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (fresh) {
+            setParentComplaints(fresh.data || fresh);
+          }
+        }
       });
-      setParentComplaints(res.data || []);
+      if (res.data) {
+        setParentComplaints(res.data);
+      }
     } catch (err) {
       console.error('Failed to fetch parent complaints:', err);
     }
@@ -127,9 +139,18 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   }, [activeTab, parentFilterStatus]);
 
   // Backend configuration states
-  const [classOptions, setClassOptions] = useState<ClassSectionOption[]>([]);
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
-  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [classOptions, setClassOptions] = useState<ClassSectionOption[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<ClassSectionOption[]>('/complaint-box/student-classes') || [];
+  });
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<AcademicYear[]>('/complaint-box/academic-years') || [];
+  });
+  const [teachers, setTeachers] = useState<TeacherOption[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<TeacherOption[]>('/complaint-box/teachers') || [];
+  });
   const [currentTeacher, setCurrentTeacher] = useState<TeacherOption | null>(null);
 
   // Class & Student listing states for log flow
@@ -146,7 +167,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   const [submittingTeacherId, setSubmittingTeacherId] = useState<string>('');
 
   // Pending ledger and history lists
-  const [pendingCases, setPendingCases] = useState<BehaviorCase[]>([]);
+  const [pendingCases, setPendingCases] = useState<BehaviorCase[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<BehaviorCase[]>('/complaint-box/pending-cases') || [];
+  });
   const [filterAcademicYear, setFilterAcademicYear] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -160,7 +184,11 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   // UI state
   const [selectedCase, setSelectedCase] = useState<BehaviorCase | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const hasCached = !!getCachedData('/complaint-box/parent-complaints') || !!getCachedData('/complaint-box/student-classes');
+    return !hasCached;
+  });
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [alertMessage, setAlertMessage] = useState<{ text: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
 
@@ -191,17 +219,37 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const fetchInitialData = async () => {
     try {
-      setIsLoading(true);
-      const [classesRes, yearsRes, teachersRes, currentTeacherRes] = await Promise.all([
-        api.get('/complaint-box/student-classes'),
-        api.get('/complaint-box/academic-years'),
-        api.get('/complaint-box/teachers'),
-        api.get('/complaint-box/current-teacher').catch(() => null)
+      const hasCached = !!getCachedData('/complaint-box/student-classes');
+      if (!hasCached) {
+        setIsLoading(true);
+      }
+
+      const [classesRes, yearsRes, teachersRes, currentTeacherRes, pendingRes] = await Promise.all([
+        fastGet('/complaint-box/student-classes', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => { if (fresh) setClassOptions(fresh.data || fresh); }
+        }),
+        fastGet('/complaint-box/academic-years', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => { if (fresh) setAcademicYears(fresh.data || fresh); }
+        }),
+        fastGet('/complaint-box/teachers', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => { if (fresh) setTeachers(fresh.data || fresh); }
+        }),
+        fastGet('/complaint-box/current-teacher', undefined, { ttlMs: 60000 }).catch(() => null),
+        fastGet('/complaint-box/pending-cases', {
+          params: filterAcademicYear !== 'All' ? { academicYear: filterAcademicYear } : {}
+        }, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => { if (fresh) setPendingCases(fresh.data || fresh); }
+        }).catch(() => null),
       ]);
 
-      setClassOptions(classesRes.data || []);
-      setAcademicYears(yearsRes.data || []);
-      setTeachers(teachersRes.data || []);
+      if (classesRes.data) setClassOptions(classesRes.data);
+      if (yearsRes.data) setAcademicYears(yearsRes.data);
+      if (teachersRes.data) setTeachers(teachersRes.data);
+      if (pendingRes?.data) setPendingCases(pendingRes.data);
 
       if (currentTeacherRes && currentTeacherRes.data) {
         setCurrentTeacher(currentTeacherRes.data);
@@ -212,8 +260,6 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
         const activeYear = yearsRes.data.find((y: any) => y.isActive) || yearsRes.data[0];
         setSelectedAcademicYear(activeYear.name);
       }
-
-      await refreshPendingCases();
     } catch (err) {
       console.error('Failed to load initial data:', err);
       showAlert('Failed to connect to school data. Please try again.', 'error');
@@ -224,10 +270,15 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const refreshPendingCases = async () => {
     try {
-      const res = await api.get('/complaint-box/pending-cases', {
+      const res = await fastGet('/complaint-box/pending-cases', {
         params: filterAcademicYear !== 'All' ? { academicYear: filterAcademicYear } : {}
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setPendingCases(fresh.data || fresh); }
       });
-      setPendingCases(res.data || []);
+      if (res.data) {
+        setPendingCases(res.data);
+      }
     } catch (err) {
       console.error('Failed to refresh pending cases:', err);
     }
@@ -246,8 +297,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const loadStudentsByClass = async (classSectionId: string) => {
     try {
-      setIsLoading(true);
-      const res = await api.get(`/complaint-box/students-by-class/${classSectionId}`);
+      const res = await fastGet(`/complaint-box/students-by-class/${classSectionId}`, undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setStudents(fresh.data || fresh); }
+      });
       setStudents(res.data || []);
       setSearchKey('');
       setSelectedStudent(null);
@@ -257,8 +310,6 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
     } catch (err) {
       console.error('Failed to load students for class:', err);
       showAlert('Error loading student roster.', 'error');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -270,14 +321,14 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
     }
     const delayDebounce = setTimeout(async () => {
       try {
-        const res = await api.get('/complaint-box/search-students', {
+        const res = await fastGet('/complaint-box/search-students', {
           params: { searchTerm: historyStudentInput }
-        });
+        }, { ttlMs: 15000 });
         setHistorySearchResults(res.data || []);
       } catch (err) {
         console.error('Student search failed:', err);
       }
-    }, 300);
+    }, 250);
     return () => clearTimeout(delayDebounce);
   }, [historyStudentInput]);
 
@@ -294,10 +345,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   const loadStudentHistoryAndStats = async (studentId: string) => {
     try {
       const [casesRes, statsRes] = await Promise.all([
-        api.get(`/complaint-box/student-cases/${studentId}`, {
+        fastGet(`/complaint-box/student-cases/${studentId}`, {
           params: historyAcademicYearFilter !== 'All' ? { academicYear: historyAcademicYearFilter } : {}
-        }),
-        api.get(`/complaint-box/student-stats/${studentId}`)
+        }, { ttlMs: 30000 }),
+        fastGet(`/complaint-box/student-stats/${studentId}`, undefined, { ttlMs: 30000 })
       ]);
       setStudentCases(casesRes.data || []);
       setStudentStats(statsRes.data || null);
@@ -593,8 +644,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
         {/* Card Body Container */}
         <div className="p-4 sm:p-8 bg-slate-900">
 
-          {/* Loading Spinner overlay */}
-          {isLoading && !isSubmitting && (
+          {/* Loading Spinner overlay only when no cached data exists */}
+          {isLoading && !isSubmitting && parentComplaints.length === 0 && classOptions.length === 0 && (
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
               <p className="text-xs text-slate-500 font-semibold mt-3">Loading records...</p>
@@ -602,7 +653,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
           )}
 
           {/* TAB 0: PARENT COMPLAINTS & TICKETS MANAGEMENT */}
-          {!isLoading && activeTab === 'parent-complaints' && (
+          {(!isLoading || parentComplaints.length > 0 || classOptions.length > 0) && activeTab === 'parent-complaints' && (
             <div className="space-y-6 pb-24">
               {/* Filter Bar */}
               <div className="bg-slate-800 p-4 sm:p-6 rounded-2xl border border-slate-700 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between shadow-xs">

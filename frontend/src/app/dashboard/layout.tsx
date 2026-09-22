@@ -631,8 +631,12 @@ export default function DashboardLayout({
       fastGet('/exam-config/components', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/announcements-mgmt') || href.startsWith('/dashboard/communication')) {
       fastGet('/announcements', undefined, { ttlMs: 30000 }).catch(() => {});
-    } else if (href.startsWith('/dashboard/complaints')) {
-      fastGet('/complaint-box', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/complaint-box') || href.startsWith('/dashboard/complaints')) {
+      fastGet('/complaint-box/parent-complaints', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/complaint-box/student-classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/complaint-box/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/complaint-box/teachers', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/complaint-box/pending-cases', undefined, { ttlMs: 60000 }).catch(() => {});
     }
   };
 
