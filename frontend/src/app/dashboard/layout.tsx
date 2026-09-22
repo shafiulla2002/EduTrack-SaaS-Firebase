@@ -610,7 +610,7 @@ export default function DashboardLayout({
       fastGet('/attendance/teachers', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/students')) {
       fastGet('/students', { params: { page: 1, limit: 20 } }, { ttlMs: 30000 }).catch(() => {});
-      fastGet('/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/staff')) {
       fastGet('/staff', undefined, { ttlMs: 30000 }).catch(() => {});

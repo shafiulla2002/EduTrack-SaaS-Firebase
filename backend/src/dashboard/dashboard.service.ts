@@ -164,11 +164,19 @@ export class DashboardService {
           id: true,
           paidAmount: true,
           invoiceDate: true,
+          description: true,
           student: {
             select: {
+              rollNo: true,
               user: {
                 select: {
                   name: true,
+                },
+              },
+              classSection: {
+                select: {
+                  class: { select: { name: true } },
+                  section: { select: { name: true } },
                 },
               },
             },
@@ -265,23 +273,37 @@ export class DashboardService {
       status: 'Active',
     }));
 
-    const studentPayments = invoices.map(inv => ({
-      id: inv.id,
-      type: 'Fee Payment',
-      name: inv.student?.user?.name ? `${inv.student.user.name} - Tuition Fees` : 'Student Fee Payment',
-      amount: Number(inv.paidAmount),
-      date: inv.invoiceDate.toISOString().split('T')[0],
-      status: 'Paid',
-    }));
+    const studentPayments = invoices.map(inv => {
+      const studentName = inv.student?.user?.name || 'Student';
+      const className = inv.student?.classSection?.class?.name
+        ? `${inv.student.classSection.class.name}${inv.student.classSection.section?.name ? ` - ${inv.student.classSection.section.name}` : ''}`
+        : '';
+      const particulars = inv.description
+        || (className ? `${studentName} (${className})` : `${studentName} - Fee Collection`);
 
-    const salaryPayments = salaryExpenses.map(exp => ({
-      id: exp.id,
-      type: 'Salary Payment',
-      name: exp.description || 'Staff Salary Disbursement',
-      amount: Number(exp.amount),
-      date: exp.date.toISOString().split('T')[0],
-      status: 'Paid',
-    }));
+      return {
+        id: inv.id,
+        type: 'Fee Payment',
+        particulars,
+        name: particulars,
+        amount: Number(inv.paidAmount),
+        date: inv.invoiceDate.toISOString().split('T')[0],
+        status: 'Paid',
+      };
+    });
+
+    const salaryPayments = salaryExpenses.map(exp => {
+      const particulars = exp.description || 'Staff Salary Disbursement';
+      return {
+        id: exp.id,
+        type: 'Salary Payment',
+        particulars,
+        name: particulars,
+        amount: Number(exp.amount),
+        date: exp.date.toISOString().split('T')[0],
+        status: 'Paid',
+      };
+    });
 
     // Combine and sort by date descending
     const recentPayments = [...studentPayments, ...salaryPayments]

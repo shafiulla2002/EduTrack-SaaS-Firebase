@@ -317,7 +317,7 @@ export class StudentsService implements OnModuleInit {
           ay.name AS "ay_name",
           ay."startDate" AS "ay_startDate",
           COUNT(oli.id)::int AS "lineItemCount",
-          COALESCE(SUM((oli."unitPrice" * oli.quantity) - ((oli."unitPrice" * oli.quantity * oli.discount) / 100.0)), 0)::float AS "totalFee",
+          COALESCE(SUM((oli."unitPrice" * COALESCE(oli.quantity, 1)) - ((oli."unitPrice" * COALESCE(oli.quantity, 1) * COALESCE(oli.discount, 0)) / 100.0)), 0)::float AS "totalFee",
           COALESCE(inv_agg."paidAmount", 0)::float AS "totalPaid"
         FROM "Opportunity" o
         LEFT JOIN "AcademicYear" ay ON o."academicYearId" = ay.id
@@ -331,7 +331,10 @@ export class StudentsService implements OnModuleInit {
         WHERE o."tenantId" = ${tenantId} AND o."studentId" IN (${Prisma.join(studentIds)})
         GROUP BY o.id, o."studentId", o."stageName", o."academicYearId", o."classId", o."createdAt", ay.id, ay.name, ay."startDate", inv_agg."paidAmount"
         ORDER BY o."createdAt" DESC
-      `,
+      `.catch((err) => {
+        console.error('[getStudentsBillingInfoBatch] oppRows query error:', err);
+        return [];
+      }),
       this.prisma.$queryRaw<Array<{
         id: string;
         studentId: string;
@@ -348,12 +351,15 @@ export class StudentsService implements OnModuleInit {
           AND "studentId" IN (${Prisma.join(studentIds)})
           AND "opportunityId" IS NULL
           AND status::text IN ('UNPAID', 'PARTIALLY_PAID')
-      `,
+      `.catch((err) => {
+        console.error('[getStudentsBillingInfoBatch] orphanInvoices query error:', err);
+        return [];
+      }),
       academicYearId
         ? this.prisma.academicYear.findUnique({
             where: { id: academicYearId },
             select: { id: true, startDate: true },
-          })
+          }).catch(() => null)
         : Promise.resolve(null),
     ]);
 

@@ -3,6 +3,17 @@ import { AcademicsService } from './academics.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
+@Controller('academic-years')
+export class AcademicYearsAliasController {
+  constructor(private academicsService: AcademicsService) {}
+
+  @Get()
+  async getYears() {
+    return this.academicsService.getAcademicYears();
+  }
+}
+
+@UseGuards(JwtAuthGuard)
 @Controller('academics')
 export class AcademicsController {
   constructor(private academicsService: AcademicsService) {}
