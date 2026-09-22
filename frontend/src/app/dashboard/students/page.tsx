@@ -557,7 +557,7 @@ export default function StudentsDirectory() {
           totalFee: tot,
           paidAmount: paid,
           balanceDue: due,
-          financialStatus: due > 0 ? `Pending (₹${due.toLocaleString('en-IN')} Due)` : 'Fully Paid (₹0 Balance)'
+          financialStatus: due > 0 ? `Pending (Rs. ${due.toLocaleString('en-IN')} Due)` : 'Fully Paid (Rs. 0 Balance)'
         };
       });
 
@@ -719,18 +719,18 @@ export default function StudentsDirectory() {
           curX += cols[5].width;
 
           // Col 7: Total Fee
-          doc.text(`₹${item.totalFee.toLocaleString('en-IN')}`, curX + cols[6].width - 2, y + 4.5, { align: 'right' });
+          doc.text(`Rs. ${item.totalFee.toLocaleString('en-IN')}`, curX + cols[6].width - 2, y + 4.5, { align: 'right' });
           curX += cols[6].width;
 
           // Col 8: Paid
           doc.setTextColor(5, 150, 105); // emerald-600
-          doc.text(`₹${item.paidAmount.toLocaleString('en-IN')}`, curX + cols[7].width - 2, y + 4.5, { align: 'right' });
+          doc.text(`Rs. ${item.paidAmount.toLocaleString('en-IN')}`, curX + cols[7].width - 2, y + 4.5, { align: 'right' });
           curX += cols[7].width;
 
           // Col 9: Balance Due
           doc.setTextColor(hasDue ? 217 : 71, hasDue ? 119 : 85, hasDue ? 6 : 105); // amber-600 or slate-600
           doc.setFont('helvetica', hasDue ? 'bold' : 'normal');
-          doc.text(`₹${item.balanceDue.toLocaleString('en-IN')}`, curX + cols[8].width - 2, y + 4.5, { align: 'right' });
+          doc.text(`Rs. ${item.balanceDue.toLocaleString('en-IN')}`, curX + cols[8].width - 2, y + 4.5, { align: 'right' });
           curX += cols[8].width;
 
           // Col 10: Financial Status
