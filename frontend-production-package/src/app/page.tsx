@@ -71,7 +71,6 @@ export default function LandingPage() {
         </button>
       </header>
 
-
       {/* Main Content */}
       <section className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 flex flex-col justify-center items-center text-center py-4 sm:py-12 z-10">
         <div className="max-w-3xl">

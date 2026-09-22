@@ -607,29 +607,40 @@ function AdminDashboardOverview() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
-                    {displayPayments.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                            p.type === 'Salary' 
-                              ? 'bg-purple-50 text-purple-700 border border-purple-100' 
-                              : p.type === 'Fee Collection'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                : 'bg-slate-50 text-slate-700 border border-slate-200'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              p.type === 'Salary' ? 'bg-purple-500' : p.type === 'Fee Collection' ? 'bg-emerald-500' : 'bg-slate-400'
-                            }`} />
-                            {p.type}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-slate-800">{p.particulars}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-slate-900 text-right">
-                          {formatCurrency(p.amount)}
-                        </td>
-                        <td className="px-4 py-3 text-slate-400 font-mono text-xs">{p.date}</td>
-                      </tr>
-                    ))}
+                    {displayPayments.map((p) => {
+                      const typeStr = (p.type || '').toLowerCase();
+                      const isSalary = typeStr.includes('salary');
+                      const isFee = typeStr.includes('fee') || typeStr.includes('tuition') || typeStr.includes('invoice');
+                      const isExpense = typeStr.includes('expense');
+
+                      return (
+                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              isSalary 
+                                ? 'bg-purple-50 text-purple-700 border border-purple-200' 
+                                : isFee
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : isExpense
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${
+                                isSalary ? 'bg-purple-500' : isFee ? 'bg-emerald-500' : isExpense ? 'bg-amber-500' : 'bg-blue-500'
+                              }`} />
+                              {p.type || 'Payment'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-800">
+                            {p.particulars || p.name || 'General Transaction'}
+                          </td>
+                          <td className="px-4 py-3 font-mono font-bold text-slate-900 text-right">
+                            {formatCurrency(p.amount)}
+                          </td>
+                          <td className="px-4 py-3 text-slate-400 font-mono text-xs">{p.date}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

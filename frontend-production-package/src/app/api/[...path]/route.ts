@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Backend URL - reads from env var on Vercel, falls back to localhost for dev
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001';
+const isProd = process.env.NODE_ENV === 'production';
+const DEFAULT_PROD_API = 'https://api.edutrackapplication.covenantsynergy.in';
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_INTERNAL_URL || (isProd ? DEFAULT_PROD_API : 'http://localhost:3001');
 
 export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {
   return proxyRequest(request, params.path, 'GET');

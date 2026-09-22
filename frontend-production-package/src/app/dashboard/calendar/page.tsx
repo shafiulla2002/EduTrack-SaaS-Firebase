@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api, fastGet } from '@/lib/api';
+import { toLocalDateString } from '@/lib/date';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Pin, BookOpen, Clock, Tag } from 'lucide-react';
 
 export default function CalendarPage() {
@@ -46,7 +47,7 @@ export default function CalendarPage() {
   }
 
   const getEventsForDate = (date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateString(date);
     return events.filter(e => e.date === dateStr);
   };
 
@@ -110,8 +111,8 @@ export default function CalendarPage() {
               {daysArray.map((date, idx) => {
                 if (!date) return <div key={`pad-${idx}`} className="h-10" />;
                 const dateEvents = getEventsForDate(date);
-                const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
-                const isToday = date.toDateString() === new Date().toDateString();
+                const isSelected = selectedDate && toLocalDateString(date) === toLocalDateString(selectedDate);
+                const isToday = toLocalDateString(date) === toLocalDateString(new Date());
                 const isSunday = date.getDay() === 0;
 
                 return (

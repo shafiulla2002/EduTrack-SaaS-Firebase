@@ -19,7 +19,7 @@ import {
   Phone,
   Mail,
 } from 'lucide-react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
 import { useToast } from '@/components/Toast';
 import StudentAvatar from '@/components/StudentAvatar';
@@ -46,17 +46,159 @@ interface Student {
   profilePhotoUrl?: string | null;
 }
 
+function parseStudentFromData(data: any): Student | null {
+  if (!data || !data.id) return null;
+  const paid =
+    data.paidAmount !== undefined
+      ? Number(data.paidAmount)
+      : data.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0;
+  const due =
+    data.balanceDue !== undefined
+      ? Number(data.balanceDue)
+      : data.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0;
+
+  return {
+    id: data.id,
+    rollNo: data.rollNo || 'N/A',
+    name: data.user?.name || data.name || 'Unknown Student',
+    email: data.user?.email || data.email || 'N/A',
+    phone: data.user?.phone
+      ? data.user.phone.includes('-')
+        ? data.user.phone.split('-').pop() || data.user.phone
+        : data.user.phone
+      : (data.phone || 'N/A'),
+    class: data.classSection?.class?.name || data.class || 'N/A',
+    section: data.classSection?.section?.name || data.section || 'N/A',
+    fatherName: data.fatherName || 'N/A',
+    motherName: data.motherName || 'N/A',
+    aadharNo: data.aadharNo || 'N/A',
+    paidAmount: paid,
+    balanceDue: due,
+    totalFees: data.totalFees,
+    pendingPercentage: data.pendingPercentage,
+    paidPercentage: data.paidPercentage,
+    financialStatus: data.financialStatus,
+    academicYearId: data.classSection?.class?.academicYearId || data.academicYearId || '',
+    profilePhotoUrl: data.profilePhotoUrl || null,
+  };
+}
+
+function parseDetailsFromData(data: any, casesData: any[] = []): any {
+  if (!data) return null;
+  const examsMap: Record<string, any> = {};
+  data.examMarks?.forEach((mark: any) => {
+    const exId = mark.exam?.id || 'exam';
+    if (!examsMap[exId]) {
+      examsMap[exId] = {
+        id: exId,
+        name: mark.exam?.name || 'Exam',
+        type: mark.exam?.type || 'Unit Test',
+        subjects: [],
+      };
+    }
+    examsMap[exId].subjects.push({
+      name: mark.subject?.name || 'Subject',
+      score: Number(mark.marksObtained || 0),
+      max: 100,
+    });
+  });
+
+  const exams = Object.values(examsMap).map((ex: any) => {
+    const total = ex.subjects.reduce((sum: number, s: any) => sum + s.score, 0);
+    const avg = ex.subjects.length > 0 ? (total / ex.subjects.length).toFixed(0) : '0';
+    return {
+      ...ex,
+      score: `${avg}%`,
+    };
+  });
+
+  return {
+    products:
+      data.feeItems?.map((item: any) => ({
+        id: item.oliId || item.id,
+        name: item.productName || item.name,
+        price: Number(item.totalAmount || item.unitPrice || 0),
+        grossTotal: Number(item.totalAmount || 0),
+        discountPercent: Number(item.discountPercent || 0),
+        discountAmount: Number(item.discountAmount || 0),
+        netTotal: Number(item.netAmount || 0),
+        paid: Number(item.paidAmount || 0),
+        balance: Number(item.balanceDue || 0),
+      })) || [],
+    feeSummary: data.feeSummary,
+    invoices:
+      data.invoices?.map((inv: any) => ({
+        id: inv.id,
+        date: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().split('T')[0] : '—',
+        number: `INV-${inv.id.substring(0, 8).toUpperCase()}`,
+        mode: inv.paymentMethod || '—',
+        amount: Number(inv.totalAmount || 0),
+        paidAmount: Number(inv.paidAmount || 0),
+        remainingBalance: Number(inv.remainingBalance || 0),
+        status: inv.status === 'PAID' ? 'Paid' : 'Pending',
+        academicYearId: inv.opportunity?.academicYearId || null,
+        academicYearName: inv.opportunity?.academicYear?.name || null,
+        items:
+          inv.invoiceItems?.map((it: any) => ({
+            name: it.name,
+            amount: Number(it.amount || 0),
+          })) || [],
+      })) || [],
+    exams,
+    cases: (casesData || []).map((c: any) => ({
+      id: c.id,
+      type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
+      typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
+      subject: c.category || 'Discipline',
+      priority: c.priority || 'Normal',
+      status: c.status || 'Active',
+      date: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
+      description: c.description || '',
+    })),
+  };
+}
+
 export default function StudentProfilePage() {
   const params = useParams();
   const router = useRouter();
   const { showToast } = useToast();
   const studentId = params?.id as string;
 
-  const [student, setStudent] = useState<Student | null>(null);
-  const [studentDetails, setStudentDetails] = useState<any>(null);
-  const [academicYears, setAcademicYears] = useState<any[]>([]);
+  // Synchronously initialize from SWR cache or pre-seeded data for 0ms instant display
+  const initialData = useMemo(() => {
+    if (typeof window === 'undefined' || !studentId) return null;
+    return getCachedData<any>(`/students/${studentId}`);
+  }, [studentId]);
+
+  const initialCases = useMemo(() => {
+    if (typeof window === 'undefined' || !studentId) return [];
+    return getCachedData<any[]>(`/complaint-box/student-cases/${studentId}`) || [];
+  }, [studentId]);
+
+  const preseededStudent = useMemo(() => {
+    if (typeof window === 'undefined' || !studentId) return null;
+    try {
+      const raw = sessionStorage.getItem(`preseed_student_${studentId}`);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return null;
+  }, [studentId]);
+
+  const [student, setStudent] = useState<Student | null>(() => {
+    if (initialData) return parseStudentFromData(initialData);
+    if (preseededStudent) return parseStudentFromData(preseededStudent);
+    return null;
+  });
+  const [studentDetails, setStudentDetails] = useState<any>(() => {
+    if (initialData) return parseDetailsFromData(initialData, initialCases);
+    return null;
+  });
+  const [academicYears, setAcademicYears] = useState<any[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<any[]>('/academics/academic-years') || [];
+  });
   const [selectedYear, setSelectedYear] = useState<string>('All');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(() => !initialData && !preseededStudent);
   const [detailsLoading, setDetailsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<boolean>(false);
@@ -73,34 +215,65 @@ export default function StudentProfilePage() {
   const [deleteConfirm, setDeleteConfirm] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-  // Fetch full student profile data
+  // Fetch full student profile data with SWR
   const fetchStudentData = useCallback(async (yearId?: string) => {
     if (!studentId) return;
 
     try {
-      if (!student) {
-        setLoading(true);
-      } else {
+      if (yearId !== undefined) {
         setDetailsLoading(true);
+      } else if (!student) {
+        setLoading(true);
       }
       setError(null);
       setNotFound(false);
 
       const targetYear = yearId !== undefined ? yearId : selectedYear;
+      const studentUrl = `/students/${studentId}`;
+      const studentParams = targetYear && targetYear !== 'All' ? { academicYearId: targetYear } : undefined;
 
       const [detailsRes, casesRes, yearsRes] = await Promise.all([
-        api.get(`/students/${studentId}`, {
-          params: targetYear && targetYear !== 'All' ? { academicYearId: targetYear } : {},
+        fastGet(studentUrl, { params: studentParams }, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh && fresh.id) {
+              const fullSt = parseStudentFromData(fresh);
+              if (fullSt) setStudent(fullSt);
+              setStudentDetails((prev: any) => parseDetailsFromData(fresh, prev?.cases || []));
+            }
+          }
         }),
-        api.get(`/complaint-box/student-cases/${studentId}`).catch(() => ({ data: [] })),
-        fastGet('/academic-years', undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
+        fastGet(`/complaint-box/student-cases/${studentId}`, undefined, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (Array.isArray(fresh)) {
+              setStudentDetails((prev: any) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  cases: fresh.map((c: any) => ({
+                    id: c.id,
+                    type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
+                    typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
+                    subject: c.category || 'Discipline',
+                    priority: c.priority || 'Normal',
+                    status: c.status || 'Active',
+                    date: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
+                    description: c.description || '',
+                  }))
+                };
+              });
+            }
+          }
+        }).catch(() => ({ data: [] })),
+        fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
       ]);
 
       const data = detailsRes.data;
       if (!data || !data.id) {
-        setNotFound(true);
-        setLoading(false);
-        setDetailsLoading(false);
+        if (!student) {
+          setNotFound(true);
+        }
         return;
       }
 
@@ -108,122 +281,22 @@ export default function StudentProfilePage() {
       const yearsData = yearsRes.data || [];
       setAcademicYears(Array.isArray(yearsData) ? yearsData : []);
 
-      const paid =
-        data.paidAmount !== undefined
-          ? Number(data.paidAmount)
-          : data.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0;
-      const due =
-        data.balanceDue !== undefined
-          ? Number(data.balanceDue)
-          : data.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0;
+      const fullStudent = parseStudentFromData(data);
+      if (fullStudent) {
+        setStudent(fullStudent);
+      }
+      
+      const parsedDetails = parseDetailsFromData(data, casesData);
+      setStudentDetails(parsedDetails);
 
-      const fullStudent: Student = {
-        id: data.id,
-        rollNo: data.rollNo || 'N/A',
-        name: data.user?.name || 'Unknown Student',
-        email: data.user?.email || 'N/A',
-        phone: data.user?.phone
-          ? data.user.phone.includes('-')
-            ? data.user.phone.split('-').pop() || data.user.phone
-            : data.user.phone
-          : 'N/A',
-        class: data.classSection?.class?.name || 'N/A',
-        section: data.classSection?.section?.name || 'N/A',
-        fatherName: data.fatherName || 'N/A',
-        motherName: data.motherName || 'N/A',
-        aadharNo: data.aadharNo || 'N/A',
-        paidAmount: paid,
-        balanceDue: due,
-        totalFees: data.totalFees,
-        pendingPercentage: data.pendingPercentage,
-        paidPercentage: data.paidPercentage,
-        financialStatus: data.financialStatus,
-        academicYearId: data.classSection?.class?.academicYearId || '',
-        profilePhotoUrl: data.profilePhotoUrl || null,
-      };
-
-      // Process Exams
-      const examsMap: Record<string, any> = {};
-      data.examMarks?.forEach((mark: any) => {
-        const exId = mark.exam?.id || 'exam';
-        if (!examsMap[exId]) {
-          examsMap[exId] = {
-            id: exId,
-            name: mark.exam?.name || 'Exam',
-            type: mark.exam?.type || 'Unit Test',
-            subjects: [],
-          };
-        }
-        examsMap[exId].subjects.push({
-          name: mark.subject?.name || 'Subject',
-          score: Number(mark.marksObtained || 0),
-          max: 100,
-        });
-      });
-
-      const exams = Object.values(examsMap).map((ex: any) => {
-        const total = ex.subjects.reduce((sum: number, s: any) => sum + s.score, 0);
-        const avg = ex.subjects.length > 0 ? (total / ex.subjects.length).toFixed(0) : '0';
-        return {
-          ...ex,
-          score: `${avg}%`,
-        };
-      });
-
-      setStudent(fullStudent);
-      setStudentDetails({
-        products:
-          data.feeItems?.map((item: any) => ({
-            id: item.oliId || item.id,
-            name: item.productName || item.name,
-            price: Number(item.totalAmount || item.unitPrice || 0),
-            grossTotal: Number(item.totalAmount || 0),
-            discountPercent: Number(item.discountPercent || 0),
-            discountAmount: Number(item.discountAmount || 0),
-            netTotal: Number(item.netAmount || 0),
-            paid: Number(item.paidAmount || 0),
-            balance: Number(item.balanceDue || 0),
-          })) || [],
-        feeSummary: data.feeSummary,
-        invoices:
-          data.invoices?.map((inv: any) => ({
-            id: inv.id,
-            date: inv.invoiceDate ? new Date(inv.invoiceDate).toISOString().split('T')[0] : '—',
-            number: `INV-${inv.id.substring(0, 8).toUpperCase()}`,
-            mode: inv.paymentMethod || '—',
-            amount: Number(inv.totalAmount || 0),
-            paidAmount: Number(inv.paidAmount || 0),
-            remainingBalance: Number(inv.remainingBalance || 0),
-            status: inv.status === 'PAID' ? 'Paid' : 'Pending',
-            academicYearId: inv.opportunity?.academicYearId || null,
-            academicYearName: inv.opportunity?.academicYear?.name || null,
-            items:
-              inv.invoiceItems?.map((it: any) => ({
-                name: it.name,
-                amount: Number(it.amount || 0),
-              })) || [],
-          })) || [],
-        exams,
-        cases: casesData.map((c: any) => ({
-          id: c.id,
-          type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
-          typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
-          subject: c.category || 'Discipline',
-          priority: c.priority || 'Normal',
-          status: c.status || 'Active',
-          date: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
-          description: c.description || '',
-        })),
-      });
-
-      if (exams.length > 0 && selectedExamTab === 'Unit Test') {
-        setSelectedExamTab(exams[0].type || 'Unit Test');
+      if (parsedDetails?.exams?.length > 0) {
+        setSelectedExamTab(prev => prev || parsedDetails.exams[0].type || 'Unit Test');
       }
     } catch (err: any) {
       console.error('Failed to load student profile:', err);
       if (err.response?.status === 404) {
         setNotFound(true);
-      } else {
+      } else if (!student) {
         setError(err.response?.data?.message || err.message || 'Unable to load student profile.');
       }
     } finally {
@@ -336,14 +409,20 @@ export default function StudentProfilePage() {
     };
   }, [student, studentDetails, appliedDiscountPercent]);
 
-  // Loading State
-  if (loading) {
+  // Loading State - only when no cached/pre-seeded student data is available
+  if (loading && !student) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center animate-in fade-in duration-200">
-        <PencilSpinner size="lg" label="Loading student profile..." showLabel />
-        <p className="text-slate-500 text-sm font-semibold mt-4">
-          Fetching student records, fee accounts, and performance data...
-        </p>
+      <div className="space-y-6 animate-pulse pb-12">
+        <div className="flex justify-between items-center pb-5 border-b border-slate-200">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-slate-200"></div>
+            <div className="w-48 h-8 rounded-lg bg-slate-200"></div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 h-96"></div>
+          <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 h-96"></div>
+        </div>
       </div>
     );
   }
@@ -544,15 +623,16 @@ export default function StudentProfilePage() {
 
           {/* Current Academic Year Fees Card */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5 relative">
-            {detailsLoading && (
-              <div className="absolute inset-0 bg-white/70 backdrop-blur-2xs rounded-2xl flex items-center justify-center z-10">
-                <PencilSpinner size="sm" />
-              </div>
-            )}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Receipt className="w-5 h-5 text-blue-500" />
                 <h3 className="text-base font-bold text-slate-800">Current Academic Year Fees</h3>
+                {detailsLoading && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    Updating
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex items-center border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 text-xs">
@@ -601,7 +681,17 @@ export default function StudentProfilePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-600 font-medium">
-                  {recFees.list.length === 0 ? (
+                  {!studentDetails ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <tr key={i} className="animate-pulse">
+                        <td className="px-4 py-3.5"><div className="h-4 w-36 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-14 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
+                      </tr>
+                    ))
+                  ) : recFees.list.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-4 py-6 text-center text-slate-400 text-xs">
                         No fee structure items recorded for this academic session.
@@ -721,7 +811,18 @@ export default function StudentProfilePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-600 font-medium">
-                  {!studentDetails?.invoices || studentDetails.invoices.length === 0 ? (
+                  {!studentDetails ? (
+                    Array.from({ length: 2 }).map((_, i) => (
+                      <tr key={i} className="animate-pulse">
+                        <td className="px-4 py-3.5"><div className="h-4 w-20 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5"><div className="h-4 w-24 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5"><div className="h-4 w-16 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5"><div className="h-4 w-20 bg-slate-200 rounded" /></td>
+                        <td className="px-4 py-3.5"><div className="h-4 w-14 bg-slate-200 rounded-full" /></td>
+                        <td className="px-4 py-3.5 text-right"><div className="h-4 w-6 bg-slate-200 rounded ml-auto" /></td>
+                      </tr>
+                    ))
+                  ) : !studentDetails.invoices || studentDetails.invoices.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">
                         No invoice billing records on file.
@@ -852,8 +953,17 @@ export default function StudentProfilePage() {
             </div>
 
             {/* Exam Cards */}
-            <div className="space-y-3 pt-2">
-              {!studentDetails?.exams ||
+            <div className="space-y-3 pt-2 max-h-[380px] overflow-y-auto pr-1">
+              {!studentDetails ? (
+                Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="border border-slate-100 rounded-xl p-3.5 bg-slate-50/50 animate-pulse space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div className="h-4 w-28 bg-slate-200 rounded" />
+                      <div className="h-4 w-10 bg-slate-200 rounded" />
+                    </div>
+                  </div>
+                ))
+              ) : !studentDetails.exams ||
               studentDetails.exams.filter((ex: any) => ex.type === selectedExamTab).length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-4">No exam scores available for {selectedExamTab}.</p>
               ) : (
@@ -905,13 +1015,36 @@ export default function StudentProfilePage() {
 
           {/* Student Behaviour (incidents cases) */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <ShieldAlert className="w-5 h-5 text-blue-500" />
-              <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-blue-500" />
+                <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
+              </div>
+              {studentDetails?.cases && (
+                <span className="text-xs text-slate-500 font-bold bg-slate-50 border border-slate-100 px-2.5 py-0.5 rounded-lg">
+                  {studentDetails.cases.length} {studentDetails.cases.length === 1 ? 'Record' : 'Records'}
+                </span>
+              )}
             </div>
 
-            {studentDetails && studentDetails.cases && studentDetails.cases.length > 0 ? (
+            {!studentDetails ? (
               <div className="space-y-3">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="border border-slate-100 rounded-xl p-3 bg-slate-50/40 animate-pulse space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div className="h-4 w-32 bg-slate-200 rounded" />
+                      <div className="h-3 w-14 bg-slate-200 rounded" />
+                    </div>
+                    <div className="h-3 w-48 bg-slate-200 rounded" />
+                    <div className="flex justify-between pt-1">
+                      <div className="h-2.5 w-16 bg-slate-200 rounded" />
+                      <div className="h-2.5 w-16 bg-slate-200 rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : studentDetails.cases && studentDetails.cases.length > 0 ? (
+              <div className="max-h-[380px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
                 {studentDetails.cases.map((c: any) => (
                   <div key={c.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/30 space-y-2 text-xs">
                     <div className="flex justify-between items-start gap-2">

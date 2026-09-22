@@ -89,7 +89,7 @@ export class SupportService {
       const companyMailOptions = {
         from: smtpUser,
         to: supportEmail,
-        subject: `EduTrack Support Request - ${dto.subject}`,
+        subject: `CS EduTrack Support Request - ${dto.subject}`,
         text: `Name: ${dto.name}
 School Name: ${dto.schoolName}
 Email: ${dto.email}
@@ -110,7 +110,7 @@ Submitted On: ${supportRequest.createdAt.toISOString()}
         subject: 'We have received your support request',
         text: `Hello ${dto.name},
 
-Thank you for contacting EduTrack Support.
+Thank you for contacting CS EduTrack Support.
 
 We have successfully received your support request.
 
@@ -120,7 +120,7 @@ ${supportRequest.id}
 Our support team will review your request and contact you as soon as possible.
 
 Regards,
-EduTrack Support
+CS EduTrack Support
 `,
       };
 

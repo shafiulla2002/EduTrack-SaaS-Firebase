@@ -125,11 +125,11 @@ export class SubscriptionSchedulerService implements OnModuleInit, OnModuleDestr
           for (const admin of admins) {
             let message = '';
             if (notificationType === 'BEFORE_EXPIRY') {
-              message = `Your school's EduTrack ${sub.plan.name} subscription will expire in ${diffDays} days on ${expiry.toDateString()}. Please renew soon.`;
+              message = `Your school's CS EduTrack ${sub.plan.name} subscription will expire in ${diffDays} days on ${expiry.toDateString()}. Please renew soon.`;
             } else if (notificationType === 'ON_EXPIRY') {
-              message = `Your school's EduTrack subscription has expired today. You are now entering a 3-day grace period.`;
+              message = `Your school's CS EduTrack subscription has expired today. You are now entering a 3-day grace period.`;
             } else if (notificationType === 'GRACE_PERIOD') {
-              message = `Your school's EduTrack subscription is expired (Grace Period: Day ${Math.abs(diffDays)} of 3). Please renew to prevent lockout.`;
+              message = `Your school's CS EduTrack subscription is expired (Grace Period: Day ${Math.abs(diffDays)} of 3). Please renew to prevent lockout.`;
             }
 
             // 1. Create In-App Notification record for Admin user

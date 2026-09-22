@@ -62,18 +62,18 @@ export class BillingController {
   }
 
   @Get('options/years')
-  async getYears() {
-    return this.billingService.getAcademicYearOptions();
+  async getYears(@Req() req: any) {
+    return this.billingService.getAcademicYearOptions(req.user?.tenantId);
   }
 
   @Get('options/classes')
-  async getClasses() {
-    return this.billingService.getClassOptions();
+  async getClasses(@Req() req: any) {
+    return this.billingService.getClassOptions(req.user?.tenantId);
   }
 
   @Get('options/sections')
-  async getSections(@Query('classId') classId?: string) {
-    return this.billingService.getSectionOptions(classId);
+  async getSections(@Req() req: any, @Query('classId') classId?: string) {
+    return this.billingService.getSectionOptions(classId, req.user?.tenantId);
   }
 
   @Get('students/search')

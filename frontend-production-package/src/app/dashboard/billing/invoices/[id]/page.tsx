@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Printer, ArrowLeft, Download, MessageCircle } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { PDFService } from '@/lib/pdf';
 import { PDFLayout } from '@/components/PDFLayout';
 import { PDFTable } from '@/components/PDFTable';
+import { PencilSpinner } from '@/components/loading';
 
 interface InvoicePDFData {
   schoolName: string;
@@ -37,24 +38,52 @@ export default function InvoicePrintPage() {
   const router = useRouter();
   const id = params.id as string;
 
-  const [invoiceData, setInvoiceData] = useState<InvoicePDFData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Synchronously initialize from SWR cache for 0ms instant display
+  const initialData = useMemo(() => {
+    if (typeof window === 'undefined' || !id) return null;
+    return getCachedData<InvoicePDFData>(`/billing/invoices/${id}/pdf`);
+  }, [id]);
+
+  const [invoiceData, setInvoiceData] = useState<InvoicePDFData | null>(initialData);
+  const [isLoading, setIsLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!id) return;
+    let isMounted = true;
+
     const fetchInvoicePDF = async () => {
       try {
-        setIsLoading(true);
-        const res = await api.get(`/billing/invoices/${id}/pdf`);
-        setInvoiceData(res.data);
+        if (!invoiceData) {
+          setIsLoading(true);
+        }
+        const res = await fastGet(`/billing/invoices/${id}/pdf`, undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh && isMounted) {
+              setInvoiceData(fresh);
+            }
+          }
+        });
+        if (res.data && isMounted) {
+          setInvoiceData(res.data);
+        }
       } catch (err: any) {
         console.error('Failed to load invoice details for PDF rendering', err);
-        setError(err.response?.data?.message || err.message || 'Failed to fetch invoice details.');
+        if (isMounted && !invoiceData) {
+          setError(err.response?.data?.message || err.message || 'Failed to fetch invoice details.');
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
     fetchInvoicePDF();
+
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
 
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -168,10 +197,59 @@ export default function InvoicePrintPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !invoiceData) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center font-medium text-xs text-slate-400">
-        Loading printable invoice receipt data...
+      <div className="-mt-4 sm:-mt-8 -mx-4 sm:-mx-8 p-3 sm:p-6 pt-0 sm:pt-0 bg-slate-100 min-h-screen flex flex-col items-center justify-start">
+        {/* Skeleton Top Bar */}
+        <div className="w-full max-w-[800px] mb-3 sm:mb-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm animate-pulse flex justify-between items-center">
+          <div className="h-9 w-32 bg-slate-200 rounded-xl" />
+          <div className="flex gap-2">
+            <div className="h-9 w-28 bg-slate-200 rounded-xl" />
+            <div className="h-9 w-28 bg-slate-200 rounded-xl" />
+          </div>
+        </div>
+
+        {/* Skeleton A4 Receipt Card */}
+        <div className="w-full max-w-[800px] bg-white border border-slate-200 rounded-2xl shadow-lg p-6 sm:p-10 space-y-6 relative overflow-hidden min-h-[500px]">
+          {/* Glassmorphic spinner indicator overlay */}
+          <div className="absolute inset-0 bg-white/70 backdrop-blur-xs flex flex-col items-center justify-center z-10 gap-3">
+            <PencilSpinner size="md" />
+            <span className="text-xs font-bold text-slate-700">Loading printable invoice receipt data...</span>
+          </div>
+
+          {/* Skeleton Header */}
+          <div className="flex items-center gap-4 border-b border-slate-100 pb-6 animate-pulse">
+            <div className="w-16 h-16 rounded-full bg-slate-200 shrink-0" />
+            <div className="space-y-2 flex-1">
+              <div className="h-5 w-56 bg-slate-200 rounded" />
+              <div className="h-3 w-40 bg-slate-200 rounded" />
+            </div>
+          </div>
+
+          {/* Skeleton Metadata Grid */}
+          <div className="grid grid-cols-2 gap-4 py-4 border-b border-slate-100 animate-pulse">
+            <div className="space-y-2">
+              <div className="h-3 w-24 bg-slate-200 rounded" />
+              <div className="h-4 w-36 bg-slate-200 rounded" />
+            </div>
+            <div className="space-y-2 text-right">
+              <div className="h-3 w-24 bg-slate-200 rounded ml-auto" />
+              <div className="h-4 w-36 bg-slate-200 rounded ml-auto" />
+            </div>
+          </div>
+
+          {/* Skeleton Table Rows */}
+          <div className="space-y-3 pt-2 animate-pulse">
+            <div className="h-8 bg-slate-100 rounded-xl" />
+            <div className="h-10 bg-slate-50 rounded-xl" />
+            <div className="h-10 bg-slate-50 rounded-xl" />
+          </div>
+
+          {/* Skeleton Footer Bar */}
+          <div className="flex justify-end gap-3 pt-4 animate-pulse">
+            <div className="h-12 w-48 bg-slate-200 rounded-xl" />
+          </div>
+        </div>
       </div>
     );
   }

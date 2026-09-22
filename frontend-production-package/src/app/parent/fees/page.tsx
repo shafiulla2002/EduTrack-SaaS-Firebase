@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { formatDateDDMMYYYY } from '@/lib/date';
 import {
@@ -35,6 +35,13 @@ export default function FeesPage() {
   const [loading, setLoading] = useState(true);
 
   /**
+   * Payment State Machine:
+   * IDLE -> INITIATING -> PENDING / PROCESSING -> SUCCESS / FAILED / CANCELLED
+   */
+  const [paymentState, setPaymentState] = useState<'IDLE' | 'INITIATING' | 'PROCESSING' | 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'>('IDLE');
+  const [orderInfo, setOrderInfo] = useState<{ orderId?: string; transactionId?: string } | null>(null);
+
+  /**
    * itemPayAmounts: Map<itemId, customAmount>
    * An item is "selected" if and only if it has an entry in this map.
    * The value is the amount the parent wants to pay for that item.
@@ -44,9 +51,12 @@ export default function FeesPage() {
   /** Per-item validation error messages */
   const [itemErrors, setItemErrors] = useState<Map<string, string>>(new Map());
 
-  // Pay modal
+  // Payment form
   const [activeInvoice, setActiveInvoice] = useState<any>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'GPAY' | 'PHONEPE' | 'BANK'>('GPAY');
+  const [checkoutStep, setCheckoutStep] = useState<'SELECT' | 'PAY_AND_VERIFY'>('SELECT');
+  const [utrNumber, setUtrNumber] = useState<string>('');
+  const [payAmount, setPayAmount] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<string>('PHONEPE');
   const [payLoading, setPayLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -57,9 +67,13 @@ export default function FeesPage() {
   // ── Data fetching ─────────────────────────────────────────────────────────
   const fetchFees = useCallback(async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/fees`);
-      setFeesData(res.data);
+      const res = await fastGet(`/parent-portal/children/${childId}/fees`, undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setFeesData(fresh); },
+      });
+      if (res?.data) {
+        setFeesData(res.data);
+      }
       setItemPayAmounts(new Map());
       setItemErrors(new Map());
     } catch (err) {
@@ -70,14 +84,19 @@ export default function FeesPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedChild) fetchFees(selectedChild.id);
-  }, [selectedChild, fetchFees]);
-
-  useEffect(() => {
-    const handleChildChange = (e: any) => fetchFees(e.detail);
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, [fetchFees]);
+    if (selectedChild?.id) {
+      setFeesData(null);
+      setLoading(true);
+      setItemPayAmounts(new Map());
+      setItemErrors(new Map());
+      setActiveInvoice(null);
+      setViewingReceipt(null);
+      setPaymentState('IDLE');
+      setOrderInfo(null);
+      setMessage('');
+      fetchFees(selectedChild.id);
+    }
+  }, [selectedChild?.id, fetchFees]);
 
   // ── Item selection helpers ────────────────────────────────────────────────
   const toggleItem = (item: any) => {
@@ -176,10 +195,48 @@ export default function FeesPage() {
     paymentDetails.upiQrId
   );
 
-  // ── Payment submit ────────────────────────────────────────────────────────
-  const handlePaymentSubmit = async (e: React.FormEvent) => {
+  // Target School UPI ID Resolution
+  const schoolName = paymentDetails?.name || 'CS EduTrack';
+  const targetUpiId = paymentMethod === 'GPAY'
+    ? (paymentDetails?.googlePayId || paymentDetails?.upiQrId || paymentDetails?.phonePeId || '')
+    : paymentMethod === 'PHONEPE'
+    ? (paymentDetails?.phonePeId || paymentDetails?.upiQrId || paymentDetails?.googlePayId || '')
+    : (paymentDetails?.upiQrId || paymentDetails?.phonePeId || paymentDetails?.googlePayId || '');
+
+  const upiIntentUrl = targetUpiId
+    ? `upi://pay?pa=${encodeURIComponent(targetUpiId)}&pn=${encodeURIComponent(schoolName)}&am=${selectedTotal}&tn=${encodeURIComponent('Fee ' + (selectedChild?.name || 'Student'))}&cu=INR`
+    : '';
+
+  const qrCodeUrl = upiIntentUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiIntentUrl)}`
+    : '';
+
+  // Trigger Native UPI App Launch on Mobile
+  const handleLaunchUpiApp = () => {
+    if (!upiIntentUrl) return;
+    try {
+      if (paymentMethod === 'PHONEPE') {
+        window.location.href = `phonepe://pay?pa=${encodeURIComponent(targetUpiId)}&pn=${encodeURIComponent(schoolName)}&am=${selectedTotal}&tn=${encodeURIComponent('Fee ' + (selectedChild?.name || 'Student'))}&cu=INR`;
+        setTimeout(() => {
+          window.location.href = upiIntentUrl;
+        }, 800);
+      } else if (paymentMethod === 'GPAY') {
+        window.location.href = `gpay://upi/pay?pa=${encodeURIComponent(targetUpiId)}&pn=${encodeURIComponent(schoolName)}&am=${selectedTotal}&tn=${encodeURIComponent('Fee ' + (selectedChild?.name || 'Student'))}&cu=INR`;
+        setTimeout(() => {
+          window.location.href = upiIntentUrl;
+        }, 800);
+      } else {
+        window.location.href = upiIntentUrl;
+      }
+    } catch {
+      window.location.href = upiIntentUrl;
+    }
+  };
+
+  // Step 1: Create Payment Order & Transition to Verification Step
+  const handleInitiatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedChild || !activeInvoice || payLoading) return;
+    if (!selectedChild || !activeInvoice) return;
 
     if (selectedItemIds.size === 0) {
       setMessage('Please select at least one fee item to pay.');
@@ -191,30 +248,126 @@ export default function FeesPage() {
       return;
     }
 
-    // Build itemAmounts payload
     const itemAmounts = Array.from(itemPayAmounts.entries())
       .filter(([, amt]) => amt > 0)
       .map(([id, amount]) => ({ id, amount }));
 
     setPayLoading(true);
+    setPaymentState('INITIATING');
     setMessage('');
+
     try {
       const res = await api.post(
-        `/parent-portal/children/${selectedChild.id}/invoices/${activeInvoice.id}/pay`,
-        { paymentMethod, itemAmounts },
+        `/parent-portal/children/${selectedChild.id}/payments/initiate`,
+        {
+          invoiceId: activeInvoice.id,
+          itemAmounts,
+          paymentMethod,
+        }
       );
 
-      setMessage(res.data?.message || 'Payment processed successfully!');
-      dispatchSchoolSetupUpdated();
-      await fetchFees(selectedChild.id);
+      if (res.data?.success) {
+        setOrderInfo({
+          orderId: res.data.orderId,
+          transactionId: res.data.transactionId,
+        });
+        setPaymentState('PENDING');
+        setCheckoutStep('PAY_AND_VERIFY');
 
-      setTimeout(() => {
-        setActiveInvoice(null);
-        setMessage('');
-      }, 1800);
+        if (paymentMethod !== 'BANK' && targetUpiId) {
+          handleLaunchUpiApp();
+        }
+      } else {
+        setPaymentState('FAILED');
+        setMessage(res.data?.message || 'Failed to initiate payment order.');
+      }
+    } catch (err: any) {
+      console.error('Failed to initiate payment order:', err);
+      setPaymentState('FAILED');
+      setMessage(err.response?.data?.message || 'Payment initiation failed.');
+    } finally {
+      setPayLoading(false);
+    }
+  };
+
+  // User explicitly cancels payment attempt
+  const handleCancelPayment = async () => {
+    if (!selectedChild || !activeInvoice) return;
+    if (orderInfo?.orderId || orderInfo?.transactionId) {
+      try {
+        await api.post(`/parent-portal/children/${selectedChild.id}/payments/verify`, {
+          orderId: orderInfo.orderId,
+          transactionId: orderInfo.transactionId,
+          status: 'CANCELLED',
+          paymentMethod,
+        });
+      } catch {}
+    }
+    setPaymentState('CANCELLED');
+    setActiveInvoice(null);
+    setCheckoutStep('SELECT');
+    setOrderInfo(null);
+    setUtrNumber('');
+    setMessage('Payment was cancelled. Outstanding dues remain unchanged.');
+  };
+
+  // Step 2: Confirm Payment & Authoritatively Verify on Backend
+  const handleConfirmAndRecordPayment = async () => {
+    if (!selectedChild || !activeInvoice || payLoading) return;
+
+    const itemAmounts = Array.from(itemPayAmounts.entries())
+      .filter(([, amt]) => amt > 0)
+      .map(([id, amount]) => ({ id, amount }));
+
+    setPayLoading(true);
+    setPaymentState('PROCESSING');
+    setMessage('');
+
+    try {
+      const res = await api.post(
+        `/parent-portal/children/${selectedChild.id}/payments/verify`,
+        {
+          orderId: orderInfo?.orderId,
+          transactionId: orderInfo?.transactionId,
+          utrNumber: utrNumber.trim(),
+          paymentMethod,
+          itemAmounts,
+          invoiceId: activeInvoice.id,
+          status: 'PENDING',
+        },
+      );
+
+      if (res.data?.status === 'SUCCESS' || res.data?.success) {
+        setPaymentState('SUCCESS');
+        setMessage(res.data?.message || 'Payment confirmed and verified successfully!');
+        dispatchSchoolSetupUpdated();
+        await fetchFees(selectedChild.id);
+
+        setTimeout(() => {
+          if (res.data?.invoice) {
+            setViewingReceipt(res.data.invoice);
+          }
+          setActiveInvoice(null);
+          setCheckoutStep('SELECT');
+          setUtrNumber('');
+          setPaymentState('IDLE');
+          setOrderInfo(null);
+          setMessage('');
+        }, 1500);
+      } else if (res.data?.status === 'PENDING') {
+        setPaymentState('PENDING');
+        setMessage(
+          res.data?.message ||
+          'Payment is currently pending authoritative confirmation. Your statement will update once confirmed.'
+        );
+      } else {
+        setPaymentState('FAILED');
+        setMessage(res.data?.message || 'Payment verification failed.');
+      }
     } catch (err: any) {
       console.error('Payment processing failed:', err);
-      setMessage(err.response?.data?.message || 'Payment failed. Please try again.');
+      setPaymentState('FAILED');
+      setMessage(err.response?.data?.message || 'Payment recording failed. Please verify details.');
     } finally {
       setPayLoading(false);
     }
@@ -291,7 +444,7 @@ export default function FeesPage() {
     );
   }
 
-  if (loading) {
+  if (loading || !feesData) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin"></div>
@@ -343,7 +496,7 @@ export default function FeesPage() {
               )}
             </div>
 
-            {unpaidInvoices.length === 0 || allItems.length === 0 ? (
+            {unpaidInvoices.length === 0 ? (
               <div className="bg-white border border-[#2E5BFF]/20 p-8 rounded-3xl text-center shadow-sm space-y-2">
                 <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold">
                   🎉
@@ -722,85 +875,212 @@ export default function FeesPage() {
               </div>
             )}
 
-            {/* Selected items summary with custom amounts */}
-            <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-500 font-medium">Selected Components ({selectedItemsList.length})</span>
-                <strong className="text-base font-black text-[#2E5BFF]">₹{inr(selectedTotal)}</strong>
-              </div>
-              <div className="text-[11px] text-slate-500 space-y-1 pt-1 border-t border-slate-200/60">
-                {selectedItemsList.map((item: any) => {
-                  const amt = itemPayAmounts.get(item.id) ?? 0;
-                  const balance = item.balance ?? item.amount;
-                  const isPartial = amt < balance;
-                  return (
-                    <div key={item.id} className="flex justify-between items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <span>• {item.name}</span>
-                        {isPartial && (
-                          <span className="ml-2 text-[9px] bg-amber-50 text-amber-700 border border-amber-100 px-1.5 py-0.5 rounded-md font-bold">
-                            PARTIAL
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="font-semibold">₹{inr(amt)}</span>
-                        {isPartial && (
-                          <span className="block text-[9px] text-slate-400">of ₹{inr(balance)}</span>
-                        )}
-                      </div>
+            {checkoutStep === 'SELECT' ? (
+              <>
+                {/* Selected items summary with custom amounts */}
+                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate-500 font-medium">Selected Components ({selectedItemsList.length})</span>
+                    <strong className="text-base font-black text-[#2E5BFF]">₹{inr(selectedTotal)}</strong>
+                  </div>
+                  <div className="text-[11px] text-slate-500 space-y-1 pt-1 border-t border-slate-200/60">
+                    {selectedItemsList.map((item: any) => {
+                      const amt = itemPayAmounts.get(item.id) ?? 0;
+                      const balance = item.balance ?? item.amount;
+                      const isPartial = amt < balance;
+                      return (
+                        <div key={item.id} className="flex justify-between items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <span>• {item.name}</span>
+                            {isPartial && (
+                              <span className="ml-2 text-[9px] bg-amber-50 text-amber-700 border border-amber-100 px-1.5 py-0.5 rounded-md font-bold">
+                                PARTIAL
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="font-semibold">₹{inr(amt)}</span>
+                            {isPartial && (
+                              <span className="block text-[9px] text-slate-400">of ₹{inr(balance)}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Payment Method */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700">Select Payment Method</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'GPAY', label: 'Google Pay', icon: '💳' },
+                      { id: 'PHONEPE', label: 'PhonePe UPI', icon: '📱' },
+                      { id: 'UPI', label: 'Any UPI App', icon: '⚡' },
+                      { id: 'BANK', label: 'Net Banking', icon: '🏦' },
+                    ].map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setPaymentMethod(m.id as any)}
+                        className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                          paymentMethod === m.id
+                            ? 'border-[#2E5BFF] bg-blue-50/60 text-[#2E5BFF]'
+                            : 'border-slate-200 hover:border-slate-300 text-slate-600'
+                        }`}
+                      >
+                        <span>{m.icon}</span>
+                        <span>{m.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {targetUpiId && paymentMethod !== 'BANK' && (
+                    <div className="p-2.5 bg-blue-50/50 border border-blue-100/60 rounded-xl text-[11px] text-slate-600 flex items-center justify-between">
+                      <span className="font-semibold text-slate-500">Destination UPI:</span>
+                      <span className="font-mono font-bold text-blue-700">{targetUpiId}</span>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                  )}
+                </div>
 
-            {/* Payment Method */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-700">Select Payment Method</label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: 'GPAY', label: 'Google Pay', icon: '💳' },
-                  { id: 'PHONEPE', label: 'PhonePe UPI', icon: '📱' },
-                  { id: 'UPI', label: 'Any UPI App', icon: '⚡' },
-                  { id: 'BANK', label: 'Net Banking', icon: '🏦' },
-                ].map(m => (
+                <form onSubmit={handleInitiatePayment} className="pt-2">
                   <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setPaymentMethod(m.id as any)}
-                    className={`p-3 rounded-2xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-                      paymentMethod === m.id
-                        ? 'border-[#2E5BFF] bg-blue-50/60 text-[#2E5BFF]'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                    }`}
+                    type="submit"
+                    disabled={payLoading || selectedItemIds.size === 0 || hasValidationErrors || selectedTotal === 0}
+                    className="w-full py-3.5 rounded-2xl bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
-                    <span>{m.icon}</span>
-                    <span>{m.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <form onSubmit={handlePaymentSubmit} className="pt-2">
-              <button
-                type="submit"
-                disabled={payLoading || selectedItemIds.size === 0 || hasValidationErrors || selectedTotal === 0}
-                className="w-full py-3.5 rounded-2xl bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {payLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Processing Payment Gateway...</span>
-                  </>
-                ) : (
-                  <>
                     <span>Confirm &amp; Pay ₹{inr(selectedTotal)}</span>
                     <ArrowRight className="w-4 h-4" />
-                  </>
+                  </button>
+                </form>
+              </>
+            ) : (
+              /* STEP 2: UPI APP INTENT & QR CONFIRMATION */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutStep('SELECT')}
+                    className="text-xs font-bold text-[#2E5BFF] hover:underline cursor-pointer"
+                  >
+                    ← Change Method / Amount
+                  </button>
+                  <span className="text-xs font-extrabold text-slate-800">Payable: ₹{inr(selectedTotal)}</span>
+                </div>
+
+                {paymentMethod !== 'BANK' ? (
+                  <div className="space-y-3 text-center">
+                    {/* Dynamic QR Display */}
+                    {qrCodeUrl && (
+                      <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
+                        <img
+                          src={qrCodeUrl}
+                          alt="School UPI QR Standee"
+                          className="w-44 h-44 rounded-xl border border-slate-200 shadow-sm bg-white p-2"
+                        />
+                        <div className="text-[11px] font-semibold text-slate-600">
+                          Scan with PhonePe, Google Pay, or Paytm
+                        </div>
+                        <div className="text-[10px] font-mono text-slate-400">
+                          UPI ID: <strong className="text-slate-700">{targetUpiId}</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mobile Direct Launch Button */}
+                    <button
+                      type="button"
+                      onClick={handleLaunchUpiApp}
+                      className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-200"
+                    >
+                      <span>⚡ Open {paymentMethod === 'PHONEPE' ? 'PhonePe' : paymentMethod === 'GPAY' ? 'Google Pay' : 'UPI'} App</span>
+                    </button>
+
+                    {/* UTR Input */}
+                    <div className="text-left space-y-1 pt-1">
+                      <label className="block text-[11px] font-bold text-slate-600">
+                        UPI Reference / UTR Number (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 425512345678 (12-digit UPI Ref)"
+                        value={utrNumber}
+                        onChange={(e) => setUtrNumber(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 h-[40px] text-xs text-slate-800 font-mono focus:outline-none focus:border-[#2E5BFF]"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Net Banking Transfer Details */
+                  <div className="space-y-3">
+                    <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2 text-xs">
+                      <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        School Bank Account Details
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Bank Name:</span>
+                        <strong className="text-slate-800">{paymentDetails?.bankName || 'State Bank of India'}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Account Number:</span>
+                        <strong className="text-slate-800 font-mono">{paymentDetails?.bankAccountNo || '123456789012'}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">IFSC Code:</span>
+                        <strong className="text-slate-800 font-mono">{paymentDetails?.bankIFSC || 'SBIN0001234'}</strong>
+                      </div>
+                      {paymentDetails?.bankBranch && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Branch:</span>
+                          <span className="text-slate-700">{paymentDetails.bankBranch}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[11px] font-bold text-slate-600">
+                        Bank Transfer Reference / Transaction ID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Enter IMPS/NEFT reference number"
+                        value={utrNumber}
+                        onChange={(e) => setUtrNumber(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 h-[40px] text-xs text-slate-800 font-mono focus:outline-none focus:border-[#2E5BFF]"
+                      />
+                    </div>
+                  </div>
                 )}
-              </button>
-            </form>
+
+                <button
+                  type="button"
+                  onClick={handleConfirmAndRecordPayment}
+                  disabled={payLoading}
+                  className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {payLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Confirming &amp; Generating Receipt...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      <span>I Have Transferred — Confirm Payment</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCancelPayment}
+                  disabled={payLoading}
+                  className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Cancel Transaction
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

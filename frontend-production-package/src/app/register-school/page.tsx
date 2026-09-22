@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { School, User, Mail, MapPin, Calendar, Loader2, AlertCircle } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, setStoredAuth } from '@/lib/api';
 import { useTenant } from '../providers/TenantContext';
 
 function RegisterSchoolContent() {
@@ -16,12 +16,12 @@ function RegisterSchoolContent() {
 
   const [formData, setFormData] = useState({
     schoolName: '',
-    schoolType: 'School',
+    schoolType: 'K-12 Private Academy',
     adminName: '',
     mobileNumber: phone,
     email: '',
     address: '',
-    academicYear: '2026-2027',
+    academicYear: '2024-2025',
     subscriptionPlan: 'TRIAL',
   });
 
@@ -70,13 +70,14 @@ function RegisterSchoolContent() {
       const data = response.data;
       
       if (data.success && data.access_token) {
-        // Store JWT token and new Tenant ID in local storage under admin namespace
-        localStorage.setItem('admin_token', data.access_token);
-        localStorage.setItem('admin_tenantId', data.user.tenantId);
-        if (data.user.phone) {
-          localStorage.setItem('admin_userPhone', data.user.phone);
-        }
-        sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+        // Store JWT token and new Tenant ID using unified setStoredAuth
+        const tenantBranding = {
+          schoolName: formData.schoolName,
+          schoolType: formData.schoolType,
+          adminName: formData.adminName,
+          logoUrl: null,
+        };
+        setStoredAuth('SCHOOL_ADMIN', data.access_token, data.user.tenantId, data.user.phone, data.user, tenantBranding);
 
         // Fetch tenant details immediately to verify branding is ready
         try {

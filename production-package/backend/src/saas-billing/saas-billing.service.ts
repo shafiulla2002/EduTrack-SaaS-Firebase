@@ -14,8 +14,8 @@ export class SaaSBillingService {
     if (!settings) {
       settings = await this.prisma.paymentSettings.create({
         data: {
-          companyName: 'EduTrack Inc.',
-          supportEmail: 'support@edutrack.com',
+          companyName: 'Covenant Synergy Private Limited',
+          supportEmail: 'support@covenantsynergy.in',
           supportPhone: '+91 9876543210',
           gstPercentage: 18.0,
           invoicePrefix: 'INV-SUB-',

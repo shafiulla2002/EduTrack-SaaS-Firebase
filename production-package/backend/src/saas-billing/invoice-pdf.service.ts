@@ -19,13 +19,13 @@ export class InvoicePdfService {
         doc.on('error', (err) => reject(err));
 
         const snapshot = invoice.snapshotData || {};
-        const companyName = snapshot.companyName || 'EduTrack Inc.';
+        const companyName = snapshot.companyName || 'Covenant Synergy Private Limited';
         const gstNumber = snapshot.gstNumber || 'N/A';
         const calc = snapshot.calculation || {};
 
         // Header
         doc.fontSize(22).fillColor('#1E293B').text(companyName, { align: 'left' });
-        doc.fontSize(10).fillColor('#64748B').text(`GSTIN: ${gstNumber} | Email: ${snapshot.supportEmail || 'support@edutrack.com'}`);
+        doc.fontSize(10).fillColor('#64748B').text(`GSTIN: ${gstNumber} | Email: ${snapshot.supportEmail || 'support@covenantsynergy.in'}`);
         doc.moveDown(1.5);
 
         // Divider
@@ -45,7 +45,7 @@ export class InvoicePdfService {
         doc.moveDown(0.5);
 
         doc.fontSize(10).fillColor('#334155');
-        doc.text('EduTrack SaaS Plan Subscription', 40, doc.y, { continued: true });
+        doc.text('CS EduTrack SaaS Plan Subscription', 40, doc.y, { continued: true });
         doc.text(`INR ${(Number(invoice.amount) - Number(invoice.gst)).toFixed(2)}`, { align: 'right' });
         doc.moveDown(0.5);
 

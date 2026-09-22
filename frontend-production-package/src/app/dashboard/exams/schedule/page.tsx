@@ -6,7 +6,7 @@ import {
   Trash2, Edit, Copy, CheckCircle, XCircle, AlertCircle, 
   Printer, Download, ChevronLeft, ChevronRight, Eye, X, PlusCircle, MinusCircle, RefreshCw
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet, invalidateCachePrefix } from '@/lib/api';
 import { useTenant } from '@/app/providers/TenantContext';
 import { useToast } from '@/components/Toast';
 import Drawer from '@/components/Drawer';
@@ -161,11 +161,10 @@ export default function ExamSchedulePage() {
 
   const fetchMetadata = async () => {
     try {
-      setIsLoading(true);
       const [classResult, subResult, yearsResult] = await Promise.allSettled([
-        api.get('/exams/classes'),
-        api.get('/exams/subjects'),
-        api.get('/academics/academic-years').catch(() => api.get('/complaint-box/academic-years')),
+        fastGet('/exams/classes', { ttlMs: 60000 }),
+        fastGet('/exams/subjects', { ttlMs: 60000 }),
+        fastGet('/academics/academic-years', { ttlMs: 60000 }).catch(() => fastGet('/complaint-box/academic-years', { ttlMs: 60000 })),
       ]);
 
       const classData = classResult.status === 'fulfilled' ? classResult.value.data || [] : [];
@@ -198,7 +197,6 @@ export default function ExamSchedulePage() {
 
   const fetchSchedules = async () => {
     try {
-      setIsLoading(true);
       const params: any = {};
       if (filterClass !== 'All') params.classSectionId = filterClass;
       if (filterSubject !== 'All') params.subjectId = filterSubject;
@@ -206,8 +204,13 @@ export default function ExamSchedulePage() {
       if (filterYear !== 'All') params.academicYearId = filterYear;
       if (searchQuery.trim()) params.search = searchQuery;
 
-      const res = await api.get('/exam-schedule', { params });
-      setSchedules(res.data || []);
+      const res = await fastGet('/exam-schedule', { params }, {
+        ttlMs: 60000,
+        onRevalidate: (fresh) => {
+          if (fresh?.data) setSchedules(fresh.data);
+        },
+      });
+      if (res?.data) setSchedules(res.data);
     } catch (err) {
       console.error('Failed to load exam schedules:', err);
     } finally {

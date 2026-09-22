@@ -25,11 +25,13 @@ function LoginContent() {
 
 // Central platform domains
 const isCentralDomain =
-  hostname === 'edutrack.covenantsynergy.in' ||
-  hostname === 'api-edutrack.covenantsynergy.in';
+  hostname === 'edutrackapplication.covenantsynergy.in' ||
+  hostname === 'api.edutrackapplication.covenantsynergy.in' ||
+  hostname === 'edutrack.covenantsynergy.in';
 
 // Only treat real school subdomains as tenants
 const isSchoolSubdomain =
+  hostname.endsWith('.edutrackapplication.covenantsynergy.in') ||
   hostname.endsWith('.edutrack.covenantsynergy.in');
 
 if (isSchoolSubdomain) {
@@ -37,7 +39,7 @@ if (isSchoolSubdomain) {
 
   const authHubUrl =
     process.env.NEXT_PUBLIC_AUTH_HUB_URL ||
-    'https://edutrack.covenantsynergy.in';
+    'https://edutrackapplication.covenantsynergy.in';
 
   const returnUrl = window.location.href.replace(
     '/auth/login',

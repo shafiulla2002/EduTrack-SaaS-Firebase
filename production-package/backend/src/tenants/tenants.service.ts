@@ -346,8 +346,8 @@ export class TenantsService {
     const amountRs = planDef.priceInINR;
 
     // Load Razorpay credentials
-    let keyId = process.env.RAZORPAY_KEY_ID || 'rzp_live_TRsx05AgR0CwMk';
-    let keySecret = process.env.RAZORPAY_KEY_SECRET || 'Vz8oYPOYf0yOJ2st13r0abn0';
+    let keyId = process.env.RAZORPAY_KEY_ID || '';
+    let keySecret = process.env.RAZORPAY_KEY_SECRET || '';
 
     const secretKey = process.env.ENCRYPTION_KEY || 'default_secret_key_needs_to_be_32_bytes!';
     const config = await this.prisma.paymentGatewayConfig.findUnique({
@@ -476,7 +476,7 @@ export class TenantsService {
     }
 
     // 2. HMAC-SHA256 Signature Verification
-    let keySecret = process.env.RAZORPAY_KEY_SECRET || 'Vz8oYPOYf0yOJ2st13r0abn0';
+    let keySecret = process.env.RAZORPAY_KEY_SECRET || '';
     const secretKey = process.env.ENCRYPTION_KEY || 'default_secret_key_needs_to_be_32_bytes!';
     const config = await this.prisma.paymentGatewayConfig.findUnique({
       where: { gatewayName: 'RAZORPAY' },

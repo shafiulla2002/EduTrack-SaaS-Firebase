@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet, invalidateCachePrefix } from '@/lib/api';
 import {
   AlertCircle, CheckCircle, Info, Send, Loader2, ArrowRight,
   MessageSquare, Clock, Eye, X, ShieldAlert, AlertTriangle, User, Calendar
@@ -32,8 +32,13 @@ export default function ComplaintsPage() {
 
   const fetchComplaints = async () => {
     try {
-      const res = await api.get('/parent-portal/complaints');
-      setComplaints(res.data || []);
+      const res = await fastGet('/parent-portal/complaints', {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setComplaints(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setComplaints(res.data);
     } catch (err) {
       console.error('Failed to fetch parent complaints:', err);
     } finally {
@@ -46,10 +51,14 @@ export default function ComplaintsPage() {
       setTeacherComplaints([]);
       return;
     }
-    setTeacherLoading(true);
     try {
-      const res = await api.get(`/parent-portal/children/${selectedChild.id}/teacher-complaints`);
-      setTeacherComplaints(res.data || []);
+      const res = await fastGet(`/parent-portal/children/${selectedChild.id}/teacher-complaints`, {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setTeacherComplaints(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setTeacherComplaints(res.data);
     } catch (err) {
       console.error('Failed to fetch teacher complaints:', err);
     } finally {
@@ -59,13 +68,13 @@ export default function ComplaintsPage() {
 
   useEffect(() => {
     fetchComplaints();
-    const interval = setInterval(fetchComplaints, 10000);
+    const interval = setInterval(fetchComplaints, 15000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     fetchTeacherComplaints();
-    const interval = setInterval(fetchTeacherComplaints, 10000);
+    const interval = setInterval(fetchTeacherComplaints, 15000);
     return () => clearInterval(interval);
   }, [selectedChild?.id]);
 
@@ -79,7 +88,7 @@ export default function ComplaintsPage() {
         category,
         description,
       });
-
+      invalidateCachePrefix('/parent-portal/complaints');
       setMessage('Concern registered successfully! Ticket ref: #' + res.data.id.substring(0, 8).toUpperCase());
       setComplaints(prev => [res.data, ...prev]);
 
@@ -96,7 +105,7 @@ export default function ComplaintsPage() {
     }
   };
 
-  if (loading) {
+  if (loading && complaints.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin"></div>

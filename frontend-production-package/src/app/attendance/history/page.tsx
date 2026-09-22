@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Calendar, RefreshCw, AlertCircle, ArrowLeft, ExternalLink, ChevronRight, UserCheck, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { formatDisplayDate } from '@/lib/date';
@@ -16,8 +16,11 @@ export default function AttendanceHistory() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await api.get('/attendance/history');
-      setSessions(res.data || []);
+      const res = await fastGet('/attendance/history', undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh?.data) setSessions(fresh.data); },
+      });
+      if (res?.data) setSessions(res.data);
     } catch (err) {
       console.error(err);
       setError('Failed to load attendance history logs.');

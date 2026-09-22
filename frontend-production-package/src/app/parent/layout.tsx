@@ -7,7 +7,7 @@ import { ParentProvider, useParent } from './ParentContext';
 import { useTenant } from '../providers/TenantContext';
 import { useTheme } from '../providers/ThemeContext';
 import ToastProvider from '@/components/Toast';
-import { api, clearStoredAuth } from '@/lib/api';
+import { api, fastGet, clearStoredAuth } from '@/lib/api';
 import {
   Home,
   User,
@@ -495,7 +495,7 @@ function ParentNotificationBell() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await api.get('/communications/user-notifications');
+      const res = await fastGet('/communications/user-notifications', undefined, { ttlMs: 30000 });
       setNotifications(res.data || []);
     } catch {
       // Fallback
@@ -504,7 +504,7 @@ function ParentNotificationBell() {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 10000);
+    const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
   }, []);
 

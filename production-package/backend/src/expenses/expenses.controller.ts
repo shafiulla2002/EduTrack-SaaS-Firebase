@@ -17,8 +17,9 @@ export class ExpensesController {
   async getAll(
     @Query('category') category?: string,
     @Query('status') status?: ExpenseStatus,
+    @Query('month') month?: string,
   ) {
-    return this.expensesService.getExpenses(category, status);
+    return this.expensesService.getExpenses(category, status, month);
   }
 
   @Get('summary')

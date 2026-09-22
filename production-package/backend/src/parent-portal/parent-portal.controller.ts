@@ -36,6 +36,17 @@ export class ParentPortalController {
     return this.portalService.getHomework(req.user.sub, studentId);
   }
 
+  @Get('children/:studentId/homework/:homeworkId/attachment')
+  async getHomeworkAttachment(
+    @Req() req: any,
+    @Param('studentId') studentId: string,
+    @Param('homeworkId') homeworkId: string,
+    @Query('index') index?: string,
+  ) {
+    const idx = index ? parseInt(index, 10) : 0;
+    return this.portalService.getHomeworkAttachment(req.user.sub, studentId, homeworkId, idx);
+  }
+
   @Post('children/:studentId/homework/:homeworkId/submit')
   async submitAssignment(
     @Req() req: any,
@@ -60,6 +71,24 @@ export class ParentPortalController {
   @Get('children/:studentId/fees')
   async getFees(@Req() req: any, @Param('studentId') studentId: string) {
     return this.portalService.getFees(req.user.sub, studentId);
+  }
+
+  @Post('children/:studentId/payments/initiate')
+  async initiatePayment(
+    @Req() req: any,
+    @Param('studentId') studentId: string,
+    @Body() data: any,
+  ) {
+    return this.portalService.initiatePayment(req.user.sub, studentId, data);
+  }
+
+  @Post('children/:studentId/payments/verify')
+  async verifyPayment(
+    @Req() req: any,
+    @Param('studentId') studentId: string,
+    @Body() data: any,
+  ) {
+    return this.portalService.verifyPayment(req.user.sub, studentId, data);
   }
 
   @Post('children/:studentId/invoices/:invoiceId/pay')

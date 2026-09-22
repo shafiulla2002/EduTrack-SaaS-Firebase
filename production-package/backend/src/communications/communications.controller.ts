@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Delete, Req } from '@nestjs/common';
 import { CommunicationsService } from './communications.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -10,6 +10,12 @@ export class CommunicationsController {
   @Post()
   async send(@Body() data: any) {
     return this.communicationsService.sendNotification(data);
+  }
+
+  @Get('user-notifications')
+  async getMyNotifications(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    return this.communicationsService.getNotifications(userId);
   }
 
   @Get('user/:recipientId')

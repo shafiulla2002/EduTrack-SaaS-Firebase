@@ -30,6 +30,7 @@ export class ExamConfigController {
     @Query('classSectionId') classSectionId?: string,
     @Query('subjectId') subjectId?: string,
     @Query('subjectType') subjectType?: string,
+    @Query('subjectName') subjectName?: string,
   ) {
     const resolvedExamType = examType || examTypeName || '__global__';
     let targetClassId = classId;
@@ -48,22 +49,18 @@ export class ExamConfigController {
       targetAyId,
     );
 
-    let maxMarks = cfg.maxMarks;
-    let passingPercentage = cfg.passingPercentage;
-    let passMarks = Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-
-    if (subjectId && cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
-      const sc = cfg.subjectConfigs.find(
-        s => s.subjectId === subjectId && (subjectType ? s.subjectType.toLowerCase() === subjectType.toLowerCase() : true)
-      );
-      if (sc) {
-        maxMarks = sc.maxMarks;
-        passingPercentage = Number(sc.passingPercentage);
-        passMarks = sc.passMarks !== null && sc.passMarks !== undefined
-          ? Number(sc.passMarks)
-          : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-      }
+    let subName = subjectName;
+    if (!subName && subjectId) {
+      const subRec = await this.examConfigService.getSubjectById(subjectId);
+      subName = subRec?.name;
     }
+
+    const { maxMarks, passMarks, passingPercentage } = this.examConfigService.resolveSubjectConfig(
+      cfg,
+      subjectId,
+      subjectType || 'Theory',
+      subName,
+    );
 
     return {
       ...cfg,

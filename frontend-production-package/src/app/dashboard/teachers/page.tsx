@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { createPortal } from 'react-dom';
+import { api, fastGet } from '@/lib/api';
 import { useSchoolSetupUpdate } from '@/lib/events';
 import { 
   Plus, X, Search, ChevronDown, ChevronUp, Users, 
   BookOpen, Grid3X3, BarChart3, Clock, Upload, 
-  Calendar, Layers, Trash2, Edit2, AlertCircle, ArrowLeft, ArrowRight, Check, Award, Settings
+  Calendar, Layers, Trash2, Edit2, AlertCircle, ArrowLeft, ArrowRight, Check, Award, Settings, Loader2, RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import BulkTeacherImportModal from '@/components/BulkTeacherImportModal';
@@ -57,11 +58,15 @@ interface ClassSection {
 
 export default function TeacherClassManagement() {
   const { showToast } = useToast();
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   
   // ── CORE STATE ──
   const [currentStep, setCurrentStep] = useState(0); // 0: Dashboard, 1: Step1, 2: Step2, 3: Step3
   const [isTimetableView, setIsTimetableView] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTimetableLoading, setIsTimetableLoading] = useState(false);
+  const [timetableError, setTimetableError] = useState<string | null>(null);
   
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<ClassSection[]>([]);
@@ -490,6 +495,16 @@ export default function TeacherClassManagement() {
     }
   }, [isManageTypesOpen]);
 
+  // Lock body scroll while any modal is open
+  useEffect(() => {
+    if (showTeacherForm || showReassignModal || showAddSubject || showCreateClass || showCreateSection || isManageTypesOpen || showImportTeachers || deleteConfirm.show || showConfirmChangeConfigModal || showSuccessModal) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [showTeacherForm, showReassignModal, showAddSubject, showCreateClass, showCreateSection, isManageTypesOpen, showImportTeachers, deleteConfirm.show, showConfirmChangeConfigModal, showSuccessModal]);
+
   const handleCreateType = async (e: React.FormEvent) => {
     e.preventDefault();
     setTypeError('');
@@ -546,103 +561,118 @@ export default function TeacherClassManagement() {
   };
 
   // ── LOAD DASHBOARD METRICS & LISTS ──
+  const applyDashboardData = useCallback((data: any) => {
+    if (!data) return;
+
+    setWorkloadSummary(data.summary || {
+      totalTeachers: 0,
+      totalClasses: 0,
+      totalAssignments: 0,
+      avgLoadPercent: 0
+    });
+
+    const mappedTeachers: Teacher[] = (data.teachers || []).map((t: any, idx: number) => ({
+      id: t.teacherId,
+      name: t.teacherName || 'Unknown Teacher',
+      initials: (t.teacherName || 'TT').split(' ').map((n: string) => n[0] || '').join('').substring(0, 2).toUpperCase(),
+      subjects: t.subjectsTaught || [],
+      classCount: t.classCount || 0,
+      loadPercent: Math.min(100, t.loadPercent || 0),
+      gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
+    }));
+    setTeachers(mappedTeachers);
+
+    const mappedClasses: ClassSection[] = (data.classes || []).map((c: any) => ({
+      id: c.classSectionId,
+      classId: c.classId,
+      name: c.name || 'Unknown Class',
+      academicYear: c.academicYear || '2026-2027',
+      subjectCount: c.subjectCount || 0,
+      staffedCount: c.staffedCount || 0,
+      loadPercent: c.loadPercent || 0
+    }));
+    setClasses(mappedClasses);
+
+    const totalClassesCount = (data.summary?.totalClasses !== undefined && data.summary?.totalClasses !== null && Number(data.summary?.totalClasses) > 0)
+      ? Number(data.summary.totalClasses)
+      : (data.summary?.totalClassSections !== undefined && data.summary?.totalClassSections !== null && Number(data.summary?.totalClassSections) > 0
+          ? Number(data.summary.totalClassSections)
+          : mappedClasses.length);
+
+    setWorkloadSummary({
+      totalTeachers: data.summary?.totalTeachers ?? data.teachers?.length ?? 0,
+      totalClasses: totalClassesCount,
+      totalAssignments: data.summary?.totalAssignments ?? 0,
+      avgLoadPercent: data.summary?.avgLoadPercent ?? 0
+    });
+
+    const rawTimings = data.periodTimings || [];
+    const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
+    let displayCount = 1;
+    const mappedTimings = sortedTimings.map((pt: any) => {
+      const isBreak = pt.isBreak ?? false;
+      const displayLabel = isBreak ? (pt.name || 'Break') : `Period ${displayCount}`;
+      const displayNum = isBreak ? null : displayCount;
+      if (!isBreak) {
+        displayCount++;
+      }
+      return {
+        ...pt,
+        id: pt.id,
+        num: pt.periodNumber ?? pt.num,
+        label: displayLabel,
+        displayPeriodNumber: displayNum,
+        startTime: pt.startTime,
+        endTime: pt.endTime,
+        isBreak
+      };
+    });
+    setTimings(mappedTimings);
+
+    setAllSubjects(data.subjects || []);
+    setAcademicYears(data.academicYears || []);
+    setAvailableSections(data.sections || []);
+
+    if (data.config) {
+      setWorkingDays(data.config.workingDays || []);
+      setSchoolStartTime(data.config.schoolStartTime);
+      setSchoolEndTime(data.config.schoolEndTime);
+      setPeriodDuration(data.config.periodDuration);
+      setAutoGenerate(data.config.autoGenerate);
+      setNumPeriods(data.config.numPeriods);
+    }
+
+    const activeYear = (data.academicYears || []).find((y: any) => y.isActive) || data.academicYears?.[0];
+    if (activeYear) {
+      setSelectedAcademicYear(activeYear.id);
+      setTtSelectedAcademicYear(activeYear.id);
+    }
+  }, []);
+
   const loadWorkloadDashboard = useCallback(async () => {
     try {
-      setIsLoading(true);
-      const res = await api.get('/timetable/workload/dashboard');
-      const data = res.data;
-
-      if (data) {
-        setWorkloadSummary(data.summary || {
-          totalTeachers: 0,
-          totalClasses: 0,
-          totalAssignments: 0,
-          avgLoadPercent: 0
-        });
-
-        const mappedTeachers: Teacher[] = (data.teachers || []).map((t: any, idx: number) => ({
-          id: t.teacherId,
-          name: t.teacherName || 'Unknown Teacher',
-          initials: (t.teacherName || 'TT').split(' ').map((n: string) => n[0] || '').join('').substring(0, 2).toUpperCase(),
-          subjects: t.subjectsTaught || [],
-          classCount: t.classCount || 0,
-          loadPercent: Math.min(100, t.loadPercent || 0),
-          gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
-        }));
-        setTeachers(mappedTeachers);
-
-        const mappedClasses: ClassSection[] = (data.classes || []).map((c: any) => ({
-          id: c.classSectionId,
-          classId: c.classId,
-          name: c.name || 'Unknown Class',
-          academicYear: c.academicYear || '2026-2027',
-          subjectCount: c.subjectCount || 0,
-          staffedCount: c.staffedCount || 0,
-          loadPercent: c.loadPercent || 0
-        }));
-        setClasses(mappedClasses);
-
-        const totalClassesCount = (data.summary?.totalClasses !== undefined && data.summary?.totalClasses !== null && Number(data.summary?.totalClasses) > 0)
-          ? Number(data.summary.totalClasses)
-          : (data.summary?.totalClassSections !== undefined && data.summary?.totalClassSections !== null && Number(data.summary?.totalClassSections) > 0
-              ? Number(data.summary.totalClassSections)
-              : mappedClasses.length);
-
-        setWorkloadSummary({
-          totalTeachers: data.summary?.totalTeachers ?? data.teachers?.length ?? 0,
-          totalClasses: totalClassesCount,
-          totalAssignments: data.summary?.totalAssignments ?? 0,
-          avgLoadPercent: data.summary?.avgLoadPercent ?? 0
-        });
-
-        const rawTimings = data.periodTimings || [];
-        const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
-        let displayCount = 1;
-        const mappedTimings = sortedTimings.map((pt: any) => {
-          const isBreak = pt.isBreak ?? false;
-          const displayLabel = isBreak ? (pt.name || 'Break') : `Period ${displayCount}`;
-          const displayNum = isBreak ? null : displayCount;
-          if (!isBreak) {
-            displayCount++;
+      const res = await fastGet('/timetable/workload/dashboard', undefined, {
+        ttlMs: 60000,
+        onRevalidate: (fresh) => {
+          if (fresh) {
+            applyDashboardData(fresh);
           }
-          return {
-            ...pt,
-            id: pt.id,
-            num: pt.periodNumber ?? pt.num,
-            label: displayLabel,
-            displayPeriodNumber: displayNum,
-            startTime: pt.startTime,
-            endTime: pt.endTime,
-            isBreak
-          };
-        });
-        setTimings(mappedTimings);
-
-        setAllSubjects(data.subjects || []);
-        setAcademicYears(data.academicYears || []);
-        setAvailableSections(data.sections || []);
-
-        if (data.config) {
-          setWorkingDays(data.config.workingDays || []);
-          setSchoolStartTime(data.config.schoolStartTime);
-          setSchoolEndTime(data.config.schoolEndTime);
-          setPeriodDuration(data.config.periodDuration);
-          setAutoGenerate(data.config.autoGenerate);
-          setNumPeriods(data.config.numPeriods);
         }
+      });
 
-        const activeYear = (data.academicYears || []).find((y: any) => y.isActive) || data.academicYears?.[0];
-        if (activeYear) {
-          setSelectedAcademicYear(activeYear.id);
-          setTtSelectedAcademicYear(activeYear.id);
-        }
+      if (!res.isFromCache) {
+        setIsLoading(false);
+      }
+
+      if (res.data) {
+        applyDashboardData(res.data);
       }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [applyDashboardData]);
 
   useEffect(() => {
     loadWorkloadDashboard();
@@ -653,13 +683,13 @@ export default function TeacherClassManagement() {
     setTeacherDetailLoading(true);
     try {
       const [workloadRes, periodsRes, leasersRes] = await Promise.all([
-        api.get(`/timetable/workload/teacher/${teacherId}`),
-        api.get(`/timetable/teacher/${teacherId}/periods?gaps=true`),
-        api.get(`/timetable/teacher/${teacherId}/leaser-periods`)
+        fastGet(`/timetable/workload/teacher/${teacherId}`),
+        fastGet(`/timetable/teacher/${teacherId}/periods?gaps=true`),
+        fastGet(`/timetable/teacher/${teacherId}/leaser-periods`)
       ]);
       
-      const details = workloadRes.data;
-      const skillsRes = await api.get(`/timetable/teachers/${teacherId}/skills`);
+      const details = workloadRes.data || {};
+      const skillsRes = await fastGet(`/timetable/teachers/${teacherId}/skills`);
 
       // Parse schedule periods — backend returns normalized flat fields
       const allPeriods: any[] = periodsRes.data || [];
@@ -1005,7 +1035,10 @@ export default function TeacherClassManagement() {
       return;
     }
     try {
-      setIsLoading(true);
+      setIsTimetableLoading(true);
+      setTimetableError(null);
+      setShowTimetableGrid(false);
+
       // Fetch subjects, timings, workload & current timetable in parallel
       const [workloadRes, timingsRes, timetableRes, subjectsRes, configRes] = await Promise.all([
         api.get(`/timetable/workload/class-section/${ttSelectedClassSectionId}`),
@@ -1038,6 +1071,7 @@ export default function TeacherClassManagement() {
         };
       });
       setTimings(mappedTimings);
+
       // Always refresh the full subjects list so the dropdown is never empty
       if (subjectsRes.data && subjectsRes.data.length > 0) {
         setAllSubjects(subjectsRes.data);
@@ -1065,7 +1099,7 @@ export default function TeacherClassManagement() {
 
       // Fill backend scheduled periods (flat array mapping)
       const backendData = Array.isArray(timetableRes.data) ? timetableRes.data : [];
-      const cachedSubjectTeachers: Record<string, any[]> = {};
+      const uniqueSubIds = new Set<string>();
 
       for (const p of backendData) {
         const backDay = p.day;
@@ -1080,28 +1114,38 @@ export default function TeacherClassManagement() {
             subject: subId,
             teacherId: tId
           };
-
-          // Cache subject teachers
-          if (subId && !cachedSubjectTeachers[subId]) {
-            try {
-              const res = await api.get(`/timetable/teachers/subject-in-class?subjectId=${subId}&classSectionId=${ttSelectedClassSectionId}`);
-              cachedSubjectTeachers[subId] = res.data || [];
-            } catch (e) {
-              console.error('Failed to pre-cache teachers:', e);
-            }
-          }
+          if (subId) uniqueSubIds.add(subId);
         }
+      }
+
+      // Pre-cache subject teachers concurrently in parallel (eliminating sequential HTTP requests)
+      const cachedSubjectTeachers: Record<string, any[]> = {};
+      if (uniqueSubIds.size > 0) {
+        const teacherPromises = Array.from(uniqueSubIds).map(async (subId) => {
+          try {
+            const res = await api.get(`/timetable/teachers/subject-in-class?subjectId=${subId}&classSectionId=${ttSelectedClassSectionId}`);
+            return { subId, teachers: res.data || [] };
+          } catch (e) {
+            return { subId, teachers: [] };
+          }
+        });
+        const results = await Promise.all(teacherPromises);
+        results.forEach(item => {
+          cachedSubjectTeachers[item.subId] = item.teachers;
+        });
       }
 
       setSubjectTeachers(prev => ({ ...prev, ...cachedSubjectTeachers }));
       setTimetableData(formattedData);
       setShowTimetableGrid(true);
       showToast('Timetable loaded successfully!', 'success');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Timetable load failed:', err);
+      const errMsg = err?.response?.data?.message || err?.message || 'Unable to load timetable. Please try again.';
+      setTimetableError(errMsg);
       showToast('Failed to load timetable matrix.', 'error');
     } finally {
-      setIsLoading(false);
+      setIsTimetableLoading(false);
     }
   };
 
@@ -2728,16 +2772,57 @@ export default function TeacherClassManagement() {
               <div>
                 <button
                   onClick={loadTimetableGrid}
-                  className="w-full px-4 py-2.5 rounded-xl border border-blue-600 hover:bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  disabled={isTimetableLoading}
+                  className="w-full px-4 py-2.5 rounded-xl border border-blue-600 hover:bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  🔍 Load Timetable
+                  {isTimetableLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                      <span>Loading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🔍 Load Timetable</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Timetable Editor Grid Matrix */}
-          {showTimetableGrid && (
+          {/* Timetable Editor Grid Matrix / Loading / Error / Empty States */}
+          {isTimetableLoading ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 text-blue-600 mb-4 animate-pulse">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">Loading Timetable Matrix...</h3>
+              <p className="text-xs text-slate-500 mt-1">Fetching period timings, subject allocations, and teacher assignments</p>
+            </div>
+          ) : timetableError ? (
+            <div className="bg-white border border-rose-200 rounded-2xl p-10 text-center shadow-sm">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-50 text-rose-600 mb-4">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-800">Unable to load timetable</h3>
+              <p className="text-xs text-rose-600 mt-1 max-w-md mx-auto">{timetableError}</p>
+              <button
+                onClick={loadTimetableGrid}
+                className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Try Again
+              </button>
+            </div>
+          ) : showTimetableGrid ? (
+            (workingDays.length === 0 || timings.length === 0) ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 text-slate-400 mb-4">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-bold text-slate-700">No timetable found</h3>
+                <p className="text-xs text-slate-400 mt-1">No period timings or working days configured for the selected class/date range.</p>
+              </div>
+            ) : (
             <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left border-collapse min-w-[1200px]">
@@ -2844,7 +2929,16 @@ export default function TeacherClassManagement() {
                 </button>
               </div>
             </div>
-          )}
+          )
+        ) : (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 text-blue-600 mb-4">
+              <Calendar className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-700">Select Class & Date Range</h3>
+            <p className="text-xs text-slate-400 mt-1">Select your class section and click "Load Timetable" to display the timetable matrix grid.</p>
+          </div>
+        )}
         </div>
       )}
 
@@ -3223,9 +3317,9 @@ export default function TeacherClassManagement() {
       )}
 
       {/* ── TIMETABLE RESET WARNING MODAL ── */}
-      {showConfirmChangeConfigModal && (
-        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full border border-slate-100 shadow-2xl text-center space-y-4">
+      {isMounted && showConfirmChangeConfigModal && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowConfirmChangeConfigModal(false)}>
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl text-center space-y-4 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 mx-auto">
               ⚠️
             </div>
@@ -3250,155 +3344,128 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* ════════════════════════════════════════════════
-           WIZARD SUCCESS MODAL
-           ════════════════════════════════════════════════ */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mx-auto">
-              <Check className="w-6 h-6 stroke-[3]" />
-            </div>
-            <h3 className="font-extrabold text-slate-800 text-lg">Class Setup Complete!</h3>
-            <p className="text-xs text-slate-400">{successMessage}</p>
-            <div className="flex gap-2 pt-2">
-              <button 
-                onClick={() => { setShowSuccessModal(false); enterSetupWizard(); }}
-                className="flex-1 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl"
-              >
-                Create Another
-              </button>
-              <button 
-                onClick={handleDoneWizard}
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── ADD NEW TEACHER MODAL (Single Creation) ── */}
-      {showTeacherForm && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[90]" onClick={() => setShowTeacherForm(false)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-xl bg-white rounded-2xl shadow-2xl z-[100] overflow-y-auto max-h-[90vh] animate-in">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+      {isMounted && showTeacherForm && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowTeacherForm(false)}>
+          <div className="w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-base">Add New Teacher</h3>
               <button onClick={() => setShowTeacherForm(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
             </div>
             
-            <form onSubmit={handleSaveTeacher} className="p-6 space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">First Name *</label>
-                  <input required value={newTeacher.firstName} onChange={e => setNewTeacher({...newTeacher, firstName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="First Name" />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Last Name *</label>
-                  <input required value={newTeacher.lastName} onChange={e => setNewTeacher({...newTeacher, lastName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="Last Name" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Email *</label>
-                  <input type="email" required value={newTeacher.email} onChange={e => setNewTeacher({...newTeacher, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="email@school.com" />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Phone *</label>
-                  <input type="tel" required value={newTeacher.phone} onChange={e => setNewTeacher({...newTeacher, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="+91 9XXXXXXXXX" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Qualification</label>
-                  <input value={newTeacher.qualification} onChange={e => setNewTeacher({...newTeacher, qualification: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="e.g. M.Sc, B.Ed" />
-                </div>
-                <div>
-                  <label className="block text-slate-500 font-semibold mb-1">Basic Salary (₹)</label>
-                  <input type="number" value={newTeacher.basicSalary} onChange={e => setNewTeacher({...newTeacher, basicSalary: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-slate-500 font-semibold">Subject Skills</label>
-                  <button type="button" onClick={() => setNewTeacher({...newTeacher, skills: [...newTeacher.skills, {subjectId:'',level:'Expert',yearsOfExperience:5} as any]})} className="text-[11px] text-blue-600 font-bold hover:underline">+ Add Skill</button>
-                </div>
-                {newTeacher.skills.map((sk, idx) => (
-                  <div key={idx} className="flex gap-2 mb-2">
-                    <select 
-                      value={sk.subjectId} 
-                      onChange={e => {
-                        const s = [...newTeacher.skills];
-                        s[idx] = { ...s[idx], subjectId: e.target.value };
-                        setNewTeacher({ ...newTeacher, skills: s });
-                      }}
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none"
-                    >
-                      <option value="">Select Subject</option>
-                      {allSubjects.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
-                    </select>
-                    <select 
-                      value={sk.skillLevel} 
-                      onChange={e => {
-                        const s = [...newTeacher.skills];
-                        s[idx] = { ...s[idx], skillLevel: e.target.value };
-                        setNewTeacher({ ...newTeacher, skills: s });
-                      }}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none"
-                    >
-                      <option>Beginner</option>
-                      <option>Intermediate</option>
-                      <option>Advanced</option>
-                      <option>Expert</option>
-                    </select>
-                    <input 
-                      type="number" 
-                      value={sk.yearsOfExperience} 
-                      onChange={e => {
-                        const s = [...newTeacher.skills];
-                        s[idx] = { ...s[idx], yearsOfExperience: Number(e.target.value) };
-                        setNewTeacher({ ...newTeacher, skills: s });
-                      }}
-                      className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none" 
-                      placeholder="Yrs" 
-                    />
-                    {newTeacher.skills.length > 1 && (
-                      <button type="button" onClick={() => setNewTeacher({...newTeacher, skills: newTeacher.skills.filter((_, i) => i !== idx)})} className="text-rose-500 hover:text-rose-700">
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
+            <form onSubmit={handleSaveTeacher} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs flex flex-col">
+              <div className="flex-1 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-500 font-semibold mb-1">First Name *</label>
+                    <input required value={newTeacher.firstName} onChange={e => setNewTeacher({...newTeacher, firstName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="First Name" />
                   </div>
-                ))}
+                  <div>
+                    <label className="block text-slate-500 font-semibold mb-1">Last Name *</label>
+                    <input required value={newTeacher.lastName} onChange={e => setNewTeacher({...newTeacher, lastName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="Last Name" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-500 font-semibold mb-1">Email *</label>
+                    <input type="email" required value={newTeacher.email} onChange={e => setNewTeacher({...newTeacher, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="email@school.com" />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 font-semibold mb-1">Phone *</label>
+                    <input type="tel" required value={newTeacher.phone} onChange={e => setNewTeacher({...newTeacher, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="+91 9XXXXXXXXX" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-500 font-semibold mb-1">Qualification</label>
+                    <input value={newTeacher.qualification} onChange={e => setNewTeacher({...newTeacher, qualification: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" placeholder="e.g. M.Sc, B.Ed" />
+                  </div>
+                  <div>
+                    <label className="block text-slate-500 font-semibold mb-1">Basic Salary (₹)</label>
+                    <input type="number" value={newTeacher.basicSalary} onChange={e => setNewTeacher({...newTeacher, basicSalary: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-slate-500 font-semibold">Subject Skills</label>
+                    <button type="button" onClick={() => setNewTeacher({...newTeacher, skills: [...newTeacher.skills, {subjectId:'',level:'Expert',yearsOfExperience:5} as any]})} className="text-[11px] text-blue-600 font-bold hover:underline">+ Add Skill</button>
+                  </div>
+                  {newTeacher.skills.map((sk, idx) => (
+                    <div key={idx} className="flex gap-2 mb-2">
+                      <select 
+                        value={sk.subjectId} 
+                        onChange={e => {
+                          const s = [...newTeacher.skills];
+                          s[idx] = { ...s[idx], subjectId: e.target.value };
+                          setNewTeacher({ ...newTeacher, skills: s });
+                        }}
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none"
+                      >
+                        <option value="">Select Subject</option>
+                        {allSubjects.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+                      </select>
+                      <select 
+                        value={sk.skillLevel} 
+                        onChange={e => {
+                          const s = [...newTeacher.skills];
+                          s[idx] = { ...s[idx], skillLevel: e.target.value };
+                          setNewTeacher({ ...newTeacher, skills: s });
+                        }}
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none"
+                      >
+                        <option>Beginner</option>
+                        <option>Intermediate</option>
+                        <option>Advanced</option>
+                        <option>Expert</option>
+                      </select>
+                      <input 
+                        type="number" 
+                        value={sk.yearsOfExperience} 
+                        onChange={e => {
+                          const s = [...newTeacher.skills];
+                          s[idx] = { ...s[idx], yearsOfExperience: Number(e.target.value) };
+                          setNewTeacher({ ...newTeacher, skills: s });
+                        }}
+                        className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none" 
+                        placeholder="Yrs" 
+                      />
+                      {newTeacher.skills.length > 1 && (
+                        <button type="button" onClick={() => setNewTeacher({...newTeacher, skills: newTeacher.skills.filter((_, i) => i !== idx)})} className="text-rose-500 hover:text-rose-700">
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+              <div className="flex gap-3 justify-end pt-4 border-t border-slate-100 shrink-0 mt-auto">
                 <button type="button" onClick={() => setShowTeacherForm(false)} className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs">Cancel</button>
                 <button type="submit" className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-sm">Save Teacher</button>
               </div>
             </form>
           </div>
-        </>
+        </div>,
+        document.body
       )}
 
       {/* ── REASSIGN TEACHER MODAL ── */}
-      {showReassignModal && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[120]" onClick={() => setShowReassignModal(false)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-[130] p-6 animate-in">
-            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2">
+      {isMounted && showReassignModal && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowReassignModal(false)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Reassign Teacher</h3>
               <button onClick={() => setShowReassignModal(false)} className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4" /></button>
             </div>
             
-            <div className="space-y-4 text-xs">
+            <div className="flex-1 overflow-y-auto space-y-4 text-xs">
               <div>
                 <span className="block text-slate-400 font-semibold mb-1">Subject</span>
                 <span className="font-bold text-slate-700">{reassignContext.subjectName}</span>
@@ -3432,21 +3499,21 @@ export default function TeacherClassManagement() {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 outline-none"
                 />
               </div>
+            </div>
 
-              <div className="flex gap-3 pt-4 border-t border-slate-100">
-                <button onClick={() => setShowReassignModal(false)} className="flex-1 py-2 border border-slate-200 rounded-xl text-slate-600 font-semibold">Cancel</button>
-                <button onClick={handleSaveReassign} className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold">Save Change</button>
-              </div>
+            <div className="flex gap-3 pt-4 border-t border-slate-100 shrink-0 mt-auto">
+              <button onClick={() => setShowReassignModal(false)} className="flex-1 py-2 border border-slate-200 rounded-xl text-slate-600 font-semibold text-xs">Cancel</button>
+              <button onClick={handleSaveReassign} className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs">Save Change</button>
             </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
 
       {/* ── DELETE CONFIRMATION MODAL ── */}
-      {deleteConfirm.show && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-[150]" onClick={() => setDeleteConfirm({ show: false, type: 'class', id: '', name: '' })} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-[160] p-6 text-center space-y-4 animate-in">
+      {isMounted && deleteConfirm.show && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setDeleteConfirm({ show: false, type: 'class', id: '', name: '' })}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 text-center space-y-4 animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center text-rose-600 mx-auto">
               <AlertCircle className="w-6 h-6" />
             </div>
@@ -3467,217 +3534,231 @@ export default function TeacherClassManagement() {
               </button>
             </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
 
       {/* ── SIMPLE MODALS (Subject, Class, Section) ── */}
-      {showAddSubject && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowAddSubject(false)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-2xl shadow-2xl z-50 p-6 animate-in">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+      {isMounted && showAddSubject && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowAddSubject(false)}>
+          <div className="w-full max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Add Subjects Catalog</h3>
               <button onClick={() => setShowAddSubject(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
             </div>
 
-            {allSubjects.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Existing Subjects Catalog</h4>
-                <div className="max-h-36 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-                  {allSubjects.map((sub) => (
-                    <div key={sub.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-700 font-medium">
-                      <span>{sub.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSubject(sub.id)}
-                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete Subject"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+            <div className="flex-1 overflow-y-auto space-y-4">
+              {allSubjects.length > 0 && (
+                <div>
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Existing Subjects Catalog</h4>
+                  <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                    {allSubjects.map((sub) => (
+                      <div key={sub.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-700 font-medium">
+                        <span>{sub.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSubject(sub.id)}
+                          className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Subject"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="space-y-2 mb-4">
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Add New Subjects</h4>
-              {subjectsListInput.map((s, idx) => (
-                <div key={s.id} className="flex gap-2">
-                  <input
-                    value={s.name}
-                    onChange={e => { 
-                      const arr = [...subjectsListInput]; 
-                      arr[idx] = { ...arr[idx], name: e.target.value }; 
-                      setSubjectsListInput(arr); 
-                    }}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
-                    placeholder="e.g. Mathematics, Physical Science"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setSubjectsListInput([...subjectsListInput, { id: Date.now(), name: '' }])}
-                    className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold hover:bg-purple-200"
-                  >+</button>
-                  {subjectsListInput.length > 1 && (
-                    <button type="button" onClick={() => setSubjectsListInput(subjectsListInput.filter((_, i) => i !== idx))} className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100">
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Add New Subjects</h4>
+                {subjectsListInput.map((s, idx) => (
+                  <div key={s.id} className="flex gap-2">
+                    <input
+                      value={s.name}
+                      onChange={e => { 
+                        const arr = [...subjectsListInput]; 
+                        arr[idx] = { ...arr[idx], name: e.target.value }; 
+                        setSubjectsListInput(arr); 
+                      }}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
+                      placeholder="e.g. Mathematics, Physical Science"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSubjectsListInput([...subjectsListInput, { id: Date.now(), name: '' }])}
+                      className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center font-bold hover:bg-purple-200"
+                    >+</button>
+                    {subjectsListInput.length > 1 && (
+                      <button type="button" onClick={() => setSubjectsListInput(subjectsListInput.filter((_, i) => i !== idx))} className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            <button onClick={handleSaveSubjects} className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs cursor-pointer">
-              ✓ Submit Subjects
-            </button>
+
+            <div className="pt-4 shrink-0 mt-auto border-t border-slate-100">
+              <button onClick={handleSaveSubjects} className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs cursor-pointer">
+                ✓ Submit Subjects
+              </button>
+            </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
 
-      {showCreateClass && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCreateClass(false)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-50 p-6 animate-in">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+      {isMounted && showCreateClass && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowCreateClass(false)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Create Class Names</h3>
               <button onClick={() => setShowCreateClass(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
             </div>
 
-            {existingClasses.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Existing Classes</h4>
-                <div className="max-h-32 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-                  {existingClasses.map((cls) => (
-                    <div key={cls.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-700">
-                      <span>{cls.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteClass(cls.id)}
-                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete Class"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+            <div className="flex-1 overflow-y-auto space-y-4">
+              {existingClasses.length > 0 && (
+                <div>
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Existing Classes</h4>
+                  <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                    {existingClasses.map((cls) => (
+                      <div key={cls.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-700">
+                        <span>{cls.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteClass(cls.id)}
+                          className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Class"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="space-y-2 mb-4">
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Add New Classes</h4>
-              {classNamesInput.map((entry, idx) => (
-                <div key={entry.id} className="flex gap-2 items-center">
-                  <input
-                    value={entry.name}
-                    onChange={e => {
-                      const arr = [...classNamesInput];
-                      arr[idx] = { ...arr[idx], name: e.target.value };
-                      setClassNamesInput(arr);
-                    }}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
-                    placeholder={`e.g. Grade ${idx + 1}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setClassNamesInput([...classNamesInput, { id: Date.now(), name: '' }])}
-                    className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold hover:bg-blue-200"
-                  >+</button>
-                  {classNamesInput.length > 1 && (
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Add New Classes</h4>
+                {classNamesInput.map((entry, idx) => (
+                  <div key={entry.id} className="flex gap-2 items-center">
+                    <input
+                      value={entry.name}
+                      onChange={e => {
+                        const arr = [...classNamesInput];
+                        arr[idx] = { ...arr[idx], name: e.target.value };
+                        setClassNamesInput(arr);
+                      }}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
+                      placeholder={`e.g. Grade ${idx + 1}`}
+                    />
                     <button
                       type="button"
-                      onClick={() => setClassNamesInput(classNamesInput.filter((_, i) => i !== idx))}
-                      className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
+                      onClick={() => setClassNamesInput([...classNamesInput, { id: Date.now(), name: '' }])}
+                      className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold hover:bg-blue-200"
+                    >+</button>
+                    {classNamesInput.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setClassNamesInput(classNamesInput.filter((_, i) => i !== idx))}
+                        className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            <button onClick={handleSaveClass} className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer">
-              ✓ Save Classes
-            </button>
+
+            <div className="pt-4 shrink-0 mt-auto border-t border-slate-100">
+              <button onClick={handleSaveClass} className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer">
+                ✓ Save Classes
+              </button>
+            </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
 
-      {showCreateSection && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowCreateSection(false)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-50 p-6 animate-in">
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+      {isMounted && showCreateSection && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowCreateSection(false)}>
+          <div className="w-full max-w-sm bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <h3 className="font-extrabold text-slate-800 text-sm">Create Section Letters</h3>
               <button onClick={() => setShowCreateSection(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
             </div>
 
-            {availableSections.length > 0 && (
-              <div className="mb-4">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Existing Sections</h4>
-                <div className="max-h-32 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
-                  {availableSections.map((sec) => (
-                    <div key={sec.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-700 font-medium">
-                      <span>{sec.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSection(sec.id)}
-                        className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete Section"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+            <div className="flex-1 overflow-y-auto space-y-4">
+              {availableSections.length > 0 && (
+                <div>
+                  <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Existing Sections</h4>
+                  <div className="max-h-48 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                    {availableSections.map((sec) => (
+                      <div key={sec.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-xs text-slate-700 font-medium">
+                        <span>{sec.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSection(sec.id)}
+                          className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Section"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="space-y-2 mb-4">
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Add New Sections</h4>
-              {sectionNamesInput.map((entry, idx) => (
-                <div key={entry.id} className="flex gap-2 items-center">
-                  <input
-                    value={entry.name}
-                    onChange={e => {
-                      const arr = [...sectionNamesInput];
-                      arr[idx] = { ...arr[idx], name: e.target.value };
-                      setSectionNamesInput(arr);
-                    }}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
-                    placeholder={`e.g. Section ${String.fromCharCode(65 + idx)}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setSectionNamesInput([...sectionNamesInput, { id: Date.now(), name: '' }])}
-                    className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold hover:bg-blue-200"
-                  >+</button>
-                  {sectionNamesInput.length > 1 && (
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Add New Sections</h4>
+                {sectionNamesInput.map((entry, idx) => (
+                  <div key={entry.id} className="flex gap-2 items-center">
+                    <input
+                      value={entry.name}
+                      onChange={e => {
+                        const arr = [...sectionNamesInput];
+                        arr[idx] = { ...arr[idx], name: e.target.value };
+                        setSectionNamesInput(arr);
+                      }}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:border-blue-500"
+                      placeholder={`e.g. Section ${String.fromCharCode(65 + idx)}`}
+                    />
                     <button
                       type="button"
-                      onClick={() => setSectionNamesInput(sectionNamesInput.filter((_, i) => i !== idx))}
-                      className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
+                      onClick={() => setSectionNamesInput([...sectionNamesInput, { id: Date.now(), name: '' }])}
+                      className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold hover:bg-blue-200"
+                    >+</button>
+                    {sectionNamesInput.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setSectionNamesInput(sectionNamesInput.filter((_, i) => i !== idx))}
+                        className="w-9 h-9 rounded-xl bg-red-50 text-red-500 flex items-center justify-center hover:bg-red-100"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <button onClick={handleSaveSectionsBulk} className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer">
-              ✓ Save Sections
-            </button>
+            <div className="pt-4 shrink-0 mt-auto border-t border-slate-100">
+              <button onClick={handleSaveSectionsBulk} className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer">
+                ✓ Save Sections
+              </button>
+            </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
 
-      {isManageTypesOpen && (
-        <>
-          <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setIsManageTypesOpen(false)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-2xl shadow-2xl z-50 p-6 animate-in text-slate-800">
+      {isMounted && isManageTypesOpen && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setIsManageTypesOpen(false)}>
+          <div className="w-full max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in text-slate-800" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
-            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
                 <Award className="w-5 h-5 text-blue-600" />
                 <h3 className="font-extrabold text-slate-800 text-sm">Manage Exam Types</h3>
@@ -3691,7 +3772,7 @@ export default function TeacherClassManagement() {
             </div>
 
             {/* Modal Body */}
-            <div className="space-y-4">
+            <div className="flex-1 overflow-y-auto space-y-4">
               {typeError && (
                 <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-xl font-semibold">
                   {typeError}
@@ -3718,7 +3799,7 @@ export default function TeacherClassManagement() {
               </form>
 
               {/* List of Types */}
-              <div className="border border-slate-250 rounded-xl divide-y divide-slate-100 max-h-[220px] overflow-y-auto bg-slate-50/20">
+              <div className="border border-slate-250 rounded-xl divide-y divide-slate-100 max-h-[360px] overflow-y-auto bg-slate-50/20">
                 {manageTypesList.length === 0 ? (
                   <div className="p-8 text-center text-slate-450 text-xs italic">
                     Loading exam types...
@@ -3779,7 +3860,8 @@ export default function TeacherClassManagement() {
               </div>
             </div>
           </div>
-        </>
+        </div>,
+        document.body
       )}
 
       <BulkTeacherImportModal

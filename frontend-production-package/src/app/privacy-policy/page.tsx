@@ -308,7 +308,7 @@ export default function PrivacyPolicyPage() {
       </section>
 
       {/* Footer */}
-      <footer className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 text-center border-t border-slate-900/60 z-10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 font-light">
+      <footer className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 border-t border-slate-900/80 z-10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 font-light">
         <p>
           &copy; {new Date().getFullYear()} Covenant Synergy Private Limited. All rights reserved.
         </p>

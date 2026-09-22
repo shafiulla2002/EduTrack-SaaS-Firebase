@@ -21,10 +21,10 @@ export class TenantController {
     if (!tenantId) {
       return {
         id: null,
-        name: 'EduTrack Application',
+        name: 'CS EduTrack',
         subdomain: null,
         logoUrl: null,
-        subtitle: 'School Management Platform',
+        subtitle: 'Smarter Institute Management',
       };
     }
 
@@ -97,7 +97,20 @@ export class TenantController {
   @UseGuards(JwtAuthGuard)
   @Get('setup-status')
   async getSetupStatus(@Req() req: any) {
-    const tenantId = req.user?.tenantId;
+    if (!req.user || !req.user.id) {
+      return {
+        setupCompleted: false,
+        completionPercentage: 0,
+        classesCount: 0,
+        teachersCount: 0,
+        studentsCount: 0,
+        setup: null,
+        currentUser: null,
+        subscription: null,
+      };
+    }
+
+    const tenantId = req.user.tenantId;
 
     if (!tenantId) {
       const currentUser = await this.prisma.user.findUnique({
@@ -193,12 +206,12 @@ export class TenantController {
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
       });
-      return {
+      const incompleteResult = {
         setupCompleted: false,
         completionPercentage: 0,
-        classesCount: 0,
-        teachersCount: 0,
-        studentsCount: 0,
+        classesCount,
+        teachersCount,
+        studentsCount,
         missingFields: [
           'schoolName',
           'schoolType',
@@ -211,9 +224,9 @@ export class TenantController {
         setup: tenant ? {
           id: '',
           tenantId: tenant.id,
-          schoolName: tenant.name,
-          schoolType: 'School',
-          adminName: tenant.name,
+          schoolName: tenant.name || '',
+          schoolType: tenant.subtitle || 'School',
+          adminName: currentUser?.name || tenant.name || 'Admin',
           mobileNumber: tenant.phone || '',
           email: tenant.email || '',
           address: tenant.address || '',
@@ -224,9 +237,11 @@ export class TenantController {
           district: '',
           city: '',
           postalCode: '',
-          schoolLogo: null,
+          schoolLogo: tenant.logoUrl || null,
           isCompleted: false,
         } : null,
+        tenantName: tenant?.name || '',
+        tenantLogo: tenant?.logoUrl || null,
         currentUser,
         subscription: subscription ? {
           plan: subscription.plan?.name || 'TRIAL',
@@ -237,6 +252,24 @@ export class TenantController {
           features: subscription.plan?.features || [],
         } : null,
       };
+
+      TenantController.setupStatusCache.set(cacheKey, {
+        data: incompleteResult,
+        expiresAt: Date.now() + 60000 // 60s in-memory TTL
+      });
+
+      return incompleteResult;
+    }
+
+    // Ensure fallback to tenant/currentUser names if empty in setup
+    if (!setup.schoolName && setup.tenant?.name) {
+      setup.schoolName = setup.tenant.name;
+    }
+    if (!setup.adminName && currentUser?.name) {
+      setup.adminName = currentUser.name;
+    }
+    if (!setup.schoolLogo && setup.tenant?.logoUrl) {
+      setup.schoolLogo = setup.tenant.logoUrl;
     }
 
     // Calculate profile completion percentage based on 13 total fields
@@ -275,20 +308,22 @@ export class TenantController {
       studentsCount,
       missingFields,
       setup,
+      tenantName: setup.schoolName || setup.tenant?.name || '',
+      tenantLogo: setup.schoolLogo || setup.tenant?.logoUrl || null,
       currentUser,
       subscription: subscription ? {
-        plan: subscription.plan.name,
+        plan: subscription.plan?.name || 'TRIAL',
         status: subscription.status,
         expiryDate: subscription.expiryDate,
-        studentLimit: subscription.plan.studentLimit,
-        teacherLimit: subscription.plan.teacherLimit,
-        features: subscription.plan.features,
+        studentLimit: subscription.plan?.studentLimit || 500,
+        teacherLimit: subscription.plan?.teacherLimit || 50,
+        features: subscription.plan?.features || [],
       } : null,
     };
 
     TenantController.setupStatusCache.set(cacheKey, {
       data: statusResult,
-      expiresAt: Date.now() + 20000 // 20s in-memory TTL
+      expiresAt: Date.now() + 60000 // 60s in-memory TTL
     });
 
     return statusResult;
@@ -299,56 +334,59 @@ export class TenantController {
   async getDashboardStats(@Req() req: any) {
     const tenantId = req.user.tenantId;
 
-    const studentsCount = await this.prisma.studentProfile.count({
-      where: { user: { tenantId } },
-    });
+    const [
+      studentsCount,
+      teachersCount,
+      classesCount,
+      booksCount,
+      complaintsCount,
+      revenueAgg,
+      expenseAgg,
+      attendanceAgg,
+      academicAgg
+    ] = await Promise.all([
+      this.prisma.studentProfile.count({
+        where: { user: { tenantId } },
+      }),
+      this.prisma.staffProfile.count({
+        where: { user: { tenantId } },
+      }),
+      this.prisma.class.count({
+        where: { tenantId },
+      }),
+      this.prisma.book.count({
+        where: { tenantId },
+      }),
+      this.prisma.behaviorCase.count({
+        where: { tenantId },
+      }),
+      this.prisma.invoice.aggregate({
+        where: { tenantId },
+        _sum: { paidAmount: true },
+      }),
+      this.prisma.expense.aggregate({
+        where: { tenantId },
+        _sum: { amount: true },
+      }),
+      this.prisma.attendanceSession.aggregate({
+        where: { tenantId },
+        _sum: { presentCount: true, totalStudents: true },
+      }),
+      this.prisma.examMark.aggregate({
+        where: { tenantId },
+        _avg: { marksObtained: true },
+      }),
+    ]);
 
-    const teachersCount = await this.prisma.staffProfile.count({
-      where: { user: { tenantId } },
-    });
+    const totalRevenue = Number(revenueAgg._sum.paidAmount || 0);
+    const totalExpenses = Number(expenseAgg._sum.amount || 0);
 
-    const classesCount = await this.prisma.class.count({
-      where: { tenantId },
-    });
-
-    const booksCount = await this.prisma.book.count({
-      where: { tenantId },
-    });
-
-    const complaintsCount = await this.prisma.behaviorCase.count({
-      where: { tenantId },
-    });
-
-    // Invoices / revenue
-    const invoices = await this.prisma.invoice.findMany({
-      where: { tenantId },
-      select: { paidAmount: true },
-    });
-    const totalRevenue = invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
-
-    // Expenses
-    const expenses = await this.prisma.expense.findMany({
-      where: { tenantId },
-      select: { amount: true },
-    });
-    const totalExpenses = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
-
-    // Attendance rate
-    const sessions = await this.prisma.attendanceSession.findMany({
-      where: { tenantId },
-      select: { presentCount: true, totalStudents: true },
-    });
-    const totalPresent = sessions.reduce((sum, s) => sum + s.presentCount, 0);
-    const totalRoster = sessions.reduce((sum, s) => sum + s.totalStudents, 0);
+    const totalPresent = attendanceAgg._sum.presentCount || 0;
+    const totalRoster = attendanceAgg._sum.totalStudents || 0;
     const attendanceRate = totalRoster > 0 ? Math.round((totalPresent / totalRoster) * 1000) / 10 : 0;
 
-    // Academic scores
-    const marks = await this.prisma.examMark.findMany({
-      where: { tenantId },
-      select: { marksObtained: true },
-    });
-    const academicAverage = marks.length > 0
-      ? Math.round((marks.reduce((sum, m) => sum + Number(m.marksObtained), 0) / (marks.length)) * 10) / 10
+    const academicAverage = academicAgg._avg.marksObtained
+      ? Math.round(Number(academicAgg._avg.marksObtained) * 10) / 10
       : 0;
 
     return {
@@ -371,13 +409,13 @@ export class TenantController {
     return this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
-        bankName: body.bankName || null,
-        bankBranch: body.bankBranch || null,
-        bankIFSC: body.bankIFSC || null,
-        bankAccountNo: body.bankAccountNo || null,
-        googlePayId: body.googlePayId || null,
-        phonePeId: body.phonePeId || null,
-        upiQrId: body.upiQrId || null,
+        bankName: body.bankName ? String(body.bankName).trim() : null,
+        bankBranch: body.bankBranch ? String(body.bankBranch).trim() : null,
+        bankIFSC: body.bankIFSC ? String(body.bankIFSC).trim().toUpperCase() : null,
+        bankAccountNo: body.bankAccountNo ? String(body.bankAccountNo).trim() : null,
+        googlePayId: body.googlePayId ? String(body.googlePayId).trim() : null,
+        phonePeId: body.phonePeId ? String(body.phonePeId).trim() : null,
+        upiQrId: body.upiQrId ? String(body.upiQrId).trim() : null,
       },
     });
   }

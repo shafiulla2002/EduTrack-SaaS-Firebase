@@ -25,6 +25,20 @@ export interface AdminScope {
  */
 @Injectable()
 export class RoleFilterHelper {
+  private static scopeCache = new Map<string, { scope: TeacherScope; expiresAt: number }>();
+
+  public static clearCache(tenantId?: string, userId?: string) {
+    if (!tenantId && !userId) {
+      RoleFilterHelper.scopeCache.clear();
+      return;
+    }
+    for (const key of RoleFilterHelper.scopeCache.keys()) {
+      if ((tenantId && key.startsWith(`${tenantId}:`)) || (userId && key.endsWith(`:${userId}`))) {
+        RoleFilterHelper.scopeCache.delete(key);
+      }
+    }
+  }
+
   constructor(private readonly prisma: PrismaService) {}
 
   // ─── Public scope builders ────────────────────────────────────────────────
@@ -37,6 +51,13 @@ export class RoleFilterHelper {
    * (e.g. user exists but was not onboarded as a teacher).
    */
   async buildTeacherScope(userId: string, tenantId: string): Promise<TeacherScope> {
+    const cacheKey = `${tenantId}:${userId}`;
+    const nowTime = Date.now();
+    const cached = RoleFilterHelper.scopeCache.get(cacheKey);
+    if (cached && cached.expiresAt > nowTime) {
+      return cached.scope;
+    }
+
     const staff = await this.prisma.staffProfile.findFirst({
       where: { userId, tenantId, user: { isActive: true } },
     });
@@ -46,7 +67,7 @@ export class RoleFilterHelper {
       );
     }
 
-    const [assignments, periods] = await Promise.all([
+    const [assignments, periods, advisorSections] = await Promise.all([
       this.prisma.teacherAssignment.findMany({
         where: { tenantId, teacherId: staff.id },
         select: { classSectionId: true, subjectId: true },
@@ -55,18 +76,30 @@ export class RoleFilterHelper {
         where: { tenantId, teacherId: staff.id },
         select: { classSectionId: true, subjectId: true },
       }),
+      this.prisma.classSection.findMany({
+        where: { tenantId, teacherId: staff.id },
+        select: { id: true },
+      }),
     ]);
 
     const assignedClassSectionIds = [...new Set([
       ...assignments.map(a => a.classSectionId),
       ...periods.map(p => p.classSectionId),
+      ...advisorSections.map(c => c.id),
     ])];
     const assignedSubjectIds = [...new Set([
       ...assignments.map(a => a.subjectId),
       ...periods.map(p => p.subjectId),
     ])];
 
-    return { staff, assignedClassSectionIds, assignedSubjectIds };
+    const scope: TeacherScope = { staff, assignedClassSectionIds, assignedSubjectIds };
+
+    RoleFilterHelper.scopeCache.set(cacheKey, {
+      scope,
+      expiresAt: nowTime + 30 * 1000,
+    });
+
+    return scope;
   }
 
   /**

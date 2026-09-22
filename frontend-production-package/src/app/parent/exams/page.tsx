@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParent } from '../ParentContext';
 import { useTenant } from '../../providers/TenantContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { PDFService } from '@/lib/pdf';
 import { PDFLayout } from '@/components/PDFLayout';
 import { formatDateDDMMYYYY } from '@/lib/date';
@@ -332,9 +332,13 @@ export default function ExamsPage() {
 
   const fetchExams = useCallback(async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/exams`);
-      setExamData(res.data);
+      const res = await fastGet(`/parent-portal/children/${childId}/exams`, {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setExamData(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setExamData(res.data);
     } catch (err) {
       console.error('Failed to fetch exams data:', err);
     } finally {
@@ -343,20 +347,14 @@ export default function ExamsPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedChild) fetchExams(selectedChild.id);
-  }, [selectedChild, fetchExams]);
-
-  useEffect(() => {
-    const handleChildChange = (e: any) => fetchExams(e.detail);
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, [fetchExams]);
+    if (selectedChild?.id) fetchExams(selectedChild.id);
+  }, [selectedChild?.id, fetchExams]);
 
   if (!selectedChild) {
     return <div className="text-slate-500 text-sm text-center py-12">Please select a child to view examinations.</div>;
   }
 
-  if (loading) {
+  if (loading && !examData) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin" />
@@ -428,7 +426,7 @@ export default function ExamsPage() {
                     key={card.examName}
                     card={card}
                     child={selectedChild}
-                    schoolName={schoolName || 'Cambridge International School'}
+                    schoolName={schoolName || 'CS EduTrack'}
                     logoUrl={logoUrl || null}
                     defaultOpen={idx === 0}
                   />

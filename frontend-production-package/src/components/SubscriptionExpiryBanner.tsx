@@ -28,7 +28,7 @@ export function SubscriptionExpiryBanner() {
         <div className="flex items-center gap-2.5">
           <AlertTriangle className="w-4 h-4 shrink-0 text-rose-200 animate-pulse" />
           <span>
-            <strong>Subscription Expired — Read-Only Mode:</strong> Your school's EduTrack subscription has expired. The application is currently in read-only mode. Please renew your subscription to restore full access.
+            <strong>Subscription Expired — Read-Only Mode:</strong> Your school's CS EduTrack subscription has expired. The application is currently in read-only mode. Please renew your subscription to restore full access.
           </span>
         </div>
         <Link
@@ -46,7 +46,7 @@ export function SubscriptionExpiryBanner() {
       <div className="flex items-center gap-2.5">
         <Clock className="w-4 h-4 shrink-0 text-slate-950" />
         <span>
-          <strong>Subscription Expiry Warning:</strong> Your EduTrack subscription will expire in <strong>{daysRemaining} {daysRemaining === 1 ? 'day' : 'days'}</strong> ({new Date(expiryDate).toLocaleDateString('en-IN')}). Please renew your subscription to continue using all features.
+          <strong>Subscription Expiry Warning:</strong> Your CS EduTrack subscription will expire in <strong>{daysRemaining} {daysRemaining === 1 ? 'day' : 'days'}</strong> ({new Date(expiryDate).toLocaleDateString('en-IN')}). Please renew your subscription to continue using all features.
         </span>
       </div>
       <Link

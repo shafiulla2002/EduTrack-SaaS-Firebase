@@ -624,8 +624,8 @@ export default function ExamsAndMarksPage() {
         {/* Table skeleton */}
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm opacity-60 animate-pulse">
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-             <div className="h-4 bg-slate-200 rounded w-48"></div>
-             <div className="h-3 bg-slate-200 rounded w-28"></div>
+            <div className="h-4 bg-slate-200 rounded w-48"></div>
+            <div className="h-3 bg-slate-200 rounded w-28"></div>
           </div>
           <div className="p-6 space-y-4">
             {[...Array(5)].map((_, i) => (

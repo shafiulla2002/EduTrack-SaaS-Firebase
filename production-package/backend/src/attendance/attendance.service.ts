@@ -101,31 +101,25 @@ export class AttendanceService {
     }));
   }
 
-  // Salesforce parity: get teachers associated with tenant (strictly teaching faculty only)
+  // Fetch teaching staff for attendance entry (strictly teaching faculty only)
   async getTeachers() {
     const tenantId = this.getTenantId();
+    // Fetch active staff profiles for tenant, excluding NON_TEACHING category
     const staff = await this.prisma.staffProfile.findMany({
       where: {
         tenantId,
         user: {
-          role: { in: [Role.TEACHER, Role.SCHOOL_ADMIN, Role.STAFF] },
           isActive: true,
+          role: { in: [Role.TEACHER, Role.SCHOOL_ADMIN, Role.STAFF] },
         },
         NOT: [{ staffCategory: 'NON_TEACHING' }],
       },
       include: {
         user: {
-          select: {
-            id: true,
-            name: true,
-          },
+          select: { id: true, name: true, role: true },
         },
       },
-      orderBy: {
-        user: {
-          name: 'asc',
-        },
-      },
+      orderBy: { user: { name: 'asc' } },
       take: 1000,
     });
 
@@ -135,22 +129,19 @@ export class AttendanceService {
       'helper', 'sweeper', 'non-teaching', 'non teaching', 'transport'
     ];
 
-    const teachingFaculty = staff.filter(s => {
+    const teachingStaff = staff.filter(s => {
+      if (s.staffCategory === 'NON_TEACHING') return false;
       const desig = (s.designation || '').toLowerCase();
       const role = (s.staffRole || '').toLowerCase();
-      const cat = (s.staffCategory || '').toUpperCase();
-      const sub = (s.subjectsTaught?.[0] || '').toLowerCase();
-
-      if (cat === 'NON_TEACHING') return false;
-      if (nonTeachingKeywords.some(kw => desig.includes(kw) || role.includes(kw) || sub.includes(kw))) {
+      if (nonTeachingKeywords.some(kw => desig.includes(kw) || role.includes(kw))) {
         return false;
       }
       return true;
     });
 
-    return teachingFaculty.map(s => ({
+    return teachingStaff.map(s => ({
       id: s.id,
-      name: s.user.name,
+      name: s.user?.name || 'Faculty',
       subject: s.subjectsTaught?.[0] || s.designation || 'Faculty',
     }));
   }
@@ -210,15 +201,21 @@ export class AttendanceService {
     const tenantId = this.getTenantId();
     const sessions = await this.prisma.attendanceSession.findMany({
       where: { tenantId },
-      include: {
+      select: {
+        id: true,
+        date: true,
+        presentCount: true,
+        absentCount: true,
+        totalStudents: true,
+        takenById: true,
         classSection: {
-          include: {
-            class: true,
-            section: true,
+          select: {
+            class: { select: { name: true } },
+            section: { select: { name: true } },
           },
         },
         takenBy: {
-          include: {
+          select: {
             user: {
               select: { name: true },
             },
@@ -252,19 +249,20 @@ export class AttendanceService {
     const tenantId = this.getTenantId();
     if (!classVal || !sectionVal) return [];
 
-    const cls = await this.prisma.class.findFirst({
-      where: {
-        tenantId,
-        name: { equals: classVal.trim(), mode: 'insensitive' },
-      },
-    });
-
-    const sec = await this.prisma.section.findFirst({
-      where: {
-        tenantId,
-        name: { equals: sectionVal.trim(), mode: 'insensitive' },
-      },
-    });
+    const [cls, sec] = await Promise.all([
+      this.prisma.class.findFirst({
+        where: {
+          tenantId,
+          name: { equals: classVal.trim(), mode: 'insensitive' },
+        },
+      }),
+      this.prisma.section.findFirst({
+        where: {
+          tenantId,
+          name: { equals: sectionVal.trim(), mode: 'insensitive' },
+        },
+      }),
+    ]);
 
     if (!cls || !sec) return [];
 
@@ -317,19 +315,20 @@ export class AttendanceService {
       return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
     }
 
-    const cls = await this.prisma.class.findFirst({
-      where: {
-        tenantId,
-        name: { equals: classVal.trim(), mode: 'insensitive' },
-      },
-    });
-
-    const sec = await this.prisma.section.findFirst({
-      where: {
-        tenantId,
-        name: { equals: sectionVal.trim(), mode: 'insensitive' },
-      },
-    });
+    const [cls, sec] = await Promise.all([
+      this.prisma.class.findFirst({
+        where: {
+          tenantId,
+          name: { equals: classVal.trim(), mode: 'insensitive' },
+        },
+      }),
+      this.prisma.section.findFirst({
+        where: {
+          tenantId,
+          name: { equals: sectionVal.trim(), mode: 'insensitive' },
+        },
+      }),
+    ]);
 
     if (!cls || !sec) {
       return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
@@ -381,9 +380,31 @@ export class AttendanceService {
       return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
     }
 
-    const absentIds = session.attendances
-      .filter(a => a.status === AttendanceStatus.ABSENT)
-      .map(a => a.studentId);
+    const dateObj = new Date(searchDate);
+    const yyyy = dateObj.getUTCFullYear();
+    const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+    const monthStr = `${yyyy}-${mm}`;
+    const dayIdx = dateObj.getUTCDate() - 1;
+
+    const monthlyRecords = await this.prisma.monthlyAttendance.findMany({
+      where: {
+        tenantId,
+        classSectionId: classSection.id,
+        month: monthStr,
+      },
+      select: { studentId: true, attendance: true },
+    });
+
+    let absentIds: string[] = [];
+    if (monthlyRecords.length > 0) {
+      absentIds = monthlyRecords
+        .filter(m => m.attendance && m.attendance[dayIdx] === 'A')
+        .map(m => m.studentId);
+    } else if (session.attendances && session.attendances.length > 0) {
+      absentIds = session.attendances
+        .filter(a => a.status === AttendanceStatus.ABSENT)
+        .map(a => a.studentId);
+    }
 
     return {
       sessionExists: true,
@@ -608,8 +629,67 @@ export class AttendanceService {
         });
       }
 
-      // 5. Implicit present storage management:
-      // Delete existing records that are NOT in the new absent list (they are now present)
+      // 5. MonthlyAttendance PAPA model synchronization
+      const dateObj = new Date(date);
+      const yyyy = dateObj.getUTCFullYear();
+      const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+      const monthStr = `${yyyy}-${mm}`;
+      const dayIdx = dateObj.getUTCDate() - 1; // 0 to 30
+
+      const academicYearId = cls.academicYearId;
+      const enrolledStudents = await tx.studentProfile.findMany({
+        where: { tenantId, classSectionId: classSection.id, user: { isActive: true } },
+        select: { id: true },
+      });
+
+      const absentSet = new Set(absentStudentIds);
+
+      for (const s of enrolledStudents) {
+        const char = absentSet.has(s.id) ? 'A' : 'P';
+        
+        const existingMonthly = await tx.monthlyAttendance.findUnique({
+          where: {
+            tenantId_academicYearId_studentId_month: {
+              tenantId,
+              academicYearId,
+              studentId: s.id,
+              month: monthStr,
+            },
+          },
+        });
+
+        let attArray = new Array(31).fill('-');
+        if (existingMonthly && existingMonthly.attendance) {
+          attArray = existingMonthly.attendance.split('');
+        }
+        attArray[dayIdx] = char;
+        const newAttStr = attArray.join('');
+
+        await tx.monthlyAttendance.upsert({
+          where: {
+            tenantId_academicYearId_studentId_month: {
+              tenantId,
+              academicYearId,
+              studentId: s.id,
+              month: monthStr,
+            },
+          },
+          create: {
+            tenantId,
+            academicYearId,
+            studentId: s.id,
+            classSectionId: classSection.id,
+            month: monthStr,
+            attendance: newAttStr,
+          },
+          update: {
+            attendance: newAttStr,
+            classSectionId: classSection.id,
+          },
+        });
+      }
+
+      // 6. Legacy attendance table synchronization (for fallback safety)
       await tx.attendance.deleteMany({
         where: {
           attendanceSessionId: session.id,
@@ -619,7 +699,6 @@ export class AttendanceService {
         },
       });
 
-      // Fetch already stored absent records to avoid duplicates
       const storedAbsents = await tx.attendance.findMany({
         where: {
           attendanceSessionId: session.id,
@@ -629,7 +708,6 @@ export class AttendanceService {
       });
       const storedAbsentIds = new Set(storedAbsents.map(a => a.studentId));
 
-      // Insert new records for newly absent students
       const newAbsents = absentStudentIds.filter(id => !storedAbsentIds.has(id));
       if (newAbsents.length > 0) {
         const attendanceData = newAbsents.map(studentId => ({
@@ -644,23 +722,32 @@ export class AttendanceService {
       }
 
       return { classVal, sectionVal, dateStr: data.dateStr || data.date };
-    }, { timeout: 25000 });
+    }, { timeout: 45000 });
 
     // Run outside the database write lock transaction to avoid transaction deadlocks
     return this.getSessionData(result.classVal, result.sectionVal, result.dateStr);
   }
 
-  // Salesforce parity: get bundled attendance data for reports
-  async getAttendanceData(startDateStr?: string, endDateStr?: string) {
+  // Salesforce parity: get bundled attendance data for reports with database-side filtering
+  async getAttendanceData(
+    startDateStr?: string,
+    endDateStr?: string,
+    className?: string,
+    sectionName?: string,
+  ) {
     const tenantId = this.getTenantId();
     const now = new Date();
-    const defaultStart = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate()));
+    // Default to last 90 days if not explicitly specified to optimize read cost and speed
+    const defaultStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1));
     const defaultEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 30));
 
     const startDate = startDateStr ? parseAttendanceDate(startDateStr) : defaultStart;
     const endDate = endDateStr ? parseAttendanceDate(endDateStr) : defaultEnd;
 
-    // Parallel high-performance raw SQL queries with tenant isolation
+    const classFilter = className && className !== 'all' ? className : null;
+    const sectionFilter = sectionName && sectionName !== 'all' ? sectionName : null;
+
+    // Parallel high-performance raw SQL queries with tenant isolation & optional class/section filter
     const [rawStudents, rawSessions, rawAbsents] = await Promise.all([
       this.prisma.$queryRaw<Array<{ id: string; rollNo: string | null; name: string; className: string | null; section: string | null }>>`
         SELECT 
@@ -675,8 +762,10 @@ export class AttendanceService {
         LEFT JOIN "Class" c ON cs."classId" = c.id
         LEFT JOIN "Section" s ON cs."sectionId" = s.id
         WHERE sp."tenantId" = ${tenantId}
+          AND (${classFilter}::text IS NULL OR c.name = ${classFilter})
+          AND (${sectionFilter}::text IS NULL OR s.name = ${sectionFilter})
         ORDER BY u.name ASC
-      `,
+      `.catch(() => []),
       this.prisma.$queryRaw<Array<{ id: string; date: Date; totalStudents: number; presentCount: number; absentCount: number; classId: string | null; className: string | null; section: string | null }>>`
         SELECT
           ses.id,
@@ -694,8 +783,10 @@ export class AttendanceService {
         WHERE ses."tenantId" = ${tenantId}
           AND ses.date >= ${startDate}
           AND ses.date <= ${endDate}
+          AND (${classFilter}::text IS NULL OR c.name = ${classFilter})
+          AND (${sectionFilter}::text IS NULL OR s.name = ${sectionFilter})
         ORDER BY ses.date DESC
-      `,
+      `.catch(() => []),
       this.prisma.$queryRaw<Array<{ id: string; studentId: string; attendanceDate: Date; className: string | null; section: string | null }>>`
         SELECT
           a.id,
@@ -712,7 +803,9 @@ export class AttendanceService {
           AND a.status = 'ABSENT'
           AND ses.date >= ${startDate}
           AND ses.date <= ${endDate}
-      `
+          AND (${classFilter}::text IS NULL OR c.name = ${classFilter})
+          AND (${sectionFilter}::text IS NULL OR s.name = ${sectionFilter})
+      `.catch(() => [])
     ]);
 
     const students = rawStudents.map(s => ({

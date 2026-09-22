@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   AlertCircle, CheckCircle, Search, User, Filter, Plus, 
   ShieldAlert, Award, Calendar, ChevronRight, BookOpen, Clock, 
   Activity, ArrowLeft, RefreshCw, Eye, X, Phone, GraduationCap,
   Edit, Trash2
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet, getCachedData, setCachedData } from '@/lib/api';
 import Link from 'next/link';
 import { useTenant } from '@/app/providers/TenantContext';
 
@@ -95,10 +96,15 @@ interface ComplaintBoxProps {
 
 export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) {
   const { currentUser } = useTenant();
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => setIsMounted(true), []);
   const [activeTab, setActiveTab] = useState<'submit' | 'pending' | 'history' | 'parent-complaints'>('parent-complaints');
 
   // Parent complaints states
-  const [parentComplaints, setParentComplaints] = useState<any[]>([]);
+  const [parentComplaints, setParentComplaints] = useState<any[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<any[]>('/complaint-box/parent-complaints') || [];
+  });
   const [parentFilterStatus, setParentFilterStatus] = useState<string>('All');
   const [selectedParentComplaint, setSelectedParentComplaint] = useState<any | null>(null);
   const [parentReplyText, setParentReplyText] = useState<string>('');
@@ -108,10 +114,19 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const fetchParentComplaints = async () => {
     try {
-      const res = await api.get('/complaint-box/parent-complaints', {
+      const res = await fastGet('/complaint-box/parent-complaints', {
         params: parentFilterStatus !== 'All' ? { status: parentFilterStatus } : {}
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (fresh) {
+            setParentComplaints(fresh.data || fresh);
+          }
+        }
       });
-      setParentComplaints(res.data || []);
+      if (res.data) {
+        setParentComplaints(res.data);
+      }
     } catch (err) {
       console.error('Failed to fetch parent complaints:', err);
     }
@@ -124,9 +139,18 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   }, [activeTab, parentFilterStatus]);
 
   // Backend configuration states
-  const [classOptions, setClassOptions] = useState<ClassSectionOption[]>([]);
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
-  const [teachers, setTeachers] = useState<TeacherOption[]>([]);
+  const [classOptions, setClassOptions] = useState<ClassSectionOption[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<ClassSectionOption[]>('/complaint-box/student-classes') || [];
+  });
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<AcademicYear[]>('/complaint-box/academic-years') || [];
+  });
+  const [teachers, setTeachers] = useState<TeacherOption[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<TeacherOption[]>('/complaint-box/teachers') || [];
+  });
   const [currentTeacher, setCurrentTeacher] = useState<TeacherOption | null>(null);
 
   // Class & Student listing states for log flow
@@ -143,7 +167,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   const [submittingTeacherId, setSubmittingTeacherId] = useState<string>('');
 
   // Pending ledger and history lists
-  const [pendingCases, setPendingCases] = useState<BehaviorCase[]>([]);
+  const [pendingCases, setPendingCases] = useState<BehaviorCase[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return getCachedData<BehaviorCase[]>('/complaint-box/pending-cases') || [];
+  });
   const [filterAcademicYear, setFilterAcademicYear] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -157,7 +184,11 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   // UI state
   const [selectedCase, setSelectedCase] = useState<BehaviorCase | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const hasCached = !!getCachedData('/complaint-box/parent-complaints') || !!getCachedData('/complaint-box/student-classes');
+    return !hasCached;
+  });
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [alertMessage, setAlertMessage] = useState<{ text: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
 
@@ -188,17 +219,37 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const fetchInitialData = async () => {
     try {
-      setIsLoading(true);
-      const [classesRes, yearsRes, teachersRes, currentTeacherRes] = await Promise.all([
-        api.get('/complaint-box/student-classes'),
-        api.get('/complaint-box/academic-years'),
-        api.get('/complaint-box/teachers'),
-        api.get('/complaint-box/current-teacher').catch(() => null)
+      const hasCached = !!getCachedData('/complaint-box/student-classes');
+      if (!hasCached) {
+        setIsLoading(true);
+      }
+
+      const [classesRes, yearsRes, teachersRes, currentTeacherRes, pendingRes] = await Promise.all([
+        fastGet('/complaint-box/student-classes', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => { if (fresh) setClassOptions(fresh.data || fresh); }
+        }),
+        fastGet('/complaint-box/academic-years', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => { if (fresh) setAcademicYears(fresh.data || fresh); }
+        }),
+        fastGet('/complaint-box/teachers', undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => { if (fresh) setTeachers(fresh.data || fresh); }
+        }),
+        fastGet('/complaint-box/current-teacher', undefined, { ttlMs: 60000 }).catch(() => null),
+        fastGet('/complaint-box/pending-cases', {
+          params: filterAcademicYear !== 'All' ? { academicYear: filterAcademicYear } : {}
+        }, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => { if (fresh) setPendingCases(fresh.data || fresh); }
+        }).catch(() => null),
       ]);
 
-      setClassOptions(classesRes.data || []);
-      setAcademicYears(yearsRes.data || []);
-      setTeachers(teachersRes.data || []);
+      if (classesRes.data) setClassOptions(classesRes.data);
+      if (yearsRes.data) setAcademicYears(yearsRes.data);
+      if (teachersRes.data) setTeachers(teachersRes.data);
+      if (pendingRes?.data) setPendingCases(pendingRes.data);
 
       if (currentTeacherRes && currentTeacherRes.data) {
         setCurrentTeacher(currentTeacherRes.data);
@@ -209,8 +260,6 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
         const activeYear = yearsRes.data.find((y: any) => y.isActive) || yearsRes.data[0];
         setSelectedAcademicYear(activeYear.name);
       }
-
-      await refreshPendingCases();
     } catch (err) {
       console.error('Failed to load initial data:', err);
       showAlert('Failed to connect to school data. Please try again.', 'error');
@@ -221,10 +270,15 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const refreshPendingCases = async () => {
     try {
-      const res = await api.get('/complaint-box/pending-cases', {
+      const res = await fastGet('/complaint-box/pending-cases', {
         params: filterAcademicYear !== 'All' ? { academicYear: filterAcademicYear } : {}
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setPendingCases(fresh.data || fresh); }
       });
-      setPendingCases(res.data || []);
+      if (res.data) {
+        setPendingCases(res.data);
+      }
     } catch (err) {
       console.error('Failed to refresh pending cases:', err);
     }
@@ -243,8 +297,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const loadStudentsByClass = async (classSectionId: string) => {
     try {
-      setIsLoading(true);
-      const res = await api.get(`/complaint-box/students-by-class/${classSectionId}`);
+      const res = await fastGet(`/complaint-box/students-by-class/${classSectionId}`, undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setStudents(fresh.data || fresh); }
+      });
       setStudents(res.data || []);
       setSearchKey('');
       setSelectedStudent(null);
@@ -254,8 +310,6 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
     } catch (err) {
       console.error('Failed to load students for class:', err);
       showAlert('Error loading student roster.', 'error');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -267,14 +321,14 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
     }
     const delayDebounce = setTimeout(async () => {
       try {
-        const res = await api.get('/complaint-box/search-students', {
+        const res = await fastGet('/complaint-box/search-students', {
           params: { searchTerm: historyStudentInput }
-        });
+        }, { ttlMs: 15000 });
         setHistorySearchResults(res.data || []);
       } catch (err) {
         console.error('Student search failed:', err);
       }
-    }, 300);
+    }, 250);
     return () => clearTimeout(delayDebounce);
   }, [historyStudentInput]);
 
@@ -291,10 +345,10 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   const loadStudentHistoryAndStats = async (studentId: string) => {
     try {
       const [casesRes, statsRes] = await Promise.all([
-        api.get(`/complaint-box/student-cases/${studentId}`, {
+        fastGet(`/complaint-box/student-cases/${studentId}`, {
           params: historyAcademicYearFilter !== 'All' ? { academicYear: historyAcademicYearFilter } : {}
-        }),
-        api.get(`/complaint-box/student-stats/${studentId}`)
+        }, { ttlMs: 30000 }),
+        fastGet(`/complaint-box/student-stats/${studentId}`, undefined, { ttlMs: 30000 })
       ]);
       setStudentCases(casesRes.data || []);
       setStudentStats(statsRes.data || null);
@@ -590,8 +644,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
         {/* Card Body Container */}
         <div className="p-4 sm:p-8 bg-slate-900">
 
-          {/* Loading Spinner overlay */}
-          {isLoading && !isSubmitting && (
+          {/* Loading Spinner overlay only when no cached data exists */}
+          {isLoading && !isSubmitting && parentComplaints.length === 0 && classOptions.length === 0 && (
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
               <p className="text-xs text-slate-500 font-semibold mt-3">Loading records...</p>
@@ -599,21 +653,23 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
           )}
 
           {/* TAB 0: PARENT COMPLAINTS & TICKETS MANAGEMENT */}
-          {!isLoading && activeTab === 'parent-complaints' && (
-            <div className="space-y-6">
+          {(!isLoading || parentComplaints.length > 0 || classOptions.length > 0) && activeTab === 'parent-complaints' && (
+            <div className="space-y-6 pb-24">
               {/* Filter Bar */}
               <div className="bg-slate-800 p-4 sm:p-6 rounded-2xl border border-slate-700 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between shadow-xs">
                 <div className="flex items-center gap-2 text-slate-300">
-                  <Filter className="w-4 h-4 text-blue-400" />
+                  <Filter className="w-4 h-4 text-blue-400 shrink-0" />
                   <span className="font-bold text-xs uppercase tracking-wider text-slate-300">Parent Grievance Tickets</span>
                 </div>
 
-                <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto justify-start sm:justify-end">
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 items-center w-full sm:w-auto">
                   {(['All', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const).map(st => (
                     <button
                       key={st}
                       onClick={() => setParentFilterStatus(st)}
-                      className={`flex-1 sm:flex-none text-center px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      className={`text-center px-3 py-2 sm:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        st === 'CLOSED' ? 'col-span-2 sm:col-auto' : ''
+                      } ${
                         parentFilterStatus === st
                           ? 'bg-blue-600 text-white shadow-xs border-blue-600'
                           : 'bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600'
@@ -625,7 +681,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
               </div>
 
-              {/* Complaints Table */}
+              {/* Complaints Table / Cards */}
               {parentComplaints.length === 0 ? (
                 <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-16 text-center text-slate-400">
                   <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -636,128 +692,129 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 <>
                   {/* Desktop Table View */}
                   <div className="hidden md:block overflow-x-auto border border-slate-700 rounded-2xl shadow-sm bg-slate-900">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-700 bg-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                        <th className="px-6 py-4">Ticket Ref</th>
-                        <th className="px-6 py-4">Submitted By</th>
-                        <th className="px-6 py-4">Category &amp; Title</th>
-                        <th className="px-6 py-4">Status</th>
-                        <th className="px-6 py-4">Last Updated</th>
-                        <th className="px-6 py-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-700/50 bg-slate-900">
-                      {parentComplaints.map(c => {
-                        const st = (c.status || 'OPEN').toUpperCase();
-                        return (
-                          <tr key={c.id} className="bg-slate-900 hover:bg-slate-800 text-[13px] text-slate-300 transition-all">
-                            <td className="px-6 py-4 font-mono text-xs font-bold text-blue-400">
-                              #{c.id.substring(0, 8).toUpperCase()}
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="font-bold text-slate-100">{c.submittedBy?.name || 'Parent'}</div>
-                              <div className="text-[11px] text-slate-400 mt-0.5 font-medium">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-700 bg-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          <th className="px-6 py-4">Ticket Ref</th>
+                          <th className="px-6 py-4">Submitted By</th>
+                          <th className="px-6 py-4">Category &amp; Title</th>
+                          <th className="px-6 py-4">Status</th>
+                          <th className="px-6 py-4">Last Updated</th>
+                          <th className="px-6 py-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/50 bg-slate-900">
+                        {parentComplaints.map(c => {
+                          const st = (c.status || 'OPEN').toUpperCase();
+                          return (
+                            <tr key={c.id} className="bg-slate-900 hover:bg-slate-800 text-[13px] text-slate-300 transition-all">
+                              <td className="px-6 py-4 font-mono text-xs font-bold text-blue-400">
+                                #{c.id.substring(0, 8).toUpperCase()}
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="font-bold text-slate-100">{c.submittedBy?.name || 'Parent'}</div>
+                                <div className="text-[11px] text-slate-400 mt-0.5 font-medium">
+                                  {c.submittedBy?.email || c.submittedBy?.phone || ''}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 max-w-xs">
+                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-900/50 text-blue-300 border border-blue-700/50 uppercase tracking-wider mb-1">
+                                  {c.category}
+                                </span>
+                                <p className="font-bold text-slate-200 text-xs truncate" title={c.title}>{c.title}</p>
+                                <p className="text-slate-400 text-[11px] truncate mt-0.5" title={c.description}>{c.description}</p>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className={`inline-block text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider border ${
+                                  st === 'OPEN' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                  st === 'IN_PROGRESS' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                  st === 'RESOLVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                  'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}>
+                                  {c.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-xs font-mono text-slate-500">
+                                {new Date(c.updatedAt || c.createdAt).toLocaleDateString()}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                <button
+                                  onClick={() => {
+                                    setSelectedParentComplaint(c);
+                                    setParentNewStatus(c.status || 'OPEN');
+                                    setParentReplyText(c.adminReply || '');
+                                    setParentResolutionNotes(c.resolutionNotes || '');
+                                  }}
+                                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-all"
+                                >
+                                  View &amp; Reply
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile Card View with Dedicated Scroll Container */}
+                  <div className="block md:hidden max-h-[600px] overflow-y-auto space-y-4 pr-1 scrollbar-thin">
+                    {parentComplaints.map(c => {
+                      const st = (c.status || 'OPEN').toUpperCase();
+                      return (
+                        <div key={c.id} className="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-sm space-y-3">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              <span className="font-mono text-xs font-bold text-blue-400 block">
+                                #{c.id.substring(0, 8).toUpperCase()}
+                              </span>
+                              <h4 className="font-bold text-slate-100 text-sm mt-0.5 truncate">{c.submittedBy?.name || 'Parent'}</h4>
+                              <p className="text-[11px] text-slate-400 font-medium truncate">
                                 {c.submittedBy?.email || c.submittedBy?.phone || ''}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 max-w-xs">
-                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-blue-900/50 text-blue-300 border border-blue-700/50 uppercase tracking-wider mb-1">
+                              </p>
+                            </div>
+                            <span className={`inline-block text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider border shrink-0 ${
+                              st === 'OPEN' ? 'bg-blue-900/50 text-blue-300 border-blue-700/50' :
+                              st === 'IN_PROGRESS' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
+                              st === 'RESOLVED' ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' :
+                              'bg-slate-700 text-slate-400 border-slate-600'
+                            }`}>
+                              {c.status}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 bg-slate-700/50 p-3 rounded-xl border border-slate-600 text-xs">
+                            <div>
+                              <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold bg-blue-900/50 text-blue-300 border border-blue-700/50 uppercase tracking-wider mb-1">
                                 {c.category}
                               </span>
-                              <p className="font-bold text-slate-200 text-xs truncate" title={c.title}>{c.title}</p>
-                              <p className="text-slate-400 text-[11px] truncate mt-0.5" title={c.description}>{c.description}</p>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`inline-block text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider border ${
-                                st === 'OPEN' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                st === 'IN_PROGRESS' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                st === 'RESOLVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                'bg-slate-100 text-slate-600 border-slate-200'
-                              }`}>
-                                {c.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-xs font-mono text-slate-500">
-                              {new Date(c.updatedAt || c.createdAt).toLocaleDateString()}
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <button
-                                onClick={() => {
-                                  setSelectedParentComplaint(c);
-                                  setParentNewStatus(c.status || 'OPEN');
-                                  setParentReplyText(c.adminReply || '');
-                                  setParentResolutionNotes(c.resolutionNotes || '');
-                                }}
-                                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-all"
-                              >
-                                View &amp; Reply
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card View */}
-                <div className="block md:hidden space-y-4">
-                  {parentComplaints.map(c => {
-                    const st = (c.status || 'OPEN').toUpperCase();
-                    return (
-                      <div key={c.id} className="bg-slate-800 border border-slate-700 rounded-2xl p-4 shadow-sm space-y-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <span className="font-mono text-xs font-bold text-blue-400">
-                              #{c.id.substring(0, 8).toUpperCase()}
-                            </span>
-                            <h4 className="font-bold text-slate-100 text-sm mt-1">{c.submittedBy?.name || 'Parent'}</h4>
-                            <p className="text-[11px] text-slate-400 font-medium">
-                              {c.submittedBy?.email || c.submittedBy?.phone || ''}
-                            </p>
+                            </div>
+                            <p className="font-bold text-slate-200 text-xs truncate" title={c.title}>{c.title}</p>
+                            <p className="text-slate-400 text-[11px] line-clamp-2" title={c.description}>{c.description}</p>
                           </div>
-                          <span className={`inline-block text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider border ${
-                            st === 'OPEN' ? 'bg-blue-900/50 text-blue-300 border-blue-700/50' :
-                            st === 'IN_PROGRESS' ? 'bg-amber-900/40 text-amber-300 border-amber-700/50' :
-                            st === 'RESOLVED' ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' :
-                            'bg-slate-700 text-slate-400 border-slate-600'
-                          }`}>
-                            {c.status}
-                          </span>
-                        </div>
 
-                        <div className="space-y-1 bg-slate-700/50 p-3 rounded-xl border border-slate-600 text-xs">
-                          <div>
-                            <span className="inline-block px-2 py-0.5 rounded text-[9px] font-bold bg-blue-900/50 text-blue-300 border border-blue-700/50 uppercase tracking-wider mb-1">
-                              {c.category}
+                          <div className="flex justify-between items-center pt-1 gap-2">
+                            <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                              Updated: {new Date(c.updatedAt || c.createdAt).toLocaleDateString()}
                             </span>
+                            <button
+                              onClick={() => {
+                                setSelectedParentComplaint(c);
+                                setParentNewStatus(c.status || 'OPEN');
+                                setParentReplyText(c.adminReply || '');
+                                setParentResolutionNotes(c.resolutionNotes || '');
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-all shrink-0"
+                            >
+                              View &amp; Reply
+                            </button>
                           </div>
-                          <p className="font-bold text-slate-200 text-xs truncate" title={c.title}>{c.title}</p>
-                          <p className="text-slate-400 text-[11px] line-clamp-2" title={c.description}>{c.description}</p>
                         </div>
-
-                        <div className="flex justify-between items-center pt-1">
-                          <span className="text-[10px] font-mono text-slate-400">
-                            Updated: {new Date(c.updatedAt || c.createdAt).toLocaleDateString()}
-                          </span>
-                          <button
-                            onClick={() => {
-                              setSelectedParentComplaint(c);
-                              setParentNewStatus(c.status || 'OPEN');
-                              setParentReplyText(c.adminReply || '');
-                              setParentResolutionNotes(c.resolutionNotes || '');
-                            }}
-                            className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer transition-all"
-                          >
-                            View &amp; Reply
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>)}
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -1443,12 +1500,12 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
       </div>
 
       {/* CASE DETAILS & EDIT MODAL */}
-      {selectedCase && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[999] p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-2xl w-full sm:max-w-xl overflow-hidden shadow-2xl space-y-0">
+      {isMounted && selectedCase && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => { setSelectedCase(null); setIsEditing(false); }}>
+          <div className="w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
             
             {/* Modal Header */}
-            <div className={`p-6 text-white flex justify-between items-start ${
+            <div className={`p-6 text-white flex justify-between items-start shrink-0 ${
               (isEditing ? editBehaviorType : selectedCase.behaviorType) === 'Complaint' ? 'bg-rose-600' : 'bg-emerald-600'
             }`}>
               <div className="space-y-1">
@@ -1467,7 +1524,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
             {/* Modal Body */}
             {isEditing ? (
-              <form onSubmit={handleSaveEdit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto overscroll-contain">
+              <form onSubmit={handleSaveEdit} className="p-6 space-y-4 flex-1 overflow-y-auto overscroll-contain flex flex-col">
                 <div className="grid grid-cols-2 gap-4">
                   
                   {/* Edit Record Type */}
@@ -1560,7 +1617,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
 
                 {/* Edit Form Actions */}
-                <div className="flex gap-3 justify-end pt-3 border-t border-slate-150">
+                <div className="flex gap-3 justify-end pt-3 border-t border-slate-150 shrink-0 mt-auto">
                   <button
                     type="button"
                     onClick={() => setIsEditing(false)}
@@ -1578,7 +1635,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                 </div>
               </form>
             ) : (
-              <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto overscroll-contain">
+              <div className="p-6 space-y-6 flex-1 overflow-y-auto overscroll-contain">
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
                     <span className="text-slate-400 font-bold block text-[10px] uppercase tracking-wider font-sans">Student Name</span>
@@ -1683,7 +1740,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
             )}
 
             {/* Modal Footer block */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-700 flex justify-end">
+            <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end shrink-0">
               <button
                 onClick={() => { setSelectedCase(null); setIsEditing(false); }}
                 className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold cursor-pointer transition-colors"
@@ -1692,14 +1749,15 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* PARENT COMPLAINT ACTION MODAL */}
-      {selectedParentComplaint && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[999] p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full sm:max-w-2xl overflow-hidden shadow-2xl space-y-0">
-            <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+      {isMounted && selectedParentComplaint && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setSelectedParentComplaint(null)}>
+          <div className="w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Parent Grievance Ticket</span>
                 <h3 className="text-lg font-black leading-tight mt-0.5">{selectedParentComplaint.title}</h3>
@@ -1712,7 +1770,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </button>
             </div>
 
-            <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto overscroll-contain">
+            <div className="p-6 space-y-5 flex-1 overflow-y-auto overscroll-contain">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-150">
                 <div>
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Submitted By</span>
@@ -1753,6 +1811,16 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                       <option value="CLOSED">CLOSED (Archived)</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Internal Resolution Notes</label>
+                    <input
+                      type="text"
+                      placeholder="Internal remarks for staff..."
+                      value={parentResolutionNotes}
+                      onChange={(e) => setParentResolutionNotes(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-800 outline-none"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -1761,26 +1829,26 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
                   </label>
                   <textarea
                     rows={3}
+                    placeholder="Enter official reply to the parent..."
                     value={parentReplyText}
                     onChange={(e) => setParentReplyText(e.target.value)}
-                    placeholder="Enter official reply to the parent..."
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-blue-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-800 outline-none focus:border-blue-500"
                   />
                 </div>
 
-                {/* Audit Trail Timeline */}
-                {selectedParentComplaint.statusHistories && selectedParentComplaint.statusHistories.length > 0 && (
-                  <div className="border-t border-slate-700 pt-3 space-y-2">
-                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] block">Audit Trail History</span>
-                    <div className="space-y-2 max-h-36 overflow-y-auto">
-                      {selectedParentComplaint.statusHistories.map((h: any, i: number) => (
-                        <div key={i} className="flex items-start gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-150">
-                          <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
-                            <p className="font-bold text-slate-800 text-[11px]">
-                              Status: <strong className="text-blue-600">{h.currentStatus}</strong> by {h.updatedBy?.name || 'Admin'}
-                            </p>
-                            {h.remarks && <p className="text-slate-500 text-[10px] italic mt-0.5 font-medium">"{h.remarks}"</p>}
+                {selectedParentComplaint.history && selectedParentComplaint.history.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Timeline History</span>
+                    <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                      {selectedParentComplaint.history.map((h: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-1">
+                          <div className="flex justify-between items-center text-[10px] font-bold text-slate-500">
+                            <span>Status: <strong className="text-slate-800">{h.status}</strong></span>
+                            <span>{h.changedBy?.name || 'System'}</span>
+                          </div>
+                          {h.adminReply && <p className="text-blue-700 text-xs italic">&ldquo;{h.adminReply}&rdquo;</p>}
+                          {h.resolutionNotes && <p className="text-slate-500 text-[11px]">Note: {h.resolutionNotes}</p>}
+                          <div className="text-right">
                             <span className="text-[9px] text-slate-400 font-mono block mt-0.5">{new Date(h.createdAt).toLocaleString()}</span>
                           </div>
                         </div>
@@ -1826,7 +1894,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

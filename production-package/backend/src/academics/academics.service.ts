@@ -353,6 +353,7 @@ export class AcademicsService {
 
   async createSubject(name: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     return this.prisma.subject.create({
       data: {
         name,
@@ -363,16 +364,28 @@ export class AcademicsService {
 
   async getSubjects() {
     const tenantId = this.getTenantId();
-    return this.prisma.subject.findMany({
+    const cacheKey = `${tenantId}:subjects`;
+    const cached = this.academicCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const subjects = await this.prisma.subject.findMany({
       where: { tenantId },
       orderBy: { name: 'asc' },
     });
+
+    this.academicCache.set(cacheKey, { data: subjects, expiresAt: now + 60000 });
+    return subjects;
   }
 
   // ── CLASS-SUBJECTS JUNCTIONS ────────────────────────────────────────────────
 
   async addSubjectToClassSection(classSectionId: string, subjectId: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     return this.prisma.classSubject.create({
       data: {
         classSectionId,
@@ -394,6 +407,7 @@ export class AcademicsService {
 
   async removeSubjectFromClassSection(classSectionId: string, subjectId: string) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     await this.prisma.teacherAssignment.deleteMany({
       where: { classSectionId, subjectId, tenantId },
     });
@@ -411,6 +425,7 @@ export class AcademicsService {
 
   async createPeriodTiming(periodNumber: number, startTime: string, endTime: string, isActive: boolean) {
     const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
     return this.prisma.periodTiming.create({
       data: {
         periodNumber,
@@ -424,6 +439,14 @@ export class AcademicsService {
 
   async getPeriodTimings() {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:period-timings`;
+    const cached = this.academicCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     let timings = await this.prisma.periodTiming.findMany({
       where: { tenantId, isActive: true },
       orderBy: { periodNumber: 'asc' },
@@ -447,6 +470,7 @@ export class AcademicsService {
         orderBy: { periodNumber: 'asc' },
       });
     }
+    this.academicCache.set(cacheKey, { data: timings, expiresAt: now + 60000 });
     return timings;
   }
 

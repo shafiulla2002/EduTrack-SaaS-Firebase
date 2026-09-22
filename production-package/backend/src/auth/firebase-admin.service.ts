@@ -42,6 +42,24 @@ export class FirebaseAdminService implements OnModuleInit {
       }
 
       if (!serviceAccount) {
+        const potentialPaths = [
+          path.resolve(process.cwd(), 'firebase-service-account.json'),
+          path.resolve(process.cwd(), 'backend', 'firebase-service-account.json'),
+          path.resolve(__dirname, '../../firebase-service-account.json'),
+          path.resolve(__dirname, '../../../firebase-service-account.json'),
+        ];
+        for (const p of potentialPaths) {
+          if (fs.existsSync(p)) {
+            try {
+              serviceAccount = JSON.parse(fs.readFileSync(p, 'utf8'));
+              this.logger.log(`Firebase Admin: Loaded credentials from default file path: ${p}`);
+              break;
+            } catch (e) {}
+          }
+        }
+      }
+
+      if (!serviceAccount) {
         serviceAccount = {
           type: "service_account",
           project_id: "edutrack-52e6c",

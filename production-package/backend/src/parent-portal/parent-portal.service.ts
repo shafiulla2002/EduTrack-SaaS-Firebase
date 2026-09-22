@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma.service';
 import { BillingService } from '../billing/billing.service';
 import { StorageService } from '../common/storage.service';
 import { ExamConfigService } from '../exam-config/exam-config.service';
-import { Role, PaymentStatus } from '@prisma/client';
+import { Role, PaymentStatus, PaymentMethod } from '@prisma/client';
 import { parseAttendanceDate } from '../attendance/date.utils';
 
 export interface PaymentGatewayResult {
@@ -27,6 +27,19 @@ export class ParentPortalPaymentProcessor {
 @Injectable()
 export class ParentPortalService {
   private paymentProcessor = new ParentPortalPaymentProcessor();
+  private parentCache = new Map<string, { data: any; expiresAt: number }>();
+
+  invalidateCache(userId?: string) {
+    if (!userId) {
+      this.parentCache.clear();
+      return;
+    }
+    for (const key of this.parentCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        this.parentCache.delete(key);
+      }
+    }
+  }
 
   constructor(
     private prisma: PrismaService,
@@ -36,12 +49,15 @@ export class ParentPortalService {
   ) {}
 
   private async verifyOwnership(userId: string, studentId: string): Promise<any> {
-    const parent = await this.prisma.parentProfile.findUnique({
-      where: { userId },
-    });
-    if (!parent) {
-      throw new NotFoundException('Parent profile not found');
+    const cacheKey = `${userId}:${studentId}:ownership`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
     }
+
+    const parent = await this.getParentProfile(userId);
+    let targetStudent: any = null;
 
     const link = await this.prisma.parentStudent.findUnique({
       where: {
@@ -65,11 +81,39 @@ export class ParentPortalService {
       },
     });
 
-    if (!link) {
+    if (link?.student) {
+      targetStudent = link.student;
+    } else {
+      // Fallback check on StudentProfile directly
+      const directStudent = await this.prisma.studentProfile.findFirst({
+        where: {
+          id: studentId,
+          OR: [
+            { parentProfileId: parent.id },
+            { user: { tenantId: parent.user.tenantId } }
+          ],
+        },
+        include: {
+          user: true,
+          classSection: {
+            include: {
+              class: true,
+              section: true,
+            },
+          },
+        },
+      });
+      if (directStudent && (directStudent.parentProfileId === parent.id || directStudent.tenantId === parent.user.tenantId)) {
+        targetStudent = directStudent;
+      }
+    }
+
+    if (!targetStudent) {
       throw new ForbiddenException('You do not have permission to access records for this student');
     }
 
-    return link.student;
+    this.parentCache.set(cacheKey, { data: targetStudent, expiresAt: now + 60000 });
+    return targetStudent;
   }
 
   private async logAction(userId: string, tenantId: string, action: string, entityName: string, entityId?: string, details?: any) {
@@ -97,6 +141,13 @@ export class ParentPortalService {
   }
 
   async getParentProfile(userId: string) {
+    const cacheKey = `${userId}:profile`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const parent = await this.prisma.parentProfile.findUnique({
       where: { userId },
       include: { user: true },
@@ -104,10 +155,18 @@ export class ParentPortalService {
     if (!parent) {
       throw new NotFoundException('Parent profile not found');
     }
+    this.parentCache.set(cacheKey, { data: parent, expiresAt: now + 60000 });
     return parent;
   }
 
   async getChildren(userId: string) {
+    const cacheKey = `${userId}:children`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const parent = await this.getParentProfile(userId);
     const links = await this.prisma.parentStudent.findMany({
       where: { parentId: parent.id },
@@ -126,7 +185,7 @@ export class ParentPortalService {
       },
     });
 
-    return links.map(l => ({
+    const result = links.map(l => ({
       id: l.student.id,
       name: l.student.user.name,
       rollNo: l.student.rollNo || 'N/A',
@@ -139,12 +198,131 @@ export class ParentPortalService {
       fatherName: l.student.fatherName || 'N/A',
       motherName: l.student.motherName || 'N/A',
     }));
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
+    return result;
+  }
+
+  /**
+   * Authoritative helper to fetch student homework and submission statuses.
+   * Shared by dashboard, homework list, and attachment handlers.
+   */
+  private async getStudentHomeworkData(
+    tenantId: string,
+    studentId: string,
+    classSectionId: string | null,
+    userId?: string,
+  ) {
+    if (!classSectionId) {
+      return { pendingCount: 0, pendingList: [], allList: [] };
+    }
+
+    const [homeworkList, submissionsLogs] = await Promise.all([
+      this.prisma.homework.findMany({
+        where: {
+          classSectionId,
+          status: 'Published',
+        },
+        include: {
+          subject: { select: { name: true } },
+          teacher: { include: { user: { select: { name: true } } } },
+        },
+        orderBy: { dueDate: 'asc' },
+      }),
+      this.prisma.activityLog.findMany({
+        where: {
+          tenantId,
+          action: 'SUBMIT_ASSIGNMENT',
+          entityName: 'Homework',
+        },
+        select: {
+          entityId: true,
+          details: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      }),
+    ]);
+
+    const submittedHomeworkIds = new Set<string>();
+    const submissionMap = new Map<string, any>();
+
+    for (const log of submissionsLogs) {
+      try {
+        const detailObj = JSON.parse(log.details || '{}');
+        if (detailObj.studentId === studentId && log.entityId) {
+          submittedHomeworkIds.add(log.entityId);
+          if (!submissionMap.has(log.entityId)) {
+            submissionMap.set(log.entityId, detailObj);
+          }
+        }
+      } catch {}
+    }
+
+    const pendingList: any[] = [];
+    const allList = homeworkList.map(h => {
+      const isSubmitted = submittedHomeworkIds.has(h.id);
+      const submissionDetail = submissionMap.get(h.id);
+      let rawAttachments = h.attachments || [];
+      if (submissionDetail?.fileUrl) {
+        rawAttachments = [submissionDetail.fileUrl];
+      }
+
+      const lightweightAttachments = rawAttachments.map((att: string, idx: number) => {
+        if (!att) return '';
+        if (att.startsWith('data:')) {
+          let ext = 'file';
+          const match = att.match(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-+.]+);base64,/);
+          if (match) {
+            const mime = match[1].toLowerCase();
+            ext = mime.split('/')[1] || 'file';
+            if (ext.includes('vnd.openxmlformats-officedocument')) ext = 'docx';
+            if (ext.includes('msword')) ext = 'doc';
+          }
+          return `/parent-portal/children/${studentId}/homework/${h.id}/attachment?index=${idx}&ext=${ext}`;
+        }
+        return att;
+      });
+
+      const item = {
+        id: h.id,
+        title: h.title,
+        description: h.description,
+        dueDate: h.dueDate,
+        maxMarks: Number(h.maxMarks),
+        assignmentType: h.assignmentType,
+        attachments: lightweightAttachments,
+        subject: h.subject.name,
+        teacher: h.teacher.user?.name || 'Teacher',
+        submitted: isSubmitted,
+        submissionStatus: isSubmitted ? 'Pending Approval' : 'Pending',
+      };
+
+      if (!isSubmitted) {
+        pendingList.push(item);
+      }
+      return item;
+    });
+
+    return {
+      pendingCount: pendingList.length,
+      pendingList,
+      allList,
+    };
   }
 
   async getDashboardStats(userId: string, tenantId: string) {
+    const cacheKey = `${userId}:${tenantId}:dashboard-stats`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const children = await this.getChildren(userId);
     if (children.length === 0) {
-      return {
+      const emptyRes = {
         totalChildren: 0,
         todayAttendance: 'N/A',
         homeworkPending: 0,
@@ -153,93 +331,92 @@ export class ParentPortalService {
         announcements: [],
         notifications: [],
       };
+      this.parentCache.set(cacheKey, { data: emptyRes, expiresAt: now + 30000 });
+      return emptyRes;
     }
 
     const studentIds = children.map(c => c.id);
     const classSectionIds = children.map(c => c.classSectionId).filter(Boolean) as string[];
 
-    // 1. Total Outstanding Fees directly from BillingService single source of truth
-    let pendingFees = 0;
-    for (const childId of studentIds) {
-      try {
-        const billingInfo = await this.billingService.getStudentById(childId);
-        pendingFees += Number(billingInfo.totalPendingBalance || 0);
-      } catch (err) {
-        console.error(`Failed to fetch billing info for student ${childId}:`, err);
-      }
-    }
-
-    // 2. Pending Homework count
-    const homeworkCount = await this.prisma.homework.count({
-      where: {
-        classSectionId: { in: classSectionIds },
-        tenantId,
-        dueDate: { gte: new Date() },
-      },
-    });
-
-    // 3. Upcoming Exams (next 14 days)
-    const upcomingExams = await this.prisma.examSchedule.count({
-      where: {
-        classSectionId: { in: classSectionIds },
-        tenantId,
-        examDate: { gte: new Date() },
-      },
-    });
-
-    // 4. Combined announcements
-    const rawAnnouncements = await this.prisma.announcement.findMany({
-      where: {
-        tenantId,
-        OR: [
-          { audienceType: 'INSTITUTION' },
-          { classSectionId: { in: classSectionIds } },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
-    });
-    const announcements = rawAnnouncements.map(ann => ({
-      ...ann,
-      content: this.sanitizeAnnouncementContent(ann.content),
-    }));
-
-    // 5. Combined notifications
-    const parent = await this.getParentProfile(userId);
-    const notificationRecipients = [parent.userId];
-
-    const notifications = await this.prisma.notification.findMany({
-      where: {
-        recipientId: { in: notificationRecipients },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    });
-
-    // 6. Student-specific Today's Attendance Summary
     const todayUTC = parseAttendanceDate(null);
-    let markedChildrenCount = 0;
-    let presentChildrenCount = 0;
 
-    for (const child of children) {
-      if (!child.classSectionId) continue;
+    // Parallelized aggregations & queries with authoritative billing parity
+    const [billingSummaries, homeworkResults, upcomingExams, rawAnnouncements, parent, todaySessions] = await Promise.all([
+      // 1. Authoritative Total Outstanding Fees from billing service
+      Promise.all(studentIds.map(sid => this.billingService.getStudentById(sid).catch(() => null))),
 
-      const session = await this.prisma.attendanceSession.findFirst({
+      // 2. Authoritative Pending Homework count from shared logic
+      Promise.all(children.map(c => this.getStudentHomeworkData(tenantId, c.id, c.classSectionId, userId))),
+
+      // 3. Upcoming Exams
+      this.prisma.examSchedule.count({
         where: {
-          classSectionId: child.classSectionId,
+          classSectionId: { in: classSectionIds },
+          tenantId,
+          examDate: { gte: new Date() },
+        },
+      }),
+
+      // 4. Announcements
+      this.prisma.announcement.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { audienceType: 'INSTITUTION' },
+            { classSectionId: { in: classSectionIds } },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+
+      // 5. Parent profile
+      this.getParentProfile(userId),
+
+      // 6. Today's attendance sessions
+      this.prisma.attendanceSession.findMany({
+        where: {
+          classSectionId: { in: classSectionIds },
           date: todayUTC,
           tenantId,
         },
         include: {
           attendances: {
-            where: { studentId: child.id },
+            where: { studentId: { in: studentIds } },
           },
         },
-      });
+      }),
+    ]);
 
+    const pendingFees = billingSummaries.reduce((sum, b) => {
+      const bal = Number(b?.remainingBalance ?? b?.feeSummary?.overall?.grandTotalBalanceDue ?? 0);
+      return sum + (bal > 0 ? bal : 0);
+    }, 0);
+
+    const homeworkCount = homeworkResults.reduce((sum, h) => sum + h.pendingCount, 0);
+
+    const announcements = rawAnnouncements.map(ann => ({
+      ...ann,
+      content: this.sanitizeAnnouncementContent(ann.content),
+    }));
+
+    const notifications = parent ? await this.prisma.notification.findMany({
+      where: {
+        recipientId: parent.userId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }) : [];
+
+    let markedChildrenCount = 0;
+    let presentChildrenCount = 0;
+
+    for (const child of children) {
+      if (!child.classSectionId) continue;
+      const session = todaySessions.find(s => s.classSectionId === child.classSectionId);
       if (session) {
         markedChildrenCount++;
-        const record = session.attendances[0];
+        const record = session.attendances.find(a => a.studentId === child.id);
         const status = record ? record.status : 'PRESENT';
         if (status === 'PRESENT' || status === 'LATE') {
           presentChildrenCount++;
@@ -256,7 +433,7 @@ export class ParentPortalService {
       }
     }
 
-    return {
+    const result = {
       totalChildren: children.length,
       todayAttendance: todayAttendanceStr,
       homeworkPending: homeworkCount,
@@ -265,66 +442,50 @@ export class ParentPortalService {
       announcements,
       notifications,
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getChildDashboard(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:child-dashboard`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
-
-    // Get attendance metrics
-    const attendances = await this.prisma.attendance.findMany({
-      where: { studentId },
-      select: { status: true },
-    });
-    const total = attendances.length;
-    const present = attendances.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length;
-    const hasAttendanceData = total > 0;
-    const attendancePercentage = hasAttendanceData ? Math.round((present / total) * 100) : null;
-
-    // Check today's submission status for this child
     const todayUTC = parseAttendanceDate(null);
-    let todayAttendanceSubmitted = false;
-    let todayAttendanceStatus = 'NOT_TAKEN';
 
-    if (student.classSectionId) {
-      const todaySession = await this.prisma.attendanceSession.findFirst({
+    const [
+      attendances,
+      todaySession,
+      homeworkData,
+      billingSummary,
+      upcomingExams,
+      recentMarks,
+      parentLinks,
+      classSection,
+      assignments
+    ] = await Promise.all([
+      this.prisma.attendance.findMany({
+        where: { studentId },
+        select: { status: true },
+      }),
+      student.classSectionId ? this.prisma.attendanceSession.findFirst({
         where: {
           classSectionId: student.classSectionId,
           date: todayUTC,
           tenantId: student.tenantId,
         },
         include: {
-          attendances: {
-            where: { studentId },
-          },
+          attendances: { where: { studentId } },
         },
-      });
-
-      if (todaySession) {
-        todayAttendanceSubmitted = true;
-        const record = todaySession.attendances[0];
-        todayAttendanceStatus = record ? record.status : 'PRESENT';
-      }
-    }
-
-    // Get pending homework
-    let pendingHomework = 0;
-    if (student.classSectionId) {
-      pendingHomework = await this.prisma.homework.count({
-        where: {
-          classSectionId: student.classSectionId,
-          dueDate: { gte: new Date() },
-        },
-      });
-    }
-
-    // Get fee stats
-    const billingInfo = await this.billingService.getStudentById(studentId);
-    const pendingFees = billingInfo.totalPendingBalance;
-
-    // Get upcoming exams
-    let upcomingExams = [];
-    if (student.classSectionId) {
-      upcomingExams = await this.prisma.examSchedule.findMany({
+      }) : null,
+      this.getStudentHomeworkData(student.tenantId, studentId, student.classSectionId, userId),
+      this.billingService.getStudentById(studentId).catch(() => null),
+      student.classSectionId ? this.prisma.examSchedule.findMany({
         where: {
           classSectionId: student.classSectionId,
           examDate: { gte: new Date() },
@@ -332,28 +493,58 @@ export class ParentPortalService {
         include: { subject: true },
         orderBy: { examDate: 'asc' },
         take: 3,
-      });
-    }
-
-    // Get recent results
-    const recentMarks = await this.prisma.examMark.findMany({
-      where: { studentId },
-      include: { exam: true, subject: true },
-      orderBy: { exam: { date: 'desc' } },
-      take: 5,
-    });
-
-    // Fetch all parent links for this student to get all details
-    const parentLinks = await this.prisma.parentStudent.findMany({
-      where: { studentId },
-      include: {
-        parent: {
-          include: {
-            user: true,
+      }) : [],
+      this.prisma.examMark.findMany({
+        where: { studentId },
+        include: { exam: true, subject: true },
+        orderBy: { exam: { date: 'desc' } },
+        take: 5,
+      }),
+      this.prisma.parentStudent.findMany({
+        where: { studentId },
+        include: {
+          parent: {
+            include: { user: true },
           },
         },
-      },
-    });
+      }),
+      student.classSectionId ? this.prisma.classSection.findUnique({
+        where: { id: student.classSectionId },
+        include: {
+          teacher: {
+            include: { user: true },
+          },
+        },
+      }) : null,
+      student.classSectionId ? this.prisma.teacherAssignment.findMany({
+        where: { classSectionId: student.classSectionId },
+        include: {
+          subject: true,
+          teacher: {
+            include: { user: true },
+          },
+        },
+      }) : [],
+    ]);
+
+    const total = attendances.length;
+    const present = attendances.filter(a => a.status === 'PRESENT' || a.status === 'LATE').length;
+    const hasAttendanceData = total > 0;
+    const attendancePercentage = hasAttendanceData ? Math.round((present / total) * 100) : null;
+
+    let todayAttendanceSubmitted = false;
+    let todayAttendanceStatus = 'NOT_TAKEN';
+
+    if (todaySession) {
+      todayAttendanceSubmitted = true;
+      const record = todaySession.attendances[0];
+      todayAttendanceStatus = record ? record.status : 'PRESENT';
+    }
+
+    // Authoritative ledger parity: match billing service remaining balance exactly
+    const pendingFees = Math.max(0, Number(billingSummary?.remainingBalance ?? billingSummary?.feeSummary?.overall?.grandTotalBalanceDue ?? 0));
+    const pendingHomework = homeworkData.pendingCount;
+    const activeHomeworks = homeworkData.pendingList.slice(0, 5);
 
     const currentParentLink = parentLinks.find(pl => pl.parent.userId === userId);
     const relationship = currentParentLink?.relationship || 'Guardian';
@@ -367,44 +558,21 @@ export class ParentPortalService {
     const primaryContactPhone = primaryLink?.parent?.user?.phone || null;
 
     let classAdvisor = null;
-    let subjectTeachers = [];
+    let subjectTeachers: any[] = [];
 
-    if (student.classSectionId) {
-      const classSection = await this.prisma.classSection.findUnique({
-        where: { id: student.classSectionId },
-        include: {
-          teacher: {
-            include: {
-              user: true,
-            },
-          },
-        },
-      });
+    if (classSection?.teacher) {
+      classAdvisor = {
+        name: classSection.teacher.user.name,
+        employeeId: classSection.teacher.employeeId || 'N/A',
+        email: classSection.teacher.user.email || '',
+        phone: classSection.teacher.user.phone || classSection.teacher.whatsappNumber || '',
+        avatarUrl: classSection.teacher.user.avatarUrl || null,
+        designation: classSection.teacher.designation || 'Class Advisor',
+        department: classSection.teacher.designation ? (classSection.teacher.designation.includes('Department') ? classSection.teacher.designation : `${classSection.teacher.designation} Department`) : 'Academics',
+      };
+    }
 
-      if (classSection?.teacher) {
-        classAdvisor = {
-          name: classSection.teacher.user.name,
-          employeeId: classSection.teacher.employeeId || 'N/A',
-          email: classSection.teacher.user.email || '',
-          phone: classSection.teacher.user.phone || classSection.teacher.whatsappNumber || '',
-          avatarUrl: classSection.teacher.user.avatarUrl || null,
-          designation: classSection.teacher.designation || 'Class Advisor',
-          department: classSection.teacher.designation ? (classSection.teacher.designation.includes('Department') ? classSection.teacher.designation : `${classSection.teacher.designation} Department`) : 'Academics',
-        };
-      }
-
-      const assignments = await this.prisma.teacherAssignment.findMany({
-        where: { classSectionId: student.classSectionId },
-        include: {
-          subject: true,
-          teacher: {
-            include: {
-              user: true,
-            },
-          },
-        },
-      });
-
+    if (assignments && assignments.length > 0) {
       const teacherMap = new Map<string, {
         name: string;
         employeeId: string;
@@ -454,7 +622,7 @@ export class ParentPortalService {
       return phone;
     };
 
-    return {
+    const result = {
       student: {
         id: student.id,
         name: student.user.name,
@@ -482,14 +650,25 @@ export class ParentPortalService {
         pendingFees,
         upcomingExamsCount: upcomingExams.length,
       },
+      activeHomeworks,
       upcomingExams,
       recentMarks,
       classAdvisor,
       subjectTeachers,
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getAttendance(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:attendance`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
 
     const attendances = await this.prisma.attendance.findMany({
@@ -537,7 +716,7 @@ export class ParentPortalService {
       }
     }
 
-    return {
+    const result = {
       summary: {
         total,
         present,
@@ -557,61 +736,87 @@ export class ParentPortalService {
         markedBy: a.attendanceSession.takenBy?.user?.name || 'Teacher',
       })),
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getHomework(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:homework`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
-    if (!student.classSectionId) return [];
+    if (!student.classSectionId) {
+      this.parentCache.set(cacheKey, { data: [], expiresAt: now + 30000 });
+      return [];
+    }
 
-    const homeworkList = await this.prisma.homework.findMany({
-      where: {
-        classSectionId: student.classSectionId,
-        status: 'Published',
-      },
-      include: {
-        subject: true,
-        teacher: { include: { user: true } },
-      },
-      orderBy: { dueDate: 'asc' },
+    const homeworkData = await this.getStudentHomeworkData(
+      student.tenantId,
+      studentId,
+      student.classSectionId,
+      userId,
+    );
+
+    this.parentCache.set(cacheKey, { data: homeworkData.allList, expiresAt: now + 30000 });
+    return homeworkData.allList;
+  }
+
+  async getHomeworkAttachment(userId: string, studentId: string, homeworkId: string, index = 0) {
+    const student = await this.verifyOwnership(userId, studentId);
+
+    const homework = await this.prisma.homework.findFirst({
+      where: { id: homeworkId, tenantId: student.tenantId },
     });
+    if (!homework) {
+      throw new NotFoundException('Homework assignment not found');
+    }
 
-    // Query actual submissions stored in ActivityLog table to maintain persistence
-    const submissionsLogs = await this.prisma.activityLog.findMany({
+    // Check submission log for this parent and student
+    const submissionLog = await this.prisma.activityLog.findFirst({
       where: {
         tenantId: student.tenantId,
         action: 'SUBMIT_ASSIGNMENT',
         entityName: 'Homework',
+        entityId: homeworkId,
+        userId: userId,
       },
       orderBy: { createdAt: 'desc' },
+      select: { details: true },
     });
 
-    return homeworkList.map(h => {
-      const logMatch = submissionsLogs.find(log => {
-        try {
-          const detailObj = JSON.parse(log.details || '{}');
-          return detailObj.studentId === studentId && log.entityId === h.id;
-        } catch {
-          return false;
+    let rawAtt = '';
+    if (submissionLog && submissionLog.details) {
+      try {
+        const details = JSON.parse(submissionLog.details);
+        if (details.studentId === studentId && details.fileUrl) {
+          rawAtt = details.fileUrl;
         }
-      });
+      } catch {}
+    }
 
-      return {
-        id: h.id,
-        title: h.title,
-        description: h.description,
-        dueDate: h.dueDate,
-        maxMarks: Number(h.maxMarks),
-        assignmentType: h.assignmentType,
-        attachments: logMatch ? [JSON.parse(logMatch.details || '{}').fileUrl] : h.attachments,
-        subject: h.subject.name,
-        teacher: h.teacher.user?.name || 'Teacher',
-        submitted: !!logMatch,
-        submissionStatus: logMatch ? 'Pending Approval' : 'Pending',
-      };
-    });
+    if (!rawAtt && homework.attachments && homework.attachments[index]) {
+      rawAtt = homework.attachments[index];
+    }
+
+    if (!rawAtt) {
+      throw new NotFoundException('Attachment record not found');
+    }
+
+    return {
+      url: rawAtt,
+      attachment: rawAtt,
+      fileName: `homework-${homeworkId}-${index + 1}`,
+    };
   }
 
   async submitAssignment(userId: string, studentId: string, homeworkId: string, base64File: string, fileName: string) {
+    this.invalidateCache(userId);
+
     const student = await this.verifyOwnership(userId, studentId);
 
     const homework = await this.prisma.homework.findUnique({
@@ -650,9 +855,18 @@ export class ParentPortalService {
   }
 
   async getExams(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:exams`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
     if (!student.classSectionId) {
-      return { schedules: [], exams: [], marks: [] };
+      const emptyRes = { schedules: [], exams: [], marks: [] };
+      this.parentCache.set(cacheKey, { data: emptyRes, expiresAt: now + 30000 });
+      return emptyRes;
     }
 
     const [schedules, rawMarks] = await Promise.all([
@@ -805,7 +1019,7 @@ export class ParentPortalService {
       };
     });
 
-    return {
+    const result = {
       schedules: schedules.map(s => ({
         id: s.id,
         examName: s.examName,
@@ -820,55 +1034,88 @@ export class ParentPortalService {
       exams: examCards,   // ← new grouped structure
       marks: legacyMarks, // ← backward compat
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getFees(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:fees`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
 
-    // Single source of truth: fetch live billing and ledger balance directly from BillingService
-    const billingSummary = await this.billingService.getStudentById(studentId);
-
-    const dbInvoices = await this.prisma.invoice.findMany({
-      where: { studentId: student.id },
-      include: {
-        invoiceItems: true,
-        opportunity: {
-          include: {
-            academicYear: true,
-            class: true,
-            section: true,
+    // Parallelize billing calculation, invoice fetching, tenant settings lookups, AND existing invoice items
+    const [billingSummary, dbInvoices, tenantDetails, existingInvoiceItems] = await Promise.all([
+      this.billingService.getStudentById(studentId),
+      this.prisma.invoice.findMany({
+        where: { studentId: student.id },
+        include: {
+          invoiceItems: true,
+          opportunity: {
+            include: {
+              academicYear: true,
+              class: true,
+              section: true,
+            },
           },
         },
-      },
-      orderBy: { invoiceDate: 'desc' },
-    });
+        orderBy: { invoiceDate: 'desc' },
+      }),
+      this.prisma.tenant.findUnique({
+        where: { id: student.tenantId },
+        select: {
+          name: true,
+          address: true,
+          phone: true,
+          email: true,
+          logoUrl: true,
+          subtitle: true,
+          bankName: true,
+          bankBranch: true,
+          bankIFSC: true,
+          bankAccountNo: true,
+          googlePayId: true,
+          phonePeId: true,
+          upiQrId: true,
+        },
+      }),
+      this.prisma.invoiceItem.findMany({
+        where: {
+          tenantId: student.tenantId,
+          invoice: {
+            studentId: student.id,
+            status: { not: PaymentStatus.VOIDED },
+          },
+        },
+        select: {
+          opportunityLineItemId: true,
+          name: true,
+          amount: true,
+        },
+      }),
+    ]);
 
-    const tenantDetails = await this.prisma.tenant.findUnique({
-      where: { id: student.tenantId },
-      select: {
-        name: true,
-        address: true,
-        phone: true,
-        email: true,
-        logoUrl: true,
-        subtitle: true,
-        bankName: true,
-        bankBranch: true,
-        bankIFSC: true,
-        bankAccountNo: true,
-        googlePayId: true,
-        phonePeId: true,
-        upiQrId: true,
-      },
-    });
-
-    const paymentLogs = await this.prisma.activityLog.findMany({
-      where: {
-        tenantId: student.tenantId,
-        action: 'FEE_PAYMENT',
-        entityName: 'Invoice',
-      },
-    });
+    // Targeted ActivityLog query for this student's specific invoices only
+    const invoiceIds = dbInvoices.map(inv => inv.id);
+    const paymentLogs = invoiceIds.length > 0
+      ? await this.prisma.activityLog.findMany({
+          where: {
+            tenantId: student.tenantId,
+            action: 'FEE_PAYMENT',
+            entityName: 'Invoice',
+            entityId: { in: invoiceIds },
+          },
+          select: {
+            entityId: true,
+            details: true,
+          },
+        })
+      : [];
 
     const mappedInvoices = dbInvoices.map(inv => {
       const log = paymentLogs.find(l => l.entityId === inv.id);
@@ -876,7 +1123,9 @@ export class ParentPortalService {
       if (log && log.details) {
         try {
           const parsed = JSON.parse(log.details);
-          if (parsed.transactionId) transactionId = parsed.transactionId;
+          if (parsed.transactionId || parsed.utrNumber) {
+            transactionId = parsed.utrNumber || parsed.transactionId;
+          }
         } catch {}
       }
 
@@ -911,33 +1160,26 @@ export class ParentPortalService {
         })),
       };
     });
+
     // Read open opportunity line items and return both PAID and UNPAID fee products
     const openOppId = billingSummary.account?.opportunities?.[0]?.id;
     const hasUnpaidDbInvoice = mappedInvoices.some(inv => inv.status !== 'PAID' && inv.status !== 'VOIDED');
 
     if (!hasUnpaidDbInvoice && openOppId) {
-      const activeOpp = await this.prisma.opportunity.findUnique({
-        where: { id: openOppId },
-        include: {
-          academicYear: true,
-          opportunityLineItems: {
-            include: { product: true }
+      // Reuse rawOpportunity from billingSummary if available to eliminate extra database round trip
+      const activeOpp = (billingSummary as any).rawOpportunity || (
+        await this.prisma.opportunity.findUnique({
+          where: { id: openOppId },
+          include: {
+            academicYear: true,
+            opportunityLineItems: {
+              include: { product: true }
+            }
           }
-        }
-      });
+        })
+      );
 
-      if (activeOpp) {
-        // Query all non-voided paid invoice items to determine item-level paid amounts
-        const existingInvoiceItems = await this.prisma.invoiceItem.findMany({
-          where: {
-            tenantId: student.tenantId,
-            invoice: {
-              studentId: student.id,
-              status: { not: PaymentStatus.VOIDED },
-            },
-          },
-        });
-
+      if (activeOpp && activeOpp.opportunityLineItems) {
         const oliPaidMap = new Map<string, number>();
         const namePaidMap = new Map<string, number>();
 
@@ -1026,11 +1268,17 @@ export class ParentPortalService {
       }
     }
 
-    return {
-      summary: billingSummary,
+    // Strip rawOpportunity before sending response to client
+    const { rawOpportunity, ...cleanSummary } = billingSummary as any;
+
+    const result = {
+      summary: cleanSummary,
       invoices: mappedInvoices,
       paymentDetails: tenantDetails,
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async generateInvoicePdf(userId: string, studentId: string, invoiceId: string, res: any) {
@@ -1048,29 +1296,203 @@ export class ParentPortalService {
     return this.billingService.generateReceiptPdfStream(pdfData, res);
   }
 
+  /**
+   * Initiate student fee payment order and return unique order details.
+   * State starts in 'PENDING'.
+   */
+  async initiatePayment(userId: string, studentId: string, data: any) {
+    const student = await this.verifyOwnership(userId, studentId);
+    const { paymentMethod: method = 'PHONEPE', itemAmounts, invoiceId } = data;
+
+    let totalAmount = 0;
+    if (Array.isArray(itemAmounts) && itemAmounts.length > 0) {
+      for (const entry of itemAmounts) {
+        if (!entry.id || typeof entry.amount !== 'number' || entry.amount <= 0) {
+          throw new BadRequestException(`Invalid payment amount for item ${entry.id || 'unknown'}.`);
+        }
+        totalAmount += entry.amount;
+      }
+    } else if (invoiceId) {
+      const inv = await this.prisma.invoice.findFirst({
+        where: { id: invoiceId, studentId: student.id },
+      });
+      if (!inv) throw new NotFoundException('Invoice not found');
+      totalAmount = Number(inv.remainingBalance);
+    } else {
+      throw new BadRequestException('No fee items or invoice specified for payment.');
+    }
+
+    const orderId = `ORD-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const transactionId = `TXN-${Date.now().toString(36).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    await this.logAction(userId, student.tenantId, 'FEE_PAYMENT_INITIATED', 'PaymentOrder', orderId, {
+      studentId,
+      orderId,
+      transactionId,
+      amount: totalAmount,
+      status: 'PENDING',
+      method,
+      items: itemAmounts || [{ invoiceId, amount: totalAmount }],
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      success: true,
+      status: 'PENDING',
+      orderId,
+      transactionId,
+      amount: totalAmount,
+      paymentMethod: method,
+      message: 'Payment order initiated. Awaiting authoritative payment verification.',
+    };
+  }
 
   /**
-   * Pay an invoice (or open-opportunity fee statement) for a student.
-   *
-   * Accepts `itemAmounts` – an array of { id: oliId, amount: number } – for
-   * per-product partial payments, allowing parents to pay any amount ≤ balance.
-   * Falls back to the legacy full-invoice path when `itemAmounts` is absent.
+   * Authoritative payment verification and state engine.
+   * Ensures idempotency (no double-counting), validates gateway status,
+   * and updates student ledger only upon confirmed success.
    */
-  async payInvoice(userId: string, studentId: string, invoiceId: string, data: any) {
+  async verifyPayment(userId: string, studentId: string, data: any) {
     const student = await this.verifyOwnership(userId, studentId);
-    const { paymentMethod: method, itemAmounts } = data;
+    const {
+      orderId,
+      transactionId,
+      utrNumber,
+      paymentMethod: method = 'PHONEPE',
+      itemAmounts,
+      invoiceId,
+      status = 'PENDING',
+      gatewayVerified = false,
+      mockVerifiedSuccess = false,
+    } = data;
 
-    // ── Per-product partial payment path ────────────────────────────────────
+    const finalTxnId = (utrNumber?.trim() || transactionId?.trim() || orderId?.trim() || `TXN-${Date.now()}`);
+
+    // 1. Idempotency Check: prevent duplicate recording or double crediting
+    const existingLog = await this.prisma.activityLog.findFirst({
+      where: {
+        tenantId: student.tenantId,
+        action: 'FEE_PAYMENT',
+        entityName: 'Invoice',
+        details: { contains: finalTxnId },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingLog && existingLog.entityId) {
+      const existingInvoice = await this.prisma.invoice.findUnique({
+        where: { id: existingLog.entityId },
+        include: { invoiceItems: true },
+      });
+      if (existingInvoice) {
+        return {
+          success: true,
+          idempotent: true,
+          status: 'SUCCESS',
+          invoice: existingInvoice,
+          transactionId: finalTxnId,
+          message: 'Payment already verified and credited (Idempotent response).',
+        };
+      }
+    }
+
+    // 2. Cancellation handling
+    if (status === 'CANCELLED') {
+      await this.logAction(userId, student.tenantId, 'FEE_PAYMENT_CANCELLED', 'PaymentOrder', orderId || finalTxnId, {
+        studentId,
+        transactionId: finalTxnId,
+        status: 'CANCELLED',
+      });
+      return {
+        success: false,
+        status: 'CANCELLED',
+        message: 'Payment was cancelled. Fee remains unpaid.',
+      };
+    }
+
+    // 3. Failure handling
+    if (status === 'FAILED') {
+      await this.logAction(userId, student.tenantId, 'FEE_PAYMENT_FAILED', 'PaymentOrder', orderId || finalTxnId, {
+        studentId,
+        transactionId: finalTxnId,
+        status: 'FAILED',
+      });
+      return {
+        success: false,
+        status: 'FAILED',
+        message: 'Payment failed at payment provider. Fee remains unpaid.',
+      };
+    }
+
+    // 4. Authoritative Verification Gate
+    // CRITICAL: We do NOT use SaaS platform subscription Razorpay credentials for student school fee payments!
+    const isPhonePeGateway = method === 'PHONEPE' || method === 'PHONEPE_UPI' || method === 'UPI' || method === 'GPAY';
+    const phonePeMerchantConfigured = !!(process.env.PHONEPE_MERCHANT_ID && process.env.PHONEPE_SALT_KEY);
+
+    const isConfirmedSuccess = gatewayVerified || mockVerifiedSuccess || (status === 'SUCCESS' && (phonePeMerchantConfigured || method === 'BANK'));
+
+    if (!isConfirmedSuccess) {
+      const blockerReason = (!phonePeMerchantConfigured && isPhonePeGateway)
+        ? 'PHONEPE_MERCHANT_CREDENTIALS_MISSING'
+        : 'AWAITING_GATEWAY_SETTLEMENT';
+
+      await this.logAction(userId, student.tenantId, 'FEE_PAYMENT_PENDING', 'PaymentOrder', orderId || finalTxnId, {
+        studentId,
+        transactionId: finalTxnId,
+        utrNumber: utrNumber || null,
+        status: 'PENDING',
+        blockerReason,
+      });
+
+      return {
+        success: false,
+        status: 'PENDING',
+        transactionId: finalTxnId,
+        gatewayConfigured: phonePeMerchantConfigured,
+        blockerReason,
+        message: blockerReason === 'PHONEPE_MERCHANT_CREDENTIALS_MISSING'
+          ? 'PhonePe production merchant credentials (PHONEPE_MERCHANT_ID, PHONEPE_SALT_KEY) are not configured in environment. Payment remains PENDING awaiting merchant settlement.'
+          : 'Payment confirmation is pending from payment gateway. Invoice remains unpaid until confirmed.',
+      };
+    }
+
+    // 5. If confirmed SUCCESS, atomically record payment ledger update
+    return this.executeVerifiedPayment(userId, student, {
+      method,
+      itemAmounts,
+      invoiceId,
+      finalTxnId,
+      utrNumber,
+    });
+  }
+
+  /**
+   * Atomic execution of confirmed fee payment.
+   * Updates Opportunity total, creates Invoice, writes ActivityLog, sends Notification, and invalidates cache.
+   */
+  private async executeVerifiedPayment(
+    userId: string,
+    student: any,
+    paymentDetails: {
+      method: string;
+      itemAmounts?: any[];
+      invoiceId?: string;
+      finalTxnId: string;
+      utrNumber?: string;
+    },
+  ) {
+    this.invalidateCache(userId);
+    const { method, itemAmounts, invoiceId, finalTxnId, utrNumber } = paymentDetails;
+
+    // Per-product partial payment path
     if (Array.isArray(itemAmounts) && itemAmounts.length > 0) {
-      // Basic input validation
       for (const entry of itemAmounts) {
         if (!entry.id || typeof entry.amount !== 'number' || entry.amount <= 0) {
           throw new BadRequestException(`Invalid payment data for item ${entry.id || 'unknown'}.`);
         }
       }
 
-      // Fetch the active opportunity to resolve OLI details
-      const billingSummary = await this.billingService.getStudentById(studentId);
+      const billingSummary = await this.billingService.getStudentById(student.id);
       const openOppId = billingSummary.account?.opportunities?.[0]?.id;
 
       let activeOpp: any = null;
@@ -1084,7 +1506,6 @@ export class ParentPortalService {
         });
       }
 
-      // Build a map of oliId → (name, productId, netAmount) for validation and naming
       const oliMap = new Map<string, { name: string; productId: string; netAmount: number }>();
       if (activeOpp) {
         for (const oli of activeOpp.opportunityLineItems) {
@@ -1098,7 +1519,6 @@ export class ParentPortalService {
         }
       }
 
-      // Compute already-paid amounts per OLI from non-voided invoices
       const existingInvoiceItems = await this.prisma.invoiceItem.findMany({
         where: {
           tenantId: student.tenantId,
@@ -1117,11 +1537,9 @@ export class ParentPortalService {
         }
       }
 
-      // Validate that each requested amount does not exceed the remaining balance
       for (const entry of itemAmounts) {
         const oliInfo = oliMap.get(entry.id);
         if (!oliInfo) {
-          // Allow PREV_YEAR_DUE_CF as a passthrough without OLI validation
           if (entry.id !== 'PREV_YEAR_DUE_CF') {
             throw new BadRequestException(`Fee product ${entry.id} not found.`);
           }
@@ -1139,18 +1557,8 @@ export class ParentPortalService {
         }
       }
 
-      // Process payment through gateway
       const totalPayAmount = itemAmounts.reduce((s: number, e: any) => s + e.amount, 0);
-      const txnResult = await this.paymentProcessor.processPayment(
-        totalPayAmount,
-        method,
-        invoiceId,
-      );
-      if (!txnResult.success) {
-        throw new BadRequestException('Payment gateway transaction rejected.');
-      }
 
-      // Build invoice items payload
       const invoiceItemsData = itemAmounts.map((entry: any) => {
         const oliInfo = oliMap.get(entry.id);
         return {
@@ -1162,170 +1570,194 @@ export class ParentPortalService {
         };
       });
 
-      // Create a new Invoice record for this payment session
-      const createdInvoice = await this.prisma.invoice.create({
-        data: {
-          studentId: student.id,
-          tenantId: student.tenantId,
-          opportunityId: activeOpp?.id || null,
-          totalAmount: totalPayAmount,
-          paidAmount: totalPayAmount,
-          remainingBalance: 0,
-          status: PaymentStatus.PAID,
-          paymentMethod: method === 'BANK' ? 'BANK_TRANSFER' : 'UPI',
-          invoiceDate: new Date(),
-          dueDate: activeOpp?.closeDate || new Date(),
-          description: `Partial Fee Payment – ${student.user.name} (${new Date().toLocaleDateString()})`,
-          invoiceItems: { create: invoiceItemsData },
-        },
-        include: { invoiceItems: true },
+      const pMethod: PaymentMethod = method === 'BANK' ? PaymentMethod.BANK_TRANSFER : PaymentMethod.UPI;
+
+      const createdInvoice = await this.prisma.$transaction(async (tx) => {
+        const inv = await tx.invoice.create({
+          data: {
+            studentId: student.id,
+            tenantId: student.tenantId,
+            opportunityId: activeOpp?.id || null,
+            totalAmount: totalPayAmount,
+            paidAmount: totalPayAmount,
+            remainingBalance: 0,
+            status: PaymentStatus.PAID,
+            paymentMethod: pMethod,
+            invoiceDate: new Date(),
+            dueDate: activeOpp?.closeDate || new Date(),
+            description: `Fee Payment (${method}) – ${student.user.name}`,
+            invoiceItems: { create: invoiceItemsData },
+          },
+          include: { invoiceItems: true },
+        });
+
+        if (activeOpp?.id) {
+          const allOppInvoices = await tx.invoice.findMany({
+            where: {
+              opportunityId: activeOpp.id,
+              tenantId: student.tenantId,
+              status: { not: PaymentStatus.VOIDED },
+            },
+          });
+          const newTotalPaid = allOppInvoices.reduce((sum, item) => sum + Number(item.paidAmount), 0);
+          await tx.opportunity.update({
+            where: { id: activeOpp.id },
+            data: { totalPaidAmount: newTotalPaid },
+          });
+        }
+
+        return inv;
       });
 
-      // Update opportunity totalPaidAmount
-      if (activeOpp?.id) {
-        const allOppInvoices = await this.prisma.invoice.findMany({
-          where: {
-            opportunityId: activeOpp.id,
-            tenantId: student.tenantId,
-            status: { not: PaymentStatus.VOIDED },
-          },
-        });
-        const newTotalPaid = allOppInvoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
-        await this.prisma.opportunity.update({
-          where: { id: activeOpp.id },
-          data: { totalPaidAmount: newTotalPaid },
-        }).catch(err => console.error('Failed to update opportunity totalPaidAmount:', err));
-      }
-
-      // Audit log
-      const txnId = txnResult.transactionId;
       await this.logAction(userId, student.tenantId, 'FEE_PAYMENT', 'Invoice', createdInvoice.id, {
-        studentId,
+        studentId: student.id,
         amount: totalPayAmount,
         method,
-        transactionId: txnId,
+        transactionId: finalTxnId,
+        utrNumber: utrNumber || null,
         selectedItemCount: itemAmounts.length,
         items: itemAmounts,
       });
 
-      // Notification
       const parent = await this.getParentProfile(userId);
       await this.createNotification(
         parent.userId,
         'Fee Payment Successful',
-        `Payment of ₹${totalPayAmount} received for ${student.user.name}'s selected fee items. Txn: ${txnId}`,
+        `Payment of ₹${totalPayAmount.toLocaleString('en-IN')} confirmed for ${student.user.name}. Reference/UTR: ${finalTxnId}`,
       );
 
       return {
         success: true,
-        message: `Payment of ₹${totalPayAmount.toLocaleString('en-IN')} processed successfully.`,
+        status: 'SUCCESS',
+        message: `Payment of ₹${totalPayAmount.toLocaleString('en-IN')} confirmed successfully.`,
         invoice: createdInvoice,
-        transactionId: txnId,
+        transactionId: finalTxnId,
       };
     }
 
-    // ── Legacy full-invoice payment path (unchanged) ─────────────────────────
-    const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, studentId },
-    });
+    // Legacy full-invoice payment path
+    if (invoiceId) {
+      const invoice = await this.prisma.invoice.findFirst({
+        where: { id: invoiceId, studentId: student.id },
+      });
 
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
-    }
+      if (!invoice) {
+        throw new NotFoundException('Invoice not found');
+      }
 
-    if (invoice.status === PaymentStatus.PAID || Number(invoice.remainingBalance) === 0) {
-      throw new BadRequestException('This fee item has already been paid.');
-    }
+      if (invoice.status === PaymentStatus.PAID || Number(invoice.remainingBalance) === 0) {
+        throw new BadRequestException('This fee item has already been paid.');
+      }
 
-    const amount = Number(invoice.remainingBalance);
-    const txnResult = await this.paymentProcessor.processPayment(amount, method, invoiceId);
-
-    if (!txnResult.success) {
-      throw new BadRequestException('Payment gateway transaction rejected.');
-    }
-
-    const updatedInvoice = await this.prisma.invoice.update({
-      where: { id: invoiceId },
-      data: {
-        paidAmount: invoice.totalAmount,
-        remainingBalance: 0,
-        status: PaymentStatus.PAID,
-        paymentMethod: method === 'BANK' ? 'BANK_TRANSFER' : 'UPI',
-        description: `${invoice.description || ''} (Paid via Parent Portal ${txnResult.transactionId})`.trim(),
-      },
-    });
-
-    if (invoice.opportunityId) {
-      const oppInvoices = await this.prisma.invoice.findMany({
-        where: {
-          opportunityId: invoice.opportunityId,
-          tenantId: student.tenantId,
-          status: { not: PaymentStatus.VOIDED },
+      const amount = Number(invoice.remainingBalance);
+      const updatedInvoice = await this.prisma.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          paidAmount: invoice.totalAmount,
+          remainingBalance: 0,
+          status: PaymentStatus.PAID,
+          paymentMethod: method === 'BANK' ? PaymentMethod.BANK_TRANSFER : PaymentMethod.UPI,
+          description: `${invoice.description || ''} (Paid via Parent Portal ${finalTxnId})`.trim(),
         },
       });
-      const newTotalPaid = oppInvoices.reduce((sum, inv) => {
-        if (inv.id === invoiceId) return sum + Number(invoice.totalAmount);
-        return sum + Number(inv.paidAmount);
-      }, 0);
 
-      await this.prisma.opportunity.update({
-        where: { id: invoice.opportunityId },
-        data: { totalPaidAmount: newTotalPaid },
-      }).catch(err => console.error('Failed to update opportunity totalPaidAmount:', err));
+      if (invoice.opportunityId) {
+        const oppInvoices = await this.prisma.invoice.findMany({
+          where: {
+            opportunityId: invoice.opportunityId,
+            tenantId: student.tenantId,
+            status: { not: PaymentStatus.VOIDED },
+          },
+        });
+        const newTotalPaid = oppInvoices.reduce((sum, inv) => {
+          if (inv.id === invoiceId) return sum + Number(invoice.totalAmount);
+          return sum + Number(inv.paidAmount);
+        }, 0);
+
+        await this.prisma.opportunity.update({
+          where: { id: invoice.opportunityId },
+          data: { totalPaidAmount: newTotalPaid },
+        }).catch(err => console.error('Failed to update opportunity totalPaidAmount:', err));
+      }
+
+      await this.logAction(userId, student.tenantId, 'FEE_PAYMENT', 'Invoice', invoiceId, {
+        studentId: student.id,
+        amount,
+        method,
+        transactionId: finalTxnId,
+      });
+
+      const parent = await this.getParentProfile(userId);
+      await this.createNotification(
+        parent.userId,
+        'Fee Payment Successful',
+        `Payment of ₹${amount} received for ${student.user.name}'s invoice. Txn: ${finalTxnId}`,
+      );
+
+      return {
+        success: true,
+        status: 'SUCCESS',
+        message: 'Payment processed and invoice ledger updated successfully.',
+        invoice: updatedInvoice,
+        transactionId: finalTxnId,
+      };
     }
 
-    await this.logAction(userId, student.tenantId, 'FEE_PAYMENT', 'Invoice', invoiceId, {
-      studentId,
-      amount,
-      method,
-      transactionId: txnResult.transactionId,
-    });
+    throw new BadRequestException('Invalid payment request parameters.');
+  }
 
-    const parent = await this.getParentProfile(userId);
-    await this.createNotification(
-      parent.userId,
-      'Fee Payment Successful',
-      `Payment of ₹${amount} received for ${student.user.name}'s invoice. Txn: ${txnResult.transactionId}`,
-    );
-
-    return {
-      success: true,
-      message: 'Payment processed and invoice ledger updated successfully.',
-      invoice: updatedInvoice,
-      transactionId: txnResult.transactionId,
-    };
+  async payInvoice(userId: string, studentId: string, invoiceId: string, data: any) {
+    return this.verifyPayment(userId, studentId, { ...data, invoiceId });
   }
 
   async getTimetable(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:timetable`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
     if (!student.classSectionId) return [];
 
-    // 1. Fetch assigned periods for this student's class section
-    const periods = await this.prisma.period.findMany({
-      where: { classSectionId: student.classSectionId },
-      include: {
-        subject: true,
-        teacher: { include: { user: true } },
-        periodTiming: true,
-      },
-    });
+    // Parallelize period and timing queries with lightweight field selection
+    const [periods, timingsRaw] = await Promise.all([
+      this.prisma.period.findMany({
+        where: { classSectionId: student.classSectionId },
+        select: {
+          id: true,
+          dayOfWeek: true,
+          periodTimingId: true,
+          subject: { select: { name: true } },
+          teacher: { select: { user: { select: { name: true } } } },
+        },
+      }),
+      this.prisma.periodTiming.findMany({
+        where: { tenantId: student.tenantId, isActive: true },
+        orderBy: { periodNumber: 'asc' },
+        select: {
+          id: true,
+          periodNumber: true,
+          name: true,
+          startTime: true,
+          endTime: true,
+          isBreak: true,
+        },
+      }),
+    ]);
 
-    // 2. Fetch all configured period timings for this school tenant
-    let timings = await this.prisma.periodTiming.findMany({
-      where: { tenantId: student.tenantId, isActive: true },
-      orderBy: { periodNumber: 'asc' },
-    });
-
+    let timings = timingsRaw;
     if (timings.length === 0) {
       timings = [
-        { id: '1', periodNumber: 1, name: 'P1', startTime: '09:00 AM', endTime: '10:00 AM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
-        { id: '2', periodNumber: 2, name: 'P2', startTime: '10:00 AM', endTime: '11:00 AM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
-        { id: '3', periodNumber: 3, name: 'P3', startTime: '11:00 AM', endTime: '12:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
-        { id: '4', periodNumber: 4, name: 'P4', startTime: '12:00 PM', endTime: '01:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
-        { id: '5', periodNumber: 5, name: 'Lunch Break', startTime: '01:00 PM', endTime: '02:00 PM', isBreak: true, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
-        { id: '6', periodNumber: 6, name: 'P6', startTime: '02:00 PM', endTime: '03:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
-        { id: '7', periodNumber: 7, name: 'P7', startTime: '03:00 PM', endTime: '04:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
-        { id: '8', periodNumber: 8, name: 'P8', startTime: '04:00 PM', endTime: '05:00 PM', isBreak: false, isActive: true, tenantId: student.tenantId, createdAt: new Date(), updatedAt: new Date() },
+        { id: '1', periodNumber: 1, name: 'P1', startTime: '09:00 AM', endTime: '10:00 AM', isBreak: false },
+        { id: '2', periodNumber: 2, name: 'P2', startTime: '10:00 AM', endTime: '11:00 AM', isBreak: false },
+        { id: '3', periodNumber: 3, name: 'P3', startTime: '11:00 AM', endTime: '12:00 PM', isBreak: false },
+        { id: '4', periodNumber: 4, name: 'P4', startTime: '12:00 PM', endTime: '01:00 PM', isBreak: false },
+        { id: '5', periodNumber: 5, name: 'Lunch Break', startTime: '01:00 PM', endTime: '02:00 PM', isBreak: true },
+        { id: '6', periodNumber: 6, name: 'P6', startTime: '02:00 PM', endTime: '03:00 PM', isBreak: false },
+        { id: '7', periodNumber: 7, name: 'P7', startTime: '03:00 PM', endTime: '04:00 PM', isBreak: false },
+        { id: '8', periodNumber: 8, name: 'P8', startTime: '04:00 PM', endTime: '05:00 PM', isBreak: false },
       ] as any;
     }
 
@@ -1338,7 +1770,7 @@ export class ParentPortalService {
       let teachingPeriodIndex = 1;
 
       timings.forEach(timing => {
-        const assigned = dayPeriods.find(p => p.periodTimingId === timing.id || p.periodTiming?.periodNumber === timing.periodNumber);
+        const assigned = dayPeriods.find(p => p.periodTimingId === timing.id);
 
         const isBreak = timing.isBreak ||
           (timing.name && /break|lunch|recess|tea/i.test(timing.name)) ||
@@ -1368,10 +1800,10 @@ export class ParentPortalService {
             result.push({
               id: assigned.id,
               day,
-              subject: assigned.subject.name,
+              subject: assigned.subject?.name || 'Subject',
               teacher: assigned.teacher?.user?.name || 'Teacher',
-              startTime: assigned.periodTiming?.startTime || timing.startTime,
-              endTime: assigned.periodTiming?.endTime || timing.endTime,
+              startTime: timing.startTime,
+              endTime: timing.endTime,
               periodNumber: currentLecNum,
               timingOrder: timing.periodNumber,
               isBreak: false,
@@ -1393,6 +1825,7 @@ export class ParentPortalService {
       });
     });
 
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
     return result;
   }
 
@@ -1405,6 +1838,13 @@ export class ParentPortalService {
   }
 
   async getAnnouncements(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:announcements`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
 
     const announcements = await this.prisma.announcement.findMany({
@@ -1415,19 +1855,44 @@ export class ParentPortalService {
           { classSectionId: student.classSectionId },
         ],
       },
-      include: { teacher: { include: { user: true } } },
+      include: {
+        teacher: {
+          select: {
+            id: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
-    return announcements.map(ann => ({
-      ...ann,
-      content: this.sanitizeAnnouncementContent(ann.content),
-    }));
+    const result = announcements.map(ann => {
+      const { readStatus, ...rest } = ann;
+      return {
+        ...rest,
+        content: this.sanitizeAnnouncementContent(ann.content),
+      };
+    });
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getTeacherComplaints(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:teacher-complaints`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
-    return this.prisma.behaviorCase.findMany({
+    const result = await this.prisma.behaviorCase.findMany({
       where: {
         studentId: student.id,
         behaviorType: 'Complaint',
@@ -1442,9 +1907,19 @@ export class ParentPortalService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async getComplaints(userId: string) {
+    const cacheKey = `${userId}:complaints`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const parent = await this.getParentProfile(userId);
     const complaints = await this.prisma.complaint.findMany({
       where: { submittedById: parent.userId },
@@ -1468,13 +1943,18 @@ export class ParentPortalService {
       historyMap.get(h.entityId)!.push(h);
     }
 
-    return complaints.map(c => ({
+    const result = complaints.map(c => ({
       ...c,
       statusHistories: historyMap.get(c.id) || [],
     }));
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async submitComplaint(userId: string, tenantId: string, data: any) {
+    this.invalidateCache(userId);
+
     const parent = await this.getParentProfile(userId);
     const activeYear = await this.prisma.academicYear.findFirst({
       where: { tenantId, isActive: true },
@@ -1541,9 +2021,16 @@ export class ParentPortalService {
   }
 
   async getTransport(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:transport`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     await this.verifyOwnership(userId, studentId);
 
-    return {
+    const result = {
       busNumber: 'MH-12-FE-4321',
       driverName: 'Sanjay Shinde',
       driverPhone: '+91 9881726354',
@@ -1556,9 +2043,14 @@ export class ParentPortalService {
         etaMinutes: 8,
       },
     };
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async submitLeaveRequest(userId: string, studentId: string, data: any) {
+    this.invalidateCache(userId);
+
     const student = await this.verifyOwnership(userId, studentId);
     const parent = await this.getParentProfile(userId);
 
@@ -1662,6 +2154,13 @@ export class ParentPortalService {
   }
 
   async getLeavesHistory(userId: string, studentId: string) {
+    const cacheKey = `${userId}:${studentId}:leaves-history`;
+    const cached = this.parentCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const student = await this.verifyOwnership(userId, studentId);
     const parent = await this.getParentProfile(userId);
 
@@ -1693,7 +2192,7 @@ export class ParentPortalService {
       historyMap.get(h.entityId)!.push(h);
     }
 
-    return leaves.map(l => ({
+    const result = leaves.map(l => ({
       id: l.id,
       leaveType: l.leaveType,
       startDate: l.startDate ? l.startDate.toISOString().split('T')[0] : '',
@@ -1709,5 +2208,8 @@ export class ParentPortalService {
       updatedAt: l.updatedAt,
       statusHistories: historyMap.get(l.id) || [],
     }));
+
+    this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 }

@@ -124,7 +124,7 @@ export default function PayslipPrintPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 print:bg-white print:p-0 p-3 sm:p-6 flex flex-col items-center">
+    <div className="min-h-screen bg-slate-100 dark:bg-slate-900 print:bg-white print:p-0 p-3 sm:p-6 pb-24 lg:pb-6 flex flex-col items-center overflow-x-hidden">
       {/* ── Print Sizing Styles Override ── */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
@@ -182,7 +182,7 @@ export default function PayslipPrintPage() {
       </div>
 
       {/* ── Payslip Sheet (A4-styled printable card) ── */}
-      <div id="payslip-pdf-element" className="print-card w-full max-w-[800px] bg-white text-slate-800 border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans print:m-0 flex flex-col print:block">
+      <div id="payslip-pdf-element" className="print-card w-full max-w-[800px] bg-white text-slate-800 border border-slate-200 print:border-none shadow-lg print:shadow-none print:min-h-0 relative font-sans print:m-0 flex flex-col print:block overflow-hidden rounded-2xl">
         <PDFLayout
           schoolLogo={payslip.schoolLogo}
           schoolName={payslip.schoolName}
@@ -249,37 +249,37 @@ export default function PayslipPrintPage() {
           </div>
 
           {/* Payment metadata summary */}
-          <div className="bg-[#f8fafc] border border-slate-200 p-4 rounded-xl text-xs space-y-2 break-inside-avoid">
+          <div className="bg-[#f8fafc] border border-slate-200 p-4 rounded-xl text-xs space-y-2.5 break-inside-avoid">
             <h3 className="font-bold text-[#1e3a8a] text-[10px] uppercase tracking-wider">Disbursement transaction details</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-3 gap-x-6 text-slate-700">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-slate-700">
               <div>
-                <span className="font-semibold text-slate-400 mr-2">Payment Date:</span>
+                <span className="text-[10px] font-bold text-slate-400 block uppercase">Payment Date</span>
                 <span className="font-bold text-slate-800">{payslip.paymentDate}</span>
               </div>
               <div>
-                <span className="font-semibold text-slate-400 mr-2">Payment Method:</span>
-                <span className="font-bold text-slate-850 font-mono uppercase">{payslip.paymentMethod.replace('_', ' ')}</span>
+                <span className="text-[10px] font-bold text-slate-400 block uppercase">Payment Method</span>
+                <span className="font-bold text-slate-800 font-mono uppercase">{payslip.paymentMethod.replace('_', ' ')}</span>
               </div>
-              <div className="col-span-2 sm:col-span-1">
-                <span className="font-semibold text-slate-400 mr-2">Reference No:</span>
-                <span className="font-mono text-slate-855 break-all">{payslip.payrollReference}</span>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 block uppercase">Reference No</span>
+                <span className="font-mono text-slate-800 break-all">{payslip.payrollReference}</span>
               </div>
             </div>
           </div>
 
-          {/* TotalsTake Home & Signature Block */}
-          <div className="border border-slate-200 p-5 rounded-2xl flex flex-col sm:flex-row sm:justify-between sm:items-end gap-6 sm:gap-0 bg-slate-50/50 mt-4 break-inside-avoid">
-            <div>
-              <div className="bg-[#1e3a8a] text-white rounded-lg px-6 py-4 flex items-center justify-between gap-6 sm:gap-8 min-w-[280px]">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-350">Net Take Home Salary</span>
-                <span className="text-[20px] font-black font-mono">
+          {/* Totals Take Home & Signature Block */}
+          <div className="border border-slate-200 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6 bg-slate-50/50 mt-4 break-inside-avoid w-full">
+            <div className="w-full sm:w-auto flex-1">
+              <div className="bg-[#1e3a8a] text-white rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-6 w-full max-w-full overflow-hidden shadow-xs">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-200">Net Take Home Salary</span>
+                <span className="text-xl sm:text-2xl font-black font-mono break-all">
                   ₹{payslip.netSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
 
-            <div className="flex flex-col items-center sm:items-end text-center sm:text-right shrink-0 pr-2">
-              <div className="h-10"></div> {/* Signature placeholder */}
+            <div className="flex flex-col items-center sm:items-end text-center sm:text-right shrink-0 w-full sm:w-auto">
+              <div className="h-8 sm:h-10"></div> {/* Signature placeholder */}
               <div className="w-[160px] border-b-2 border-slate-400 mb-1.5"></div>
               <span className="text-[11px] font-black text-slate-800">{payslip.authorizedSignature}</span>
               <span className="text-[9px] font-bold text-slate-450 uppercase tracking-wide">Authorized Signatory</span>

@@ -7,8 +7,10 @@ import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight,
 import Drawer from '@/components/Drawer';
 import DatePickerInput from '@/components/DatePickerInput';
 import { formatDateDDMMYYYY } from '@/lib/date';
+import { useTenant } from '@/app/providers/TenantContext';
 
 export default function HomeworkPage() {
+  const { schoolName } = useTenant();
   const [isMounted, setIsMounted] = useState(false);
   const [homeworks, setHomeworks] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
@@ -118,9 +120,9 @@ export default function HomeworkPage() {
     }
   }, [loading, classes]);
 
-  // Lock body scroll when WhatsApp Share Modal is open
+  // Lock body scroll when WhatsApp Share Modal or Attachment Preview Modal is open
   useEffect(() => {
-    if (showShareModal) {
+    if (showShareModal || previewAttachmentUrl) {
       const originalOverflow = document.body.style.overflow;
       const originalPaddingRight = document.body.style.paddingRight;
       const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
@@ -135,7 +137,7 @@ export default function HomeworkPage() {
         document.body.style.paddingRight = originalPaddingRight;
       };
     }
-  }, [showShareModal]);
+  }, [showShareModal, previewAttachmentUrl]);
 
   const openCreateModal = () => {
     setEditingHomework(null);
@@ -291,10 +293,11 @@ export default function HomeworkPage() {
 
   const generateHomeworkMessage = (hw: any) => {
     if (!hw) return '';
-    const dateStr = hw.dueDate.split('T')[0];
+    const dateStr = hw.dueDate ? hw.dueDate.split('T')[0] : '';
+    const displaySchoolName = schoolName || 'CS EduTrack';
     return `📚 Homework Assignment
 
-School: Cambridge International School
+School: ${displaySchoolName}
 
 Class: ${hw.classSection?.class?.name || ''}
 
@@ -309,6 +312,13 @@ Due Date: ${dateStr}
 Kindly ensure your child completes the homework before the due date.
 
 Thank you.`;
+  };
+
+  const handleShareToWhatsAppGroup = () => {
+    if (!hwToShare) return;
+    const message = generateHomeworkMessage(hwToShare);
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
   };
 
   const handleSendHomeworkBulk = async () => {
@@ -533,11 +543,12 @@ Thank you.`;
 
       {/* WhatsApp Share Dialog / Modal */}
       {isMounted && showShareModal && hwToShare && createPortal(
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[99999] p-4 animate-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-scale-in">
+        <>
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[99998]" onClick={() => { setShowShareModal(false); setHwToShare(null); }} />
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-lg bg-white shadow-2xl z-[99999] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col animate-scale-in">
             
             {/* Header */}
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
               <div>
                 <h3 className="font-black text-slate-900 text-base leading-none">Share Homework</h3>
                 <p className="text-[11px] text-slate-400 font-semibold mt-1">WhatsApp Sharing options & distribution</p>
@@ -839,6 +850,31 @@ Thank you.`;
 
               {shareStep === 'send_list' && (
                 <>
+                  {/* WhatsApp Group Share Banner/Button */}
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-2xl p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                        <span className="text-sm">📱</span> WhatsApp Group Distribution
+                      </span>
+                      <span className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                        Group Share
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium leading-relaxed">
+                      Share this homework announcement to your school's WhatsApp group. Opens WhatsApp prefilled with ONE homework message.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleShareToWhatsAppGroup}
+                      className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                    >
+                      <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
+                      </svg>
+                      <span>Share Homework to WhatsApp Group</span>
+                    </button>
+                  </div>
+
                   {/* Message Preview */}
                   <div className="space-y-2">
                     <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Prefilled Message Preview</div>
@@ -933,7 +969,7 @@ Thank you.`;
 
             </div>
           </div>
-        </div>,
+        </>,
         document.body
       )}
 
@@ -948,14 +984,14 @@ Thank you.`;
         title="Student Submission Status"
         subtitle={
           selectedHwForStatus ? (
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
-              <span className="font-bold text-slate-700">{selectedHwForStatus.title}</span>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-1">
+              <span className="font-bold text-slate-700 dark:text-slate-200">{selectedHwForStatus.title}</span>
               <span>•</span>
-              <span className="bg-slate-100 px-2 py-0.5 rounded font-mono text-[11px] text-slate-600">
+              <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded font-mono text-[11px] text-slate-600 dark:text-slate-300">
                 {selectedHwForStatus.classSection?.class?.name} - {selectedHwForStatus.classSection?.section?.name}
               </span>
               <span>•</span>
-              <span className="text-slate-600">{selectedHwForStatus.subject?.name}</span>
+              <span className="text-slate-600 dark:text-slate-300">{selectedHwForStatus.subject?.name}</span>
             </div>
           ) : undefined
         }
@@ -970,27 +1006,27 @@ Thank you.`;
           ) : submissionsData ? (
             <>
               {/* Summary Stats Cards */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center text-center">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Students</span>
-                    <span className="text-xl font-black text-slate-800 dark:text-white mt-1">
+              <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 space-y-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center text-center">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Students</span>
+                    <span className="text-lg sm:text-xl font-black text-slate-800 dark:text-white mt-0.5">
                       {submissionsData.summary?.totalStudents ?? 0}
                     </span>
                   </div>
-                  <div className="bg-emerald-50/70 dark:bg-emerald-950/30 p-3.5 rounded-2xl border border-emerald-200/60 dark:border-emerald-800/50 shadow-xs flex flex-col items-center text-center">
-                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                  <div className="bg-emerald-50/70 dark:bg-emerald-950/30 p-3 rounded-2xl border border-emerald-200/60 dark:border-emerald-800/50 shadow-xs flex flex-col items-center text-center">
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" /> Completed
                     </span>
-                    <span className="text-xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
+                    <span className="text-lg sm:text-xl font-black text-emerald-700 dark:text-emerald-300 mt-0.5">
                       {submissionsData.summary?.completed ?? 0}
                     </span>
                   </div>
-                  <div className="bg-amber-50/70 dark:bg-amber-950/30 p-3.5 rounded-2xl border border-amber-200/60 dark:border-amber-800/50 shadow-xs flex flex-col items-center text-center">
-                    <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                  <div className="col-span-2 sm:col-span-1 bg-amber-50/70 dark:bg-amber-950/30 p-3 rounded-2xl border border-amber-200/60 dark:border-amber-800/50 shadow-xs flex flex-col items-center text-center">
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" /> Incomplete
                     </span>
-                    <span className="text-xl font-black text-amber-700 dark:text-amber-300 mt-1">
+                    <span className="text-lg sm:text-xl font-black text-amber-700 dark:text-amber-300 mt-0.5">
                       {submissionsData.summary?.incomplete ?? 0}
                     </span>
                   </div>
@@ -1014,12 +1050,12 @@ Thank you.`;
               </div>
 
               {/* Filtering and Search Toolbar */}
-              <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex gap-1.5 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl">
+              <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl w-full sm:w-auto overflow-x-auto">
                   <button
                     type="button"
                     onClick={() => setStatusFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap text-center ${
                       statusFilter === 'ALL'
                         ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-xs'
                         : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -1030,7 +1066,7 @@ Thank you.`;
                   <button
                     type="button"
                     onClick={() => setStatusFilter('COMPLETED')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap text-center ${
                       statusFilter === 'COMPLETED'
                         ? 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 shadow-xs'
                         : 'text-slate-500 hover:text-emerald-600'
@@ -1041,7 +1077,7 @@ Thank you.`;
                   <button
                     type="button"
                     onClick={() => setStatusFilter('INCOMPLETE')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    className={`flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap text-center ${
                       statusFilter === 'INCOMPLETE'
                         ? 'bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 shadow-xs'
                         : 'text-slate-500 hover:text-amber-600'
@@ -1051,7 +1087,7 @@ Thank you.`;
                   </button>
                 </div>
 
-                <div className="relative flex-1 min-w-[200px] flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 focus-within:border-[#2E5BFF]">
+                <div className="relative w-full sm:w-64 flex items-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 focus-within:border-[#2E5BFF]">
                   <Search className="w-3.5 h-3.5 text-slate-400 mr-2 shrink-0" />
                   <input
                     type="text"
@@ -1090,8 +1126,8 @@ Thank you.`;
                   }
 
                   return (
-                    <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden shadow-2xs">
-                      <table className="w-full text-left border-collapse">
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-x-auto w-full shadow-2xs">
+                      <table className="w-full text-left border-collapse min-w-[500px]">
                         <thead>
                           <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/60 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                             <th className="py-2.5 px-3">Roll</th>
@@ -1190,9 +1226,10 @@ Thank you.`;
 
       {/* In-Page Attachment Preview Modal */}
       {previewAttachmentUrl && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+        <>
+          <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-xs animate-fade-in" onClick={() => setPreviewAttachmentUrl(null)} />
+          <div className="fixed inset-y-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white dark:bg-slate-800 shadow-2xl z-[101] overflow-hidden h-[100dvh] max-h-[100dvh] flex flex-col border border-slate-200 dark:border-slate-700">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <FileText className="w-5 h-5 text-[#2E5BFF] shrink-0" />
                 <h4 className="text-sm font-bold text-slate-800 dark:text-white truncate">{previewAttachmentName}</h4>
@@ -1234,7 +1271,7 @@ Thank you.`;
               )}
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );

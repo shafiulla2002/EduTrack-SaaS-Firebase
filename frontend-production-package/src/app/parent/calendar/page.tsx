@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParent } from '../ParentContext';
-import { api } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { Clock, BookOpen, User, Calendar as CalendarIcon, Info, Utensils, Coffee } from 'lucide-react';
 
 export default function CalendarPage() {
@@ -13,9 +13,13 @@ export default function CalendarPage() {
 
   const fetchTimetable = async (childId: string) => {
     try {
-      setLoading(true);
-      const res = await api.get(`/parent-portal/children/${childId}/timetable`);
-      setTimetable(res.data || []);
+      const res = await fastGet(`/parent-portal/children/${childId}/timetable`, {
+        ttlMs: 60000,
+        onRevalidate: (fresh: any) => {
+          if (fresh) setTimetable(fresh?.data || fresh);
+        },
+      });
+      if (res?.data) setTimetable(res.data);
     } catch (err) {
       console.error('Failed to fetch timetable:', err);
     } finally {
@@ -24,19 +28,10 @@ export default function CalendarPage() {
   };
 
   useEffect(() => {
-    if (selectedChild) {
+    if (selectedChild?.id) {
       fetchTimetable(selectedChild.id);
     }
-  }, [selectedChild]);
-
-  // Listen to switcher events
-  useEffect(() => {
-    const handleChildChange = (e: any) => {
-      fetchTimetable(e.detail);
-    };
-    window.addEventListener('parentChildChanged', handleChildChange);
-    return () => window.removeEventListener('parentChildChanged', handleChildChange);
-  }, []);
+  }, [selectedChild?.id]);
 
   if (!selectedChild) {
     return (
@@ -46,7 +41,7 @@ export default function CalendarPage() {
     );
   }
 
-  if (loading) {
+  if (loading && timetable.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[300px]">
         <div className="w-8 h-8 border-4 border-t-[#2E5BFF] border-r-[#2E5BFF] border-b-transparent border-l-transparent rounded-full animate-spin"></div>

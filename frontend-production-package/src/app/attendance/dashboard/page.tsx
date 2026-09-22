@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { api, cachedGet } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import { 
   Calendar as CalendarIcon, CheckCircle, AlertCircle, RefreshCw, 
   Search, ChevronLeft, ChevronRight, UserCheck, Info, TrendingUp, Plus 
@@ -107,26 +107,27 @@ function AttendanceDashboardContent() {
     }
   }, [students, paramStudentId]);
 
-  // Fetch report data for a 1-year historical range
+  // Fetch report data with scoped filters and SWR caching
   const loadAttendanceData = async () => {
-    setIsLoading(true);
     setError(null);
     try {
       const today = new Date();
       const start = new Date();
-      start.setFullYear(today.getFullYear() - 1);
+      start.setDate(today.getDate() - 90); // default 90 days for fast loading
       const end = new Date();
       end.setDate(today.getDate() + 30);
 
       const startDateStr = toLocalDateString(start);
       const endDateStr = toLocalDateString(end);
 
+      const params: any = { startDate: startDateStr, endDate: endDateStr };
+      if (selectedClass && selectedClass !== 'all') params.className = selectedClass;
+      if (selectedSection && selectedSection !== 'all') params.sectionName = selectedSection;
+
       const [res, classesRes, sectionsRes] = await Promise.all([
-        api.get('/attendance/report-data', {
-          params: { startDate: startDateStr, endDate: endDateStr }
-        }),
-        cachedGet('/academics/classes', undefined, 60000).catch(() => ({ data: [] })),
-        cachedGet('/academics/sections', undefined, 60000).catch(() => ({ data: [] })),
+        fastGet('/attendance/report-data', { params }, { ttlMs: 30000 }),
+        fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
+        fastGet('/academics/sections', undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
       ]);
 
       const data = res.data;
@@ -184,7 +185,7 @@ function AttendanceDashboardContent() {
 
   useEffect(() => {
     loadAttendanceData();
-  }, []);
+  }, [selectedClass, selectedSection]);
 
   // Indexed Lookups (Salesforce parity)
   const maps = useMemo(() => {

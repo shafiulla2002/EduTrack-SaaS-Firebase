@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import {
   CalendarDays, Plus, Trash2, X, AlertCircle, CheckCircle,
   FileText, Filter, Eye, Check, Clock, User, ShieldAlert, Paperclip, MessageSquare,
@@ -18,14 +18,45 @@ function LeaveMgmtContent() {
   const { currentUser } = useTenant();
   const searchParams = useSearchParams();
   const highlightId = searchParams ? searchParams.get('id') : null;
+  const isAdmin = currentUser?.role === 'SCHOOL_ADMIN' || currentUser?.role === 'SUPER_ADMIN';
 
-  const [leaves, setLeaves] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Synchronously initialize state from persistent SWR cache for 0ms instant display
+  const initialLeavesData = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    const adminParams = {
+      page: 1,
+      limit: 20,
+      status: 'ALL',
+      applicantType: 'ALL',
+      leaveType: 'ALL',
+      academicYearId: 'ALL',
+      sortBy: 'appliedDate',
+      sortOrder: 'desc',
+    };
+    return getCachedData<any>(isAdmin ? '/leave-management' : '/teacher-portal/leave', isAdmin ? adminParams : undefined) ||
+           getCachedData<any>(isAdmin ? '/leave-management' : '/teacher-portal/leave');
+  }, [isAdmin]);
+
+  const initialStatsData = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return getCachedData<any>('/leave-management/stats');
+  }, []);
+
+  const [leaves, setLeaves] = useState<any[]>(() => {
+    if (initialLeavesData?.data && Array.isArray(initialLeavesData.data)) return initialLeavesData.data;
+    if (Array.isArray(initialLeavesData)) return initialLeavesData;
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const hasLeaves = (initialLeavesData?.data && Array.isArray(initialLeavesData.data) && initialLeavesData.data.length > 0) ||
+                      (Array.isArray(initialLeavesData) && initialLeavesData.length > 0);
+    return !hasLeaves;
+  });
   const [mounted, setMounted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Stats
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState(() => initialStatsData || {
     pending: 0,
     approvedToday: 0,
     rejectedToday: 0,
@@ -36,7 +67,7 @@ function LeaveMgmtContent() {
   // Admin Search & Pagination Filters
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
-  const [totalPages, setTotalPages] = useState(1);
+  const [totalPages, setTotalPages] = useState(() => initialLeavesData?.totalPages || 1);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [applicantTypeFilter, setApplicantTypeFilter] = useState<string>('ALL');
   const [leaveTypeFilter, setLeaveTypeFilter] = useState<string>('ALL');
@@ -79,8 +110,6 @@ function LeaveMgmtContent() {
   const [previewFileName, setPreviewFileName] = useState<string>('Medical Certificate / Document');
   const [imageZoom, setImageZoom] = useState<number>(1);
   const [fileLoadError, setFileLoadError] = useState<boolean>(false);
-
-  const isAdmin = currentUser?.role === 'SCHOOL_ADMIN' || currentUser?.role === 'SUPER_ADMIN';
 
   useEffect(() => {
     setMounted(true);
@@ -155,8 +184,9 @@ function LeaveMgmtContent() {
     }
   }, [isAdmin]);
 
-  // Load Leaves List & Stats
-  async function loadLeaves() {
+  // Load Leaves List & Stats with SWR
+  async function loadLeaves(showSpinner = false) {
+    if (showSpinner) setLoading(true);
     try {
       if (isAdmin) {
         const params: any = {
@@ -173,15 +203,39 @@ function LeaveMgmtContent() {
           sortOrder,
         };
         const [leavesRes, statsRes] = await Promise.all([
-          api.get('/leave-management', { params }),
-          fastGet('/leave-management/stats', undefined, { ttlMs: 15000 })
+          fastGet('/leave-management', { params }, {
+            ttlMs: 30000,
+            onRevalidate: (fresh) => {
+              if (fresh?.data) {
+                setLeaves(fresh.data || []);
+                setTotalPages(fresh.totalPages || 1);
+              }
+            }
+          }),
+          fastGet('/leave-management/stats', undefined, {
+            ttlMs: 30000,
+            onRevalidate: (fresh) => {
+              if (fresh) setStats(fresh);
+            }
+          })
         ]);
-        setLeaves(leavesRes.data.data || []);
-        setTotalPages(leavesRes.data.totalPages || 1);
-        setStats(statsRes.data);
+        if (leavesRes.data) {
+          setLeaves(leavesRes.data.data || []);
+          setTotalPages(leavesRes.data.totalPages || 1);
+        }
+        if (statsRes.data) {
+          setStats(statsRes.data);
+        }
       } else {
-        const res = await api.get('/teacher-portal/leave');
-        setLeaves(res.data || []);
+        const res = await fastGet('/teacher-portal/leave', undefined, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh) setLeaves(fresh?.data || fresh || []);
+          }
+        });
+        if (res.data) {
+          setLeaves(res.data?.data || res.data || []);
+        }
       }
     } catch (err) {
       console.error('Failed to load leaves:', err);
@@ -422,11 +476,29 @@ function LeaveMgmtContent() {
     });
   }, [leaves, isAdmin, statusFilter, applicantTypeFilter]);
 
-  if (!mounted || loading) {
+  if (!mounted || (loading && leaves.length === 0)) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="w-10 h-10 border-4 border-t-[#2E5BFF] border-slate-200 rounded-full animate-spin"></div>
-        <p className="text-sm font-semibold text-slate-500">Loading leave requests dashboard...</p>
+      <div className="space-y-6 max-w-7xl mx-auto pb-20 font-sans text-slate-800 animate-pulse">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-5 border-b border-slate-200">
+          <div>
+            <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+              <CalendarDays className="w-7 h-7 text-[#2E5BFF]" />
+              Leave Requests Hub
+            </h2>
+            <p className="text-xs text-slate-500 mt-1 font-medium">
+              Centralized Leave Management system to process and audit Teacher and Parent leave requests.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="bg-white p-4 rounded-2xl border border-slate-200 h-24 animate-pulse"></div>
+          ))}
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 min-h-[300px] flex flex-col items-center justify-center gap-3">
+          <div className="w-8 h-8 border-3 border-t-[#2E5BFF] border-slate-200 rounded-full animate-spin"></div>
+          <p className="text-xs font-semibold text-slate-400">Loading leave requests...</p>
+        </div>
       </div>
     );
   }
@@ -487,21 +559,21 @@ function LeaveMgmtContent() {
         </div>
 
         {/* Filters Panel matching Screenshot */}
-        <div className="bg-white border border-slate-200 p-5 rounded-2xl shadow-xs space-y-4">
+        <div className="bg-white border border-slate-200 p-4 sm:p-5 rounded-2xl shadow-xs space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-xs font-bold text-[#2E5BFF] uppercase tracking-wider">
-              <Filter className="w-4 h-4" />
+              <Filter className="w-4 h-4 shrink-0" />
               Filter Applications
             </div>
 
-            <div className="flex flex-wrap gap-4 items-center">
-              {/* Status Tabs exactly matching Screenshot */}
-              <div className="flex bg-slate-100 p-1 rounded-xl">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-stretch sm:items-center w-full md:w-auto">
+              {/* Status Tabs matching requirements */}
+              <div className="grid grid-cols-2 sm:flex bg-slate-100 p-1 rounded-xl gap-1 w-full sm:w-auto">
                 {(['ALL', 'PENDING', 'APPROVED', 'REJECTED'] as const).map(st => (
                   <button
                     key={st}
                     onClick={() => { setStatusFilter(st); setPage(1); }}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                    className={`px-3 sm:px-4 py-2 sm:py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${
                       statusFilter === st ? 'bg-white text-[#2E5BFF] shadow-xs' : 'text-slate-500 hover:text-slate-800'
                     }`}
                   >
@@ -510,13 +582,13 @@ function LeaveMgmtContent() {
                 ))}
               </div>
 
-              {/* Applicant Type Tabs exactly matching Screenshot */}
-              <div className="flex bg-slate-100 p-1 rounded-xl">
+              {/* Applicant Type Tabs matching requirements */}
+              <div className="grid grid-cols-3 sm:flex bg-slate-100 p-1 rounded-xl gap-1 w-full sm:w-auto">
                 {(['ALL', 'STUDENT', 'TEACHER'] as const).map(tp => (
                   <button
                     key={tp}
                     onClick={() => { setApplicantTypeFilter(tp); setPage(1); }}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                    className={`px-2.5 sm:px-4 py-2 sm:py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer text-center ${
                       applicantTypeFilter === tp ? 'bg-[#2E5BFF] text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
                     }`}
                   >
@@ -528,7 +600,7 @@ function LeaveMgmtContent() {
           </div>
 
           {/* Advanced Dropdown & Input Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 pt-2 border-t border-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 sm:gap-4 pt-2 border-t border-slate-100">
             <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Leave Type</label>
               <select
@@ -566,7 +638,7 @@ function LeaveMgmtContent() {
                 type="date"
                 value={startDateFilter}
                 onChange={(e) => { setStartDateFilter(e.target.value); setPage(1); }}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 p-2.5 rounded-xl outline-none"
+                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 p-2.5 rounded-xl outline-none min-h-[42px]"
               />
             </div>
 
@@ -576,7 +648,7 @@ function LeaveMgmtContent() {
                 type="date"
                 value={endDateFilter}
                 onChange={(e) => { setEndDateFilter(e.target.value); setPage(1); }}
-                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 p-2.5 rounded-xl outline-none"
+                className="w-full text-xs font-semibold bg-slate-50 border border-slate-200 p-2.5 rounded-xl outline-none min-h-[42px]"
               />
             </div>
 
@@ -586,7 +658,7 @@ function LeaveMgmtContent() {
                 <select
                   value={sortBy}
                   onChange={(e) => handleSort(e.target.value)}
-                  className="text-xs font-semibold bg-slate-50 border border-slate-200 p-2.5 rounded-xl outline-none flex-1"
+                  className="text-xs font-semibold bg-slate-50 border border-slate-200 p-2.5 rounded-xl outline-none flex-1 min-w-0"
                 >
                   <option value="appliedDate">Applied Date</option>
                   <option value="startDate">Start Date</option>
@@ -595,7 +667,7 @@ function LeaveMgmtContent() {
                 </select>
                 <button
                   onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0"
+                  className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-center shrink-0 min-w-[44px] min-h-[44px]"
                   title="Toggle Order"
                 >
                   <ArrowUpDown className="w-4 h-4 text-slate-500" />
@@ -610,7 +682,7 @@ function LeaveMgmtContent() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search by Applicant Name, Employee ID, or Student ID..."
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-[#2E5BFF]"
+              className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 outline-none focus:border-[#2E5BFF] placeholder:text-ellipsis"
             />
           </div>
         </div>
