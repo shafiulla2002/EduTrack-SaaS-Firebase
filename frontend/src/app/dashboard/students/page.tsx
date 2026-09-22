@@ -5,7 +5,7 @@ import {
   Search, ArrowLeft, Plus, X, Phone, Mail, Award, Receipt, 
   CheckCircle, AlertTriangle, ChevronDown, ChevronUp, User, 
   MapPin, Calendar as CalendarIcon, DollarSign, BookOpen, ShieldAlert,
-  Percent, Trash2
+  Percent, Trash2, FileText, Download
 } from 'lucide-react';
 import { api, cachedGet, fastGet } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
@@ -50,6 +50,8 @@ export default function StudentsDirectory() {
   const [selectedClass, setSelectedClass] = useState('All');
   const [selectedSection, setSelectedSection] = useState('All');
   const [selectedYear, setSelectedYear] = useState('All');
+  const [selectedFinancialStatus, setSelectedFinancialStatus] = useState('All');
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [academicYears, setAcademicYears] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [sections, setSections] = useState<any[]>([]);
@@ -105,6 +107,7 @@ export default function StudentsDirectory() {
       setSelectedClass('All');
       setSelectedSection('All');
       setSelectedYear('All');
+      setSelectedFinancialStatus('All');
 
       loadStudents(1);
     } catch (err: any) {
@@ -194,7 +197,8 @@ export default function StudentsDirectory() {
           search: search || undefined,
           classId,
           sectionId,
-          academicYearId
+          academicYearId,
+          financialStatus: selectedFinancialStatus !== 'All' ? selectedFinancialStatus : undefined,
         },
         signal: controller.signal
       }, {
@@ -222,7 +226,7 @@ export default function StudentsDirectory() {
     } finally {
       setLoading(false);
     }
-  }, [search, selectedClass, selectedSection, selectedYear, classes, sections, limit]);
+  }, [search, selectedClass, selectedSection, selectedYear, selectedFinancialStatus, classes, sections, limit]);
 
   useEffect(() => {
     loadFilterOptions();
@@ -239,16 +243,16 @@ export default function StudentsDirectory() {
   // Reset page to 1 when filters or search change
   useEffect(() => {
     setPage(1);
-  }, [search, selectedClass, selectedSection, selectedYear]);
+  }, [search, selectedClass, selectedSection, selectedYear, selectedFinancialStatus]);
 
   // Load students when page or filters change
   useEffect(() => {
     loadStudents(page);
-  }, [page, search, selectedClass, selectedSection, selectedYear, loadStudents]);
+  }, [page, search, selectedClass, selectedSection, selectedYear, selectedFinancialStatus, loadStudents]);
 
   useEffect(() => {
     setSelectedIds([]);
-  }, [search, selectedClass, selectedSection, selectedYear]);
+  }, [search, selectedClass, selectedSection, selectedYear, selectedFinancialStatus]);
 
   useSchoolSetupUpdate(() => loadStudents(1));
 
@@ -514,10 +518,251 @@ export default function StudentsDirectory() {
       selectedClass !== 'All' ||
       selectedSection !== 'All' ||
       selectedYear !== 'All' ||
+      selectedFinancialStatus !== 'All' ||
       search !== '') &&
     students.length > 0;
   const { barRef, contentPaddingBottom } = useFloatingBarPadding({ visible: isBarVisible });
   // ────────────────────────────────────────────────────────────────────────
+
+  const handleExportPDF = async () => {
+    try {
+      setIsExportingPDF(true);
+      const classId = selectedClass === 'All' ? undefined : classes.find(c => c.name === selectedClass)?.id;
+      const sectionId = selectedSection === 'All' ? undefined : sections.find(s => s.name === selectedSection)?.id;
+      const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
+
+      const res = await api.get('/students', {
+        params: {
+          search: search || undefined,
+          classId,
+          sectionId,
+          academicYearId,
+          financialStatus: selectedFinancialStatus !== 'All' ? selectedFinancialStatus : undefined,
+          limit: 10000
+        }
+      });
+
+      const rawList = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      const exportList = rawList.map((s: any) => {
+        const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : 0;
+        const due = s.balanceDue !== undefined ? Number(s.balanceDue) : 0;
+        const tot = s.totalFees !== undefined ? Number(s.totalFees) : (paid + due);
+        return {
+          rollNo: s.rollNo || 'N/A',
+          name: s.user?.name || s.name || 'Unknown Student',
+          className: s.classSection?.class?.name || s.class || 'N/A',
+          sectionName: s.classSection?.section?.name || s.section || 'N/A',
+          parentName: s.fatherName || s.parentName || 'N/A',
+          phone: s.user?.phone || s.phone || s.fatherPhone || 'N/A',
+          totalFee: tot,
+          paidAmount: paid,
+          balanceDue: due,
+          financialStatus: due > 0 ? `Pending (₹${due.toLocaleString('en-IN')} Due)` : 'Fully Paid (₹0 Balance)'
+        };
+      });
+
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageWidth = 297;
+      const pageHeight = 210;
+      const margin = 12;
+      const printableWidth = pageWidth - (margin * 2);
+
+      const yearName = selectedYear !== 'All' ? (academicYears.find(ay => ay.id === selectedYear)?.name || 'Selected Year') : 'All Academic Years';
+      const gradeName = selectedClass !== 'All' ? selectedClass : 'All Grades';
+      const secName = selectedSection !== 'All' ? selectedSection : 'All Sections';
+      const finStatusLabel = ({
+        'All': 'All Financial Status',
+        'FULLY_PAID': 'Fully Paid (100%)',
+        'ABOVE_75': 'Above 75% Paid',
+        'PAID_50_75': '50%–75% Paid',
+        'BELOW_50': 'Below 50% Paid',
+        'PENDING_BALANCE': 'Pending Balance'
+      } as Record<string, string>)[selectedFinancialStatus] || 'All Financial Status';
+      const searchLabel = search.trim() ? `"${search.trim()}"` : 'All / None';
+      const dateStr = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+
+      // Header Banner
+      doc.setFillColor(30, 41, 59); // slate-800
+      doc.rect(margin, margin, printableWidth, 16, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('STUDENT FINANCIAL STATUS REPORT', margin + 6, margin + 10.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(203, 213, 225); // slate-300
+      doc.text(`Generated: ${dateStr} | Total Students: ${exportList.length}`, printableWidth + margin - 6, margin + 10.5, { align: 'right' });
+
+      // Filter summary card
+      let y = margin + 20;
+      doc.setFillColor(248, 250, 252); // slate-50
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.roundedRect(margin, y, printableWidth, 14, 2, 2, 'FD');
+
+      doc.setFontSize(8.5);
+      doc.setTextColor(71, 85, 105); // slate-600
+      doc.setFont('helvetica', 'bold');
+      doc.text('ACTIVE FILTERS:', margin + 4, y + 5.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Academic Year: ${yearName}   |   Grade: ${gradeName}   |   Section: ${secName}`, margin + 35, y + 5.5);
+      doc.text(`Financial Status: ${finStatusLabel}   |   Search Query: ${searchLabel}`, margin + 35, y + 10.5);
+
+      y += 18;
+
+      if (exportList.length === 0) {
+        doc.setFillColor(254, 242, 242);
+        doc.setDrawColor(254, 202, 202);
+        doc.roundedRect(margin, y, printableWidth, 24, 2, 2, 'FD');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(185, 28, 28);
+        doc.text('No students match the selected filters.', pageWidth / 2, y + 14, { align: 'center' });
+      } else {
+        // Table Columns Configuration
+        const cols = [
+          { header: '#', width: 10, align: 'center' },
+          { header: 'Roll No', width: 18, align: 'left' },
+          { header: 'Student Name', width: 45, align: 'left' },
+          { header: 'Class - Sec', width: 28, align: 'left' },
+          { header: 'Parent / Guardian', width: 40, align: 'left' },
+          { header: 'Phone', width: 26, align: 'left' },
+          { header: 'Total Fee', width: 26, align: 'right' },
+          { header: 'Paid', width: 26, align: 'right' },
+          { header: 'Balance Due', width: 26, align: 'right' },
+          { header: 'Financial Status', width: 28, align: 'center' },
+        ];
+
+        const drawTableHeader = (curY: number) => {
+          doc.setFillColor(241, 245, 249); // slate-100
+          doc.setDrawColor(203, 213, 225); // slate-300
+          doc.rect(margin, curY, printableWidth, 7, 'FD');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.setTextColor(30, 41, 59);
+
+          let curX = margin;
+          for (const c of cols) {
+            const posX = c.align === 'right' ? curX + c.width - 2 : c.align === 'center' ? curX + (c.width / 2) : curX + 2;
+            doc.text(c.header, posX, curY + 4.8, { align: c.align as any });
+            curX += c.width;
+          }
+          return curY + 7;
+        };
+
+        y = drawTableHeader(y);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+
+        for (let i = 0; i < exportList.length; i++) {
+          const item = exportList[i];
+          const rowHeight = 6.5;
+
+          if (y + rowHeight > pageHeight - margin - 8) {
+            // Add page footer
+            doc.setFontSize(7);
+            doc.setTextColor(148, 163, 184);
+            doc.text(`Page ${doc.getNumberOfPages()} | EduTrack Institute Platform`, pageWidth / 2, pageHeight - 6, { align: 'center' });
+
+            doc.addPage();
+            y = margin;
+            y = drawTableHeader(y);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+          }
+
+          // Row background
+          if (i % 2 === 1) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(margin, y, printableWidth, rowHeight, 'F');
+          }
+
+          doc.setDrawColor(241, 245, 249);
+          doc.line(margin, y + rowHeight, margin + printableWidth, y + rowHeight);
+
+          let curX = margin;
+          const hasDue = item.balanceDue > 0;
+
+          // Col 1: #
+          doc.setTextColor(100, 116, 139);
+          doc.text(String(i + 1), curX + (cols[0].width / 2), y + 4.5, { align: 'center' });
+          curX += cols[0].width;
+
+          // Col 2: Roll No
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235); // blue-600
+          doc.text(item.rollNo, curX + 2, y + 4.5);
+          curX += cols[1].width;
+
+          // Col 3: Student Name
+          doc.setTextColor(15, 23, 42); // slate-900
+          const truncatedName = item.name.length > 25 ? item.name.substring(0, 23) + '...' : item.name;
+          doc.text(truncatedName, curX + 2, y + 4.5);
+          curX += cols[2].width;
+
+          // Col 4: Class - Sec
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(71, 85, 105);
+          const classSec = `${item.className} - ${item.sectionName}`;
+          doc.text(classSec, curX + 2, y + 4.5);
+          curX += cols[3].width;
+
+          // Col 5: Parent
+          const truncatedParent = item.parentName.length > 22 ? item.parentName.substring(0, 20) + '...' : item.parentName;
+          doc.text(truncatedParent, curX + 2, y + 4.5);
+          curX += cols[4].width;
+
+          // Col 6: Phone
+          doc.text(item.phone, curX + 2, y + 4.5);
+          curX += cols[5].width;
+
+          // Col 7: Total Fee
+          doc.text(`₹${item.totalFee.toLocaleString('en-IN')}`, curX + cols[6].width - 2, y + 4.5, { align: 'right' });
+          curX += cols[6].width;
+
+          // Col 8: Paid
+          doc.setTextColor(5, 150, 105); // emerald-600
+          doc.text(`₹${item.paidAmount.toLocaleString('en-IN')}`, curX + cols[7].width - 2, y + 4.5, { align: 'right' });
+          curX += cols[7].width;
+
+          // Col 9: Balance Due
+          doc.setTextColor(hasDue ? 217 : 71, hasDue ? 119 : 85, hasDue ? 6 : 105); // amber-600 or slate-600
+          doc.setFont('helvetica', hasDue ? 'bold' : 'normal');
+          doc.text(`₹${item.balanceDue.toLocaleString('en-IN')}`, curX + cols[8].width - 2, y + 4.5, { align: 'right' });
+          curX += cols[8].width;
+
+          // Col 10: Financial Status
+          doc.setFont('helvetica', 'bold');
+          if (hasDue) {
+            doc.setTextColor(180, 83, 9); // amber-700
+            doc.text(`Pending Due`, curX + (cols[9].width / 2), y + 4.5, { align: 'center' });
+          } else {
+            doc.setTextColor(4, 120, 87); // emerald-700
+            doc.text(`Fully Paid`, curX + (cols[9].width / 2), y + 4.5, { align: 'center' });
+          }
+          curX += cols[9].width;
+
+          y += rowHeight;
+        }
+      }
+
+      // Page footer for final page
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Page ${doc.getNumberOfPages()} | EduTrack Institute Platform`, pageWidth / 2, pageHeight - 6, { align: 'center' });
+
+      const safeFilename = `student_directory_report_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(safeFilename);
+      showToast(`Exported PDF successfully (${exportList.length} students).`, 'success');
+    } catch (err: any) {
+      console.error('Failed to export students PDF:', err);
+      showToast('Failed to generate PDF report.', 'error');
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in">
@@ -533,15 +778,35 @@ export default function StudentsDirectory() {
                 Browse through student files, view account ledgers, and check parent assignments.
               </p>
             </div>
-            <div className="text-slate-500 text-[12px] font-bold bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-xs">
-              Total Records Staged: <span className="text-[#2E5BFF] font-extrabold">{total}</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExportPDF}
+                disabled={isExportingPDF}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-750 hover:text-[#2E5BFF] hover:border-blue-200 text-[12px] font-bold shadow-xs transition-all cursor-pointer min-h-[36px] disabled:opacity-50"
+                title="Download Filtered Students PDF Report"
+              >
+                {isExportingPDF ? (
+                  <>
+                    <PencilSpinner size="xs" />
+                    <span>Generating PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4 text-[#2E5BFF]" />
+                    <span>Download PDF</span>
+                  </>
+                )}
+              </button>
+              <div className="text-slate-500 text-[12px] font-bold bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-xs">
+                Total Records Staged: <span className="text-[#2E5BFF] font-extrabold">{total}</span>
+              </div>
             </div>
           </div>
  
           {/* Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="md:col-span-2 relative flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2 focus-within:border-[#2E5BFF] focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-              <Search className="w-4 h-4 text-slate-400 mr-2" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+            <div className="sm:col-span-2 md:col-span-2 relative flex items-center bg-white border border-slate-200 rounded-xl px-4 py-2 focus-within:border-[#2E5BFF] focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+              <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
               <input
                 type="text"
                 placeholder="Search by Name, roll number, or phone..."
@@ -554,7 +819,7 @@ export default function StudentsDirectory() {
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
+              className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
             >
               <option value="All">All Academic Years</option>
               {academicYears.map(ay => (
@@ -565,7 +830,7 @@ export default function StudentsDirectory() {
             <select
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
+              className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
             >
               <option value="All">All Grades</option>
               {classes.map(c => (
@@ -576,12 +841,25 @@ export default function StudentsDirectory() {
             <select
               value={selectedSection}
               onChange={(e) => setSelectedSection(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
+              className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
             >
               <option value="All">All Sections</option>
               {sections.map(s => (
                 <option key={s.id} value={s.name}>{s.name}</option>
               ))}
+            </select>
+
+            <select
+              value={selectedFinancialStatus}
+              onChange={(e) => setSelectedFinancialStatus(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
+            >
+              <option value="All">All Financial Status</option>
+              <option value="FULLY_PAID">Fully Paid (100%)</option>
+              <option value="ABOVE_75">Above 75% Paid</option>
+              <option value="PAID_50_75">50%–75% Paid</option>
+              <option value="BELOW_50">Below 50% Paid</option>
+              <option value="PENDING_BALANCE">Pending Balance</option>
             </select>
           </div>
 
@@ -673,13 +951,17 @@ export default function StudentsDirectory() {
                             <div className="text-xs text-slate-400 font-medium mt-0.5">{student.phone}</div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 ${
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap ${
                               hasDue 
-                                ? 'bg-amber-50 text-amber-600 border border-amber-200' 
-                                : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                              {financialStatus}
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                              {hasDue ? (
+                                <span>Pending <strong className="font-extrabold text-amber-800">₹{Number(student.balanceDue).toLocaleString('en-IN')}</strong> Due</span>
+                              ) : (
+                                <span>Fully Paid <strong className="font-extrabold text-emerald-800">₹0</strong> Balance</span>
+                              )}
                             </span>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -773,11 +1055,15 @@ export default function StudentsDirectory() {
                         </div>
                         <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
                           hasDue 
-                            ? 'bg-amber-50 text-amber-600 border border-amber-200' 
-                            : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                         }`}>
                           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                          {financialStatus}
+                          {hasDue ? (
+                            <span>Pending ₹{Number(student.balanceDue).toLocaleString('en-IN')} Due</span>
+                          ) : (
+                            <span>Fully Paid ₹0 Balance</span>
+                          )}
                         </span>
                       </div>
 

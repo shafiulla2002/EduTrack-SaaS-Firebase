@@ -501,6 +501,7 @@ export class StudentsService implements OnModuleInit {
     academicYearId?: string,
     page?: number,
     limit?: number,
+    financialStatus?: string,
   ) {
     const tenantId = this.getTenantId();
 
@@ -548,6 +549,125 @@ export class StudentsService implements OnModuleInit {
     const isPaginated = page !== undefined && limit !== undefined;
     const skip = isPaginated ? (page - 1) * limit : undefined;
     const take = isPaginated ? limit : undefined;
+
+    // If financialStatus filter is applied, we must batch evaluate all matching students
+    // to calculate accurate filtered totals and pagination pages across the entire cohort.
+    if (financialStatus && financialStatus !== 'ALL' && financialStatus !== 'All') {
+      const allStudents = await this.prisma.studentProfile.findMany({
+        where,
+        select: {
+          id: true,
+          rollNo: true,
+          fatherName: true,
+          motherName: true,
+          fatherPhone: true,
+          motherPhone: true,
+          guardianPhone: true,
+          aadharNo: true,
+          profilePhotoUrl: true,
+          classSectionId: true,
+          tenantId: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            }
+          },
+          classSection: {
+            select: {
+              id: true,
+              classId: true,
+              sectionId: true,
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  academicYearId: true,
+                }
+              },
+              section: {
+                select: {
+                  id: true,
+                  name: true,
+                }
+              }
+            }
+          }
+        },
+        orderBy: {
+          user: {
+            name: 'asc'
+          }
+        },
+      });
+
+      const studentIds = allStudents.map(s => s.id);
+      const billingMap = await this.getStudentsBillingInfoBatch(studentIds, tenantId, academicYearId);
+
+      const allData = allStudents.map(s => {
+        const billingInfo = billingMap[s.id] || {
+          paidAmount: 0,
+          balanceDue: 0,
+          totalFees: 0,
+          pendingPercentage: 0,
+          paidPercentage: 100,
+          financialStatus: 'Fully Paid (100%)',
+          feeSummary: null
+        };
+
+        return {
+          ...s,
+          paidAmount: billingInfo.paidAmount,
+          balanceDue: billingInfo.totalPendingBalance,
+          totalFees: billingInfo.totalFees,
+          pendingPercentage: billingInfo.pendingPercentage,
+          paidPercentage: billingInfo.paidPercentage,
+          financialStatus: billingInfo.financialStatus,
+          feeSummary: billingInfo.feeSummary
+        };
+      });
+
+      const filteredData = allData.filter(s => {
+        const due = Number(s.balanceDue) || 0;
+        const total = Number(s.totalFees) || (Number(s.paidAmount) + due);
+        const paid = Number(s.paidAmount) || 0;
+        const paidPercent = total > 0 ? (paid / total) * 100 : (due <= 0 ? 100 : 0);
+
+        switch (financialStatus) {
+          case 'FULLY_PAID':
+            return due <= 0 || paidPercent >= 99.99;
+          case 'ABOVE_75':
+            return paidPercent > 75 && paidPercent < 99.99 && due > 0;
+          case 'PAID_50_75':
+            return paidPercent >= 50 && paidPercent <= 75 && due > 0;
+          case 'BELOW_50':
+            return paidPercent < 50;
+          case 'PENDING_BALANCE':
+            return due > 0;
+          default:
+            return true;
+        }
+      });
+
+      const filteredTotal = filteredData.length;
+      const pagedData = isPaginated
+        ? filteredData.slice(skip, skip! + limit!)
+        : filteredData;
+
+      if (isPaginated) {
+        return {
+          data: pagedData,
+          total: filteredTotal,
+          page,
+          limit,
+          totalPages: Math.ceil(filteredTotal / limit!)
+        };
+      }
+
+      return pagedData;
+    }
 
     const [total, students] = await Promise.all([
       isPaginated

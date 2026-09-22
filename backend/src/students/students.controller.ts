@@ -22,12 +22,13 @@ export class StudentsController {
     @Query('classId') classId?: string,
     @Query('sectionId') sectionId?: string,
     @Query('academicYearId') academicYearId?: string,
+    @Query('financialStatus') financialStatus?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     const p = page ? parseInt(page, 10) : undefined;
     const l = limit ? parseInt(limit, 10) : undefined;
-    return this.studentsService.searchStudents(search, classId, sectionId, academicYearId, p, l);
+    return this.studentsService.searchStudents(search, classId, sectionId, academicYearId, p, l, financialStatus);
   }
 
   @Get('promotion-candidates')
