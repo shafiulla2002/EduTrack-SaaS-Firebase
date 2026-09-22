@@ -880,8 +880,8 @@ export default function StudentsDirectory() {
               ) : (
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                      <th className="px-6 py-4 w-10">
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
+                      <th className="px-3.5 py-3.5 w-8">
                         <input 
                           type="checkbox" 
                           checked={isAllSelected} 
@@ -889,18 +889,22 @@ export default function StudentsDirectory() {
                           className="rounded border-slate-300 text-[#2E5BFF] focus:ring-blue-500 cursor-pointer w-4 h-4"
                         />
                       </th>
-                      <th className="px-6 py-4">Roll No</th>
-                      <th className="px-6 py-4">Name</th>
-                      <th className="px-6 py-4">Class / Section</th>
-                      <th className="px-6 py-4">Parent Guardian</th>
-                      <th className="px-6 py-4">Financial Status</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
+                      <th className="px-3 py-3.5 leading-tight">
+                        ROLL<br/>NO
+                      </th>
+                      <th className="px-3.5 py-3.5">NAME</th>
+                      <th className="px-3.5 py-3.5">CLASS / SECTION</th>
+                      <th className="px-3.5 py-3.5 leading-tight">
+                        PARENT<br/>GUARDIAN
+                      </th>
+                      <th className="px-3.5 py-3.5">FINANCIAL STATUS</th>
+                      <th className="px-3.5 py-3.5 text-right">ACTIONS</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
                     {filteredStudents.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-6 py-4">
+                        <td colSpan={7} className="px-6 py-6 text-center">
                           <EmptyState
                             title="No matching student records found"
                             description="Try adjusting your search query, grade, or section filter."
@@ -914,8 +918,8 @@ export default function StudentsDirectory() {
                       const pendingPercentage = student.pendingPercentage ?? (totalFees > 0 ? Math.round((student.balanceDue / totalFees) * 100) : 0);
                       const financialStatus = student.financialStatus || (hasDue ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
                       return (
-                        <tr key={student.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4">
+                        <tr key={student.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-3.5 py-3">
                             <input 
                               type="checkbox" 
                               checked={selectedIds.includes(student.id)} 
@@ -923,17 +927,17 @@ export default function StudentsDirectory() {
                               className="rounded border-slate-300 text-[#2E5BFF] focus:ring-blue-500 cursor-pointer w-4 h-4"
                             />
                           </td>
-                          <td className="px-6 py-4 font-mono text-xs text-blue-600 font-bold">{student.rollNo}</td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
+                          <td className="px-3 py-3 font-mono text-xs text-blue-600 font-bold">{student.rollNo}</td>
+                          <td className="px-3.5 py-3">
+                            <div className="flex items-center gap-2.5">
                               <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
-                              <div>
-                                <div className="font-bold text-slate-800">{student.name}</div>
-                                <div className="text-xs text-slate-400 font-medium mt-0.5">{student.email}</div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-800 text-[13px] truncate">{student.name}</div>
+                                <div className="text-[11px] text-slate-400 font-medium truncate mt-0.5">{student.email}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-3.5 py-3">
                             <span className="px-2.5 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold whitespace-nowrap">
                               {student.class} - {(() => {
                                 const sec = student.section || '';
@@ -946,11 +950,11 @@ export default function StudentsDirectory() {
                               })()}
                             </span>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="text-slate-800 font-semibold">{student.fatherName}</div>
-                            <div className="text-xs text-slate-400 font-medium mt-0.5">{student.phone}</div>
+                          <td className="px-3.5 py-3">
+                            <div className="text-slate-800 font-semibold text-[13px]">{student.fatherName}</div>
+                            <div className="text-[11px] text-slate-400 font-medium mt-0.5">{student.phone}</div>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-3.5 py-3">
                             <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap ${
                               hasDue 
                                 ? 'bg-amber-50 text-amber-700 border border-amber-200' 
@@ -964,17 +968,17 @@ export default function StudentsDirectory() {
                               )}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex justify-end gap-2">
+                          <td className="px-3.5 py-3 text-right">
+                            <div className="flex justify-end items-center gap-1.5 whitespace-nowrap">
                               <button
                                 onClick={() => handleViewDetails(student)}
-                                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/30 transition-all text-xs font-bold min-h-[44px]"
+                                className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/40 transition-all text-xs font-bold whitespace-nowrap shadow-2xs cursor-pointer"
                               >
                                 View Profile
                               </button>
                               <button
                                 onClick={() => setEditingStudent(student)}
-                                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-green-600 hover:border-green-200 hover:bg-green-50/30 transition-all text-xs font-bold min-h-[44px]"
+                                className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:text-green-600 hover:border-green-200 hover:bg-green-50/40 transition-all text-xs font-bold whitespace-nowrap shadow-2xs cursor-pointer"
                               >
                                 Edit
                               </button>
@@ -988,7 +992,7 @@ export default function StudentsDirectory() {
                                   className: student.class !== 'N/A' ? student.class : undefined,
                                   sectionName: student.section !== 'N/A' ? student.section : undefined
                                 })}
-                                className="p-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-150 hover:border-rose-300 text-rose-600 transition-all flex items-center justify-center cursor-pointer min-h-[44px]"
+                                className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 hover:border-rose-300 text-rose-600 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
                                 title="Delete Student"
                               >
                                 <Trash2 className="w-4 h-4" />
