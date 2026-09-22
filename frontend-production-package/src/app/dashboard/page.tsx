@@ -38,13 +38,23 @@ function AdminDashboardOverview() {
   const [recentAdmissions, setRecentAdmissions] = useState<any[]>([]);
   const [recentPayments, setRecentPayments] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
+  // Per-section loading and error states — avoids blank white sections
+  const [admissionsLoading, setAdmissionsLoading] = useState(true);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [admissionsError, setAdmissionsError] = useState(false);
+  const [transactionsError, setTransactionsError] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
+    setAdmissionsLoading(true);
+    setTransactionsLoading(true);
+    setAdmissionsError(false);
+    setTransactionsError(false);
     try {
       const summaryRes = await fastGet('/dashboard/summary', undefined, {
         ttlMs: 30000,
         onRevalidate: (fresh) => {
           if (fresh) {
+            // Background SWR revalidation — update data silently, no skeleton re-show
             setStats(fresh.stats);
             setRecentAdmissions(fresh.recentAdmissions);
             setRecentPayments(fresh.recentPayments);
@@ -61,6 +71,12 @@ function AdminDashboardOverview() {
       }
     } catch (err) {
       console.error('Failed to load dashboard data', err);
+      setAdmissionsError(true);
+      setTransactionsError(true);
+    } finally {
+      // Always clear loading regardless of cache-hit or fresh fetch or error
+      setAdmissionsLoading(false);
+      setTransactionsLoading(false);
     }
   }, []);
 
@@ -85,6 +101,18 @@ function AdminDashboardOverview() {
 
   return (
     <div className="space-y-6 animate-in">
+      {/* Skeleton shimmer animation — scoped to dashboard, no external dependency */}
+      <style>{`
+        @keyframes edu-shimmer {
+          0%   { background-position: -600px 0; }
+          100% { background-position:  600px 0; }
+        }
+        .edu-skeleton {
+          background: linear-gradient(90deg, #f1f5f9 25%, #e8edf4 50%, #f1f5f9 75%);
+          background-size: 1200px 100%;
+          animation: edu-shimmer 1.5s infinite linear;
+        }
+      `}</style>
       {/* Page Header matching LWC layout */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
         <div className="flex items-center gap-4">
@@ -423,8 +451,46 @@ function AdminDashboardOverview() {
             </div>
 
             <div className="overflow-y-auto overflow-x-auto max-h-[320px] border border-slate-100 rounded-xl w-full">
-              {displayAdmissions.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs italic">No recent admissions found.</div>
+              {admissionsLoading ? (
+                /* Skeleton — appears immediately, same dimensions as real table */
+                <table className="w-full border-collapse min-w-[500px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left">Student</th>
+                      <th className="px-4 py-3 text-left">Roll No</th>
+                      <th className="px-4 py-3 text-left">Class</th>
+                      <th className="px-4 py-3 text-left">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <tr key={i}>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-lg edu-skeleton shrink-0" />
+                            <div className="h-3.5 w-28 rounded edu-skeleton" />
+                          </div>
+                        </td>
+                        <td className="px-4 py-3"><div className="h-3 w-16 rounded edu-skeleton" /></td>
+                        <td className="px-4 py-3"><div className="h-3 w-20 rounded edu-skeleton" /></td>
+                        <td className="px-4 py-3"><div className="h-3 w-20 rounded edu-skeleton" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : admissionsError ? (
+                /* Error state — section-level only, does not block rest of dashboard */
+                <div className="py-10 text-center">
+                  <p className="text-sm text-slate-500 font-medium">Unable to load admissions</p>
+                  <button
+                    onClick={() => { setAdmissionsError(false); loadDashboardData(); }}
+                    className="mt-3 px-4 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-xs rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : displayAdmissions.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs italic">No recent admissions</div>
               ) : (
                 <table className="w-full border-collapse min-w-[500px]">
                   <thead>
@@ -490,8 +556,41 @@ function AdminDashboardOverview() {
             </div>
 
             <div className="overflow-y-auto overflow-x-auto max-h-[320px] border border-slate-100 rounded-xl w-full">
-              {displayPayments.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs italic">No transactions found.</div>
+              {transactionsLoading ? (
+                /* Skeleton — appears immediately, same dimensions as real table */
+                <table className="w-full border-collapse min-w-[500px]">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left">Type</th>
+                      <th className="px-4 py-3 text-left">Particulars</th>
+                      <th className="px-4 py-3 text-right">Amount</th>
+                      <th className="px-4 py-3 text-left">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <tr key={i}>
+                        <td className="px-4 py-3"><div className="h-5 w-24 rounded edu-skeleton" /></td>
+                        <td className="px-4 py-3"><div className="h-3.5 w-36 rounded edu-skeleton" /></td>
+                        <td className="px-4 py-3 text-right"><div className="h-3.5 w-20 rounded edu-skeleton ml-auto" /></td>
+                        <td className="px-4 py-3"><div className="h-3 w-20 rounded edu-skeleton" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : transactionsError ? (
+                /* Error state — section-level only, does not block rest of dashboard */
+                <div className="py-10 text-center">
+                  <p className="text-sm text-slate-500 font-medium">Unable to load transactions</p>
+                  <button
+                    onClick={() => { setTransactionsError(false); loadDashboardData(); }}
+                    className="mt-3 px-4 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-xs rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : displayPayments.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs italic">No recent transactions</div>
               ) : (
                 <table className="w-full border-collapse min-w-[500px]">
                   <thead>

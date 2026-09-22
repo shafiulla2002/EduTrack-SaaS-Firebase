@@ -32,6 +32,21 @@ export class DashboardService {
   async getDashboardSummary() {
     const tenantId = this.getTenantId();
 
+    // Dev-only timing — measure total service execution (remove before major release)
+    const _t0 = process.env.NODE_ENV === 'development' ? Date.now() : 0;
+
+    // Server-side in-memory cache (30s TTL, tenant-scoped key — never cross-tenant)
+    // NOTE: In serverless/multi-instance deployments this Map is per-process only.
+    // It helps warm requests on the same instance, not cold starts or other instances.
+    const cacheKey = `dashboard-summary-${tenantId}`;
+    const _cached = this.dashboardCache.get(cacheKey);
+    if (_cached && _cached.expiresAt > Date.now()) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Dashboard] CACHE HIT tenant=${tenantId} (${Date.now() - _t0}ms)`);
+      }
+      return _cached.data;
+    }
+
     // Prepare date ranges for last 6 months
     const last6Months: { year: number; month: number; label: string }[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -55,6 +70,8 @@ export class DashboardService {
     sixMonthsAgo.setHours(0, 0, 0, 0);
 
     // Execute unified database aggregations and targeted lookups concurrently
+    // Dev-only timing: measure DB round-trip across all 7 parallel queries
+    const _tDb = process.env.NODE_ENV === 'development' ? Date.now() : 0;
     const [
       metricsRaw,
       scoreRaw,
@@ -208,6 +225,10 @@ export class DashboardService {
       `.catch(() => []),
     ]);
 
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Dashboard] DB Promise.all done in ${Date.now() - _tDb}ms (tenant=${tenantId})`);
+    }
+
     const m = metricsRaw[0] || {};
     const studentsCount = Number(m.studentsCount || 0);
     const teachersCount = Number(m.teachersCount || 0);
@@ -326,6 +347,13 @@ export class DashboardService {
       recentPayments,
       chartData,
     };
+
+    // Store in server-side cache (tenant-scoped, 30s TTL)
+    this.dashboardCache.set(cacheKey, { data: summaryData, expiresAt: Date.now() + 30000 });
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Dashboard] CACHE MISS — built in ${Date.now() - _t0}ms (tenant=${tenantId})`);
+    }
 
     return summaryData;
   }
