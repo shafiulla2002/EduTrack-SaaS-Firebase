@@ -3,6 +3,17 @@ import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
 import { Role } from '@prisma/client';
 
+// High-speed in-memory cache for Leave Stats (15s TTL)
+const leaveStatsMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateLeaveStatsCache(tenantId?: string) {
+  if (tenantId) {
+    leaveStatsMemoryCache.delete(tenantId);
+  } else {
+    leaveStatsMemoryCache.clear();
+  }
+}
+
 @Injectable()
 export class LeaveManagementService {
   constructor(private prisma: PrismaService) {}
@@ -184,54 +195,105 @@ export class LeaveManagementService {
 
   async getLeaveStats(reqTenantId?: string) {
     const tenantId = this.getTenantId(reqTenantId);
+
+    // Check in-memory cache (15s TTL)
+    const cached = leaveStatsMemoryCache.get(tenantId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const yearStart = new Date(now.getFullYear(), 0, 1);
 
-    const [
-      pending,
-      approvedToday,
-      rejectedToday,
-      totalThisMonth,
-      totalThisYear
-    ] = await Promise.all([
-      this.prisma.leaveRequest.count({ where: { tenantId, status: 'PENDING' } }),
-      this.prisma.leaveRequest.count({
-        where: {
-          tenantId,
-          status: 'APPROVED',
-          approvedDate: { gte: todayStart }
-        }
-      }),
-      this.prisma.leaveRequest.count({
-        where: {
-          tenantId,
-          status: 'REJECTED',
-          rejectedDate: { gte: todayStart }
-        }
-      }),
-      this.prisma.leaveRequest.count({
-        where: {
-          tenantId,
-          createdAt: { gte: monthStart }
-        }
-      }),
-      this.prisma.leaveRequest.count({
-        where: {
-          tenantId,
-          createdAt: { gte: yearStart }
-        }
-      })
-    ]);
+    try {
+      const rawResult: any[] = await this.prisma.$queryRaw`
+        SELECT 
+          COUNT(CASE WHEN status = 'PENDING' THEN 1 END)::int AS pending,
+          COUNT(CASE WHEN status = 'APPROVED' AND "approvedDate" >= ${todayStart} THEN 1 END)::int AS "approvedToday",
+          COUNT(CASE WHEN status = 'REJECTED' AND "rejectedDate" >= ${todayStart} THEN 1 END)::int AS "rejectedToday",
+          COUNT(CASE WHEN "createdAt" >= ${monthStart} THEN 1 END)::int AS "totalThisMonth",
+          COUNT(CASE WHEN "createdAt" >= ${yearStart} THEN 1 END)::int AS "totalThisYear"
+        FROM "LeaveRequest"
+        WHERE "tenantId" = ${tenantId}
+      `;
 
-    return {
-      pending,
-      approvedToday,
-      rejectedToday,
-      totalThisMonth,
-      totalThisYear
-    };
+      const stats = rawResult[0] || {
+        pending: 0,
+        approvedToday: 0,
+        rejectedToday: 0,
+        totalThisMonth: 0,
+        totalThisYear: 0,
+      };
+
+      const result = {
+        pending: Number(stats.pending || 0),
+        approvedToday: Number(stats.approvedToday || 0),
+        rejectedToday: Number(stats.rejectedToday || 0),
+        totalThisMonth: Number(stats.totalThisMonth || 0),
+        totalThisYear: Number(stats.totalThisYear || 0),
+      };
+
+      leaveStatsMemoryCache.set(tenantId, {
+        data: result,
+        expiresAt: Date.now() + 15000,
+      });
+
+      return result;
+    } catch (err) {
+      // Fallback in case of raw query error
+      const [
+        pending,
+        approvedToday,
+        rejectedToday,
+        totalThisMonth,
+        totalThisYear
+      ] = await Promise.all([
+        this.prisma.leaveRequest.count({ where: { tenantId, status: 'PENDING' } }),
+        this.prisma.leaveRequest.count({
+          where: {
+            tenantId,
+            status: 'APPROVED',
+            approvedDate: { gte: todayStart }
+          }
+        }),
+        this.prisma.leaveRequest.count({
+          where: {
+            tenantId,
+            status: 'REJECTED',
+            rejectedDate: { gte: todayStart }
+          }
+        }),
+        this.prisma.leaveRequest.count({
+          where: {
+            tenantId,
+            createdAt: { gte: monthStart }
+          }
+        }),
+        this.prisma.leaveRequest.count({
+          where: {
+            tenantId,
+            createdAt: { gte: yearStart }
+          }
+        })
+      ]);
+
+      const fallbackResult = {
+        pending,
+        approvedToday,
+        rejectedToday,
+        totalThisMonth,
+        totalThisYear
+      };
+
+      leaveStatsMemoryCache.set(tenantId, {
+        data: fallbackResult,
+        expiresAt: Date.now() + 15000,
+      });
+
+      return fallbackResult;
+    }
   }
 
   async getApplicantLeaveHistory(applicantType: string, applicantId: string, reqTenantId?: string) {
@@ -333,6 +395,7 @@ export class LeaveManagementService {
         });
       }
 
+      invalidateLeaveStatsCache(tenantId);
       return updated;
     });
   }
@@ -419,6 +482,7 @@ export class LeaveManagementService {
 
         results.push(updated);
       }
+      invalidateLeaveStatsCache(tenantId);
       return { success: true, count: results.length };
     });
   }

@@ -84,6 +84,22 @@ export default function StudentsDirectory() {
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const navigateToProfile = (st: Student) => {
+    try {
+      sessionStorage.setItem(`preseed_student_${st.id}`, JSON.stringify(st));
+    } catch {}
+    router.push(`/dashboard/students/${st.id}`);
+  };
+
+  const prefetchProfile = (st: Student) => {
+    try {
+      sessionStorage.setItem(`preseed_student_${st.id}`, JSON.stringify(st));
+    } catch {}
+    router.prefetch(`/dashboard/students/${st.id}`);
+    fastGet(`/students/${st.id}`, undefined, { ttlMs: 60000 }).catch(() => {});
+    fastGet(`/complaint-box/student-cases/${st.id}`, undefined, { ttlMs: 60000 }).catch(() => {});
+  };
+
   const handleToggleSelect = (id: string) => {
     setSelectedIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
@@ -749,7 +765,8 @@ export default function StudentsDirectory() {
                         <div className="flex justify-end items-center gap-1.5 whitespace-nowrap">
                           <button
                             type="button"
-                            onClick={() => router.push(`/dashboard/students/${student.id}`)}
+                            onMouseEnter={() => prefetchProfile(student)}
+                            onClick={() => navigateToProfile(student)}
                             className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/40 transition-all text-xs font-bold whitespace-nowrap shadow-2xs cursor-pointer"
                           >
                             View Profile
@@ -868,7 +885,8 @@ export default function StudentsDirectory() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => router.push(`/dashboard/students/${student.id}`)}
+                        onMouseEnter={() => prefetchProfile(student)}
+                        onClick={() => navigateToProfile(student)}
                         className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/30 transition-all text-xs font-bold min-h-[36px] cursor-pointer"
                       >
                         View Profile

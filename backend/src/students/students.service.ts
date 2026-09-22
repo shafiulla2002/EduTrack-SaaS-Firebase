@@ -6,6 +6,27 @@ import * as bcrypt from 'bcrypt';
 import { StorageService } from '../common/storage.service';
 import { BillingService } from '../billing/billing.service';
 
+// High-speed in-memory cache for Student Details (20s TTL)
+const studentDetailsMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateStudentDetailsCache(studentId?: string, tenantId?: string) {
+  if (studentId) {
+    studentDetailsMemoryCache.forEach((_, key) => {
+      if (key.includes(studentId)) {
+        studentDetailsMemoryCache.delete(key);
+      }
+    });
+  } else if (tenantId) {
+    studentDetailsMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        studentDetailsMemoryCache.delete(key);
+      }
+    });
+  } else {
+    studentDetailsMemoryCache.clear();
+  }
+}
+
 @Injectable()
 export class StudentsService implements OnModuleInit {
   constructor(
@@ -796,73 +817,96 @@ export class StudentsService implements OnModuleInit {
 
   async getStudentDetails(studentId: string, academicYearId?: string) {
     const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:${studentId}:${academicYearId || ''}`;
 
-    const profile = await this.prisma.studentProfile.findUnique({
-      where: { id: studentId },
-      include: {
-        user: true,
-        classSection: {
-          include: {
-            class: true,
-            section: true,
-          }
-        },
-        parentProfile: {
-          include: {
-            user: true,
-          }
-        },
-        invoices: {
-          where: { tenantId },
-          include: { 
-            invoiceItems: true,
-            opportunity: {
-              include: {
-                academicYear: true
+    // Check in-memory cache (20s TTL)
+    const cached = studentDetailsMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
+    const [profile, billingInfo] = await Promise.all([
+      this.prisma.studentProfile.findUnique({
+        where: { id: studentId },
+        include: {
+          user: true,
+          classSection: {
+            include: {
+              class: true,
+              section: true,
+            }
+          },
+          parentProfile: {
+            include: {
+              user: true,
+            }
+          },
+          invoices: {
+            where: { tenantId },
+            include: { 
+              invoiceItems: true,
+              opportunity: {
+                include: {
+                  academicYear: true
+                }
+              }
+            },
+            orderBy: { invoiceDate: 'desc' }
+          },
+          opportunities: {
+            where: {
+              tenantId,
+            },
+            include: {
+              opportunityLineItems: {
+                include: { product: true }
               }
             }
           },
-          orderBy: { invoiceDate: 'desc' }
-        },
-        opportunities: {
-          where: {
-            tenantId,
+          examMarks: {
+            where: { tenantId },
+            include: { exam: true, subject: true },
+            orderBy: { exam: { date: 'desc' } }
           },
-          include: {
-            opportunityLineItems: {
-              include: { product: true }
-            }
+          attendances: {
+            where: { tenantId },
+            include: { attendanceSession: true },
+            orderBy: { attendanceSession: { date: 'desc' } },
+            take: 50,
           }
-        },
-        examMarks: {
-          where: { tenantId },
-          include: { exam: true, subject: true },
-          orderBy: { exam: { date: 'desc' } }
-        },
-        attendances: {
-          where: { tenantId },
-          include: { attendanceSession: true },
-          orderBy: { attendanceSession: { date: 'desc' } },
-          take: 50,
         }
-      }
-    });
+      }),
+      this.billingService.getStudentById(studentId, academicYearId).catch((err) => {
+        console.error(`[getStudentDetails] Billing lookup error for ${studentId}:`, err?.message || err);
+        return {
+          paidAmount: 0,
+          totalPendingBalance: 0,
+          totalFees: 0,
+          pendingPercentage: 0,
+          paidPercentage: 0,
+          financialStatus: 'Pending',
+          feeSummary: null,
+        };
+      })
+    ]);
 
     if (!profile || profile.user.tenantId !== tenantId) {
       throw new NotFoundException('Student profile not found');
     }
-
-    const billingInfo = await this.billingService.getStudentById(studentId, academicYearId);
 
     const selectedYear = academicYearId || profile.classSection?.class.academicYearId;
     const refOpp = profile.opportunities.find(opp => opp.academicYearId === selectedYear);
 
     let unpaidFees = [];
     if (refOpp) {
-      unpaidFees = await this.billingService.getUnpaidFees(refOpp.id);
+      try {
+        unpaidFees = await this.billingService.getUnpaidFees(refOpp.id);
+      } catch (err: any) {
+        console.error(`[getStudentDetails] Unpaid fees lookup error for opp ${refOpp.id}:`, err?.message || err);
+      }
     }
 
-    return {
+    const result = {
       ...profile,
       paidAmount: billingInfo.paidAmount,
       balanceDue: billingInfo.totalPendingBalance,
@@ -873,6 +917,13 @@ export class StudentsService implements OnModuleInit {
       feeSummary: billingInfo.feeSummary,
       feeItems: unpaidFees
     };
+
+    studentDetailsMemoryCache.set(cacheKey, {
+      data: result,
+      expiresAt: Date.now() + 20000,
+    });
+
+    return result;
   }
 
   // ── CSV BULK IMPORT FRAMEWORK ───────────────────────────────────────────────
@@ -1715,6 +1766,7 @@ export class StudentsService implements OnModuleInit {
         where: { id: profile.userId },
     });
 
+    invalidateStudentDetailsCache(studentId, tenantId);
     return { success: true };
   }
 
@@ -1806,6 +1858,7 @@ export class StudentsService implements OnModuleInit {
       }
     });
 
+    invalidateStudentDetailsCache(studentId, tenantId);
     // Return refreshed details after transaction commits and releases locks
     return this.getStudentDetails(studentId);
   }

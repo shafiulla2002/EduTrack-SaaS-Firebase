@@ -586,6 +586,56 @@ export default function DashboardLayout({
     );
   }
 
+  const prefetchRouteData = (href: string) => {
+    if (!href || href === '#' || isModuleLocked(href)) return;
+    try {
+      router.prefetch(href);
+    } catch {}
+
+    // Proactively warm up backend endpoints into SWR cache in background
+    if (href.startsWith('/dashboard/leave-mgmt')) {
+      const adminParams = {
+        page: 1,
+        limit: 20,
+        status: 'ALL',
+        applicantType: 'ALL',
+        leaveType: 'ALL',
+        academicYearId: 'ALL',
+        sortBy: 'appliedDate',
+        sortOrder: 'desc',
+      };
+      fastGet('/leave-management', { params: adminParams }, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/leave-management/stats', undefined, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/attendance/teachers', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/students')) {
+      fastGet('/students', { params: { page: 1, limit: 20 } }, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/staff')) {
+      fastGet('/staff', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/teachers')) {
+      fastGet('/teachers', undefined, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/attendance-mgmt') || href.startsWith('/dashboard/attendance')) {
+      fastGet('/attendance/dashboard', undefined, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/billing') || href.startsWith('/dashboard/fee-mgmt')) {
+      fastGet('/billing/dashboard-summary', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/expenses')) {
+      fastGet('/expenses', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/marks-mgmt')) {
+      fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/exams/subjects', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/exam-config/components', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/announcements-mgmt') || href.startsWith('/dashboard/communication')) {
+      fastGet('/announcements', undefined, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/complaints')) {
+      fastGet('/complaint-box', undefined, { ttlMs: 30000 }).catch(() => {});
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans overflow-x-hidden">
       {isImpersonating && (
@@ -648,11 +698,8 @@ export default function DashboardLayout({
                       key={item.name}
                       href={isLocked ? '#' : item.href}
                       prefetch={true}
-                      onMouseEnter={() => {
-                        if (!isLocked && item.href && item.href !== '#') {
-                          router.prefetch(item.href);
-                        }
-                      }}
+                      onMouseEnter={() => prefetchRouteData(item.href)}
+                      onTouchStart={() => prefetchRouteData(item.href)}
                       onClick={(e) => {
                         if (isLocked) {
                           e.preventDefault();
@@ -916,6 +963,8 @@ export default function DashboardLayout({
                           key={item.name}
                           href={isLocked ? '#' : item.href}
                           prefetch={true}
+                          onMouseEnter={() => prefetchRouteData(item.href)}
+                          onTouchStart={() => prefetchRouteData(item.href)}
                           onClick={(e) => {
                             setMobileOpen(false);
                             if (isLocked) {

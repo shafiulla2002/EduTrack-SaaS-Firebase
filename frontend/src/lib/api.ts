@@ -368,6 +368,43 @@ function setPersistedSWR<T>(cacheKey: string, tenantId: string, data: T, ttlMs: 
   } catch {}
 }
 
+/**
+ * Synchronously retrieves cached SWR data if available in memory or persisted sessionStorage.
+ * Use inside useState(() => getCachedData(...)) for instant 0ms initial render without blank spinners.
+ */
+export function getCachedData<T = any>(url: string, params?: any): T | null {
+  if (typeof window === 'undefined') return null;
+  const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
+  const paramStr = params ? JSON.stringify(params) : '';
+  const cacheKey = `${tenantId}:${url}:${paramStr}`;
+  const cached = lookupCache.get(cacheKey);
+  if (cached && cached.data !== undefined) return cached.data;
+  const persisted = getPersistedSWR<T>(cacheKey, tenantId);
+  if (persisted && persisted.data !== undefined) {
+    lookupCache.set(cacheKey, persisted);
+    return persisted.data;
+  }
+  return null;
+}
+
+/**
+ * Synchronously populates the SWR cache in memory and sessionStorage.
+ * Useful for pre-seeding detail views from list views or pre-warming routes on hover.
+ */
+export function setCachedData<T = any>(url: string, data: T, params?: any, ttlMs = 60000): void {
+  if (typeof window === 'undefined' || data === undefined) return;
+  const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
+  const paramStr = params ? JSON.stringify(params) : '';
+  const cacheKey = `${tenantId}:${url}:${paramStr}`;
+  const entry = {
+    data,
+    expiresAt: Date.now() + ttlMs,
+    cachedAt: Date.now(),
+  };
+  lookupCache.set(cacheKey, entry);
+  setPersistedSWR(cacheKey, tenantId, data, ttlMs);
+}
+
 export function invalidateLookupCache(tenantId?: string, urlPrefix?: string) {
   const tid = tenantId || getTenantFromHostname() || getStoredTenantId() || '';
   if (urlPrefix) {
