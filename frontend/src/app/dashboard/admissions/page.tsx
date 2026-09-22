@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { api, fastGet } from '@/lib/api';
+import { api } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import PhotoUpload from '@/components/PhotoUpload';
+import { PencilSpinner } from '@/components/loading';
 
 interface Product {
   id: string;
@@ -75,19 +76,19 @@ export default function AdmissionsPage() {
     const fetchOptions = async () => {
       try {
         const [yRes, cRes] = await Promise.all([
-          fastGet('/billing/options/years', undefined, { ttlMs: 60000 }),
-          fastGet('/billing/options/classes', undefined, { ttlMs: 60000 })
+          api.get('/billing/options/years'),
+          api.get('/billing/options/classes')
         ]);
-        setAcademicYears(yRes.data || []);
-        setClasses(cRes.data || []);
+        setAcademicYears(yRes.data);
+        setClasses(cRes.data);
         
         let initialYear = '';
         let initialClass = '';
 
-        if (yRes.data?.length > 0) {
+        if (yRes.data.length > 0) {
           initialYear = yRes.data[0].value;
         }
-        if (cRes.data?.length > 0) {
+        if (cRes.data.length > 0) {
           initialClass = cRes.data[0].value;
         }
 
@@ -826,16 +827,24 @@ export default function AdmissionsPage() {
           <div className="flex gap-3 self-end sm:self-center">
             <button
               onClick={handleBack}
-              disabled={currentStep === 1}
+              disabled={currentStep === 1 || isLoading}
               className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 disabled:opacity-40 disabled:pointer-events-none rounded-lg text-slate-500 font-bold flex items-center gap-1 min-h-[44px]"
             >
               Back
             </button>
             <button
               onClick={handleNext}
-              className="px-5 py-2 bg-[#2E5BFF] hover:bg-[#1E3FCC] text-white rounded-lg font-bold flex items-center gap-1 shadow-md shadow-blue-500/10 transition-all min-h-[44px]"
+              disabled={isLoading}
+              className="px-5 py-2 bg-[#2E5BFF] hover:bg-[#1E3FCC] text-white rounded-lg font-bold flex items-center gap-2 shadow-md shadow-blue-500/10 transition-all min-h-[44px] disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              {currentStep === 4 ? 'Confirm Admission' : 'Continue'}
+              {isLoading ? (
+                <>
+                  <PencilSpinner size="xs" />
+                  <span>Submitting...</span>
+                </>
+              ) : (
+                currentStep === 4 ? 'Confirm Admission' : 'Continue'
+              )}
             </button>
           </div>
         </div>

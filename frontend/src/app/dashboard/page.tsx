@@ -7,22 +7,13 @@ import { api, fastGet } from '@/lib/api';
 import { useSchoolSetupUpdate, dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '../providers/TenantContext';
 import { BookOpen } from 'lucide-react';
-
-function getInitialDashboardSummaryCache() {
-  if (typeof window === 'undefined') return null;
-  try {
-    const tid = typeof window !== 'undefined' ? (sessionStorage.getItem('admin_tenantId') || localStorage.getItem('admin_tenantId') || localStorage.getItem('teacher_tenantId')) : null;
-    const resolvedTid = tid || 'global';
-    const raw = sessionStorage.getItem(`edutrack_swr:${resolvedTid}:/dashboard/summary:`);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.data) {
-        return parsed.data;
-      }
-    }
-  } catch {}
-  return null;
-}
+import {
+  PencilSpinner,
+  TableSkeleton,
+  StatCardSkeleton,
+  EmptyState,
+  ErrorState,
+} from '@/components/loading';
 
 function AdminDashboardOverview() {
   const { setupStats } = useTenant();
@@ -32,48 +23,51 @@ function AdminDashboardOverview() {
   const [showBanner, setShowBanner] = useState(true);
   const setupStatus = setupStats;
   
-  const [cachedSummary] = useState(() => getInitialDashboardSummaryCache());
-  const [isLoaded, setIsLoaded] = useState(() => !!cachedSummary);
-
-  const [stats, setStats] = useState(() => {
-    if (cachedSummary?.stats) {
-      return cachedSummary.stats;
+  const [stats, setStats] = useState({
+    studentsCount: 0,
+    teachersCount: 0,
+    classesCount: 0,
+    totalRevenue: 0,
+    totalExpenses: 0,
+    netIncome: 0,
+    attendanceRate: 0,
+    academicAverage: 0,
+    pendingLeaveRequests: 0,
+    approvedToday: 0,
+    rejectedToday: 0,
+    trends: {
+      students: { value: '0%', isUp: true },
+      revenue: { value: '0%', isUp: true },
+      attendance: { value: '1.5%', isUp: true },
+      academic: { value: '0.8%', isUp: false }
     }
-    return {
-      studentsCount: setupStats?.studentsCount || 0,
-      teachersCount: setupStats?.teachersCount || 0,
-      classesCount: setupStats?.classesCount || 0,
-      totalRevenue: 0,
-      totalExpenses: 0,
-      netIncome: 0,
-      attendanceRate: 0,
-      academicAverage: 0,
-      pendingLeaveRequests: 0,
-      approvedToday: 0,
-      rejectedToday: 0,
-      trends: {
-        students: { value: '0%', isUp: true },
-        revenue: { value: '0%', isUp: true },
-        attendance: { value: '1.5%', isUp: true },
-        academic: { value: '0.8%', isUp: false }
-      }
-    };
   });
-  const [recentAdmissions, setRecentAdmissions] = useState<any[]>(() => cachedSummary?.recentAdmissions || []);
-  const [recentPayments, setRecentPayments] = useState<any[]>(() => cachedSummary?.recentPayments || []);
-  const [chartData, setChartData] = useState<any[]>(() => cachedSummary?.chartData || []);
+  const [recentAdmissions, setRecentAdmissions] = useState<any[]>([]);
+  const [recentPayments, setRecentPayments] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>([]);
+  // Per-section loading and error states — avoids blank white sections
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [admissionsLoading, setAdmissionsLoading] = useState(true);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [admissionsError, setAdmissionsError] = useState(false);
+  const [transactionsError, setTransactionsError] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
+    setStatsLoading(true);
+    setAdmissionsLoading(true);
+    setTransactionsLoading(true);
+    setAdmissionsError(false);
+    setTransactionsError(false);
     try {
       const summaryRes = await fastGet('/dashboard/summary', undefined, {
         ttlMs: 30000,
         onRevalidate: (fresh) => {
           if (fresh) {
+            // Background SWR revalidation — update data silently, no skeleton re-show
             setStats(fresh.stats);
             setRecentAdmissions(fresh.recentAdmissions);
             setRecentPayments(fresh.recentPayments);
             setChartData(fresh.chartData);
-            setIsLoaded(true);
           }
         }
       });
@@ -83,10 +77,16 @@ function AdminDashboardOverview() {
         setRecentAdmissions(summaryRes.data.recentAdmissions);
         setRecentPayments(summaryRes.data.recentPayments);
         setChartData(summaryRes.data.chartData);
-        setIsLoaded(true);
       }
     } catch (err) {
       console.error('Failed to load dashboard data', err);
+      setAdmissionsError(true);
+      setTransactionsError(true);
+    } finally {
+      // Always clear loading regardless of cache-hit or fresh fetch or error
+      setStatsLoading(false);
+      setAdmissionsLoading(false);
+      setTransactionsLoading(false);
     }
   }, []);
 
@@ -111,13 +111,25 @@ function AdminDashboardOverview() {
 
   return (
     <div className="space-y-6 animate-in">
+      {/* Skeleton shimmer animation — scoped to dashboard, no external dependency */}
+      <style>{`
+        @keyframes edu-shimmer {
+          0%   { background-position: -600px 0; }
+          100% { background-position:  600px 0; }
+        }
+        .edu-skeleton {
+          background: linear-gradient(90deg, #f1f5f9 25%, #e8edf4 50%, #f1f5f9 75%);
+          background-size: 1200px 100%;
+          animation: edu-shimmer 1.5s infinite linear;
+        }
+      `}</style>
       {/* Page Header matching LWC layout */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-5">
         <div className="flex items-center gap-4">
           <h2 className="text-[28px] font-bold text-slate-900 leading-none">
             Dashboard Overview
           </h2>
-          <span className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-[11px] font-bold px-3 py-1 sm:px-2.5 sm:py-0.5 rounded-full shadow-sm inline-flex items-center justify-center text-center leading-none">
+          <span className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-sm">
             ✨ New Features
           </span>
         </div>
@@ -192,42 +204,49 @@ function AdminDashboardOverview() {
         </div>
       )}
 
-      {setupStatus && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3 sm:mb-4">
-            <svg className="w-5 h-5 stroke-blue-600 fill-none" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" strokeWidth="2"></circle>
-              <polyline points="12 6 12 12 16 14" strokeWidth="2"></polyline>
-            </svg>
-            Instance Setup Progress
-          </h3>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-6">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
+          <svg className="w-5 h-5 stroke-blue-600 fill-none" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" strokeWidth="2"></circle>
+            <polyline points="12 6 12 12 16 14" strokeWidth="2"></polyline>
+          </svg>
+          Instance Setup Progress
+        </h3>
+        {!setupStatus ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCardSkeleton variant="setup" />
+            <StatCardSkeleton variant="setup" />
+            <StatCardSkeleton variant="setup" />
+            <StatCardSkeleton variant="setup" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Completion Rate */}
-            <div className="bg-slate-50 border border-slate-200/50 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4 h-full justify-between sm:justify-start">
-              <div className="relative w-9 h-9 sm:w-12 sm:h-12 flex items-center justify-center shrink-0">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 48 48">
-                  <circle cx="24" cy="24" r="20" stroke="#e2e8f0" strokeWidth="4" fill="transparent" />
+            <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
+              <div className="relative w-12 h-12 flex items-center justify-center shrink-0">
+                <svg className="w-full h-full transform -rotate-90">
+                  <circle cx="24" cy="24" r="20" stroke="#e2e8f0" strokeWidth="3.5" fill="transparent" />
                   <circle
                     cx="24"
                     cy="24"
                     r="20"
                     stroke="#2563eb"
-                    strokeWidth="4"
+                    strokeWidth="3.5"
                     fill="transparent"
                     strokeDasharray={`${2 * Math.PI * 20}`}
                     strokeDashoffset={`${2 * Math.PI * 20 * (1 - setupStatus.completionPercentage / 100)}`}
                     strokeLinecap="round"
                   />
                 </svg>
-                <span className="absolute text-[9px] sm:text-[11px] font-bold text-slate-700">{setupStatus.completionPercentage}%</span>
+                <span className="absolute text-[11px] font-bold text-slate-700">{setupStatus.completionPercentage}%</span>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Profile Setup</div>
-                <div className="text-[11px] sm:text-xs font-semibold text-slate-800 mt-0.5 truncate">
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Profile Setup</div>
+                <div className="text-xs font-semibold text-slate-800 mt-0.5">
                   {setupStatus.setupCompleted ? 'Completed' : 'Complete Profile'}
                 </div>
                 {!setupStatus.setupCompleted && (
-                  <Link href="/dashboard/setup-checklist" className="text-[10px] sm:text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block truncate">
+                  <Link href="/dashboard/setup-checklist" className="text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block">
                     Complete now
                   </Link>
                 )}
@@ -235,55 +254,55 @@ function AdminDashboardOverview() {
             </div>
 
             {/* Classes Created */}
-            <div className="bg-slate-50 border border-slate-200/50 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4 h-full justify-between sm:justify-start">
-              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs sm:text-lg shrink-0">
+            <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-lg shrink-0">
                 {setupStatus.classesCount}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Classes Created</div>
-                <div className="text-[11px] sm:text-xs font-semibold text-slate-800 mt-0.5 truncate">
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Classes Created</div>
+                <div className="text-xs font-semibold text-slate-800 mt-0.5">
                   {setupStatus.classesCount > 0 ? `${setupStatus.classesCount} Active Class(es)` : 'No classes added'}
                 </div>
-                <Link href="/dashboard/teachers" className="text-[10px] sm:text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block truncate">
+                <Link href="/dashboard/teachers" className="text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block">
                   Add Classes
                 </Link>
               </div>
             </div>
 
             {/* Teachers Added */}
-            <div className="bg-slate-50 border border-slate-200/50 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4 h-full justify-between sm:justify-start">
-              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs sm:text-lg shrink-0">
+            <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-lg shrink-0">
                 {setupStatus.teachersCount}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Teachers Added</div>
-                <div className="text-[11px] sm:text-xs font-semibold text-slate-800 mt-0.5 truncate">
-                  {setupStatus.teachersCount > 0 ? `${setupStatus.teachersCount} Faculty` : 'No faculty added'}
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Teachers Added</div>
+                <div className="text-xs font-semibold text-slate-800 mt-0.5">
+                  {setupStatus.teachersCount > 0 ? `${setupStatus.teachersCount} Faculty Registered` : 'No faculty added'}
                 </div>
-                <Link href="/dashboard/teachers" className="text-[10px] sm:text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block truncate">
+                <Link href="/dashboard/teachers" className="text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block">
                   Add Teachers
                 </Link>
               </div>
             </div>
 
             {/* Students Added */}
-            <div className="bg-slate-50 border border-slate-200/50 p-3 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-4 h-full justify-between sm:justify-start">
-              <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs sm:text-lg shrink-0">
+            <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg shrink-0">
                 {setupStatus.studentsCount}
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Students Added</div>
-                <div className="text-[11px] sm:text-xs font-semibold text-slate-800 mt-0.5 truncate">
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Students Added</div>
+                <div className="text-xs font-semibold text-slate-800 mt-0.5">
                   {setupStatus.studentsCount > 0 ? `${setupStatus.studentsCount} Active Student(s)` : 'No students added'}
                 </div>
-                <Link href="/dashboard/admissions" className="text-[10px] sm:text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block truncate">
+                <Link href="/dashboard/admissions" className="text-[11px] text-blue-600 hover:underline font-medium mt-0.5 block">
                   New Admission
                 </Link>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* DYNAMIC KPI STATS GRID - 5 Harmonious Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
@@ -307,8 +326,8 @@ function AdminDashboardOverview() {
           </div>
           <div>
             <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
-              {!isLoaded && !setupStats?.studentsCount && stats.studentsCount === 0 ? (
-                <span className="inline-block w-16 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              {statsLoading && !stats.studentsCount ? (
+                <StatCardSkeleton label="Total Students" />
               ) : (
                 stats.studentsCount
               )}
@@ -333,8 +352,8 @@ function AdminDashboardOverview() {
           </div>
           <div>
             <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
-              {!isLoaded && !setupStats?.teachersCount && stats.teachersCount === 0 ? (
-                <span className="inline-block w-12 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              {statsLoading && !stats.teachersCount ? (
+                <StatCardSkeleton label="Total Teachers" />
               ) : (
                 stats.teachersCount
               )}
@@ -359,8 +378,8 @@ function AdminDashboardOverview() {
           </div>
           <div>
             <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
-              {!isLoaded && !setupStats?.classesCount && stats.classesCount === 0 ? (
-                <span className="inline-block w-12 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              {statsLoading && !stats.classesCount ? (
+                <StatCardSkeleton label="Total Classes" />
               ) : (
                 stats.classesCount
               )}
@@ -391,8 +410,8 @@ function AdminDashboardOverview() {
           </div>
           <div>
             <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
-              {!isLoaded && stats.attendanceRate === 0 ? (
-                <span className="inline-block w-16 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              {statsLoading && !stats.attendanceRate ? (
+                <StatCardSkeleton label="Average Attendance" />
               ) : (
                 `${stats.attendanceRate}%`
               )}
@@ -426,8 +445,8 @@ function AdminDashboardOverview() {
           </div>
           <div>
             <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
-              {!isLoaded && stats.pendingLeaveRequests === 0 ? (
-                <span className="inline-block w-10 h-7 bg-slate-100 rounded-lg animate-pulse" />
+              {statsLoading && stats.pendingLeaveRequests === 0 ? (
+                <StatCardSkeleton label="Pending Leaves" />
               ) : (
                 stats.pendingLeaveRequests || 0
               )}
@@ -476,21 +495,24 @@ function AdminDashboardOverview() {
               </div>
             </div>
 
-            <div className="overflow-y-auto overflow-x-auto max-h-[320px] border border-slate-100 rounded-xl w-full">
-              {!isLoaded && displayAdmissions.length === 0 ? (
-                <div className="p-4 space-y-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="flex items-center gap-4 animate-pulse">
-                      <div className="w-9 h-9 bg-slate-100 rounded-lg"></div>
-                      <div className="flex-1 space-y-1.5">
-                        <div className="h-3.5 bg-slate-100 rounded w-1/3"></div>
-                        <div className="h-2.5 bg-slate-100 rounded w-1/4"></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <div className="overflow-y-auto overflow-x-auto max-h-[320px] w-full">
+              {admissionsLoading ? (
+                <TableSkeleton
+                  headers={['Student', 'Roll No', 'Class', 'Date']}
+                  loadingLabel="Loading recent admissions..."
+                  rows={5}
+                />
+              ) : admissionsError ? (
+                <ErrorState
+                  title="Unable to load admissions"
+                  message="Could not retrieve the latest admission records."
+                  onRetry={() => { setAdmissionsError(false); loadDashboardData(); }}
+                />
               ) : displayAdmissions.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs italic">No recent admissions found.</div>
+                <EmptyState
+                  title="No recent admissions found"
+                  description="Newly admitted student records will be listed here."
+                />
               ) : (
                 <table className="w-full border-collapse min-w-[500px]">
                   <thead>
@@ -531,7 +553,7 @@ function AdminDashboardOverview() {
               <div className="text-[16px] font-bold text-slate-800 flex items-center gap-2">
                 <svg className="w-5 h-5 stroke-[#2E5BFF] fill-none" viewBox="0 0 24 24">
                   <rect x="1" y="4" width="22" height="16" rx="2" ry="2" strokeWidth="2"></rect>
-                  <line x1="1" y1="10" x2="23" y2="10" strokeWidth="2"></line>
+                  <line x1="10" y1="1" x2="10" y2="23" strokeWidth="2"></line>
                 </svg>
                 Recent Transactions
               </div>
@@ -555,21 +577,25 @@ function AdminDashboardOverview() {
               </div>
             </div>
 
-            <div className="overflow-y-auto overflow-x-auto max-h-[320px] border border-slate-100 rounded-xl w-full">
-              {!isLoaded && displayPayments.length === 0 ? (
-                <div className="p-4 space-y-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="flex items-center justify-between gap-4 animate-pulse">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="w-14 h-5 bg-slate-100 rounded"></div>
-                        <div className="h-3.5 bg-slate-100 rounded w-1/3"></div>
-                      </div>
-                      <div className="w-16 h-4 bg-slate-100 rounded"></div>
-                    </div>
-                  ))}
-                </div>
+            <div className="overflow-y-auto overflow-x-auto max-h-[320px] w-full">
+              {transactionsLoading ? (
+                <TableSkeleton
+                  headers={['Type', 'Particulars', 'Amount', 'Date']}
+                  loadingLabel="Loading recent transactions..."
+                  rows={5}
+                  alignments={['left', 'left', 'right', 'left']}
+                />
+              ) : transactionsError ? (
+                <ErrorState
+                  title="Unable to load transactions"
+                  message="Could not retrieve recent billing transactions."
+                  onRetry={() => { setTransactionsError(false); loadDashboardData(); }}
+                />
               ) : displayPayments.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs italic">No transactions found.</div>
+                <EmptyState
+                  title="No recent transactions found"
+                  description="Fee collections and disbursements will appear here."
+                />
               ) : (
                 <table className="w-full border-collapse min-w-[500px]">
                   <thead>
@@ -581,24 +607,27 @@ function AdminDashboardOverview() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
-                    {displayPayments.map((pay) => (
-                      <tr key={pay.id} className="hover:bg-slate-50 transition-colors">
+                    {displayPayments.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3">
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border uppercase ${
-                            pay.type === 'Fee Payment'
-                              ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                              : 'bg-rose-50 text-rose-600 border-rose-100'
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            p.type === 'Salary' 
+                              ? 'bg-purple-50 text-purple-700 border border-purple-100' 
+                              : p.type === 'Fee Collection'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                : 'bg-slate-50 text-slate-700 border border-slate-200'
                           }`}>
-                            {pay.type}
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              p.type === 'Salary' ? 'bg-purple-500' : p.type === 'Fee Collection' ? 'bg-emerald-500' : 'bg-slate-400'
+                            }`} />
+                            {p.type}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-slate-800 truncate max-w-[150px]" title={pay.name}>{pay.name}</td>
-                        <td className={`px-4 py-3 font-bold font-mono text-right ${
-                          pay.type === 'Fee Payment' ? 'text-emerald-600' : 'text-rose-600'
-                        }`}>
-                          {pay.type === 'Fee Payment' ? '+' : '-'}{formatCurrency(pay.amount)}
+                        <td className="px-4 py-3 font-semibold text-slate-800">{p.particulars}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-slate-900 text-right">
+                          {formatCurrency(p.amount)}
                         </td>
-                        <td className="px-4 py-3 text-slate-400 font-mono text-xs">{pay.date}</td>
+                        <td className="px-4 py-3 text-slate-400 font-mono text-xs">{p.date}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -728,22 +757,14 @@ function AdminDashboardOverview() {
 }
 
 function TeacherDashboardView() {
-  const { currentUser, adminName } = useTenant();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadStats() {
       try {
-        const res = await fastGet('/teacher-portal/dashboard', undefined, {
-          ttlMs: 30000,
-          onRevalidate: (fresh) => {
-            if (fresh) setData(fresh);
-          },
-        });
-        if (res?.data) {
-          setData(res.data);
-        }
+        const res = await api.get('/teacher-portal/dashboard');
+        setData(res.data);
       } catch (err) {
         console.error('Failed to load teacher stats:', err);
       } finally {
@@ -753,30 +774,14 @@ function TeacherDashboardView() {
     loadStats();
   }, []);
 
-  const rawTeacherName =
-    data?.teacherName ||
-    currentUser?.name ||
-    adminName ||
-    (typeof window !== 'undefined' ? (localStorage.getItem('teacher_userName') || localStorage.getItem('admin_userName') || '') : '') ||
-    '';
-
-  const getTimeBasedGreeting = (name: string) => {
-    const hour = new Date().getHours();
-    let salutation = 'Good Morning';
-    if (hour >= 12 && hour < 17) {
-      salutation = 'Good Afternoon';
-    } else if (hour >= 17 && hour < 21) {
-      salutation = 'Good Evening';
-    } else if (hour >= 21 || hour < 5) {
-      salutation = 'Good Night';
-    }
-
-    const cleanName = name ? name.trim() : '';
-    if (!cleanName || cleanName.toLowerCase() === 'teacher') {
-      return `${salutation}! 👋`;
-    }
-    return `${salutation}, ${cleanName}! 👋`;
-  };
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <div className="w-10 h-10 border-4 border-t-blue-600 border-slate-200 rounded-full animate-spin"></div>
+        <p className="text-sm font-semibold text-slate-500">Loading Portal Dashboard...</p>
+      </div>
+    );
+  }
 
   const statsList = [
     { name: 'Assigned Students', val: data?.stats?.assignedStudents || 0, desc: 'Across all sections', icon: '👥', color: 'from-blue-500 to-indigo-500' },
@@ -790,9 +795,7 @@ function TeacherDashboardView() {
       {/* Welcome header */}
       <div className="bg-gradient-to-tr from-[#1E293B] to-[#0F172A] p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-[20%] right-[-10%] w-[150px] h-[150px] rounded-full bg-blue-500/10 blur-xl pointer-events-none" />
-        <h2 className="text-xl sm:text-2xl font-semibold font-serif italic tracking-tight leading-snug break-words text-white">
-          {getTimeBasedGreeting(rawTeacherName)}
-        </h2>
+        <h2 className="text-xl font-bold tracking-tight">Hello Teacher! 👋</h2>
         <p className="text-[13px] text-slate-300 font-light mt-1">Here is your timeline schedule and tasks overview for today.</p>
         
         {/* Today status badges */}
@@ -809,44 +812,44 @@ function TeacherDashboardView() {
       </div>
 
       {/* Quick Action Grid */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <h3 className="text-[15px] font-bold text-slate-800 dark:text-slate-100 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-          <Link href="/dashboard/attendance-mgmt" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-blue-50/50 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
-            <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <span className="text-xl">📅</span>
+      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="text-[15px] font-bold text-slate-800 mb-4">Quick Actions</h3>
+        <div className="grid grid-cols-3 gap-4">
+          <Link href="/dashboard/attendance-mgmt" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
+            <div className="w-12 h-12 rounded-xl bg-blue-55 text-blue-600 flex items-center justify-center shadow-xs">
+              <span className="text-lg">📅</span>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-[#2E5BFF] dark:group-hover:text-blue-400 truncate max-w-full">Attendance</span>
+            <span className="text-[11px] font-semibold text-slate-600">Attendance</span>
           </Link>
-          <Link href="/dashboard/marks-mgmt" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-emerald-50/50 dark:hover:bg-slate-700 hover:border-emerald-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <span className="text-xl">✍️</span>
+          <Link href="/dashboard/marks-mgmt" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
+            <div className="w-12 h-12 rounded-xl bg-emerald-55 text-emerald-600 flex items-center justify-center shadow-xs">
+              <span className="text-lg">✍️</span>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 truncate max-w-full">Enter Marks</span>
+            <span className="text-[11px] font-semibold text-slate-600">Enter Marks</span>
           </Link>
-          <Link href="/dashboard/homework" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-purple-50/50 dark:hover:bg-slate-700 hover:border-purple-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
-            <div className="w-11 h-11 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <span className="text-xl">📖</span>
+          <Link href="/dashboard/homework" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
+            <div className="w-12 h-12 rounded-xl bg-purple-55 text-purple-600 flex items-center justify-center shadow-xs">
+              <span className="text-lg">📖</span>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-purple-600 dark:group-hover:text-purple-400 truncate max-w-full">Homework</span>
+            <span className="text-[11px] font-semibold text-slate-600">Homework</span>
           </Link>
-          <Link href="/dashboard/communication" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-pink-50/50 dark:hover:bg-slate-700 hover:border-pink-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
-            <div className="w-11 h-11 rounded-xl bg-pink-50 dark:bg-pink-950/50 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <span className="text-xl">💬</span>
+          <Link href="/dashboard/communication" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
+            <div className="w-12 h-12 rounded-xl bg-pink-55 text-pink-600 flex items-center justify-center shadow-xs">
+              <span className="text-lg">💬</span>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-pink-600 dark:group-hover:text-pink-400 truncate max-w-full">Messages</span>
+            <span className="text-[11px] font-semibold text-slate-600">Messages</span>
           </Link>
-          <Link href="/dashboard/my-timetable" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-amber-50/50 dark:hover:bg-slate-700 hover:border-amber-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
-            <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <span className="text-xl">⏰</span>
+          <Link href="/dashboard/my-timetable" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
+            <div className="w-12 h-12 rounded-xl bg-amber-55 text-amber-600 flex items-center justify-center shadow-xs">
+              <span className="text-lg">⏰</span>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-amber-600 dark:group-hover:text-amber-400 truncate max-w-full">Timetable</span>
+            <span className="text-[11px] font-semibold text-slate-600">Timetable</span>
           </Link>
-          <Link href="/dashboard/calendar" className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 hover:bg-teal-50/50 dark:hover:bg-slate-700 hover:border-teal-300 dark:hover:border-slate-600 rounded-2xl shadow-xs hover:shadow-sm transition-all gap-2 group cursor-pointer text-center h-28">
-            <div className="w-11 h-11 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <span className="text-xl">🗓️</span>
+          <Link href="/dashboard/calendar" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
+            <div className="w-12 h-12 rounded-xl bg-teal-55 text-teal-600 flex items-center justify-center shadow-xs">
+              <span className="text-lg">🗓️</span>
             </div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-teal-600 dark:group-hover:text-teal-400 truncate max-w-full">Calendar</span>
+            <span className="text-[11px] font-semibold text-slate-600">Calendar</span>
           </Link>
         </div>
       </div>
@@ -854,64 +857,48 @@ function TeacherDashboardView() {
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
         {statsList.map((stat, idx) => (
-          <div key={idx} className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between h-32">
+          <div key={idx} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between h-32">
             <div className="flex justify-between items-center">
               <span className="text-2xl">{stat.icon}</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">Metrics</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Metrics</span>
             </div>
             <div>
-              <div className="text-2xl font-black text-slate-800 dark:text-slate-100 leading-none">{stat.val}</div>
-              <div className="text-[12px] font-bold text-slate-600 dark:text-slate-300 mt-1">{stat.name}</div>
+              <div className="text-2xl font-black text-slate-800 leading-none">{stat.val}</div>
+              <div className="text-[12px] font-bold text-slate-600 mt-1">{stat.name}</div>
             </div>
           </div>
         ))}
       </div>
 
       {/* Today's Classes List */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-[15px] font-bold text-slate-800 dark:text-slate-100">Today's Class Schedule</h3>
-          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold bg-blue-50 dark:bg-blue-950/50 px-2.5 py-0.5 rounded-full border border-blue-100 dark:border-blue-900">Today</span>
+          <h3 className="text-[15px] font-bold text-slate-800">Today's Class Schedule</h3>
+          <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-md">Today</span>
         </div>
         
-        {(() => {
-          const sortedClasses = [...(data?.today?.classes || [])].sort((a: any, b: any) => {
-            const pA = Number(a.periodNumber) || 0;
-            const pB = Number(b.periodNumber) || 0;
-            if (pA !== pB) return pA - pB;
-            return (a.time || '').localeCompare(b.time || '');
-          });
-
-          if (sortedClasses.length === 0) {
-            return <div className="py-8 text-center text-slate-400 dark:text-slate-500 text-xs italic">No teaching periods scheduled for today.</div>;
-          }
-
-          return (
-            <div className="space-y-3">
-              {sortedClasses.map((cls: any) => (
-                <div key={cls.id} className="bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-extrabold text-xs px-2.5 py-0.5 rounded-full">
-                        Period {cls.periodNumber || '—'}
-                      </span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">{cls.time}</span>
-                    </div>
-                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100">{cls.className}</h4>
-                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{cls.subjectName}</p>
-                  </div>
-                  <Link
-                    href={`/dashboard/homework?classSectionId=${encodeURIComponent(cls.classSectionId)}&subjectId=${encodeURIComponent(cls.subjectId || '')}&subjectName=${encodeURIComponent(cls.subjectName)}&className=${encodeURIComponent(cls.className)}&periodNumber=${encodeURIComponent(cls.periodNumber || '')}&create=true`}
-                    className="w-full sm:w-auto justify-center px-3.5 py-1.5 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    Assign Homework
-                  </Link>
+        {data?.today?.classes?.length === 0 ? (
+          <div className="py-8 text-center text-slate-400 text-xs italic">No teaching periods scheduled for today.</div>
+        ) : (
+          <div className="space-y-3">
+            {data?.today?.classes?.map((cls: any) => (
+              <div key={cls.id} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex justify-between items-center">
+                <div>
+                  <h4 className="font-bold text-sm text-slate-800">{cls.className}</h4>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">{cls.subjectName} • Period {cls.periodNumber}</p>
+                  <p className="text-[11px] text-slate-400 font-mono mt-1">{cls.time}</p>
                 </div>
-              ))}
-            </div>
-          );
-        })()}
+                <Link
+                  href={`/dashboard/homework?classSectionId=${encodeURIComponent(cls.classSectionId)}&subjectId=${encodeURIComponent(cls.subjectId || '')}&subjectName=${encodeURIComponent(cls.subjectName)}&className=${encodeURIComponent(cls.className)}&periodNumber=${encodeURIComponent(cls.periodNumber || '')}&create=true`}
+                  className="px-3.5 py-1.5 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  Assign Homework
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Upcoming events / Notice Board */}

@@ -14,6 +14,13 @@ import { useToast } from '@/components/Toast';
 import StudentAvatar from '@/components/StudentAvatar';
 import axios from 'axios';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
+import {
+  PencilSpinner,
+  TableSkeleton,
+  EmptyState,
+  ErrorState,
+  LoadingButton,
+} from '@/components/loading';
 
 interface Student {
   id: string;
@@ -585,65 +592,45 @@ export default function StudentsDirectory() {
           >
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="px-6 py-4 w-10">
-                      <input 
-                        type="checkbox" 
-                        checked={isAllSelected} 
-                        onChange={handleToggleSelectAll} 
-                        className="rounded border-slate-300 text-[#2E5BFF] focus:ring-blue-500 cursor-pointer w-4 h-4"
-                      />
-                    </th>
-                    <th className="px-6 py-4">Roll No</th>
-                    <th className="px-6 py-4">Name</th>
-                    <th className="px-6 py-4">Class / Section</th>
-                    <th className="px-6 py-4">Parent Guardian</th>
-                    <th className="px-6 py-4">Financial Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, idx) => (
-                      <tr key={idx} className="animate-pulse">
-                        <td className="px-6 py-4"><div className="h-4 w-4 bg-slate-200 rounded" /></td>
-                        <td className="px-6 py-4"><div className="h-4 w-12 bg-slate-200 rounded" /></td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-slate-200" />
-                            <div className="space-y-2">
-                              <div className="h-4 w-28 bg-slate-200 rounded" />
-                              <div className="h-3 w-36 bg-slate-200 rounded" />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4"><div className="h-5 w-20 bg-slate-200 rounded-full" /></td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-2">
-                            <div className="h-4 w-20 bg-slate-200 rounded" />
-                            <div className="h-3 w-24 bg-slate-200 rounded" />
-                          </div>
-                        </td>
-                        <td className="px-6 py-4"><div className="h-5 w-28 bg-slate-200 rounded-full" /></td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <div className="h-8 w-20 bg-slate-200 rounded-lg animate-pulse" />
-                            <div className="h-8 w-12 bg-slate-200 rounded-lg animate-pulse" />
-                            <div className="h-8 w-10 bg-slate-200 rounded-lg animate-pulse" />
-                          </div>
+              {loading ? (
+                <TableSkeleton
+                  headers={['Select', 'Roll No', 'Student', 'Class / Section', 'Parent / Guardian', 'Financial Status', 'Actions']}
+                  loadingLabel="Loading student directory..."
+                  rows={6}
+                  alignments={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
+                />
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="px-6 py-4 w-10">
+                        <input 
+                          type="checkbox" 
+                          checked={isAllSelected} 
+                          onChange={handleToggleSelectAll} 
+                          className="rounded border-slate-300 text-[#2E5BFF] focus:ring-blue-500 cursor-pointer w-4 h-4"
+                        />
+                      </th>
+                      <th className="px-6 py-4">Roll No</th>
+                      <th className="px-6 py-4">Name</th>
+                      <th className="px-6 py-4">Class / Section</th>
+                      <th className="px-6 py-4">Parent Guardian</th>
+                      <th className="px-6 py-4">Financial Status</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
+                    {filteredStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-4">
+                          <EmptyState
+                            title="No matching student records found"
+                            description="Try adjusting your search query, grade, or section filter."
+                          />
                         </td>
                       </tr>
-                    ))
-                  ) : filteredStudents.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-light">
-                        No matching student records found.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredStudents.map((student) => {
+                    ) : (
+                      filteredStudents.map((student) => {
                       const hasDue = student.balanceDue > 0;
                       const totalFees = student.totalFees ?? (student.paidAmount + student.balanceDue);
                       const pendingPercentage = student.pendingPercentage ?? (totalFees > 0 ? Math.round((student.balanceDue / totalFees) * 100) : 0);
@@ -732,6 +719,7 @@ export default function StudentsDirectory() {
                   )}
                 </tbody>
               </table>
+              )}
             </div>
 
             {/* Mobile Card View */}

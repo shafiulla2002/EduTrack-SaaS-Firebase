@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { toLocalDateString, isBefore, formatDateDDMMYYYY } from '@/lib/date';
 import DatePickerInput from '@/components/DatePickerInput';
+import { PencilSpinner } from '@/components/loading';
 
 interface Teacher {
   id: string;
@@ -238,9 +239,14 @@ export default function AttendancePage() {
             <button
               onClick={loadAttendanceSession}
               disabled={loading || !selectedClassSectionId || !selectedTeacherId}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-brand-500/10 transition-all flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-brand-500/10 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Load Student Roster →'}
+              {loading ? (
+                <>
+                  <PencilSpinner size="xs" />
+                  <span>Loading Roster...</span>
+                </>
+              ) : 'Load Student Roster →'}
             </button>
           </div>
         </div>
@@ -349,7 +355,15 @@ export default function AttendancePage() {
         </div>
       ) : (
         <>
-          {displayedStudents.length === 0 ? (
+          {loading ? (
+            <div className="glass-panel p-12 text-center space-y-4">
+              <div className="flex flex-col items-center gap-3">
+                <PencilSpinner size="md" />
+                <p className="text-sm font-semibold text-slate-400">Loading student roster...</p>
+                <p className="text-xs text-slate-500">Fetching attendance records for this class</p>
+              </div>
+            </div>
+          ) : displayedStudents.length === 0 ? (
             <div className="glass-panel p-12 text-center text-slate-500 space-y-3">
               <UserX className="w-10 h-10 mx-auto opacity-30" />
               <p className="font-semibold text-sm">No students found matching current filters</p>

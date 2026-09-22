@@ -55,6 +55,13 @@ import { api, fastGet } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { resizeAndCompressImage } from '@/lib/image';
+import {
+  PencilSpinner,
+  TableSkeleton,
+  EmptyState,
+  ErrorState,
+  LoadingButton,
+} from '@/components/loading';
 
 export default function SchoolStaffPage() {
   const { showToast } = useToast();
@@ -550,14 +557,25 @@ export default function SchoolStaffPage() {
       {activeTab !== 'salary' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {loading ? (
-            <div className="col-span-full py-16 text-center text-slate-400 bg-white border border-slate-200 rounded-2xl">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
-              <p className="font-semibold text-sm">Loading staff members...</p>
-            </div>
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs animate-pulse p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-200/70 shrink-0" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="h-4 w-28 bg-slate-200/70 rounded" />
+                    <div className="h-3 w-16 bg-slate-200/70 rounded" />
+                  </div>
+                </div>
+                <div className="h-3 w-full bg-slate-100 rounded" />
+                <div className="h-8 w-full bg-slate-100 rounded-xl" />
+              </div>
+            ))
           ) : filteredStaff.length === 0 ? (
-            <div className="col-span-full py-16 text-center text-slate-400 bg-white border border-dashed border-slate-200 rounded-2xl">
-              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="font-semibold">No staff members found</p>
+            <div className="col-span-full">
+              <EmptyState
+                title="No staff members found"
+                description="Try selecting a different department or status filter."
+              />
             </div>
           ) : (
             filteredStaff.map(member => {
@@ -719,15 +737,24 @@ export default function SchoolStaffPage() {
               <tbody className="divide-y divide-slate-100 text-sm text-slate-600 font-medium">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2" />
-                      Loading payroll...
+                    <td colSpan={8} className="p-0">
+                      <div className="py-6 px-4">
+                        <TableSkeleton
+                          columns={8}
+                          rows={4}
+                          loadingMessage="Fetching staff payroll records..."
+                          className="border-none shadow-none"
+                        />
+                      </div>
                     </td>
                   </tr>
                 ) : staff.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
-                      No staff members found.
+                    <td colSpan={8} className="p-6">
+                      <EmptyState
+                        title="No staff members found"
+                        description="Add staff members to the institute directory to view and manage payroll disbursements."
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -795,13 +822,27 @@ export default function SchoolStaffPage() {
           {/* Mobile Card View */}
           <div className="block md:hidden divide-y divide-slate-100">
             {loading ? (
-              <div className="p-8 text-center text-slate-400">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2" />
-                Loading payroll...
+              <div className="p-4 space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-3 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-slate-200" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3.5 bg-slate-200 rounded w-28" />
+                        <div className="h-2.5 bg-slate-200 rounded w-20" />
+                      </div>
+                    </div>
+                    <div className="h-12 bg-slate-200/70 rounded-lg" />
+                    <div className="h-9 bg-slate-200 rounded-lg" />
+                  </div>
+                ))}
               </div>
             ) : staff.length === 0 ? (
-              <div className="p-8 text-center text-slate-400">
-                No staff members found.
+              <div className="p-6">
+                <EmptyState
+                  title="No staff members found"
+                  description="Add staff members to the institute directory to view and manage payroll disbursements."
+                />
               </div>
             ) : (
               staff.map(m => {
@@ -969,8 +1010,9 @@ export default function SchoolStaffPage() {
                   📄 Salary Invoices
                 </h4>
                 {staffDetailLoading ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mx-auto" />
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
+                    <PencilSpinner size="sm" />
+                    <span className="text-xs text-slate-500 font-medium">Fetching salary invoices...</span>
                   </div>
                 ) : staffSalaryInvoices.length === 0 ? (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
@@ -1017,8 +1059,9 @@ export default function SchoolStaffPage() {
                   <Clock className="w-4 h-4 text-blue-500" /> Schedule
                 </h4>
                 {staffDetailLoading ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mx-auto" />
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
+                    <PencilSpinner size="sm" />
+                    <span className="text-xs text-slate-500 font-medium">Loading schedule...</span>
                   </div>
                 ) : selectedStaff.staffType !== 'Teaching' ? (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">

@@ -7,6 +7,13 @@ import { api, fastGet } from '@/lib/api';
 import { useSchoolSetupUpdate, dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '../providers/TenantContext';
 import { BookOpen } from 'lucide-react';
+import {
+  PencilSpinner,
+  TableSkeleton,
+  StatCardSkeleton,
+  EmptyState,
+  ErrorState,
+} from '@/components/loading';
 
 function AdminDashboardOverview() {
   const { setupStats } = useTenant();
@@ -39,12 +46,14 @@ function AdminDashboardOverview() {
   const [recentPayments, setRecentPayments] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   // Per-section loading and error states — avoids blank white sections
+  const [statsLoading, setStatsLoading] = useState(true);
   const [admissionsLoading, setAdmissionsLoading] = useState(true);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [admissionsError, setAdmissionsError] = useState(false);
   const [transactionsError, setTransactionsError] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
+    setStatsLoading(true);
     setAdmissionsLoading(true);
     setTransactionsLoading(true);
     setAdmissionsError(false);
@@ -75,6 +84,7 @@ function AdminDashboardOverview() {
       setTransactionsError(true);
     } finally {
       // Always clear loading regardless of cache-hit or fresh fetch or error
+      setStatsLoading(false);
       setAdmissionsLoading(false);
       setTransactionsLoading(false);
     }
@@ -194,15 +204,22 @@ function AdminDashboardOverview() {
         </div>
       )}
 
-      {setupStatus && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
-            <svg className="w-5 h-5 stroke-blue-600 fill-none" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" strokeWidth="2"></circle>
-              <polyline points="12 6 12 12 16 14" strokeWidth="2"></polyline>
-            </svg>
-            Instance Setup Progress
-          </h3>
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-4">
+          <svg className="w-5 h-5 stroke-blue-600 fill-none" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" strokeWidth="2"></circle>
+            <polyline points="12 6 12 12 16 14" strokeWidth="2"></polyline>
+          </svg>
+          Instance Setup Progress
+        </h3>
+        {!setupStatus ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCardSkeleton variant="setup" />
+            <StatCardSkeleton variant="setup" />
+            <StatCardSkeleton variant="setup" />
+            <StatCardSkeleton variant="setup" />
+          </div>
+        ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Completion Rate */}
             <div className="bg-slate-50 border border-slate-200/50 p-4 rounded-xl flex items-center gap-4">
@@ -284,8 +301,8 @@ function AdminDashboardOverview() {
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* DYNAMIC KPI STATS GRID - 5 Harmonious Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
@@ -308,7 +325,13 @@ function AdminDashboardOverview() {
             </div>
           </div>
           <div>
-            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">{stats.studentsCount}</div>
+            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
+              {statsLoading && !stats.studentsCount ? (
+                <StatCardSkeleton label="Total Students" />
+              ) : (
+                stats.studentsCount
+              )}
+            </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Total Students</div>
           </div>
           <div className="border-t border-slate-100 pt-2 text-[10px] sm:text-[11px] text-slate-400 font-medium">
@@ -328,7 +351,13 @@ function AdminDashboardOverview() {
             <span className="text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 uppercase">Faculty</span>
           </div>
           <div>
-            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">{stats.teachersCount}</div>
+            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
+              {statsLoading && !stats.teachersCount ? (
+                <StatCardSkeleton label="Total Teachers" />
+              ) : (
+                stats.teachersCount
+              )}
+            </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Total Teachers</div>
           </div>
           <div className="border-t border-slate-100 pt-2 text-[10px] sm:text-[11px] text-slate-400 font-medium">
@@ -348,7 +377,13 @@ function AdminDashboardOverview() {
             <span className="text-[9px] sm:text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 uppercase">Academics</span>
           </div>
           <div>
-            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">{stats.classesCount}</div>
+            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
+              {statsLoading && !stats.classesCount ? (
+                <StatCardSkeleton label="Total Classes" />
+              ) : (
+                stats.classesCount
+              )}
+            </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Total Classes</div>
           </div>
           <div className="border-t border-slate-100 pt-2 text-[10px] sm:text-[11px] text-slate-400 font-medium">
@@ -374,7 +409,13 @@ function AdminDashboardOverview() {
             </div>
           </div>
           <div>
-            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">{stats.attendanceRate}%</div>
+            <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
+              {statsLoading && !stats.attendanceRate ? (
+                <StatCardSkeleton label="Average Attendance" />
+              ) : (
+                `${stats.attendanceRate}%`
+              )}
+            </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Average Attendance</div>
           </div>
           <div className="border-t border-slate-100 pt-2 text-[10px] sm:text-[11px] text-slate-400 font-medium">
@@ -404,7 +445,11 @@ function AdminDashboardOverview() {
           </div>
           <div>
             <div className="text-2xl sm:text-[32px] font-extrabold text-slate-800 leading-none">
-              {stats.pendingLeaveRequests || 0}
+              {statsLoading && stats.pendingLeaveRequests === 0 ? (
+                <StatCardSkeleton label="Pending Leaves" />
+              ) : (
+                stats.pendingLeaveRequests || 0
+              )}
             </div>
             <div className="text-xs sm:text-[14px] text-slate-500 font-semibold mt-1">Pending Leaves</div>
           </div>
@@ -450,47 +495,24 @@ function AdminDashboardOverview() {
               </div>
             </div>
 
-            <div className="overflow-y-auto overflow-x-auto max-h-[320px] border border-slate-100 rounded-xl w-full">
+            <div className="overflow-y-auto overflow-x-auto max-h-[320px] w-full">
               {admissionsLoading ? (
-                /* Skeleton — appears immediately, same dimensions as real table */
-                <table className="w-full border-collapse min-w-[500px]">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                      <th className="px-4 py-3 text-left">Student</th>
-                      <th className="px-4 py-3 text-left">Roll No</th>
-                      <th className="px-4 py-3 text-left">Class</th>
-                      <th className="px-4 py-3 text-left">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <tr key={i}>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg edu-skeleton shrink-0" />
-                            <div className="h-3.5 w-28 rounded edu-skeleton" />
-                          </div>
-                        </td>
-                        <td className="px-4 py-3"><div className="h-3 w-16 rounded edu-skeleton" /></td>
-                        <td className="px-4 py-3"><div className="h-3 w-20 rounded edu-skeleton" /></td>
-                        <td className="px-4 py-3"><div className="h-3 w-20 rounded edu-skeleton" /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <TableSkeleton
+                  headers={['Student', 'Roll No', 'Class', 'Date']}
+                  loadingLabel="Loading recent admissions..."
+                  rows={5}
+                />
               ) : admissionsError ? (
-                /* Error state — section-level only, does not block rest of dashboard */
-                <div className="py-10 text-center">
-                  <p className="text-sm text-slate-500 font-medium">Unable to load admissions</p>
-                  <button
-                    onClick={() => { setAdmissionsError(false); loadDashboardData(); }}
-                    className="mt-3 px-4 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-xs rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                  >
-                    Retry
-                  </button>
-                </div>
+                <ErrorState
+                  title="Unable to load admissions"
+                  message="Could not retrieve the latest admission records."
+                  onRetry={() => { setAdmissionsError(false); loadDashboardData(); }}
+                />
               ) : displayAdmissions.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs italic">No recent admissions</div>
+                <EmptyState
+                  title="No recent admissions found"
+                  description="Newly admitted student records will be listed here."
+                />
               ) : (
                 <table className="w-full border-collapse min-w-[500px]">
                   <thead>
@@ -531,7 +553,7 @@ function AdminDashboardOverview() {
               <div className="text-[16px] font-bold text-slate-800 flex items-center gap-2">
                 <svg className="w-5 h-5 stroke-[#2E5BFF] fill-none" viewBox="0 0 24 24">
                   <rect x="1" y="4" width="22" height="16" rx="2" ry="2" strokeWidth="2"></rect>
-                  <line x1="1" y1="10" x2="23" y2="10" strokeWidth="2"></line>
+                  <line x1="10" y1="1" x2="10" y2="23" strokeWidth="2"></line>
                 </svg>
                 Recent Transactions
               </div>
@@ -555,42 +577,25 @@ function AdminDashboardOverview() {
               </div>
             </div>
 
-            <div className="overflow-y-auto overflow-x-auto max-h-[320px] border border-slate-100 rounded-xl w-full">
+            <div className="overflow-y-auto overflow-x-auto max-h-[320px] w-full">
               {transactionsLoading ? (
-                /* Skeleton — appears immediately, same dimensions as real table */
-                <table className="w-full border-collapse min-w-[500px]">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                      <th className="px-4 py-3 text-left">Type</th>
-                      <th className="px-4 py-3 text-left">Particulars</th>
-                      <th className="px-4 py-3 text-right">Amount</th>
-                      <th className="px-4 py-3 text-left">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <tr key={i}>
-                        <td className="px-4 py-3"><div className="h-5 w-24 rounded edu-skeleton" /></td>
-                        <td className="px-4 py-3"><div className="h-3.5 w-36 rounded edu-skeleton" /></td>
-                        <td className="px-4 py-3 text-right"><div className="h-3.5 w-20 rounded edu-skeleton ml-auto" /></td>
-                        <td className="px-4 py-3"><div className="h-3 w-20 rounded edu-skeleton" /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <TableSkeleton
+                  headers={['Type', 'Particulars', 'Amount', 'Date']}
+                  loadingLabel="Loading recent transactions..."
+                  rows={5}
+                  alignments={['left', 'left', 'right', 'left']}
+                />
               ) : transactionsError ? (
-                /* Error state — section-level only, does not block rest of dashboard */
-                <div className="py-10 text-center">
-                  <p className="text-sm text-slate-500 font-medium">Unable to load transactions</p>
-                  <button
-                    onClick={() => { setTransactionsError(false); loadDashboardData(); }}
-                    className="mt-3 px-4 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-semibold text-xs rounded-lg border border-blue-200 transition-colors cursor-pointer"
-                  >
-                    Retry
-                  </button>
-                </div>
+                <ErrorState
+                  title="Unable to load transactions"
+                  message="Could not retrieve recent billing transactions."
+                  onRetry={() => { setTransactionsError(false); loadDashboardData(); }}
+                />
               ) : displayPayments.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs italic">No recent transactions</div>
+                <EmptyState
+                  title="No recent transactions found"
+                  description="Fee collections and disbursements will appear here."
+                />
               ) : (
                 <table className="w-full border-collapse min-w-[500px]">
                   <thead>
@@ -602,24 +607,27 @@ function AdminDashboardOverview() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
-                    {displayPayments.map((pay) => (
-                      <tr key={pay.id} className="hover:bg-slate-50 transition-colors">
+                    {displayPayments.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3">
-                          <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border uppercase ${
-                            pay.type === 'Fee Payment'
-                              ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                              : 'bg-rose-50 text-rose-600 border-rose-100'
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            p.type === 'Salary' 
+                              ? 'bg-purple-50 text-purple-700 border border-purple-100' 
+                              : p.type === 'Fee Collection'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                : 'bg-slate-50 text-slate-700 border border-slate-200'
                           }`}>
-                            {pay.type}
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              p.type === 'Salary' ? 'bg-purple-500' : p.type === 'Fee Collection' ? 'bg-emerald-500' : 'bg-slate-400'
+                            }`} />
+                            {p.type}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-slate-800 truncate max-w-[150px]" title={pay.name}>{pay.name}</td>
-                        <td className={`px-4 py-3 font-bold font-mono text-right ${
-                          pay.type === 'Fee Payment' ? 'text-emerald-600' : 'text-rose-600'
-                        }`}>
-                          {pay.type === 'Fee Payment' ? '+' : '-'}{formatCurrency(pay.amount)}
+                        <td className="px-4 py-3 font-semibold text-slate-800">{p.particulars}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-slate-900 text-right">
+                          {formatCurrency(p.amount)}
                         </td>
-                        <td className="px-4 py-3 text-slate-400 font-mono text-xs">{pay.date}</td>
+                        <td className="px-4 py-3 text-slate-400 font-mono text-xs">{p.date}</td>
                       </tr>
                     ))}
                   </tbody>

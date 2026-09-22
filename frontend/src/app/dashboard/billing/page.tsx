@@ -11,6 +11,13 @@ import {
   QrCode, User, ArrowRight, CornerDownRight, RotateCcw,
   BookOpen, Calendar, Printer, ShieldCheck, AlertCircle, MessageCircle
 } from 'lucide-react';
+import {
+  PencilSpinner,
+  TableSkeleton,
+  EmptyState,
+  ErrorState,
+  LoadingButton,
+} from '@/components/loading';
 
 interface StagedInvoice {
   id: string;
@@ -71,6 +78,7 @@ export default function FeesBillingPage() {
 
   // History logs
   const [transactions, setTransactions] = useState<StagedInvoice[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [matchingStudents, setMatchingStudents] = useState<any[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -88,32 +96,36 @@ export default function FeesBillingPage() {
   const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
   const [successRemainingBalance, setSuccessRemainingBalance] = useState(0);
   const [successPaymentDate, setSuccessPaymentDate] = useState('');
-  // Lock body scroll when modals are open
-  useEffect(() => {
-    if (successModalOpen || confirmModalOpen || errorModalOpen) {
-      const originalStyle = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalStyle;
-      };
-    }
-  }, [successModalOpen, confirmModalOpen, errorModalOpen]);
 
   // Load initial options & recent invoices
   useEffect(() => {
     const fetchInit = async () => {
+      setTransactionsLoading(true);
       try {
         const [yRes, txRes] = await Promise.all([
           fastGet('/billing/options/years', undefined, { ttlMs: 60000 }),
-          fastGet('/billing/invoices/recent', undefined, { ttlMs: 15000 })
+          fastGet('/billing/invoices/recent', undefined, {
+            ttlMs: 15000,
+            onRevalidate: (fresh) => {
+              if (fresh && Array.isArray(fresh)) {
+                setTransactions(fresh);
+              }
+            }
+          })
         ]);
-        setAcademicYears(yRes.data);
-        if (yRes.data.length > 0) {
-          setSelectedYear(yRes.data[0].value);
+        if (yRes?.data) {
+          setAcademicYears(yRes.data);
+          if (yRes.data.length > 0) {
+            setSelectedYear(yRes.data[0].value);
+          }
         }
-        setTransactions(txRes.data);
+        if (txRes?.data) {
+          setTransactions(txRes.data);
+        }
       } catch (err) {
         console.error('Failed to fetch initial billing data', err);
+      } finally {
+        setTransactionsLoading(false);
       }
     };
     fetchInit();
@@ -572,7 +584,7 @@ export default function FeesBillingPage() {
 
       // Compose share message with receipt details and link
       const shareText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n`
-        + `🏫 *School:* ${data.schoolName || schoolName || 'CS EduTrack Portal'}\n`
+        + `🏫 *School:* ${data.schoolName || schoolName || 'EduTrack School Portal'}\n`
         + `📄 *Receipt No:* ${data.invoiceNo || invoiceId}\n`
         + `👤 *Student:* ${data.studentName || lastPaidStudentName} (${data.className || ''} ${data.sectionName || ''})\n`
         + `📅 *Date & Time:* ${data.invoiceDate || successPaymentDate}\n\n`
@@ -613,7 +625,7 @@ export default function FeesBillingPage() {
         ? `${window.location.origin}/dashboard/billing/invoices/${invoiceId}`
         : `/dashboard/billing/invoices/${invoiceId}`;
       const fallbackText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n`
-        + `🏫 *School:* ${schoolName || 'CS EduTrack Portal'}\n`
+        + `🏫 *School:* ${schoolName || 'EduTrack School Portal'}\n`
         + `📄 *Receipt No:* ${invoiceId}\n`
         + `👤 *Student:* ${lastPaidStudentName}\n`
         + `📅 *Date & Time:* ${successPaymentDate}\n\n`
@@ -811,12 +823,20 @@ export default function FeesBillingPage() {
           )}
 
           {isLoading ? (
-            <div className="py-12 text-center text-slate-400 font-medium text-xs animate-pulse">
-              Processing fees query...
+            <div className="py-4">
+              <TableSkeleton
+                columns={7}
+                rows={3}
+                loadingMessage="Calculating fee breakdown & balance due..."
+                className="border-none shadow-none"
+              />
             </div>
           ) : feeItems.length === 0 ? (
-            <div className="py-8 text-center text-slate-400 bg-slate-50 border border-slate-250 border-dashed rounded-xl text-xs font-medium">
-              No outstanding fee structures or open opportunities found for this student.
+            <div className="p-4">
+              <EmptyState
+                title="No outstanding fees found"
+                description="No open fee structures or balance dues were found for this student in the selected session."
+              />
             </div>
           ) : (
             <>
@@ -1081,10 +1101,17 @@ export default function FeesBillingPage() {
       <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-sm space-y-4">
         <h3 className="font-extrabold text-slate-850 text-base">Recent Transaction History</h3>
         
-        {transactions.length === 0 ? (
-          <div className="py-8 text-center text-slate-400 bg-slate-50 border border-slate-200 border-dashed rounded-2xl text-xs font-semibold">
-            No recent payment transactions recorded.
-          </div>
+        {transactionsLoading ? (
+          <TableSkeleton
+            columns={7}
+            rows={5}
+            loadingMessage="Fetching recent payment transactions..."
+          />
+        ) : transactions.length === 0 ? (
+          <EmptyState
+            title="No transactions yet"
+            description="No recent payment transactions have been recorded. Collect a fee to see records here."
+          />
         ) : (
           <>
             {/* ── Transactions Table: Desktop ── */}

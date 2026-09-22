@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   Search, ArrowLeft, Check, CheckCircle, Plus, X, 
   ChevronLeft, User, Calendar, DollarSign, AlertCircle, 
@@ -10,7 +9,8 @@ import {
   FileText, ChevronRight, Loader2, BookOpen, AlertTriangle, ExternalLink, ArrowUpRight, Eye
 } from 'lucide-react';
 import Drawer from '@/components/Drawer';
-import { api, fastGet, cachedGet } from '@/lib/api';
+import { api, cachedGet } from '@/lib/api';
+import { PencilSpinner, EmptyState } from '@/components/loading';
 
 const CLASS_ORDER = [
   'Nursery', 'LKG', 'UKG',
@@ -61,8 +61,6 @@ interface ClassSummary {
 }
 
 export default function StudentPromotionPage() {
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => setIsMounted(true), []);
   const [academicYears, setAcademicYears] = useState<any[]>([]);
   const [dbClasses, setDbClasses] = useState<any[]>([]);
   const [studentsState, setStudentsState] = useState<any[]>([]);
@@ -132,26 +130,14 @@ export default function StudentPromotionPage() {
   const [loadingStudentHistory, setLoadingStudentHistory] = useState(false);
   const [historyActiveTab, setHistoryActiveTab] = useState<'overview' | 'timeline' | 'attendance' | 'exams' | 'homework' | 'fees' | 'complaints'>('overview');
 
-  // Body scroll lock effect
-  useEffect(() => {
-    if (showSuccessModal || showValidationModal || isHistoryModalOpen || isLifecycleDrawerOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [showSuccessModal, showValidationModal, isHistoryModalOpen, isLifecycleDrawerOpen]);
-
   // Load Academic Years & Classes & Sections in parallel with shared cache
   useEffect(() => {
     const fetchInitData = async () => {
       try {
         const [yearsRes, classesRes, sectionsRes] = await Promise.all([
-          fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
-          fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
-          fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
+          cachedGet('/academics/academic-years', undefined, 60000),
+          cachedGet('/academics/classes', undefined, 60000),
+          cachedGet('/academics/sections', undefined, 60000),
         ]);
 
         const yearsData = yearsRes.data || [];
@@ -768,7 +754,7 @@ export default function StudentPromotionPage() {
             >
               {isLoading ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <PencilSpinner size="xs" />
                   Processing...
                 </>
               ) : (
@@ -862,7 +848,17 @@ export default function StudentPromotionPage() {
                 {/* Summary View */}
                 {!isDrilldown && (
                   <>
-                    {filteredSourceSummary.map(item => {
+                    {isLoading ? (
+                      <div className="py-10 flex flex-col items-center gap-3">
+                        <PencilSpinner size="sm" />
+                        <span className="text-xs text-slate-400 font-medium">Loading student data...</span>
+                      </div>
+                    ) : filteredSourceSummary.length === 0 ? (
+                      <div className="h-full flex flex-col justify-center items-center text-center text-slate-400 py-12">
+                        <Users className="w-10 h-10 mb-2 opacity-30" />
+                        <p className="text-xs font-semibold">No staging classes found</p>
+                      </div>
+                    ) : filteredSourceSummary.map(item => {
                       const isPromotable = !!getNextClass(item.className);
                       return (
                         <div 
@@ -895,12 +891,6 @@ export default function StudentPromotionPage() {
                         </div>
                       );
                     })}
-                    {filteredSourceSummary.length === 0 && (
-                      <div className="h-full flex flex-col justify-center items-center text-center text-slate-400 py-12">
-                        <Users className="w-10 h-10 mb-2 opacity-30" />
-                        <p className="text-xs font-semibold">No staging classes found</p>
-                      </div>
-                    )}
                   </>
                 )}
 
@@ -926,37 +916,35 @@ export default function StudentPromotionPage() {
                           onClick={() => handleStudentToggle(s.id)}
                           className={`flex justify-between items-center p-3 border rounded-2xl cursor-pointer transition-all select-none ${
                             isSelected 
-                              ? 'bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 dark:border-blue-400 shadow-sm ring-1 ring-blue-500/20' 
-                              : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                              ? 'bg-blue-50/40 border-blue-500 shadow-sm' 
+                              : 'bg-slate-50 border-slate-200 hover:border-slate-300'
                           }`}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-3">
                             <input
                               type="checkbox"
                               checked={isSelected}
                               readOnly
-                              className="accent-blue-600 cursor-pointer w-4 h-4 rounded-md shrink-0"
+                              className="accent-blue-600 cursor-pointer w-4 h-4 rounded-md"
                             />
-                            <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 text-xs font-extrabold shrink-0">
+                            <div className="w-8 h-8 rounded-lg bg-slate-200 flex items-center justify-center text-slate-700 text-xs font-extrabold">
                               {s.name.split(' ').map((n: string) => n[0]).join('').substring(0,2)}
                             </div>
-                            <div className="min-w-0 truncate">
-                              <h5 className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate">{s.name}</h5>
-                              <p className="text-[10px] text-slate-400 dark:text-slate-400 font-mono mt-0.5">{s.rollNo}</p>
+                            <div>
+                              <h5 className="font-bold text-slate-800 text-xs">{s.name}</h5>
+                              <p className="text-[10px] text-slate-400 font-mono mt-0.5">{s.rollNo}</p>
                             </div>
                           </div>
                           
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-2">
                             {/* Financial validation check */}
-                            <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border flex items-center gap-1.5 shadow-xs transition-colors shrink-0 ${
+                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded border flex items-center gap-1.5 ${
                               hasDue 
-                                ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-600' 
-                                : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-600'
+                                ? 'bg-amber-50 text-amber-600 border-amber-200' 
+                                : 'bg-emerald-50 text-emerald-600 border-emerald-200'
                             }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                              <span className="font-bold tracking-wider">
-                                {s.financialStatus || (hasDue ? `₹${s.balanceDue} Due` : 'CLEARED')}
-                              </span>
+                              <span className={`w-1 h-1 rounded-full ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                              {s.financialStatus || (hasDue ? `₹${s.balanceDue} Due` : 'Paid Clear')}
                             </span>
                             <button
                               type="button"
@@ -966,7 +954,7 @@ export default function StudentPromotionPage() {
                                 setIsLifecycleDrawerOpen(true);
                                 setLifecycleTab('actions');
                               }}
-                              className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
                               title="Manage Student Lifecycle Status"
                             >
                               <Users className="w-3.5 h-3.5" />
@@ -1068,18 +1056,18 @@ export default function StudentPromotionPage() {
                     {selectedStudents.map(s => (
                       <div 
                         key={s.id}
-                        className="flex justify-between items-center p-3 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 rounded-2xl animate-fade-in shadow-xs"
+                        className="flex justify-between items-center p-3 border border-slate-200 bg-white rounded-2xl animate-fade-in"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 flex items-center justify-center text-xs font-extrabold shrink-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-extrabold">
                             {s.name.split(' ').map((n: string) => n[0]).join('').substring(0,2)}
                           </div>
-                          <div className="min-w-0 truncate">
-                            <h5 className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate">{s.name}</h5>
+                          <div>
+                            <h5 className="font-bold text-slate-800 text-xs">{s.name}</h5>
                             <p className="text-[10px] text-slate-400 font-medium mt-0.5">Target: {targetClass} ({targetSection || s.section})</p>
                           </div>
                         </div>
-                        <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-600 shadow-xs shrink-0">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
                           Ready
                         </span>
                       </div>
@@ -1099,10 +1087,10 @@ export default function StudentPromotionPage() {
       </div>
 
       {/* Success Modal Overlay */}
-      {isMounted && showSuccessModal && createPortal(
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={closeSuccessModal}>
-          <div className="w-full max-w-lg bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-8 animate-scale-in text-center overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-400 to-cyan-400 flex items-center justify-center text-white text-3xl shadow-lg shadow-emerald-500/20 mb-6 animate-bounce shrink-0 mx-auto">
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-lg w-full shadow-2xl border border-slate-100 animate-in flex flex-col items-center text-center max-h-[90vh] overflow-y-auto">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-400 to-cyan-400 flex items-center justify-center text-white text-3xl shadow-lg shadow-emerald-500/20 mb-6 animate-bounce shrink-0">
               ✨
             </div>
             
@@ -1171,22 +1159,21 @@ export default function StudentPromotionPage() {
 
             <button
               onClick={closeSuccessModal}
-              className="w-full py-3 rounded-xl font-bold bg-[#2E5BFF] hover:bg-[#1E3FCC] text-white shadow-lg shadow-blue-500/10 transition-all cursor-pointer hover:-translate-y-0.5 mt-auto shrink-0"
+              className="w-full py-3 rounded-xl font-bold bg-[#2E5BFF] hover:bg-[#1E3FCC] text-white shadow-lg shadow-blue-500/10 transition-all cursor-pointer hover:-translate-y-0.5"
             >
               Continue
             </button>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* ── VALIDATION MODAL ── */}
-      {isMounted && showValidationModal && validationData && createPortal(
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setShowValidationModal(false)}>
-          <div className="w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col p-6 animate-scale-in" onClick={(e) => e.stopPropagation()}>
+      {showValidationModal && validationData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]">
             
             {/* Header */}
-            <div className="flex items-start justify-between border-b border-slate-200 pb-4 mb-4 shrink-0">
+            <div className="flex items-start justify-between border-b border-slate-200 pb-4 mb-4">
               <div className="flex items-center gap-2">
                 {validationData.studentsWithPendingDue > 0 ? (
                   <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
@@ -1204,7 +1191,7 @@ export default function StudentPromotionPage() {
             </div>
 
             {/* Metrics */}
-            <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 border border-slate-200 rounded-xl mb-4 text-center shrink-0">
+            <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 border border-slate-200 rounded-xl mb-4 text-center">
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Selected</span>
                 <span className="text-base font-extrabold text-slate-700">{validationData.totalSelected}</span>
@@ -1273,14 +1260,14 @@ export default function StudentPromotionPage() {
 
             {/* Warning/Success Message */}
             {validationData.studentsWithPendingDue > 0 ? (
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6 flex gap-3 text-xs text-amber-800 animate-in shrink-0">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6 flex gap-3 text-xs text-amber-800 animate-in">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <p className="leading-relaxed font-semibold">
                   Warning: Some students still have pending fees from the previous academic year. If you continue, these outstanding balances will automatically be carried forward to the next academic year along with the new academic year's fee structure. Do you want to continue?
                 </p>
               </div>
             ) : (
-              <div className="p-4 bg-emerald-50 border border-emerald-250 rounded-xl mb-6 flex gap-3 text-xs text-emerald-800 animate-in shrink-0">
+              <div className="p-4 bg-emerald-50 border border-emerald-250 rounded-xl mb-6 flex gap-3 text-xs text-emerald-800 animate-in">
                 <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
                 <p className="leading-relaxed font-semibold">
                   All selected students are clear of any outstanding dues. Proceeding will enroll them in the target academic year and allocate their new class standard fee structures.
@@ -1289,7 +1276,7 @@ export default function StudentPromotionPage() {
             )}
 
             {/* Actions */}
-            <div className="flex gap-3 justify-end shrink-0">
+            <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowValidationModal(false)}
                 className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-semibold hover:bg-slate-50 cursor-pointer text-xs"
@@ -1326,8 +1313,7 @@ export default function StudentPromotionPage() {
             </div>
 
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* ────────────────────────────────────────────────────────────────────────── */}
@@ -1945,9 +1931,9 @@ export default function StudentPromotionPage() {
       {/* ────────────────────────────────────────────────────────────────────────── */}
       {/* ── COMPLETE 360° STUDENT HISTORY MODAL ─────────────────────────────────── */}
       {/* ────────────────────────────────────────────────────────────────────────── */}
-      {isMounted && isHistoryModalOpen && createPortal(
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={() => setIsHistoryModalOpen(false)}>
-          <div className="w-full max-w-4xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-scale-in border border-slate-200" onClick={(e) => e.stopPropagation()}>
+      {isHistoryModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
               <div className="flex items-center gap-3">
@@ -2271,8 +2257,7 @@ export default function StudentPromotionPage() {
               ) : null}
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
     </div>
   );

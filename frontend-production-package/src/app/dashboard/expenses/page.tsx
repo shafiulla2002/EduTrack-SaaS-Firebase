@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X, Search, Edit2, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { PencilSpinner, EmptyState } from '@/components/loading';
 
 interface Expense {
   id: string;
@@ -199,15 +200,36 @@ export default function ExpensesPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">This Month</span>
-          <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.currentMonth.toLocaleString()}</span>
+          {loading ? (
+            <div className="flex items-center gap-2 mt-2">
+              <PencilSpinner size="xs" />
+              <span className="text-sm text-slate-400 font-medium">Loading...</span>
+            </div>
+          ) : (
+            <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.currentMonth.toLocaleString()}</span>
+          )}
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Previous Month</span>
-          <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.prevMonth.toLocaleString()}</span>
+          {loading ? (
+            <div className="flex items-center gap-2 mt-2">
+              <PencilSpinner size="xs" />
+              <span className="text-sm text-slate-400 font-medium">Loading...</span>
+            </div>
+          ) : (
+            <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.prevMonth.toLocaleString()}</span>
+          )}
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Yearly Total</span>
-          <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.yearly.toLocaleString()}</span>
+          {loading ? (
+            <div className="flex items-center gap-2 mt-2">
+              <PencilSpinner size="xs" />
+              <span className="text-sm text-slate-400 font-medium">Loading...</span>
+            </div>
+          ) : (
+            <span className="text-2xl font-extrabold text-slate-800 mt-1 block">₹{summary.yearly.toLocaleString()}</span>
+          )}
         </div>
       </div>
 
@@ -234,10 +256,24 @@ export default function ExpensesPage() {
 
       {/* Expense Cards */}
       <div className="space-y-3">
-        {filteredExpenses.length === 0 ? (
-          <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-12 text-center text-slate-400">
-            <p className="font-semibold">No expenses found for selected filters</p>
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center gap-4 animate-pulse">
+                <div className="w-10 h-10 rounded-xl bg-slate-200 flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 bg-slate-200 rounded w-32" />
+                  <div className="h-2.5 bg-slate-200 rounded w-48" />
+                </div>
+                <div className="h-6 w-20 bg-slate-200 rounded-lg" />
+              </div>
+            ))}
           </div>
+        ) : filteredExpenses.length === 0 ? (
+          <EmptyState
+            title="No expenses found"
+            description="No expenses match the selected filters. Try adjusting the category, status, or month filter."
+          />
         ) : (
           filteredExpenses.map(exp => (
             <div key={exp.id} className={`bg-white border border-slate-200 border-l-4 rounded-xl p-4 flex items-center gap-4 shadow-xs hover:shadow-sm transition-all ${CATEGORY_COLORS[exp.category] || CATEGORY_COLORS.Other}`}>

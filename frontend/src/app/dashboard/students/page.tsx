@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   Search, ArrowLeft, Plus, X, Phone, Mail, Award, Receipt, 
   CheckCircle, AlertTriangle, ChevronDown, ChevronUp, User, 
@@ -15,6 +14,13 @@ import { useToast } from '@/components/Toast';
 import StudentAvatar from '@/components/StudentAvatar';
 import axios from 'axios';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
+import {
+  PencilSpinner,
+  TableSkeleton,
+  EmptyState,
+  ErrorState,
+  LoadingButton,
+} from '@/components/loading';
 
 interface Student {
   id: string;
@@ -39,8 +45,6 @@ interface Student {
 
 export default function StudentsDirectory() {
   const { showToast } = useToast();
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => setIsMounted(true), []);
   const [search, setSearch] = useState('');
   const [searchVal, setSearchVal] = useState('');
   const [selectedClass, setSelectedClass] = useState('All');
@@ -112,8 +116,6 @@ export default function StudentsDirectory() {
   // Selected student for Profile details (Full Page swap)
   const [activeStudent, setActiveStudent] = useState<Student | null>(null);
   const [activeStudentDetails, setActiveStudentDetails] = useState<any>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [casesLoading, setCasesLoading] = useState(false);
   const [selectedExamTab, setSelectedExamTab] = useState<string>('Unit Test');
   const [expandedInvoices, setExpandedInvoices] = useState<Record<string, boolean>>({});
   const [expandedExams, setExpandedExams] = useState<Record<string, boolean>>({});
@@ -158,17 +160,6 @@ export default function StudentsDirectory() {
     setPage(pageNumber);
   };
 
-  const classesRef = useRef<any[]>([]);
-  const sectionsRef = useRef<any[]>([]);
-
-  useEffect(() => {
-    classesRef.current = classes;
-  }, [classes]);
-
-  useEffect(() => {
-    sectionsRef.current = sections;
-  }, [sections]);
-
   const loadFilterOptions = async () => {
     try {
       const [ayRes, classRes, secRes] = await Promise.all([
@@ -176,13 +167,9 @@ export default function StudentsDirectory() {
         fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
         fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
       ]);
-      const loadedClasses = classRes.data || [];
-      const loadedSections = secRes.data || [];
-      classesRef.current = loadedClasses;
-      sectionsRef.current = loadedSections;
       setAcademicYears(ayRes.data || []);
-      setClasses(loadedClasses);
-      setSections(loadedSections);
+      setClasses(classRes.data || []);
+      setSections(secRes.data || []);
     } catch (err) {
       console.error('Failed to load filter options:', err);
     }
@@ -196,8 +183,8 @@ export default function StudentsDirectory() {
     abortControllerRef.current = controller;
 
     try {
-      const classId = selectedClass === 'All' ? undefined : (classesRef.current.find(c => c.name === selectedClass)?.id || classes.find(c => c.name === selectedClass)?.id);
-      const sectionId = selectedSection === 'All' ? undefined : (sectionsRef.current.find(s => s.name === selectedSection)?.id || sections.find(s => s.name === selectedSection)?.id);
+      const classId = selectedClass === 'All' ? undefined : classes.find(c => c.name === selectedClass)?.id;
+      const sectionId = selectedSection === 'All' ? undefined : sections.find(s => s.name === selectedSection)?.id;
       const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
 
       const res = await fastGet('/students', {
@@ -235,7 +222,7 @@ export default function StudentsDirectory() {
     } finally {
       setLoading(false);
     }
-  }, [search, selectedClass, selectedSection, selectedYear, limit]);
+  }, [search, selectedClass, selectedSection, selectedYear, classes, sections, limit]);
 
   useEffect(() => {
     loadFilterOptions();
@@ -258,16 +245,6 @@ export default function StudentsDirectory() {
   useEffect(() => {
     loadStudents(page);
   }, [page, search, selectedClass, selectedSection, selectedYear, loadStudents]);
-
-  // Scroll active page number into view in horizontal scroll container
-  useEffect(() => {
-    if (page) {
-      const el = document.getElementById(`student-page-btn-${page}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
-    }
-  }, [page]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -305,12 +282,15 @@ export default function StudentsDirectory() {
     if (loadedDetailsKey === key && activeStudent?.id === studentId) return;
     
     try {
-      // ── Phase 1: Load student details + exam marks FAST (no behavior cases yet) ──
-      const detailsRes = await api.get(`/students/${studentId}`, {
-        params: yearId && yearId !== 'All' ? { academicYearId: yearId } : {}
-      });
+      const [detailsRes, casesRes] = await Promise.all([
+        api.get(`/students/${studentId}`, {
+          params: yearId && yearId !== 'All' ? { academicYearId: yearId } : {}
+        }),
+        api.get(`/complaint-box/student-cases/${studentId}`)
+      ]);
       
       const data = detailsRes.data;
+      const casesData = casesRes.data;
 
       const paid = data.paidAmount !== undefined ? Number(data.paidAmount) : (data.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
       const due = data.balanceDue !== undefined ? Number(data.balanceDue) : (data.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
@@ -336,7 +316,7 @@ export default function StudentsDirectory() {
         profilePhotoUrl: data.profilePhotoUrl || null,
       };
 
-      // Group exams by exam id
+      // Group exams
       const examsMap: Record<string, any> = {};
       data.examMarks?.forEach((mark: any) => {
         const exId = mark.exam.id;
@@ -345,29 +325,25 @@ export default function StudentsDirectory() {
             id: exId,
             name: mark.exam.name,
             type: mark.exam.type,
-            subjects: [],
-            maxMarks: mark.exam.maxMarks || 100,
+            subjects: []
           };
         }
         examsMap[exId].subjects.push({
           name: mark.subject.name,
           score: Number(mark.marksObtained),
-          max: mark.exam.maxMarks || 100
+          max: 100
         });
       });
 
       const exams = Object.values(examsMap).map((ex: any) => {
-        const totalObtained = ex.subjects.reduce((sum: number, s: any) => sum + s.score, 0);
-        const totalMax = ex.subjects.reduce((sum: number, s: any) => sum + s.max, 0);
-        const pct = totalMax > 0 ? Math.round((totalObtained / totalMax) * 100) : 0;
+        const total = ex.subjects.reduce((sum: number, s: any) => sum + s.score, 0);
+        const avg = ex.subjects.length > 0 ? (total / ex.subjects.length).toFixed(0) : '0';
         return {
           ...ex,
-          score: `${pct}%`,
-          avgPct: pct,
+          score: `${avg}%`
         };
       });
 
-      // Set details with empty cases first (fast render)
       setActiveStudentDetails({
         products: data.feeItems?.map((item: any) => ({
           id: item.oliId,
@@ -400,7 +376,16 @@ export default function StudentsDirectory() {
           })) || []
         })) || [],
         exams,
-        cases: [], // empty initially — loaded lazily in Phase 2
+        cases: casesData.map((c: any) => ({
+          id: c.id,
+          type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
+          typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
+          subject: c.category,
+          priority: c.priority,
+          status: c.status,
+          date: new Date(c.createdAt).toISOString().split('T')[0],
+          description: c.description || ''
+        }))
       });
 
       if (exams.length > 0) {
@@ -415,30 +400,6 @@ export default function StudentsDirectory() {
       setExpandedExams({});
       setTempDiscount(0);
       setAppliedDiscountPercent(0);
-
-      // ── Phase 2: Lazily load behavior cases in background (doesn't block profile render) ──
-      setCasesLoading(true);
-      api.get(`/complaint-box/student-cases/${studentId}`)
-        .then((casesRes) => {
-          const casesData = casesRes.data;
-          setActiveStudentDetails((prev: any) => prev ? {
-            ...prev,
-            cases: casesData.map((c: any) => ({
-              id: c.id,
-              type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
-              typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
-              subject: c.category,
-              priority: c.priority,
-              status: c.status,
-              date: new Date(c.createdAt).toISOString().split('T')[0],
-              description: c.description || '',
-              teacher: c.teacher?.user?.name || ''
-            }))
-          } : prev);
-        })
-        .catch((err) => console.error('Failed to load student cases:', err))
-        .finally(() => setCasesLoading(false));
-
     } catch (err) {
       console.error('Failed to load student details:', err);
       alert('Failed to load student details');
@@ -448,18 +409,13 @@ export default function StudentsDirectory() {
   // Switch to detail view and load details
   const handleViewDetails = async (student: Student) => {
     try {
-      setProfileLoading(true);
-      // Immediately set activeStudent so the profile view renders (with a loading overlay)
-      // This ensures first click shows the profile view without needing a second click
-      setActiveStudentDetails(null);
-      setActiveStudent(student);
-      const yearId = student.academicYearId || 'All';
-      setSelectedYear(yearId);
-      await loadStudentDetails(student.id, yearId);
+      setLoading(true);
+      setSelectedYear(student.academicYearId || 'All');
+      await loadStudentDetails(student.id, student.academicYearId || 'All');
     } catch (err) {
       console.error('Failed to load student details:', err);
     } finally {
-      setProfileLoading(false);
+      setLoading(false);
     }
   };
 
@@ -500,83 +456,6 @@ export default function StudentsDirectory() {
     const list = Array.from(typesSet);
     return list.length > 0 ? list : ['Unit Test', 'Quarterly', 'Final'];
   }, [detailData]);
-
-  // Overall Exam Performance metrics for Progress Card
-  const progressMetrics = useMemo(() => {
-    if (!detailData?.exams || detailData.exams.length === 0) {
-      return {
-        hasData: false,
-        overallAvgPct: 0,
-        grade: '—',
-        gradeColor: 'text-slate-400',
-        gradeBg: 'bg-slate-50 border-slate-200',
-        remark: 'No exam assessment records recorded for this academic year yet.',
-        syllabusProgress: 0,
-        completedExamsCount: 0,
-      };
-    }
-
-    const allExams = detailData.exams;
-    let totalObtained = 0;
-    let totalMax = 0;
-
-    allExams.forEach((ex: any) => {
-      ex.subjects?.forEach((s: any) => {
-        totalObtained += Number(s.score) || 0;
-        totalMax += Number(s.max) || 0;
-      });
-    });
-
-    const overallAvgPct = totalMax > 0 
-      ? Math.round((totalObtained / totalMax) * 100) 
-      : Math.round(allExams.reduce((sum: number, ex: any) => sum + (ex.avgPct || 0), 0) / allExams.length);
-
-    let grade = 'D';
-    let gradeColor = 'text-rose-600';
-    let gradeBg = 'bg-rose-50 border-rose-100';
-    let remark = 'Needs significant improvement. Additional remedial guidance and practice required.';
-
-    if (overallAvgPct >= 90) {
-      grade = 'A+';
-      gradeColor = 'text-emerald-600';
-      gradeBg = 'bg-emerald-50 border-emerald-100';
-      remark = 'Outstanding performance! Exceptional results across all subjects.';
-    } else if (overallAvgPct >= 80) {
-      grade = 'A';
-      gradeColor = 'text-blue-600';
-      gradeBg = 'bg-blue-50 border-blue-100';
-      remark = 'Excellent academic standing! Consistently matches exam requirements.';
-    } else if (overallAvgPct >= 70) {
-      grade = 'B+';
-      gradeColor = 'text-indigo-600';
-      gradeBg = 'bg-indigo-50 border-indigo-100';
-      remark = 'Good academic standing. Steady progress shown across core subjects.';
-    } else if (overallAvgPct >= 60) {
-      grade = 'B';
-      gradeColor = 'text-violet-600';
-      gradeBg = 'bg-violet-50 border-violet-100';
-      remark = 'Satisfactory performance. Can achieve higher scores with consistent revision.';
-    } else if (overallAvgPct >= 50) {
-      grade = 'C';
-      gradeColor = 'text-amber-600';
-      gradeBg = 'bg-amber-50 border-amber-100';
-      remark = 'Average performance. Needs focused attention on weaker subjects.';
-    }
-
-    const completedCount = allExams.length;
-    const syllabusProgress = Math.min(100, Math.round((completedCount / 3) * 100));
-
-    return {
-      hasData: true,
-      overallAvgPct,
-      grade,
-      gradeColor,
-      gradeBg,
-      remark,
-      syllabusProgress: completedCount > 0 ? syllabusProgress : 0,
-      completedExamsCount: completedCount,
-    };
-  }, [detailData?.exams]);
 
   const isPaidClear = activeStudent ? activeStudent.balanceDue <= 0 : false;
 
@@ -713,65 +592,45 @@ export default function StudentsDirectory() {
           >
             {/* Desktop Table View */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="px-6 py-4 w-10">
-                      <input 
-                        type="checkbox" 
-                        checked={isAllSelected} 
-                        onChange={handleToggleSelectAll} 
-                        className="rounded border-slate-300 text-[#2E5BFF] focus:ring-blue-500 cursor-pointer w-4 h-4"
-                      />
-                    </th>
-                    <th className="px-6 py-4">Roll No</th>
-                    <th className="px-6 py-4">Name</th>
-                    <th className="px-6 py-4">Class / Section</th>
-                    <th className="px-6 py-4">Parent Guardian</th>
-                    <th className="px-6 py-4">Financial Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
-                  {loading ? (
-                    Array.from({ length: 5 }).map((_, idx) => (
-                      <tr key={idx} className="animate-pulse">
-                        <td className="px-6 py-4"><div className="h-4 w-4 bg-slate-200 rounded" /></td>
-                        <td className="px-6 py-4"><div className="h-4 w-12 bg-slate-200 rounded" /></td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-slate-200" />
-                            <div className="space-y-2">
-                              <div className="h-4 w-28 bg-slate-200 rounded" />
-                              <div className="h-3 w-36 bg-slate-200 rounded" />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4"><div className="h-5 w-20 bg-slate-200 rounded-full" /></td>
-                        <td className="px-6 py-4">
-                          <div className="space-y-2">
-                            <div className="h-4 w-20 bg-slate-200 rounded" />
-                            <div className="h-3 w-24 bg-slate-200 rounded" />
-                          </div>
-                        </td>
-                        <td className="px-6 py-4"><div className="h-5 w-28 bg-slate-200 rounded-full" /></td>
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <div className="h-8 w-20 bg-slate-200 rounded-lg animate-pulse" />
-                            <div className="h-8 w-12 bg-slate-200 rounded-lg animate-pulse" />
-                            <div className="h-8 w-10 bg-slate-200 rounded-lg animate-pulse" />
-                          </div>
+              {loading ? (
+                <TableSkeleton
+                  headers={['Select', 'Roll No', 'Student', 'Class / Section', 'Parent / Guardian', 'Financial Status', 'Actions']}
+                  loadingLabel="Loading student directory..."
+                  rows={6}
+                  alignments={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
+                />
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      <th className="px-6 py-4 w-10">
+                        <input 
+                          type="checkbox" 
+                          checked={isAllSelected} 
+                          onChange={handleToggleSelectAll} 
+                          className="rounded border-slate-300 text-[#2E5BFF] focus:ring-blue-500 cursor-pointer w-4 h-4"
+                        />
+                      </th>
+                      <th className="px-6 py-4">Roll No</th>
+                      <th className="px-6 py-4">Name</th>
+                      <th className="px-6 py-4">Class / Section</th>
+                      <th className="px-6 py-4">Parent Guardian</th>
+                      <th className="px-6 py-4">Financial Status</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
+                    {filteredStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-4">
+                          <EmptyState
+                            title="No matching student records found"
+                            description="Try adjusting your search query, grade, or section filter."
+                          />
                         </td>
                       </tr>
-                    ))
-                  ) : filteredStudents.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-light">
-                        No matching student records found.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredStudents.map((student) => {
+                    ) : (
+                      filteredStudents.map((student) => {
                       const hasDue = student.balanceDue > 0;
                       const totalFees = student.totalFees ?? (student.paidAmount + student.balanceDue);
                       const pendingPercentage = student.pendingPercentage ?? (totalFees > 0 ? Math.round((student.balanceDue / totalFees) * 100) : 0);
@@ -860,6 +719,7 @@ export default function StudentsDirectory() {
                   )}
                 </tbody>
               </table>
+              )}
             </div>
 
             {/* Mobile Card View */}
@@ -962,47 +822,66 @@ export default function StudentsDirectory() {
 
             {/* Pagination Controls */}
             {!loading && totalPages > 1 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 px-4 sm:px-6 py-4 bg-slate-50/50">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 px-6 py-4 bg-slate-50/50">
                 <div className="text-[12px] text-slate-550 font-medium text-center sm:text-left">
                   Showing <span className="font-bold text-slate-800">{((page - 1) * limit) + 1}</span> to{' '}
                   <span className="font-bold text-slate-800">{Math.min(page * limit, total)}</span> of{' '}
                   <span className="font-bold text-slate-800">{total}</span> records (Page <span className="font-bold text-slate-800">{page}</span> of <span className="font-bold text-slate-800">{totalPages}</span>)
                 </div>
-                <div className="flex items-center justify-between gap-1.5 sm:gap-2 w-full sm:w-auto max-w-full min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5 justify-center">
+                  <button
+                    disabled={page === 1}
+                    onClick={() => loadStudents(1)}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
+                    title="First Page"
+                  >
+                    First
+                  </button>
                   <button
                     disabled={page === 1}
                     onClick={() => loadStudents(page - 1)}
-                    className="shrink-0 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
                   >
                     Previous
                   </button>
-
-                  <div className="flex items-center gap-1.5 overflow-x-auto scroll-smooth px-1 py-1 flex-1 min-w-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                    {Array.from({ length: totalPages }).map((_, i) => {
-                      const pNum = i + 1;
-                      return (
-                        <button
-                          key={pNum}
-                          id={`student-page-btn-${pNum}`}
-                          onClick={() => loadStudents(pNum)}
-                          className={`shrink-0 px-3 py-1.5 rounded-lg border text-xs font-bold min-h-[38px] transition-all cursor-pointer ${
-                            page === pNum
-                              ? 'bg-[#2E5BFF] border-[#2E5BFF] text-white'
-                              : 'border-slate-200 bg-white text-slate-650 hover:bg-slate-50'
-                          }`}
-                        >
-                          {pNum}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  
+                  {Array.from({ length: totalPages }).map((_, i) => {
+                    const pNum = i + 1;
+                    if (totalPages > 5 && Math.abs(page - pNum) > 1 && pNum !== 1 && pNum !== totalPages) {
+                      if (pNum === 2 || pNum === totalPages - 1) {
+                        return <span key={pNum} className="text-slate-400 text-xs px-1 select-none">...</span>;
+                      }
+                      return null;
+                    }
+                    return (
+                      <button
+                        key={pNum}
+                        onClick={() => loadStudents(pNum)}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-bold min-h-[38px] transition-all cursor-pointer ${
+                          page === pNum
+                            ? 'bg-[#2E5BFF] border-[#2E5BFF] text-white'
+                            : 'border-slate-200 bg-white text-slate-650 hover:bg-slate-50'
+                        }`}
+                      >
+                        {pNum}
+                      </button>
+                    );
+                  })}
 
                   <button
                     disabled={page === totalPages}
                     onClick={() => loadStudents(page + 1)}
-                    className="shrink-0 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-650 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
                   >
                     Next
+                  </button>
+                  <button
+                    disabled={page === totalPages}
+                    onClick={() => loadStudents(totalPages)}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all text-xs font-bold min-h-[38px] cursor-pointer"
+                    title="Last Page"
+                  >
+                    Last
                   </button>
                 </div>
               </div>
@@ -1123,17 +1002,6 @@ export default function StudentsDirectory() {
               </button>
             </div>
           </div>
-
-          {/* Profile loading indicator: shows while API data is being fetched on first click */}
-          {profileLoading && !activeStudentDetails && (
-            <div className="flex items-center justify-center gap-3 py-4 px-5 bg-blue-50/60 border border-blue-100 rounded-xl text-sm text-blue-600 font-semibold animate-pulse">
-              <svg className="w-4 h-4 animate-spin text-blue-500" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Loading student profile data...
-            </div>
-          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Column 1: Personal Info & Contacts */}
@@ -1423,53 +1291,30 @@ export default function StudentsDirectory() {
                   <CheckCircle className="w-5 h-5 text-blue-500" />
                   <h3 className="text-base font-bold text-slate-800">Progress Card</h3>
                 </div>
-
-                {profileLoading && !detailData ? (
-                  <div className="animate-pulse space-y-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-2xl bg-slate-100" />
-                      <div className="space-y-2">
-                        <div className="h-3 w-24 bg-slate-100 rounded" />
-                        <div className="h-6 w-16 bg-slate-200 rounded" />
-                      </div>
-                    </div>
-                    <div className="h-12 bg-slate-100 rounded-xl" />
-                    <div className="h-4 bg-slate-100 rounded" />
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center font-extrabold text-[#2E5BFF] text-2xl shadow-sm">
+                    A
                   </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-4">
-                      <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center font-extrabold text-2xl shadow-sm ${progressMetrics.gradeBg} ${progressMetrics.gradeColor}`}>
-                        {progressMetrics.grade}
-                      </div>
-                      <div>
-                        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Overall Average</div>
-                        <div className="text-2xl font-extrabold text-slate-800">
-                          {progressMetrics.hasData ? `${progressMetrics.overallAvgPct}%` : 'N/A'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-3.5 bg-blue-50/20 border border-blue-100/30 rounded-xl text-xs text-slate-600 leading-relaxed font-medium">
-                      {progressMetrics.remark}
-                    </div>
-                    
-                    {/* Syllabus / Assessments progression */}
-                    <div className="space-y-1.5 pt-2">
-                      <div className="flex justify-between text-xs font-semibold text-slate-600">
-                        <span>Year Assessment Progress</span>
-                        <span>{progressMetrics.syllabusProgress}%</span>
-                      </div>
-                      <div className="bg-slate-100 h-2 rounded-full overflow-hidden">
-                        <div className="bg-[#2E5BFF] h-full rounded-full transition-all duration-500" style={{ width: `${progressMetrics.syllabusProgress}%` }} />
-                      </div>
-                      <p className="text-[10px] text-slate-400 font-medium">
-                        {progressMetrics.hasData
-                          ? `${progressMetrics.completedExamsCount} assessment cycle(s) recorded for this session.`
-                          : 'No exam marks recorded yet.'}
-                      </p>
-                    </div>
-                  </>
-                )}
+                  <div>
+                    <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Overall Average</div>
+                    <div className="text-2xl font-extrabold text-slate-800">86%</div>
+                  </div>
+                </div>
+                <div className="p-3.5 bg-blue-50/20 border border-blue-100/30 rounded-xl text-xs text-slate-600 leading-relaxed font-medium">
+                  Excellent academic standing! Consistently matches exam requirements.
+                </div>
+                
+                {/* Syllabus progression */}
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between text-xs font-semibold text-slate-600">
+                    <span>Year Syllabus Progress</span>
+                    <span>65%</span>
+                  </div>
+                  <div className="bg-slate-100 h-2 rounded-full overflow-hidden">
+                    <div className="bg-[#2E5BFF] h-full rounded-full" style={{ width: '65%' }} />
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium">65% of academic catalog syllabus completed.</p>
+                </div>
               </div>
 
               {/* Performance Report */}
@@ -1479,101 +1324,68 @@ export default function StudentsDirectory() {
                   <h3 className="text-base font-bold text-slate-800">Performance Report</h3>
                 </div>
                 
-                {profileLoading && !detailData ? (
-                  <div className="animate-pulse space-y-3 pt-2">
-                    <div className="h-8 bg-slate-100 rounded-lg w-3/4" />
-                    <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl" />
-                    <div className="h-12 bg-slate-50 border border-slate-100 rounded-xl" />
-                  </div>
-                ) : (
-                  <>
-                    {/* Exam Category Tabs */}
-                    <div className="flex border-b border-slate-100 gap-4 text-xs font-bold overflow-x-auto whitespace-nowrap scrollbar-none pb-0.5">
-                      {dynamicExamTabs.map((tab) => (
-                        <button
-                          key={tab}
-                          onClick={() => setSelectedExamTab(tab)}
-                          className={`pb-2.5 transition-all border-b-2 uppercase ${
-                            selectedExamTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'
-                          }`}
-                        >
-                          {tab}
-                        </button>
-                      ))}
-                    </div>
+                {/* Exam Category Tabs */}
+                <div className="flex border-b border-slate-100 gap-4 text-xs font-bold overflow-x-auto whitespace-nowrap scrollbar-none pb-0.5">
+                  {dynamicExamTabs.map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setSelectedExamTab(tab)}
+                      className={`pb-2.5 transition-all border-b-2 uppercase ${
+                        selectedExamTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
 
-                    {/* Exam Cards */}
-                    <div className="space-y-3 pt-2">
-                      {detailData?.exams && detailData.exams.filter((ex: any) => ex.type === selectedExamTab).length > 0 ? (
-                        detailData.exams
-                          .filter((ex: any) => ex.type === selectedExamTab)
-                          .map((ex: any) => {
-                            const isExpanded = !!expandedExams[ex.id];
-                            return (
-                              <div key={ex.id} className="border border-slate-100 rounded-xl overflow-hidden">
-                                <div
-                                  onClick={() => toggleExam(ex.id)}
-                                  className="flex justify-between items-center p-3 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <BookOpen className="w-4 h-4 text-slate-500" />
-                                    <div className="text-xs font-bold text-slate-700">{ex.name}</div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-emerald-600">{ex.score}</span>
-                                    {isExpanded ? <ChevronUp className="w-4.5 h-4.5 text-slate-400" /> : <ChevronDown className="w-4.5 h-4.5 text-slate-400" />}
-                                  </div>
+                {/* Exam Cards */}
+                <div className="space-y-3 pt-2">
+                  {detailData?.exams
+                    .filter((ex: any) => ex.type === selectedExamTab)
+                    .map((ex: any) => {
+                      const isExpanded = !!expandedExams[ex.id];
+                      return (
+                        <div key={ex.id} className="border border-slate-100 rounded-xl overflow-hidden">
+                          <div
+                            onClick={() => toggleExam(ex.id)}
+                            className="flex justify-between items-center p-3 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <BookOpen className="w-4 h-4 text-slate-500" />
+                              <div className="text-xs font-bold text-slate-700">{ex.name}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-emerald-600">{ex.score}</span>
+                              {isExpanded ? <ChevronUp className="w-4.5 h-4.5 text-slate-400" /> : <ChevronDown className="w-4.5 h-4.5 text-slate-400" />}
+                            </div>
+                          </div>
+                          
+                          {isExpanded && (
+                            <div className="p-3 border-t border-slate-100 bg-white space-y-2 text-xs">
+                              {ex.subjects.map((subj: any, idx: number) => (
+                                <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50 last:border-none">
+                                  <span className="text-slate-500 font-semibold">{subj.name}</span>
+                                  <span className="text-slate-800 font-extrabold font-mono">{subj.score} / {subj.max}</span>
                                 </div>
-                                
-                                {isExpanded && (
-                                  <div className="p-3 border-t border-slate-100 bg-white space-y-2 text-xs">
-                                    {ex.subjects.map((subj: any, idx: number) => (
-                                      <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-50 last:border-none">
-                                        <span className="text-slate-500 font-semibold">{subj.name}</span>
-                                        <span className="text-slate-800 font-extrabold font-mono">{subj.score} / {subj.max}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                      ) : (
-                        <div className="p-4 text-center text-xs text-slate-400 font-medium">
-                          No {selectedExamTab} marks recorded yet.
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </>
-                )}
+                      );
+                    })}
+                </div>
               </div>
 
               {/* Student Behaviour (incidents cases) */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert className="w-5 h-5 text-blue-500" />
-                    <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
-                  </div>
-                  {casesLoading && (
-                    <span className="text-[11px] font-semibold text-blue-600 animate-pulse">Loading records...</span>
-                  )}
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                  <ShieldAlert className="w-5 h-5 text-blue-500" />
+                  <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
                 </div>
 
-                {casesLoading ? (
-                  <div className="space-y-3 animate-pulse">
-                    <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
-                      <div className="h-4 bg-slate-200 rounded w-3/4" />
-                      <div className="h-3 bg-slate-100 rounded w-full" />
-                      <div className="h-3 bg-slate-100 rounded w-1/2" />
-                    </div>
-                    <div className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-2">
-                      <div className="h-4 bg-slate-200 rounded w-2/3" />
-                      <div className="h-3 bg-slate-100 rounded w-5/6" />
-                    </div>
-                  </div>
-                ) : detailData && detailData.cases && detailData.cases.length > 0 ? (
-                  <div className="max-h-96 overflow-y-auto pr-1 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+                {detailData && detailData.cases.length > 0 ? (
+                  <div className="space-y-3">
                     {detailData.cases.map((c: any) => (
                       <div key={c.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/30 space-y-2 text-xs">
                         <div className="flex justify-between items-start gap-2">
@@ -1588,7 +1400,7 @@ export default function StudentsDirectory() {
                         </div>
                         <p className="text-slate-500 text-[11px] font-light leading-relaxed">{c.description}</p>
                         <div className="flex justify-between text-[10px] text-slate-400 font-semibold pt-1 border-t border-slate-100/50">
-                          <span>{c.teacher ? `Teacher: ${c.teacher}` : `Priority: ${c.priority}`}</span>
+                          <span>Priority: {c.priority}</span>
                           <span>Date: {c.date}</span>
                         </div>
                       </div>
@@ -1610,10 +1422,10 @@ export default function StudentsDirectory() {
         </div>
       )}
       {/* ── CUSTOM DELETE CONFIRMATION MODAL ── */}
-      {isMounted && deleteConfirm.show && createPortal(
+      {deleteConfirm.show && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-[99998] animate-fade-in" onClick={() => setDeleteConfirm(prev => ({ ...prev, show: false }))} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-2xl shadow-2xl z-[99999] p-6 animate-scale-in">
+          <div className="fixed inset-0 bg-black/50 z-50 animate-fade-in" onClick={() => setDeleteConfirm(prev => ({ ...prev, show: false }))} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-2xl shadow-2xl z-50 p-6 animate-scale-in">
             <div className="text-center py-2">
               <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-xl mx-auto mb-3">
                 ⚠️
@@ -1670,8 +1482,7 @@ export default function StudentsDirectory() {
               </button>
             </div>
           </div>
-        </>,
-        document.body
+        </>
       )}
       {editingStudent && (
         <EditStudentModal

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Drawer from '@/components/Drawer';
 import { api, cachedGet } from '@/lib/api';
+import { PencilSpinner, EmptyState } from '@/components/loading';
 
 const CLASS_ORDER = [
   'Nursery', 'LKG', 'UKG',
@@ -753,7 +754,7 @@ export default function StudentPromotionPage() {
             >
               {isLoading ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <PencilSpinner size="xs" />
                   Processing...
                 </>
               ) : (
@@ -847,7 +848,17 @@ export default function StudentPromotionPage() {
                 {/* Summary View */}
                 {!isDrilldown && (
                   <>
-                    {filteredSourceSummary.map(item => {
+                    {isLoading ? (
+                      <div className="py-10 flex flex-col items-center gap-3">
+                        <PencilSpinner size="sm" />
+                        <span className="text-xs text-slate-400 font-medium">Loading student data...</span>
+                      </div>
+                    ) : filteredSourceSummary.length === 0 ? (
+                      <div className="h-full flex flex-col justify-center items-center text-center text-slate-400 py-12">
+                        <Users className="w-10 h-10 mb-2 opacity-30" />
+                        <p className="text-xs font-semibold">No staging classes found</p>
+                      </div>
+                    ) : filteredSourceSummary.map(item => {
                       const isPromotable = !!getNextClass(item.className);
                       return (
                         <div 
@@ -880,12 +891,6 @@ export default function StudentPromotionPage() {
                         </div>
                       );
                     })}
-                    {filteredSourceSummary.length === 0 && (
-                      <div className="h-full flex flex-col justify-center items-center text-center text-slate-400 py-12">
-                        <Users className="w-10 h-10 mb-2 opacity-30" />
-                        <p className="text-xs font-semibold">No staging classes found</p>
-                      </div>
-                    )}
                   </>
                 )}
 

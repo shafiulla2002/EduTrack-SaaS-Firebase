@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { 
   Users, Plus, X, Search, Phone, Mail, Calendar,
-  ChevronRight, ChevronLeft, ChevronDown, Edit2, Trash2, Clock, BookOpen, Check
+  ChevronRight, ChevronDown, Edit2, Trash2, Clock, BookOpen, Check
 } from 'lucide-react';
 import { formatDateDDMMYYYY } from '@/lib/date';
 
@@ -56,11 +55,16 @@ import { api, fastGet } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { resizeAndCompressImage } from '@/lib/image';
+import {
+  PencilSpinner,
+  TableSkeleton,
+  EmptyState,
+  ErrorState,
+  LoadingButton,
+} from '@/components/loading';
 
 export default function SchoolStaffPage() {
   const { showToast } = useToast();
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => setIsMounted(true), []);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     show: boolean;
@@ -89,29 +93,17 @@ export default function SchoolStaffPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'teaching' | 'non-teaching' | 'salary'>('all');
   const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-
-  // 300ms Debounce search input to avoid flooding backend on keystrokes
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(search);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  // Generate list of valid past and current months only (no future years/months)
   const payrollMonths = useMemo(() => {
     const list: string[] = [];
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-
-    // Past 24 months up to current month
-    for (let i = 0; i < 24; i++) {
-      const d = new Date(currentYear, currentMonth - i, 1);
-      list.push(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+    for (let year = currentYear + 1; year >= currentYear - 2; year--) {
+      for (let month = 11; month >= 0; month--) {
+        const d = new Date(year, month, 1);
+        list.push(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+      }
     }
     return list;
   }, []);
@@ -120,33 +112,6 @@ export default function SchoolStaffPage() {
     const now = new Date();
     return now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   });
-
-  const [pickerYear, setPickerYear] = useState<number>(() => new Date().getFullYear());
-
-  const handlePrevMonth = () => {
-    const currentIndex = payrollMonths.indexOf(selectedPayrollMonth);
-    if (currentIndex >= 0 && currentIndex < payrollMonths.length - 1) {
-      setSelectedPayrollMonth(payrollMonths[currentIndex + 1]);
-    } else {
-      const parts = selectedPayrollMonth.split(' ');
-      const mIdx = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(parts[0]);
-      let yr = parseInt(parts[1], 10) || new Date().getFullYear();
-      let newMIdx = mIdx - 1;
-      if (newMIdx < 0) {
-        newMIdx = 11;
-        yr -= 1;
-      }
-      const d = new Date(yr, newMIdx, 1);
-      setSelectedPayrollMonth(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
-    }
-  };
-
-  const handleNextMonth = () => {
-    const currentIndex = payrollMonths.indexOf(selectedPayrollMonth);
-    if (currentIndex > 0) {
-      setSelectedPayrollMonth(payrollMonths[currentIndex - 1]);
-    }
-  };
 
   const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
   const monthDropdownRef = useRef<HTMLDivElement>(null);
@@ -172,62 +137,6 @@ export default function SchoolStaffPage() {
   const [staffCases, setStaffCases] = useState<any[]>([]);
   const [staffDetailLoading, setStaffDetailLoading] = useState(false);
 
-  // Progressive section loading states
-  const [invoicesLoading, setInvoicesLoading] = useState(false);
-  const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [casesLoading, setCasesLoading] = useState(false);
-
-  // Schedule UI Tabs & Day States
-  const DAYS_OF_WEEK = useMemo(() => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], []);
-  const WEEKDAYS_SHORT = useMemo(() => [
-    { short: 'Mon', full: 'Monday' },
-    { short: 'Tue', full: 'Tuesday' },
-    { short: 'Wed', full: 'Wednesday' },
-    { short: 'Thu', full: 'Thursday' },
-    { short: 'Fri', full: 'Friday' },
-    { short: 'Sat', full: 'Saturday' },
-    { short: 'Sun', full: 'Sunday' }
-  ], []);
-
-  const todayDayName = useMemo(() => {
-    const dayName = DAYS_OF_WEEK[new Date().getDay()];
-    return dayName === 'Sunday' ? 'Monday' : dayName;
-  }, [DAYS_OF_WEEK]);
-
-  const [scheduleMode, setScheduleMode] = useState<'today' | 'weekly'>('today');
-  const [selectedDayOfWeek, setSelectedDayOfWeek] = useState<string>(todayDayName);
-  const [selectedCaseMonth, setSelectedCaseMonth] = useState<string>('ALL');
-
-  // Compute Available Case Months
-  const availableCaseMonths = useMemo(() => {
-    const counts: Record<string, { label: string; count: number }> = {};
-    staffCases.forEach((c: any) => {
-      if (!c.createdAt) return;
-      const d = new Date(c.createdAt);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const key = `${year}-${month}`;
-      const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      if (!counts[key]) counts[key] = { label, count: 0 };
-      counts[key].count++;
-    });
-    return Object.entries(counts)
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([value, { label, count }]) => ({ value, label, count }));
-  }, [staffCases]);
-
-  // Compute Filtered Student Cases
-  const filteredCases = useMemo(() => {
-    if (selectedCaseMonth === 'ALL') return staffCases;
-    return staffCases.filter((c: any) => {
-      if (!c.createdAt) return false;
-      const d = new Date(c.createdAt);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      return `${year}-${month}` === selectedCaseMonth;
-    });
-  }, [staffCases, selectedCaseMonth]);
-
   useEffect(() => {
     const isModalOpen = selectedStaff !== null || showAddModal || editingStaff !== null || deleteConfirm.show;
     if (isModalOpen) {
@@ -242,75 +151,21 @@ export default function SchoolStaffPage() {
 
   const loadStaffDetail = async (staffId: string, isTeaching: boolean) => {
     setStaffDetailLoading(true);
-    setInvoicesLoading(true);
-    setCasesLoading(true);
-    if (isTeaching) setScheduleLoading(true);
-
     setStaffSalaryInvoices([]);
     setStaffSchedule([]);
     setStaffCases([]);
-    setScheduleMode('today');
-    setSelectedDayOfWeek(todayDayName);
-    setSelectedCaseMonth('ALL');
-
-    // 1. Fetch Salary Invoices with fastGet caching
-    fastGet(`/teachers/${staffId}/salary-invoices`, undefined, {
-      ttlMs: 60000,
-      onRevalidate: (fresh) => {
-        if (fresh?.data && Array.isArray(fresh.data)) {
-          setStaffSalaryInvoices(fresh.data);
-        }
-      }
-    }).then(res => {
-      if (res?.data && Array.isArray(res.data)) {
-        setStaffSalaryInvoices(res.data);
-      }
-    }).catch(() => {
-      setStaffSalaryInvoices([]);
-    }).finally(() => {
-      setInvoicesLoading(false);
-    });
-
-    // 2. Fetch Cases with fastGet caching
-    fastGet(`/teachers/${staffId}/cases`, undefined, {
-      ttlMs: 60000,
-      onRevalidate: (fresh) => {
-        if (fresh?.data && Array.isArray(fresh.data)) {
-          setStaffCases(fresh.data);
-        }
-      }
-    }).then(res => {
-      if (res?.data && Array.isArray(res.data)) {
-        setStaffCases(res.data);
-      }
-    }).catch(() => {
-      setStaffCases([]);
-    }).finally(() => {
-      setCasesLoading(false);
-    });
-
-    // 3. Fetch Schedule with fastGet caching
-    if (isTeaching) {
-      fastGet(`/teachers/${staffId}/schedule`, undefined, {
-        ttlMs: 60000,
-        onRevalidate: (fresh) => {
-          if (fresh?.data && Array.isArray(fresh.data)) {
-            setStaffSchedule(fresh.data);
-          }
-        }
-      }).then(res => {
-        if (res?.data && Array.isArray(res.data)) {
-          setStaffSchedule(res.data);
-        }
-      }).catch(() => {
-        setStaffSchedule([]);
-      }).finally(() => {
-        setScheduleLoading(false);
-        setStaffDetailLoading(false);
-      });
-    } else {
-      setStaffSchedule([]);
-      setScheduleLoading(false);
+    try {
+      const [invoicesRes, casesRes, scheduleRes] = await Promise.allSettled([
+        api.get(`/teachers/${staffId}/salary-invoices`),
+        api.get(`/teachers/${staffId}/cases`),
+        isTeaching ? api.get(`/teachers/${staffId}/schedule`) : Promise.resolve({ data: [] }),
+      ]);
+      setStaffSalaryInvoices(invoicesRes.status === 'fulfilled' ? (invoicesRes.value.data || []) : []);
+      setStaffCases(casesRes.status === 'fulfilled' ? (casesRes.value.data || []) : []);
+      setStaffSchedule(scheduleRes.status === 'fulfilled' ? (scheduleRes.value.data || []) : []);
+    } catch {
+      // silently ignore — empty state shown
+    } finally {
       setStaffDetailLoading(false);
     }
   };
@@ -396,7 +251,7 @@ export default function SchoolStaffPage() {
               exp: sk.yearsOfExperience ?? 0,
             }))
           : (t.subjectsTaught?.map((sub: string) => ({ subject: sub, level: 'Expert', exp: 5 })) || []),
-        salaryStatus: t.salaryStatus || 'Pending',
+        salaryStatus: 'Pending',
         gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
       };
     }));
@@ -405,15 +260,11 @@ export default function SchoolStaffPage() {
   const loadStaff = async () => {
     try {
       const params = new URLSearchParams();
-      if (debouncedSearch) params.append('search', debouncedSearch);
+      if (search) params.append('search', search);
       if (deptFilter) params.append('department', deptFilter);
       if (statusFilter) params.append('status', statusFilter);
-      if (selectedPayrollMonth) params.append('month', selectedPayrollMonth);
 
-      const q = params.toString();
-      const endpoint = q ? `/teachers?${q}` : '/teachers';
-
-      const res = await fastGet(endpoint, undefined, {
+      const res = await fastGet(`/teachers?${params.toString()}`, undefined, {
         ttlMs: 30000,
         onRevalidate: (fresh) => {
           if (fresh && Array.isArray(fresh)) {
@@ -438,7 +289,7 @@ export default function SchoolStaffPage() {
 
   useEffect(() => {
     loadStaff();
-  }, [debouncedSearch, deptFilter, statusFilter, selectedPayrollMonth]);
+  }, [search, deptFilter, statusFilter]);
 
   const handlePaySalary = async (id: string) => {
     try {
@@ -706,14 +557,25 @@ export default function SchoolStaffPage() {
       {activeTab !== 'salary' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {loading ? (
-            <div className="col-span-full py-16 text-center text-slate-400 bg-white border border-slate-200 rounded-2xl">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
-              <p className="font-semibold text-sm">Loading staff members...</p>
-            </div>
+            Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs animate-pulse p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-slate-200/70 shrink-0" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="h-4 w-28 bg-slate-200/70 rounded" />
+                    <div className="h-3 w-16 bg-slate-200/70 rounded" />
+                  </div>
+                </div>
+                <div className="h-3 w-full bg-slate-100 rounded" />
+                <div className="h-8 w-full bg-slate-100 rounded-xl" />
+              </div>
+            ))
           ) : filteredStaff.length === 0 ? (
-            <div className="col-span-full py-16 text-center text-slate-400 bg-white border border-dashed border-slate-200 rounded-2xl">
-              <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="font-semibold">No staff members found</p>
+            <div className="col-span-full">
+              <EmptyState
+                title="No staff members found"
+                description="Try selecting a different department or status filter."
+              />
             </div>
           ) : (
             filteredStaff.map(member => {
@@ -817,121 +679,38 @@ export default function SchoolStaffPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-500 font-semibold flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                <span>Month:</span>
-              </label>
-
-              {/* Prev Month Button */}
-              <button
-                type="button"
-                onClick={handlePrevMonth}
-                title="Previous Month"
-                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 shadow-xs cursor-pointer transition-colors"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Month Selector Button & Popover */}
+              <label className="text-xs text-slate-500 font-semibold">Month:</label>
               <div className="relative" ref={monthDropdownRef}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsMonthDropdownOpen(prev => !prev);
-                    const parts = selectedPayrollMonth.split(' ');
-                    if (parts[1]) setPickerYear(parseInt(parts[1], 10));
-                  }}
-                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs bg-white font-bold shadow-xs hover:border-blue-300 flex items-center justify-between gap-2 min-w-[125px] text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer transition-colors"
+                  onClick={() => setIsMonthDropdownOpen(prev => !prev)}
+                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs bg-white font-medium shadow-xs hover:border-slate-300 flex items-center justify-between gap-2 min-w-[110px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <span className="flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                    {selectedPayrollMonth}
-                  </span>
+                  <span>{selectedPayrollMonth}</span>
                   <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isMonthDropdownOpen ? 'rotate-180 text-blue-600' : ''}`} />
                 </button>
 
                 {isMonthDropdownOpen && (
-                  <div className="absolute right-0 mt-1 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 space-y-3">
-                    {/* Header with Year Navigator */}
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <button
-                        type="button"
-                        onClick={() => setPickerYear(y => y - 1)}
-                        className="p-1 rounded-lg hover:bg-slate-100 text-slate-600 transition-colors"
-                        title="Previous Year"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <span className="text-xs font-extrabold text-slate-800">{pickerYear}</span>
-                      <button
-                        type="button"
-                        disabled={pickerYear >= new Date().getFullYear()}
-                        onClick={() => setPickerYear(y => y + 1)}
-                        className={`p-1 rounded-lg transition-colors ${pickerYear >= new Date().getFullYear() ? 'opacity-30 cursor-not-allowed' : 'hover:bg-slate-100 text-slate-600'}`}
-                        title="Next Year"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    {/* Quick Presets */}
-                    <div className="flex gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const now = new Date();
-                          const currentStr = now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-                          setSelectedPayrollMonth(currentStr);
-                          setPickerYear(now.getFullYear());
-                          setIsMonthDropdownOpen(false);
-                        }}
-                        className="flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border border-blue-100 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                      >
-                        This Month
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const now = new Date();
-                          const lastM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                          const lastStr = lastM.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-                          setSelectedPayrollMonth(lastStr);
-                          setPickerYear(lastM.getFullYear());
-                          setIsMonthDropdownOpen(false);
-                        }}
-                        className="flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
-                      >
-                        Last Month
-                      </button>
-                    </div>
-
-                    {/* 12-Month Grid */}
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((mName, mIdx) => {
-                        const candidateStr = `${mName} ${pickerYear}`;
-                        const isSelected = candidateStr === selectedPayrollMonth;
-
-                        const now = new Date();
-                        const isFuture = pickerYear > now.getFullYear() || (pickerYear === now.getFullYear() && mIdx > now.getMonth());
-
+                  <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                    <div className="max-h-36 overflow-y-auto py-1 divide-y divide-slate-50">
+                      {payrollMonths.map(m => {
+                        const isSelected = m === selectedPayrollMonth;
                         return (
                           <button
-                            key={mName}
+                            key={m}
                             type="button"
-                            disabled={isFuture}
                             onClick={() => {
-                              setSelectedPayrollMonth(candidateStr);
+                              setSelectedPayrollMonth(m);
                               setIsMonthDropdownOpen(false);
                             }}
-                            className={`py-1.5 text-xs font-semibold rounded-lg transition-all text-center cursor-pointer ${
-                              isFuture
-                                ? 'opacity-30 cursor-not-allowed bg-slate-50 text-slate-400'
-                                : isSelected
-                                ? 'bg-blue-600 text-white font-extrabold shadow-sm'
-                                : 'text-slate-700 hover:bg-blue-50 hover:text-blue-600 border border-transparent hover:border-blue-100'
+                            className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-blue-50 text-blue-600 font-semibold'
+                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                             }`}
                           >
-                            {mName}
+                            <span>{m}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-blue-600" />}
                           </button>
                         );
                       })}
@@ -939,21 +718,6 @@ export default function SchoolStaffPage() {
                   </div>
                 )}
               </div>
-
-              {/* Next Month Button */}
-              <button
-                type="button"
-                disabled={selectedPayrollMonth === new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
-                onClick={handleNextMonth}
-                title="Next Month"
-                className={`p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 shadow-xs cursor-pointer transition-colors ${
-                  selectedPayrollMonth === new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-                    ? 'opacity-30 cursor-not-allowed'
-                    : 'hover:bg-slate-50'
-                }`}
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
             </div>
           </div>
           <div className="hidden md:block overflow-x-auto">
@@ -973,15 +737,24 @@ export default function SchoolStaffPage() {
               <tbody className="divide-y divide-slate-100 text-sm text-slate-600 font-medium">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2" />
-                      Loading payroll...
+                    <td colSpan={8} className="p-0">
+                      <div className="py-6 px-4">
+                        <TableSkeleton
+                          columns={8}
+                          rows={4}
+                          loadingMessage="Fetching staff payroll records..."
+                          className="border-none shadow-none"
+                        />
+                      </div>
                     </td>
                   </tr>
                 ) : staff.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
-                      No staff members found.
+                    <td colSpan={8} className="p-6">
+                      <EmptyState
+                        title="No staff members found"
+                        description="Add staff members to the institute directory to view and manage payroll disbursements."
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -1049,13 +822,27 @@ export default function SchoolStaffPage() {
           {/* Mobile Card View */}
           <div className="block md:hidden divide-y divide-slate-100">
             {loading ? (
-              <div className="p-8 text-center text-slate-400">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2" />
-                Loading payroll...
+              <div className="p-4 space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-3 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-slate-200" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3.5 bg-slate-200 rounded w-28" />
+                        <div className="h-2.5 bg-slate-200 rounded w-20" />
+                      </div>
+                    </div>
+                    <div className="h-12 bg-slate-200/70 rounded-lg" />
+                    <div className="h-9 bg-slate-200 rounded-lg" />
+                  </div>
+                ))}
               </div>
             ) : staff.length === 0 ? (
-              <div className="p-8 text-center text-slate-400">
-                No staff members found.
+              <div className="p-6">
+                <EmptyState
+                  title="No staff members found"
+                  description="Add staff members to the institute directory to view and manage payroll disbursements."
+                />
               </div>
             ) : (
               staff.map(m => {
@@ -1121,12 +908,12 @@ export default function SchoolStaffPage() {
       )}
 
       {/* ── STAFF PROFILE MODAL ── */}
-      {isMounted && selectedStaff && createPortal(
+      {selectedStaff && (
         <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setSelectedStaff(null)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] sm:w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl z-[99999] overflow-hidden max-h-[90vh] flex flex-col animate-scale-in">
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50" onClick={() => setSelectedStaff(null)} />
+          <div className="fixed top-4 sm:top-1/2 bottom-20 sm:bottom-auto left-1/2 -translate-x-1/2 translate-y-0 sm:-translate-y-1/2 w-[92%] sm:w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-50 overflow-y-auto max-h-none sm:max-h-[90vh] flex flex-col">
             {/* Modal Header Banner */}
-            <div className="p-5 shrink-0" style={{ background: selectedStaff.gradient }}>
+            <div className="p-5" style={{ background: selectedStaff.gradient }}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   {selectedStaff.avatarUrl ? (
@@ -1150,7 +937,7 @@ export default function SchoolStaffPage() {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="p-6 space-y-5">
               {/* Info grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                 {/* Personal Info */}
@@ -1222,19 +1009,20 @@ export default function SchoolStaffPage() {
                 <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                   📄 Salary Invoices
                 </h4>
-                {invoicesLoading && staffSalaryInvoices.length === 0 ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mx-auto" />
+                {staffDetailLoading ? (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
+                    <PencilSpinner size="sm" />
+                    <span className="text-xs text-slate-500 font-medium">Fetching salary invoices...</span>
                   </div>
                 ) : staffSalaryInvoices.length === 0 ? (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
                     No salary invoices found. Pay the salary to generate an invoice.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto max-h-[200px] overflow-y-auto custom-scrollbar rounded-xl border border-slate-200">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="w-full min-w-[500px] text-left border-collapse">
-                      <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider shadow-xs">
-                        <tr>
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                           <th className="px-4 py-2.5">Month / Description</th>
                           <th className="px-4 py-2.5 text-right">Net Salary</th>
                           <th className="px-4 py-2.5">Status</th>
@@ -1267,37 +1055,13 @@ export default function SchoolStaffPage() {
 
               {/* Schedule */}
               <div>
-                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                  <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-blue-500" /> Schedule
-                  </h4>
-                  {selectedStaff.staffType === 'Teaching' && (
-                    <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setScheduleMode('today')}
-                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                          scheduleMode === 'today' ? 'bg-white text-blue-600 shadow-xs' : 'hover:text-slate-900'
-                        }`}
-                      >
-                        Today's Schedule
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setScheduleMode('weekly')}
-                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                          scheduleMode === 'weekly' ? 'bg-white text-blue-600 shadow-xs' : 'hover:text-slate-900'
-                        }`}
-                      >
-                        Weekly Schedule
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {scheduleLoading && staffSchedule.length === 0 ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mx-auto" />
+                <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-blue-500" /> Schedule
+                </h4>
+                {staffDetailLoading ? (
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
+                    <PencilSpinner size="sm" />
+                    <span className="text-xs text-slate-500 font-medium">Loading schedule...</span>
                   </div>
                 ) : selectedStaff.staffType !== 'Teaching' ? (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
@@ -1308,106 +1072,39 @@ export default function SchoolStaffPage() {
                     No timetable periods assigned yet.
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {/* Weekly Mode Day Selector */}
-                    {scheduleMode === 'weekly' && (
-                      <div className="flex flex-wrap gap-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200/80">
-                        {WEEKDAYS_SHORT.map(d => {
-                          const isSelected = selectedDayOfWeek.toLowerCase() === d.full.toLowerCase();
-                          const isToday = todayDayName.toLowerCase() === d.full.toLowerCase();
-                          return (
-                            <button
-                              key={d.full}
-                              type="button"
-                              onClick={() => setSelectedDayOfWeek(d.full)}
-                              className={`flex-1 min-w-[42px] py-1.5 text-center text-xs font-bold rounded-lg transition-all border cursor-pointer ${
-                                isSelected
-                                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                                  : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600'
-                              }`}
-                            >
-                              {d.short}
-                              {isToday && <span className="block text-[8px] opacity-80 leading-none mt-0.5">• Today</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Schedule Content Table */}
-                    {(() => {
-                      const targetDay = scheduleMode === 'today' ? todayDayName : selectedDayOfWeek;
-                      const dayPeriods = staffSchedule.filter(
-                        (p: any) => p.dayOfWeek?.toLowerCase() === targetDay.toLowerCase()
-                      );
-
-                      if (dayPeriods.length === 0) {
-                        return (
-                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
-                            No scheduled periods for {scheduleMode === 'today' ? `Today (${todayDayName})` : targetDay}.
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="overflow-x-auto max-h-[220px] overflow-y-auto custom-scrollbar rounded-xl border border-slate-200">
-                          <table className="w-full min-w-[550px] text-left border-collapse">
-                            <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider shadow-xs">
-                              <tr>
-                                <th className="px-4 py-2.5">Day</th>
-                                <th className="px-4 py-2.5">Period</th>
-                                <th className="px-4 py-2.5">Subject</th>
-                                <th className="px-4 py-2.5">Class</th>
-                                <th className="px-4 py-2.5">Time</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 text-xs">
-                              {dayPeriods.map((p: any) => (
-                                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                                  <td className="px-4 py-2.5 font-semibold text-slate-700">
-                                    {scheduleMode === 'today' ? 'Today' : p.dayOfWeek}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-slate-500">Period {p.periodTiming?.periodNumber}</td>
-                                  <td className="px-4 py-2.5 font-bold text-blue-700">{p.subject?.name || '—'}</td>
-                                  <td className="px-4 py-2.5 text-slate-600">{p.classSection?.class?.name} {p.classSection?.section?.name}</td>
-                                  <td className="px-4 py-2.5 text-slate-400">{p.periodTiming?.startTime} – {p.periodTiming?.endTime}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })()}
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full min-w-[600px] text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          <th className="px-4 py-2.5">Day</th>
+                          <th className="px-4 py-2.5">Period</th>
+                          <th className="px-4 py-2.5">Subject</th>
+                          <th className="px-4 py-2.5">Class</th>
+                          <th className="px-4 py-2.5">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {staffSchedule.map((p: any) => (
+                          <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-2.5 font-semibold text-slate-700">{p.dayOfWeek}</td>
+                            <td className="px-4 py-2.5 text-slate-500">Period {p.periodTiming?.periodNumber}</td>
+                            <td className="px-4 py-2.5 font-bold text-blue-700">{p.subject?.name || '—'}</td>
+                            <td className="px-4 py-2.5 text-slate-600">{p.classSection?.class?.name} {p.classSection?.section?.name}</td>
+                            <td className="px-4 py-2.5 text-slate-400">{p.periodTiming?.startTime} – {p.periodTiming?.endTime}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
 
               {/* Student Cases */}
               <div>
-                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                  <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    📝 Student Cases
-                  </h4>
-                  {staffCases.length > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                      <span className="font-semibold text-[10px] uppercase text-slate-400">Month:</span>
-                      <select
-                        value={selectedCaseMonth}
-                        onChange={e => setSelectedCaseMonth(e.target.value)}
-                        className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                      >
-                        <option value="ALL">All Months ({staffCases.length})</option>
-                        {availableCaseMonths.map(m => (
-                          <option key={m.value} value={m.value}>
-                            {m.label} ({m.count})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                {casesLoading && staffCases.length === 0 ? (
+                <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  📝 Student Cases
+                </h4>
+                {staffDetailLoading ? (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mx-auto" />
                   </div>
@@ -1415,15 +1112,11 @@ export default function SchoolStaffPage() {
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
                     No cases submitted by this staff member.
                   </div>
-                ) : filteredCases.length === 0 ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
-                    No student cases found for this month.
-                  </div>
                 ) : (
-                  <div className="overflow-x-auto max-h-[240px] overflow-y-auto custom-scrollbar rounded-xl border border-slate-200">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="w-full min-w-[500px] text-left border-collapse">
-                      <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider shadow-xs">
-                        <tr>
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                           <th className="px-4 py-2.5">Type</th>
                           <th className="px-4 py-2.5">Category</th>
                           <th className="px-4 py-2.5">Student</th>
@@ -1432,28 +1125,33 @@ export default function SchoolStaffPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-xs">
-                        {filteredCases.map((c: any) => {
-                          const caseType = c.type || c.behaviorType || 'Notice';
-                          return (
-                            <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                              <td className="px-4 py-2.5">
-                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                  caseType === 'Praise' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'
-                                }`}>
-                                  {caseType}
-                                </span>
-                              </td>
-                            <td className="px-4 py-2.5 text-slate-600">{c.category}</td>
-                            <td className="px-4 py-2.5 font-semibold text-slate-800">{c.student?.user?.name || '—'}</td>
+                        {staffCases.map((c: any) => (
+                          <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-4 py-2.5">
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                                c.behaviorType === 'Complaint'
+                                  ? 'bg-rose-50 text-rose-600 border-rose-100'
+                                  : 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                              }`}>
+                                {c.behaviorType}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-600">{c.category}</td>
+                            <td className="px-4 py-2.5 font-semibold text-slate-700">{c.student?.user?.name || '—'}</td>
+                            <td className="px-4 py-2.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                                c.status === 'Resolved'
+                                  ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                  : c.status === 'New'
+                                  ? 'bg-amber-50 text-amber-600 border-amber-100'
+                                  : 'bg-slate-50 text-slate-500 border-slate-200'
+                              }`}>
                                 {c.status}
                               </span>
                             </td>
                             <td className="px-4 py-2.5 text-slate-400">{formatDateDDMMYYYY(c.createdAt)}</td>
                           </tr>
-                        );
-                      })}
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -1486,20 +1184,19 @@ export default function SchoolStaffPage() {
               </div>
             </div>
           </div>
-        </>,
-        document.body
+        </>
       )}
 
       {/* ── EDIT STAFF MODAL (Salesforce Design) ── */}
-      {isMounted && editingStaff && createPortal(
+      {editingStaff && (
         <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setEditingStaff(null)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] sm:w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl z-[99999] overflow-hidden max-h-[90vh] flex flex-col animate-scale-in">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+          <div className="fixed inset-0 bg-slate-900/60 z-50" onClick={() => setEditingStaff(null)} />
+          <div className="fixed top-4 sm:top-1/2 bottom-20 sm:bottom-auto left-1/2 -translate-x-1/2 translate-y-0 sm:-translate-y-1/2 w-[92%] sm:w-full max-w-xl bg-white rounded-2xl shadow-2xl z-50 overflow-y-auto max-h-none sm:max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h3 className="font-extrabold text-slate-800 text-lg">Edit Staff Member</h3>
               <button onClick={() => setEditingStaff(null)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleUpdateStaff} className="flex-1 overflow-y-auto p-6 space-y-4 text-sm flex flex-col">
+            <form onSubmit={handleUpdateStaff} className="p-6 space-y-4 text-sm">
               {/* Photo Upload */}
               <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
                 <div className="w-14 h-14 rounded-xl bg-slate-200 flex items-center justify-center text-slate-400 overflow-hidden flex-shrink-0">
@@ -1533,27 +1230,27 @@ export default function SchoolStaffPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">First Name *</label>
-                  <input required value={editingStaff.firstName} onChange={e => setEditingStaff({...editingStaff, firstName: e.target.value, name: `${e.target.value} ${editingStaff.lastName}`})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-medium" />
+                  <input required value={editingStaff.firstName} onChange={e => setEditingStaff({...editingStaff, firstName: e.target.value, name: `${e.target.value} ${editingStaff.lastName}`})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Last Name *</label>
-                  <input required value={editingStaff.lastName} onChange={e => setEditingStaff({...editingStaff, lastName: e.target.value, name: `${editingStaff.firstName} ${e.target.value}`})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-medium" />
+                  <input required value={editingStaff.lastName} onChange={e => setEditingStaff({...editingStaff, lastName: e.target.value, name: `${editingStaff.firstName} ${e.target.value}`})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Email *</label>
-                  <input type="email" required value={editingStaff.email} onChange={e => setEditingStaff({...editingStaff, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-medium" />
+                  <input type="email" required value={editingStaff.email} onChange={e => setEditingStaff({...editingStaff, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Mobile Phone *</label>
-                  <input type="tel" required value={editingStaff.phone} onChange={e => setEditingStaff({...editingStaff, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none focus:border-blue-500 font-medium" />
+                  <input type="tel" required value={editingStaff.phone} onChange={e => setEditingStaff({...editingStaff, phone: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none focus:border-blue-500" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Designation *</label>
-                  <select value={editingStaff.designation} onChange={e => setEditingStaff({...editingStaff, designation: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 outline-none font-medium">
+                  <select value={editingStaff.designation} onChange={e => setEditingStaff({...editingStaff, designation: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none">
                     {editingStaff.staffType === 'Teaching'
                       ? ['Principal', 'Vice Principal', 'Senior Teacher', 'Teacher', 'Sports Coach'].map(d => <option key={d}>{d}</option>)
                       : ['Accountant', 'Librarian', 'Security Guard', 'Driver', 'Bus Attendant', 'Transport Manager', 'Administrative Staff', 'Clerk'].map(d => <option key={d}>{d}</option>)
@@ -1562,7 +1259,7 @@ export default function SchoolStaffPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Department *</label>
-                  <select value={editingStaff.department} onChange={e => setEditingStaff({...editingStaff, department: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 outline-none font-medium">
+                  <select value={editingStaff.department} onChange={e => setEditingStaff({...editingStaff, department: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none">
                     {editingStaff.staffType === 'Teaching'
                       ? ['Science', 'Mathematics', 'English', 'Social Studies', 'General Knowledge'].map(d => <option key={d}>{d}</option>)
                       : ['Transport', 'Finance', 'Library', 'Security', 'Administration', 'Operations', 'Maintenance / Support'].map(d => <option key={d}>{d}</option>)
@@ -1573,21 +1270,21 @@ export default function SchoolStaffPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Basic Salary (₹)</label>
-                  <input type="number" value={editingStaff.basicSalary} onChange={e => setEditingStaff({...editingStaff, basicSalary: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none font-medium" />
+                  <input type="number" value={editingStaff.basicSalary} onChange={e => setEditingStaff({...editingStaff, basicSalary: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">HRA (₹)</label>
-                  <input type="number" value={editingStaff.hra} onChange={e => setEditingStaff({...editingStaff, hra: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none font-medium" />
+                  <input type="number" value={editingStaff.hra} onChange={e => setEditingStaff({...editingStaff, hra: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">PF Deduction (₹)</label>
-                  <input type="number" value={editingStaff.pf} onChange={e => setEditingStaff({...editingStaff, pf: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none font-medium" />
+                  <input type="number" value={editingStaff.pf} onChange={e => setEditingStaff({...editingStaff, pf: Number(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Status *</label>
-                  <select value={editingStaff.status} onChange={e => setEditingStaff({...editingStaff, status: e.target.value as any})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 outline-none font-medium">
+                  <select value={editingStaff.status} onChange={e => setEditingStaff({...editingStaff, status: e.target.value as any})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 outline-none">
                     <option>Active</option>
                     <option>On Leave</option>
                     <option>Inactive</option>
@@ -1595,22 +1292,22 @@ export default function SchoolStaffPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Qualification</label>
-                  <input value={editingStaff.qualification} onChange={e => setEditingStaff({...editingStaff, qualification: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none font-medium" />
+                  <input value={editingStaff.qualification} onChange={e => setEditingStaff({...editingStaff, qualification: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">Bank Account</label>
-                  <input value={editingStaff.accountNumber} onChange={e => setEditingStaff({...editingStaff, accountNumber: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-xl px-4 py-2 outline-none font-medium" placeholder="Account Number" />
+                  <input value={editingStaff.accountNumber} onChange={e => setEditingStaff({...editingStaff, accountNumber: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" placeholder="Account Number" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 font-bold mb-1">IFSC Code</label>
-                  <input value={editingStaff.ifsc} onChange={e => setEditingStaff({...editingStaff, ifsc: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-xl px-4 py-2 outline-none font-medium" placeholder="IFSC Code" />
+                  <input value={editingStaff.ifsc} onChange={e => setEditingStaff({...editingStaff, ifsc: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none" placeholder="IFSC Code" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs text-slate-500 font-bold mb-1">Address</label>
-                <textarea value={editingStaff.address} onChange={e => setEditingStaff({...editingStaff, address: e.target.value})} className="w-full bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2 outline-none h-16 resize-none font-medium" />
+                <textarea value={editingStaff.address} onChange={e => setEditingStaff({...editingStaff, address: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 outline-none h-16 resize-none" />
               </div>
               {/* Subject Skills */}
               {editingStaff.staffType === 'Teaching' && (
@@ -1640,7 +1337,7 @@ export default function SchoolStaffPage() {
                           s[idx] = { ...s[idx], subject: e.target.value }; 
                           setEditingStaff({ ...editingStaff, skills: s }); 
                         }} 
-                        className="flex-1 bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-lg px-3 py-1.5 text-xs outline-none font-medium" 
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none" 
                         placeholder="Subject" 
                       />
                       <select 
@@ -1650,7 +1347,7 @@ export default function SchoolStaffPage() {
                           s[idx] = { ...s[idx], level: e.target.value }; 
                           setEditingStaff({ ...editingStaff, skills: s }); 
                         }} 
-                        className="bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 rounded-lg px-2 py-1.5 text-xs outline-none font-medium"
+                        className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none"
                       >
                         <option>Beginner</option>
                         <option>Intermediate</option>
@@ -1665,7 +1362,7 @@ export default function SchoolStaffPage() {
                           s[idx] = { ...s[idx], exp: Number(e.target.value) }; 
                           setEditingStaff({ ...editingStaff, skills: s }); 
                         }} 
-                        className="w-14 bg-slate-50 border border-slate-200 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-lg px-2 py-1.5 text-xs outline-none font-medium" 
+                        className="w-14 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none" 
                         placeholder="Yrs" 
                       />
                       <button 
@@ -1688,20 +1385,19 @@ export default function SchoolStaffPage() {
               </div>
             </form>
           </div>
-        </>,
-        document.body
+        </>
       )}
 
       {/* ── ADD STAFF MODAL ── */}
-      {isMounted && showAddModal && createPortal(
+      {showAddModal && (
         <>
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99998]" onClick={() => setShowAddModal(false)} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[92%] sm:w-full max-w-xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl z-[99999] overflow-hidden max-h-[90vh] flex flex-col animate-scale-in">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+          <div className="fixed inset-0 bg-slate-900/60 z-50" onClick={() => setShowAddModal(false)} />
+          <div className="fixed top-4 sm:top-1/2 bottom-20 sm:bottom-auto left-1/2 -translate-x-1/2 translate-y-0 sm:-translate-y-1/2 w-[92%] sm:w-full max-w-xl bg-white rounded-2xl shadow-2xl z-50 overflow-y-auto max-h-none sm:max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <h3 className="font-extrabold text-slate-800 text-lg">Add New Staff Member</h3>
               <button onClick={() => setShowAddModal(false)} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 cursor-pointer"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleSaveStaff} className="flex-1 overflow-y-auto p-6 space-y-4 text-sm flex flex-col">
+            <form onSubmit={handleSaveStaff} className="p-6 space-y-4 text-sm">
               {/* Staff Type Toggle */}
               <div className="flex bg-slate-100 p-1 rounded-xl">
                 {(['Teaching', 'Non-Teaching'] as const).map(t => (
@@ -1821,15 +1517,14 @@ export default function SchoolStaffPage() {
               </div>
             </form>
           </div>
-        </>,
-        document.body
+        </>
       )}
 
       {/* ── CUSTOM DELETE CONFIRMATION MODAL ── */}
-      {isMounted && deleteConfirm.show && createPortal(
+      {deleteConfirm.show && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-[99998] animate-fade-in" onClick={() => setDeleteConfirm(prev => ({ ...prev, show: false }))} />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-[99999] p-6 animate-scale-in">
+          <div className="fixed inset-0 bg-black/50 z-50 animate-fade-in" onClick={() => setDeleteConfirm(prev => ({ ...prev, show: false }))} />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-white rounded-2xl shadow-2xl z-50 p-6 animate-scale-in">
             <div className="text-center py-2">
               <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-xl mx-auto mb-3">
                 ⚠️
@@ -1855,8 +1550,7 @@ export default function SchoolStaffPage() {
               </button>
             </div>
           </div>
-        </>,
-        document.body
+        </>
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, BarChart2, PieChart, Download, CheckCircle2, RefreshCw } from 'lucide-react';
 import { api } from '@/lib/api';
+import { PencilSpinner, ErrorState } from '@/components/loading';
 
 interface DemographicsData {
   totalStudents: number;
@@ -109,24 +110,23 @@ export default function ReportsAnalyticsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
-        <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
-        <p className="text-sm">Fetching real-time analytics...</p>
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <PencilSpinner size="lg" />
+        <div className="text-center">
+          <p className="text-sm font-semibold text-slate-600">Fetching real-time analytics...</p>
+          <p className="text-xs text-slate-400 mt-1">Calculating demographics, financials, and grading data</p>
+        </div>
       </div>
     );
   }
 
   if (error || !reportsData) {
     return (
-      <div className="p-6 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-center max-w-lg mx-auto">
-        <p className="font-bold text-sm">Error Loading Reports</p>
-        <p className="text-xs mt-1 text-rose-600">{error || 'An unexpected error occurred'}</p>
-        <button
-          onClick={fetchReportsData}
-          className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all"
-        >
-          Try Again
-        </button>
+      <div className="py-8">
+        <ErrorState
+          message={error || 'Failed to load analytics reports. Please try again.'}
+          onRetry={fetchReportsData}
+        />
       </div>
     );
   }
