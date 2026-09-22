@@ -8,6 +8,8 @@ import { BillingService } from '../billing/billing.service';
 
 // High-speed in-memory cache for Student Details (20s TTL)
 const studentDetailsMemoryCache = new Map<string, { data: any; expiresAt: number }>();
+// High-speed in-memory cache for Promotion Candidates (30s TTL)
+const promotionCandidatesMemoryCache = new Map<string, { data: any; expiresAt: number }>();
 
 export function invalidateStudentDetailsCache(studentId?: string, tenantId?: string) {
   if (studentId) {
@@ -24,6 +26,18 @@ export function invalidateStudentDetailsCache(studentId?: string, tenantId?: str
     });
   } else {
     studentDetailsMemoryCache.clear();
+  }
+}
+
+export function invalidatePromotionCandidatesCache(tenantId?: string) {
+  if (tenantId) {
+    promotionCandidatesMemoryCache.forEach((_, key) => {
+      if (key.startsWith(`${tenantId}:`)) {
+        promotionCandidatesMemoryCache.delete(key);
+      }
+    });
+  } else {
+    promotionCandidatesMemoryCache.clear();
   }
 }
 
@@ -1265,6 +1279,17 @@ export class StudentsService implements OnModuleInit {
   async getPromotionCandidates(sourceYearId?: string, className?: string, sectionName?: string) {
     const tenantId = this.getTenantId();
 
+    const normalizedSourceYear = sourceYearId || 'ALL';
+    const normalizedClass = className || 'ALL';
+    const normalizedSectionParam = (sectionName || '').trim() || 'ALL';
+    const cacheKey = `${tenantId}:${normalizedSourceYear}:${normalizedClass}:${normalizedSectionParam}`;
+
+    const now = Date.now();
+    const cached = promotionCandidatesMemoryCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
     const whereYear = (sourceYearId && sourceYearId !== 'ALL')
       ? Prisma.sql`AND c."academicYearId" = ${sourceYearId}`
       : Prisma.empty;
@@ -1298,25 +1323,33 @@ export class StudentsService implements OnModuleInit {
         COALESCE(u.phone, '') AS phone,
         COALESCE(c.name, '') AS "className",
         COALESCE(s.name, '') AS "sectionName",
-        COALESCE(SUM(inv."totalAmount"), 0)::numeric AS "totalFees",
-        COALESCE(SUM(inv."paidAmount"), 0)::numeric AS "paidAmount",
-        COALESCE(SUM(inv."remainingBalance"), 0)::numeric AS "balanceDue"
+        COALESCE(inv_agg."totalFees", 0)::numeric AS "totalFees",
+        COALESCE(inv_agg."paidAmount", 0)::numeric AS "paidAmount",
+        COALESCE(inv_agg."balanceDue", 0)::numeric AS "balanceDue"
       FROM "StudentProfile" sp
       JOIN "User" u ON sp."userId" = u.id
       JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
       JOIN "Class" c ON cs."classId" = c.id
       JOIN "Section" s ON cs."sectionId" = s.id
-      LEFT JOIN "Invoice" inv ON sp.id = inv."studentId" AND inv."tenantId" = ${tenantId}
+      LEFT JOIN (
+        SELECT 
+          "studentId",
+          SUM("totalAmount") AS "totalFees",
+          SUM("paidAmount") AS "paidAmount",
+          SUM("remainingBalance") AS "balanceDue"
+        FROM "Invoice"
+        WHERE "tenantId" = ${tenantId}
+        GROUP BY "studentId"
+      ) inv_agg ON sp.id = inv_agg."studentId"
       WHERE sp."tenantId" = ${tenantId}
         AND u."isActive" = true
         ${whereYear}
         ${whereClass}
         ${whereSection}
-      GROUP BY sp.id, u.id, c.id, s.id
       ORDER BY u.name ASC
     `;
 
-    return rows.map(r => {
+    const result = rows.map(r => {
       const totalFees = Number(r.totalFees || 0);
       const paidAmount = Number(r.paidAmount || 0);
       const balanceDue = Number(r.balanceDue || 0);
@@ -1345,6 +1378,9 @@ export class StudentsService implements OnModuleInit {
         profilePhotoUrl: r.profilePhotoUrl || null,
       };
     });
+
+    promotionCandidatesMemoryCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
+    return result;
   }
 
   async promoteStudents(payload: {
@@ -1637,6 +1673,9 @@ export class StudentsService implements OnModuleInit {
         for (const pair of targetClassYearPairs.values()) {
           await this.billingService.syncPriceBookToStudents(pair.classId, pair.targetYearId, tx);
         }
+
+        invalidatePromotionCandidatesCache(tenantId);
+        invalidateStudentDetailsCache(undefined, tenantId);
 
         return {
           success: true,
@@ -2012,6 +2051,8 @@ export class StudentsService implements OnModuleInit {
       }
     });
 
+    invalidatePromotionCandidatesCache(tenantId);
+
     return {
       success: true,
       message: `Student successfully updated to status: ${status}.`,
@@ -2298,6 +2339,8 @@ export class StudentsService implements OnModuleInit {
         tenantId,
       }
     });
+
+    invalidatePromotionCandidatesCache(tenantId);
 
     return {
       success: true,

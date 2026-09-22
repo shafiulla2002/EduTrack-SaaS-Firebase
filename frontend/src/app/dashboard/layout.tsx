@@ -233,6 +233,16 @@ export default function DashboardLayout({
           ),
         },
         {
+          name: 'Student Progress',
+          href: '/dashboard/student-progress',
+          svg: (
+            <svg className="icon-svg" viewBox="0 0 24 24">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+              <polyline points="17 6 23 6 23 12"></polyline>
+            </svg>
+          ),
+        },
+        {
           name: 'Enter Marks',
           href: '/dashboard/exams',
           svg: (
@@ -637,6 +647,15 @@ export default function DashboardLayout({
       fastGet('/complaint-box/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/complaint-box/teachers', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/complaint-box/pending-cases', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/promotions')) {
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/sections', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/students/promotion-candidates', { params: { className: 'ALL' } }, { ttlMs: 30000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/student-progress')) {
+      fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
     }
   };
 

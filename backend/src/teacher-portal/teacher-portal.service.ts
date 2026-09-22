@@ -38,12 +38,35 @@ export class TeacherPortalService {
       return cached.data;
     }
 
-    const staff = await this.prisma.staffProfile.findFirst({
+    let staff = await this.prisma.staffProfile.findFirst({
       where: { userId, user: { tenantId, isActive: true } },
       include: { user: true },
     });
     if (!staff) {
-      throw new UnauthorizedException('Active Teacher profile not found for this user.');
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId, tenantId, isActive: true },
+      });
+      if (user && (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN)) {
+        staff = {
+          id: user.id,
+          userId: user.id,
+          tenantId: user.tenantId,
+          user,
+          employeeId: 'ADMIN',
+          designation: 'Administrator',
+          staffRole: 'Administrator',
+          basicSalary: 0,
+          allowances: 0,
+          deductions: 0,
+          pfDeduction: 0,
+          joiningDate: new Date(),
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as any;
+      } else {
+        throw new UnauthorizedException('Active profile not found for this user.');
+      }
     }
     this.teacherCache.set(cacheKey, { data: staff, expiresAt: now + 60000 });
     return staff;

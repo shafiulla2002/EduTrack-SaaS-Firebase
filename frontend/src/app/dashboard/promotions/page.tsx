@@ -9,7 +9,7 @@ import {
   FileText, ChevronRight, Loader2, BookOpen, AlertTriangle, ExternalLink, ArrowUpRight, Eye
 } from 'lucide-react';
 import Drawer from '@/components/Drawer';
-import { api, cachedGet } from '@/lib/api';
+import { api, cachedGet, fastGet, getCachedData } from '@/lib/api';
 import { PencilSpinner, EmptyState } from '@/components/loading';
 
 const CLASS_ORDER = [
@@ -61,15 +61,47 @@ interface ClassSummary {
 }
 
 export default function StudentPromotionPage() {
-  const [academicYears, setAcademicYears] = useState<any[]>([]);
-  const [dbClasses, setDbClasses] = useState<any[]>([]);
-  const [studentsState, setStudentsState] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [academicYears, setAcademicYears] = useState<any[]>(() => getCachedData<any[]>('/academics/academic-years') || []);
+  const [dbClasses, setDbClasses] = useState<any[]>(() => {
+    const cached = getCachedData<any[]>('/academics/classes');
+    if (!cached) return [];
+    return [...cached].sort((a: any, b: any) => {
+      const idxA = CLASS_ORDER.indexOf(a.name);
+      const idxB = CLASS_ORDER.indexOf(b.name);
+      if (idxA >= 0 && idxB >= 0) return idxA - idxB;
+      if (idxA >= 0) return -1;
+      if (idxB >= 0) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  });
+  const [dbSections, setDbSections] = useState<any[]>(() => getCachedData<any[]>('/academics/sections') || []);
+  const [studentsState, setStudentsState] = useState<any[]>(() => {
+    return getCachedData<any[]>('/students/promotion-candidates', { className: 'ALL' }) || [];
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    const cached = getCachedData<any[]>('/students/promotion-candidates', { className: 'ALL' });
+    return !cached || cached.length === 0;
+  });
   const [searchQuery, setSearchQuery] = useState('');
 
   // Source Filters
-  const [sourceYear, setSourceYear] = useState('');
-  const [targetYear, setTargetYear] = useState('');
+  const [sourceYear, setSourceYear] = useState<string>(() => {
+    const cached = getCachedData<any[]>('/academics/academic-years');
+    if (cached && cached.length > 0) {
+      const active = cached.find((y: any) => y.isActive);
+      return active ? active.id : cached[0].id;
+    }
+    return '';
+  });
+  const [targetYear, setTargetYear] = useState<string>(() => {
+    const cached = getCachedData<any[]>('/academics/academic-years');
+    if (cached && cached.length > 0) {
+      const active = cached.find((y: any) => y.isActive);
+      const inactive = cached.find((y: any) => !y.isActive);
+      return inactive ? inactive.id : (cached[cached.length - 1]?.id || '');
+    }
+    return '';
+  });
   const [sourceClass, setSourceClass] = useState('ALL');
   const [sourceSection, setSourceSection] = useState('');
 
@@ -92,9 +124,6 @@ export default function StudentPromotionPage() {
 
   // Post-Promotion Summary Report State
   const [reportData, setReportData] = useState<any>(null);
-
-  // Sections cache for re-enrollment
-  const [dbSections, setDbSections] = useState<any[]>([]);
 
   // ── Student Lifecycle States ──
   const [isLifecycleDrawerOpen, setIsLifecycleDrawerOpen] = useState(false);
@@ -135,14 +164,39 @@ export default function StudentPromotionPage() {
     const fetchInitData = async () => {
       try {
         const [yearsRes, classesRes, sectionsRes] = await Promise.all([
-          cachedGet('/academics/academic-years', undefined, 60000),
-          cachedGet('/academics/classes', undefined, 60000),
-          cachedGet('/academics/sections', undefined, 60000),
+          fastGet('/academics/academic-years', undefined, {
+            ttlMs: 60000,
+            onRevalidate: (fresh) => {
+              if (fresh) setAcademicYears(fresh);
+            },
+          }),
+          fastGet('/academics/classes', undefined, {
+            ttlMs: 60000,
+            onRevalidate: (fresh) => {
+              if (fresh) {
+                const sorted = [...fresh].sort((a: any, b: any) => {
+                  const idxA = CLASS_ORDER.indexOf(a.name);
+                  const idxB = CLASS_ORDER.indexOf(b.name);
+                  if (idxA >= 0 && idxB >= 0) return idxA - idxB;
+                  if (idxA >= 0) return -1;
+                  if (idxB >= 0) return 1;
+                  return a.name.localeCompare(b.name);
+                });
+                setDbClasses(sorted);
+              }
+            },
+          }),
+          fastGet('/academics/sections', undefined, {
+            ttlMs: 60000,
+            onRevalidate: (fresh) => {
+              if (fresh) setDbSections(fresh);
+            },
+          }),
         ]);
 
         const yearsData = yearsRes.data || [];
         setAcademicYears(yearsData);
-        if (yearsData.length > 0) {
+        if (yearsData.length > 0 && !sourceYear) {
           const active = yearsData.find((y: any) => y.isActive);
           const inactive = yearsData.find((y: any) => !y.isActive);
           if (active) {
@@ -281,19 +335,30 @@ export default function StudentPromotionPage() {
     }
   };
 
-  // Fetch Candidates
+  // Fetch Candidates with fast SWR
   const fetchCandidates = async () => {
     if (!sourceYear) return;
-    setIsLoading(true);
+    const params = {
+      sourceYearId: sourceYear,
+      className: sourceClass,
+      sectionName: sourceSection || undefined,
+    };
+    const cached = getCachedData<any[]>('/students/promotion-candidates', params);
+    if (!cached || cached.length === 0) {
+      setIsLoading(true);
+    }
     try {
-      const res = await api.get('/students/promotion-candidates', {
-        params: {
-          sourceYearId: sourceYear,
-          className: sourceClass,
-          sectionName: sourceSection || undefined,
-        }
+      const res = await fastGet<any[]>('/students/promotion-candidates', { params }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (fresh) {
+            setStudentsState(fresh);
+          }
+        },
       });
-      setStudentsState(res.data);
+      if (res?.data) {
+        setStudentsState(res.data);
+      }
     } catch (err) {
       console.error('Error fetching candidates:', err);
     } finally {

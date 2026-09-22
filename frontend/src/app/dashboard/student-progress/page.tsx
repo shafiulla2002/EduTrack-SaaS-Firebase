@@ -1,17 +1,20 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, ChevronRight, User } from 'lucide-react';
 
 export default function StudentProgressPage() {
-  const [classes, setClasses] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>(() => getCachedData<any[]>('/teacher-portal/classes') || []);
   const [students, setStudents] = useState<any[]>([]);
   
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedStudent, setSelectedStudent] = useState('');
   
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    const cached = getCachedData<any[]>('/teacher-portal/classes');
+    return !cached || cached.length === 0;
+  });
   const [loadingStudentData, setLoadingStudentData] = useState(false);
   const [progress, setProgress] = useState<any | null>(null);
   const [hoveredBar, setHoveredBar] = useState<any | null>(null);
@@ -56,8 +59,15 @@ export default function StudentProgressPage() {
     }
     async function loadStudents() {
       try {
-        const res = await api.get(`/teacher-portal/classes/${selectedClass}/students`);
-        setStudents(res.data);
+        const res = await fastGet(`/teacher-portal/classes/${selectedClass}/students`, undefined, {
+          ttlMs: 60000,
+          onRevalidate: (fresh) => {
+            if (fresh) setStudents(fresh);
+          },
+        });
+        if (res?.data) {
+          setStudents(res.data);
+        }
         setSelectedStudent('');
         setProgress(null);
       } catch (err) {
@@ -75,8 +85,15 @@ export default function StudentProgressPage() {
     async function loadProgressDetails() {
       setLoadingStudentData(true);
       try {
-        const res = await api.get(`/teacher-portal/student-progress/${selectedStudent}`);
-        setProgress(res.data);
+        const res = await fastGet(`/teacher-portal/student-progress/${selectedStudent}`, undefined, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh) setProgress(fresh);
+          },
+        });
+        if (res?.data) {
+          setProgress(res.data);
+        }
       } catch (err) {
         console.error('Failed to load progress details:', err);
       } finally {
