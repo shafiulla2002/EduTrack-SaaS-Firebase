@@ -113,7 +113,10 @@ export class ExamsService {
           label: `${s.class.name} - ${s.section.name}`,
           displayName: `${s.class.name} - ${s.section.name}`,
           classId: s.classId,
+          className: s.class.name,
           sectionId: s.sectionId,
+          sectionName: s.section.name,
+          academicYearId: s.class.academicYearId,
         }));
     } else {
       // Admin: all class-sections
@@ -132,7 +135,10 @@ export class ExamsService {
           label: `${s.class.name} - ${s.section.name}`,
           displayName: `${s.class.name} - ${s.section.name}`,
           classId: s.classId,
+          className: s.class.name,
           sectionId: s.sectionId,
+          sectionName: s.section.name,
+          academicYearId: s.class.academicYearId,
         }));
     }
 
@@ -777,5 +783,236 @@ export class ExamsService {
 
     this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
     return result;
+  }
+
+  // ── GOVERNMENT-STYLE MARKS REPORT EXPORT (100% READ-ONLY) ───────────────────
+
+  async getMarksReport(params: {
+    academicYearId?: string;
+    classId?: string;
+    sectionId?: string;
+    classSectionId?: string;
+    examName: string;
+  }) {
+    const tenantId = this.getTenantId();
+    const { academicYearId, classId, sectionId, classSectionId, examName } = params;
+
+    if (!examName || examName.trim() === '') {
+      throw new BadRequestException('Exam Name / Exam Type is required');
+    }
+
+    // 1. Fetch Tenant info (for School Name & School Code / Subdomain)
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        name: true,
+        subDomain: true,
+        logoUrl: true,
+        address: true,
+        phone: true,
+        email: true,
+      },
+    });
+    if (!tenant) {
+      throw new BadRequestException('School tenant context not found');
+    }
+
+    // 2. Resolve & Validate ClassSection strictly within the authenticated tenant
+    let targetClassSection: any = null;
+
+    if (classSectionId) {
+      targetClassSection = await this.prisma.classSection.findFirst({
+        where: { id: classSectionId, tenantId },
+        include: {
+          class: { include: { academicYear: true } },
+          section: true,
+        },
+      });
+      if (!targetClassSection) {
+        throw new BadRequestException('Invalid Class Section specified for this school');
+      }
+      if (classId && targetClassSection.classId !== classId) {
+        throw new BadRequestException('ClassSection does not match the specified Class');
+      }
+      if (sectionId && targetClassSection.sectionId !== sectionId) {
+        throw new BadRequestException('ClassSection does not match the specified Section');
+      }
+      if (academicYearId && targetClassSection.class?.academicYearId !== academicYearId) {
+        throw new BadRequestException('ClassSection does not match the specified Academic Year');
+      }
+    } else if (classId && sectionId) {
+      targetClassSection = await this.prisma.classSection.findFirst({
+        where: { classId, sectionId, tenantId },
+        include: {
+          class: { include: { academicYear: true } },
+          section: true,
+        },
+      });
+      if (!targetClassSection) {
+        throw new BadRequestException('No matching Class and Section found for this school');
+      }
+      if (academicYearId && targetClassSection.class?.academicYearId !== academicYearId) {
+        throw new BadRequestException('Class does not belong to the selected Academic Year');
+      }
+    } else {
+      throw new BadRequestException('Please select both Class and Section');
+    }
+
+    const resolvedClassSectionId = targetClassSection.id;
+    const resolvedClassName = targetClassSection.class?.name || 'Class';
+    const resolvedSectionName = targetClassSection.section?.name || 'Section';
+    const resolvedAcademicYearName = targetClassSection.class?.academicYear?.name || 'Academic Year';
+    const resolvedAcademicYearId = targetClassSection.class?.academicYearId || academicYearId;
+
+    // 3. Resolve Subjects for this ClassSection
+    const classSubjects = await this.prisma.classSubject.findMany({
+      where: { classSectionId: resolvedClassSectionId, tenantId },
+      include: { subject: true },
+    });
+    let subjects = classSubjects
+      .map(cs => cs.subject)
+      .filter(s => s && s.isActive);
+
+    if (subjects.length === 0) {
+      subjects = await this.prisma.subject.findMany({
+        where: { tenantId, isActive: true },
+      });
+    }
+
+    // Standard deterministic curriculum sequence (Language 1 -> Language 2 -> English -> Maths -> Science -> Social -> Other)
+    const SUBJECT_ORDER: Record<string, number> = {
+      telugu: 1,
+      firstlanguage: 1,
+      hindi: 2,
+      secondlanguage: 2,
+      english: 3,
+      thirdlanguage: 3,
+      mathematics: 4,
+      maths: 4,
+      math: 4,
+      science: 5,
+      generalscience: 5,
+      physicalscience: 5.1,
+      biologicalscience: 5.2,
+      evs: 5.3,
+      social: 6,
+      socialstudies: 6,
+      computerscience: 7,
+      computer: 7,
+      it: 7,
+    };
+
+    subjects.sort((a, b) => {
+      const cleanA = a.name.toLowerCase().replace(/[^a-z]/g, '');
+      const cleanB = b.name.toLowerCase().replace(/[^a-z]/g, '');
+      const orderA = SUBJECT_ORDER[cleanA] ?? 100;
+      const orderB = SUBJECT_ORDER[cleanB] ?? 100;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.name.localeCompare(b.name);
+    });
+
+    // 4. Resolve Exam & Marks (100% READ-ONLY)
+    const exam = await this.prisma.exam.findFirst({
+      where: {
+        tenantId,
+        classSectionId: resolvedClassSectionId,
+        name: examName.trim(),
+      },
+    });
+
+    const marksMap = new Map<string, { marksObtained: any; remarks: string | null }>();
+    if (exam) {
+      const marks = await this.prisma.examMark.findMany({
+        where: {
+          tenantId,
+          examId: exam.id,
+        },
+        select: {
+          studentId: true,
+          subjectId: true,
+          marksObtained: true,
+          remarks: true,
+        },
+      });
+      for (const m of marks) {
+        marksMap.set(`${m.studentId}_${m.subjectId}`, m);
+      }
+    }
+
+    // 5. Query All Enrolled Students
+    const students = await this.prisma.studentProfile.findMany({
+      where: {
+        classSectionId: resolvedClassSectionId,
+        tenantId,
+        user: { isActive: true },
+      },
+      select: {
+        id: true,
+        rollNo: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: [
+        { rollNo: 'asc' },
+        { user: { name: 'asc' } },
+      ],
+    });
+
+    // 6. Compile Normalized Student Mark Rows
+    const studentRows = students.map(s => {
+      const marksObj: Record<string, number | 'AB' | '—'> = {};
+      let totalObtained = 0;
+      let hasAnyMark = false;
+
+      for (const sub of subjects) {
+        const markRecord = marksMap.get(`${s.id}_${sub.id}`);
+        if (!markRecord) {
+          marksObj[sub.name] = '—';
+        } else {
+          const rem = markRecord.remarks?.trim().toUpperCase() || '';
+          const isAbsent = rem === 'AB' || rem === 'ABSENT' || rem.startsWith('AB-') || rem.includes('ABSENT');
+          if (isAbsent) {
+            marksObj[sub.name] = 'AB';
+          } else if (markRecord.marksObtained !== null && markRecord.marksObtained !== undefined) {
+            const numVal = Number(markRecord.marksObtained);
+            marksObj[sub.name] = numVal;
+            totalObtained += numVal;
+            hasAnyMark = true;
+          } else {
+            marksObj[sub.name] = '—';
+          }
+        }
+      }
+
+      return {
+        studentId: s.id,
+        admissionNo: s.rollNo || s.id.substring(0, 8).toUpperCase(),
+        rollNo: s.rollNo || 'N/A',
+        studentName: s.user?.name || 'Student',
+        marks: marksObj,
+        totalMarks: hasAnyMark ? totalObtained : null,
+      };
+    });
+
+    return {
+      schoolName: tenant.name || 'CS EduTrack Institute',
+      schoolCode: tenant.subDomain || tenant.id.substring(0, 8).toUpperCase(),
+      academicYear: resolvedAcademicYearName,
+      academicYearId: resolvedAcademicYearId,
+      className: resolvedClassName,
+      classId: targetClassSection.classId,
+      sectionName: resolvedSectionName,
+      sectionId: targetClassSection.sectionId,
+      classSectionId: resolvedClassSectionId,
+      examType: examName.trim(),
+      subjects: subjects.map(s => ({ id: s.id, name: s.name })),
+      totalStudents: studentRows.length,
+      students: studentRows,
+    };
   }
 }

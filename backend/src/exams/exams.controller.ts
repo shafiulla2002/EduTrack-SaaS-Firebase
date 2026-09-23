@@ -111,4 +111,23 @@ export class ExamsController {
   ) {
     return this.examsService.getGradesReport(classSectionId, examName);
   }
+
+  @Get('marks-report')
+  async getMarksReport(
+    @Query('academicYearId') academicYearId?: string,
+    @Query('classId') classId?: string,
+    @Query('sectionId') sectionId?: string,
+    @Query('classSectionId') classSectionId?: string,
+    @Query('examName') examName?: string,
+    @Query('examType') examType?: string,
+  ) {
+    const selectedExam = examName || examType;
+    return this.examsService.getMarksReport({
+      academicYearId,
+      classId,
+      sectionId,
+      classSectionId,
+      examName: selectedExam || '',
+    });
+  }
 }
