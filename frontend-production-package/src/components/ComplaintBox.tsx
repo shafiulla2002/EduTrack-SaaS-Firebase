@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   AlertCircle, CheckCircle, Search, User, Filter, Plus, 
   ShieldAlert, Award, Calendar, ChevronRight, BookOpen, Clock, 
   Activity, ArrowLeft, RefreshCw, Eye, X, Phone, GraduationCap,
-  Edit, Trash2
+  Edit, Trash2, RotateCcw
 } from 'lucide-react';
+import { PencilSpinner } from '@/components/loading';
 import { api, fastGet, getCachedData, setCachedData } from '@/lib/api';
 import Link from 'next/link';
 import { useTenant } from '@/app/providers/TenantContext';
@@ -98,17 +99,31 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   const { currentUser } = useTenant();
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
-  const [activeTab, setActiveTab] = useState<'submit' | 'pending' | 'history' | 'parent-complaints'>('parent-complaints');
+  type TabKey = 'parent-complaints' | 'submit' | 'pending' | 'history';
+  const [activeTab, setActiveTab] = useState<TabKey>('parent-complaints');
+  const activeTabRef = useRef<TabKey>('parent-complaints');
+  const tabRequestSeqRef = useRef<number>(0);
+
+  // Per-tab loading and error tracking
+  const [tabLoading, setTabLoading] = useState<Record<TabKey, boolean>>({
+    'parent-complaints': true,
+    'submit': false,
+    'pending': false,
+    'history': false,
+  });
+  const [tabError, setTabError] = useState<Record<TabKey, string | null>>({
+    'parent-complaints': null,
+    'submit': null,
+    'pending': null,
+    'history': null,
+  });
 
   // Parent complaints states
   const [parentComplaints, setParentComplaints] = useState<any[]>(() => {
     if (typeof window === 'undefined') return [];
     return getCachedData<any[]>('/complaint-box/parent-complaints') || [];
   });
-  const [isLoadingParentComplaints, setIsLoadingParentComplaints] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return !getCachedData('/complaint-box/parent-complaints');
-  });
+  const [isLoadingParentComplaints, setIsLoadingParentComplaints] = useState<boolean>(false);
   const [parentFilterStatus, setParentFilterStatus] = useState<string>('All');
   const [selectedParentComplaint, setSelectedParentComplaint] = useState<any | null>(null);
   const [parentReplyText, setParentReplyText] = useState<string>('');
@@ -130,7 +145,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
           }
         }
       });
-      if (res.data) {
+      if (res?.data) {
         setParentComplaints(res.data);
       }
     } catch (err) {
@@ -140,11 +155,25 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
     }
   };
 
-  useEffect(() => {
-    if (activeTab === 'parent-complaints') {
-      fetchParentComplaints(parentFilterStatus);
+  const handleParentFilterChange = async (st: string) => {
+    setParentFilterStatus(st);
+    setIsLoadingParentComplaints(true);
+    try {
+      const res = await fastGet('/complaint-box/parent-complaints', {
+        params: st !== 'All' ? { status: st } : {}
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setParentComplaints(fresh.data || fresh); }
+      });
+      if (res?.data) {
+        setParentComplaints(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to filter parent complaints:', err);
+    } finally {
+      setIsLoadingParentComplaints(false);
     }
-  }, [activeTab, parentFilterStatus]);
+  };
 
   // Backend configuration states
   const [classOptions, setClassOptions] = useState<ClassSectionOption[]>(() => {
@@ -183,6 +212,26 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   const [filterAcademicYear, setFilterAcademicYear] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  const handlePendingYearChange = async (yr: string) => {
+    setFilterAcademicYear(yr);
+    setIsLoadingPendingCases(true);
+    try {
+      const res = await fastGet('/complaint-box/pending-cases', {
+        params: yr !== 'All' ? { academicYear: yr } : {}
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setPendingCases(fresh.data || fresh); }
+      });
+      if (res?.data) {
+        setPendingCases(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to filter pending cases:', err);
+    } finally {
+      setIsLoadingPendingCases(false);
+    }
+  };
+
   // Student history and stats
   const [historyStudent, setHistoryStudent] = useState<StudentOption | null>(null);
   const [historyStudentInput, setHistoryStudentInput] = useState<string>('');
@@ -204,6 +253,97 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
   const [editDescription, setEditDescription] = useState<string>('');
   const [editAcademicYear, setEditAcademicYear] = useState<string>('');
   const [editTeacherId, setEditTeacherId] = useState<string>('');
+
+  // Tab navigation with proper loading state & stale request prevention
+  const handleTabChange = (tab: TabKey) => {
+    setActiveTab(tab);
+    activeTabRef.current = tab;
+    loadTabData(tab);
+  };
+
+  const loadTabData = async (tab: TabKey) => {
+    const seq = ++tabRequestSeqRef.current;
+    setTabLoading(prev => ({ ...prev, [tab]: true }));
+    setTabError(prev => ({ ...prev, [tab]: null }));
+
+    try {
+      if (tab === 'parent-complaints') {
+        const res = await fastGet('/complaint-box/parent-complaints', {
+          params: parentFilterStatus !== 'All' ? { status: parentFilterStatus } : {}
+        }, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh && activeTabRef.current === 'parent-complaints' && tabRequestSeqRef.current === seq) {
+              setParentComplaints(fresh.data || fresh);
+            }
+          }
+        });
+        if (activeTabRef.current === 'parent-complaints' && tabRequestSeqRef.current === seq) {
+          if (res?.data) {
+            setParentComplaints(res.data);
+          }
+        }
+      } else if (tab === 'submit') {
+        const [classesRes, yearsRes, teachersRes, currentTeacherRes] = await Promise.all([
+          classOptions.length > 0 ? Promise.resolve({ data: classOptions }) : fastGet('/complaint-box/student-classes', undefined, { ttlMs: 60000 }).catch(() => null),
+          academicYears.length > 0 ? Promise.resolve({ data: academicYears }) : fastGet('/complaint-box/academic-years', undefined, { ttlMs: 60000 }).catch(() => null),
+          teachers.length > 0 ? Promise.resolve({ data: teachers }) : fastGet('/complaint-box/teachers', undefined, { ttlMs: 60000 }).catch(() => null),
+          currentTeacher ? Promise.resolve({ data: currentTeacher }) : fastGet('/complaint-box/current-teacher', undefined, { ttlMs: 60000 }).catch(() => null),
+        ]);
+
+        if (activeTabRef.current === 'submit' && tabRequestSeqRef.current === seq) {
+          if (classesRes?.data) setClassOptions(classesRes.data);
+          if (yearsRes?.data) {
+            setAcademicYears(yearsRes.data);
+            if (yearsRes.data.length > 0 && !selectedAcademicYear) {
+              const activeYear = yearsRes.data.find((y: any) => y.isActive) || yearsRes.data[0];
+              setSelectedAcademicYear(activeYear.name);
+            }
+          }
+          if (teachersRes?.data) setTeachers(teachersRes.data);
+          if (currentTeacherRes?.data) {
+            setCurrentTeacher(currentTeacherRes.data);
+            if (!submittingTeacherId) setSubmittingTeacherId(currentTeacherRes.data.id);
+          }
+        }
+      } else if (tab === 'pending') {
+        const res = await fastGet('/complaint-box/pending-cases', {
+          params: filterAcademicYear !== 'All' ? { academicYear: filterAcademicYear } : {}
+        }, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh && activeTabRef.current === 'pending' && tabRequestSeqRef.current === seq) {
+              setPendingCases(fresh.data || fresh);
+            }
+          }
+        });
+        if (activeTabRef.current === 'pending' && tabRequestSeqRef.current === seq) {
+          if (res?.data) {
+            setPendingCases(res.data);
+          }
+        }
+      } else if (tab === 'history') {
+        if (academicYears.length === 0) {
+          const yearsRes = await fastGet('/complaint-box/academic-years', undefined, { ttlMs: 60000 }).catch(() => null);
+          if (yearsRes?.data && activeTabRef.current === 'history' && tabRequestSeqRef.current === seq) {
+            setAcademicYears(yearsRes.data);
+          }
+        }
+      }
+    } catch (err: any) {
+      if (activeTabRef.current === tab && tabRequestSeqRef.current === seq) {
+        console.error(`Failed to load data for tab ${tab}:`, err);
+        setTabError(prev => ({
+          ...prev,
+          [tab]: err?.message || 'Unable to retrieve records from the school server. Please verify your connection and try again.'
+        }));
+      }
+    } finally {
+      if (activeTabRef.current === tab && tabRequestSeqRef.current === seq) {
+        setTabLoading(prev => ({ ...prev, [tab]: false }));
+      }
+    }
+  };
 
   // Fetch initial setup data
   useEffect(() => {
@@ -270,9 +410,13 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
       }
     } catch (err) {
       console.error('Failed to load initial data:', err);
+      if (activeTabRef.current === 'parent-complaints') {
+        setTabError(prev => ({ ...prev, 'parent-complaints': 'Failed to load initial data. Please retry.' }));
+      }
     } finally {
       setIsLoading(false);
       setIsLoadingParentComplaints(false);
+      setTabLoading(prev => ({ ...prev, 'parent-complaints': false }));
     }
   };
 
@@ -616,65 +760,95 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
         {/* Salesforce SLDS Style Navigation Tabs */}
         <div className="flex border-b border-slate-700 bg-slate-800/50 px-6 overflow-x-auto scrollbar-none">
           <button
-            onClick={() => { setActiveTab('parent-complaints'); fetchParentComplaints(); }}
-            className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            onClick={() => handleTabChange('parent-complaints')}
+            className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-2 ${
               activeTab === 'parent-complaints'
                 ? 'border-blue-500 text-blue-400 bg-slate-900 font-extrabold'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             Parent Complaints &amp; Tickets
+            {tabLoading['parent-complaints'] && <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />}
           </button>
           <button
-            onClick={() => setActiveTab('submit')}
-            className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            onClick={() => handleTabChange('submit')}
+            className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-2 ${
               activeTab === 'submit'
                 ? 'border-blue-500 text-blue-400 bg-slate-900 font-extrabold'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             Log Behavior
+            {tabLoading['submit'] && <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />}
           </button>
           <button
-            onClick={() => { setActiveTab('pending'); refreshPendingCases(); }}
-            className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            onClick={() => handleTabChange('pending')}
+            className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-2 ${
               activeTab === 'pending'
                 ? 'border-blue-500 text-blue-400 bg-slate-900 font-extrabold'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             Pending Behavior Cases
+            {tabLoading['pending'] && <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />}
           </button>
           <button
-            onClick={() => setActiveTab('history')}
-            className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            onClick={() => handleTabChange('history')}
+            className={`px-6 py-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer whitespace-nowrap inline-flex items-center gap-2 ${
               activeTab === 'history'
                 ? 'border-blue-500 text-blue-400 bg-slate-900 font-extrabold'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             Student Ledger &amp; Stats
+            {tabLoading['history'] && <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />}
           </button>
         </div>
 
         {/* Card Body Container */}
-        <div className="p-4 sm:p-8 bg-slate-900">
+        <div className="p-4 sm:p-8 bg-slate-900 min-h-[380px]">
+          {tabLoading[activeTab] ? (
+            <div className="w-full flex flex-col items-center justify-center p-16 text-center bg-slate-800/40 rounded-2xl border border-slate-700/60 min-h-[320px] animate-in fade-in duration-200">
+              <PencilSpinner size="md" />
+              <h4 className="font-bold text-slate-200 text-sm mt-4 tracking-wide">
+                {activeTab === 'parent-complaints' ? 'Loading Parent Complaints & Tickets...' :
+                 activeTab === 'submit' ? 'Loading Student Behavior Roster & Form...' :
+                 activeTab === 'pending' ? 'Loading Pending Behavior Cases...' :
+                 'Loading Student Ledger & Stats...'}
+              </h4>
+              <p className="text-xs text-slate-400 font-medium mt-1">Retrieving latest records from CS EduTrack</p>
+            </div>
+          ) : tabError[activeTab] ? (
+            <div className="w-full p-12 flex flex-col items-center justify-center text-center bg-slate-800/60 border border-rose-900/50 rounded-2xl min-h-[260px] animate-in fade-in duration-200">
+              <div className="w-12 h-12 rounded-2xl bg-rose-900/40 text-rose-400 flex items-center justify-center mb-3">
+                <AlertCircle className="w-6 h-6 stroke-[2]" />
+              </div>
+              <h4 className="text-base font-bold text-slate-100">Unable to load records</h4>
+              <p className="text-xs text-slate-400 font-medium mt-1 max-w-md">{tabError[activeTab]}</p>
+              <button
+                onClick={() => loadTabData(activeTab)}
+                className="mt-4 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors inline-flex items-center gap-2 cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" /> Retry Loading
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* TAB 0: PARENT COMPLAINTS & TICKETS MANAGEMENT */}
+              {activeTab === 'parent-complaints' && (
+                <div className="space-y-6 pb-24">
+                  {/* Filter Bar */}
+                  <div className="bg-slate-800 p-4 sm:p-6 rounded-2xl border border-slate-700 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between shadow-xs">
+                    <div className="flex items-center gap-2 text-slate-300">
+                      <Filter className="w-4 h-4 text-blue-400 shrink-0" />
+                      <span className="font-bold text-xs uppercase tracking-wider text-slate-300">Parent Grievance Tickets</span>
+                    </div>
 
-          {/* TAB 0: PARENT COMPLAINTS & TICKETS MANAGEMENT */}
-          {activeTab === 'parent-complaints' && (
-            <div className="space-y-6 pb-24">
-              {/* Filter Bar */}
-              <div className="bg-slate-800 p-4 sm:p-6 rounded-2xl border border-slate-700 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between shadow-xs">
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Filter className="w-4 h-4 text-blue-400 shrink-0" />
-                  <span className="font-bold text-xs uppercase tracking-wider text-slate-300">Parent Grievance Tickets</span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 items-center w-full sm:w-auto">
-                  {(['All', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const).map(st => (
-                    <button
-                      key={st}
-                      onClick={() => setParentFilterStatus(st)}
+                    <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 items-center w-full sm:w-auto">
+                      {(['All', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const).map(st => (
+                        <button
+                          key={st}
+                          onClick={() => handleParentFilterChange(st)}
                       className={`text-center px-3 py-2 sm:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         st === 'CLOSED' ? 'col-span-2 sm:col-auto' : ''
                       } ${
@@ -1091,7 +1265,7 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
                   <select
                     value={filterAcademicYear}
-                    onChange={(e) => setFilterAcademicYear(e.target.value)}
+                    onChange={(e) => handlePendingYearChange(e.target.value)}
                     className="bg-slate-700 border border-slate-600 rounded-xl px-3 py-1.5 text-xs text-slate-100 outline-none w-full sm:w-auto focus:border-blue-500"
                   >
                     <option value="All">All Years</option>
@@ -1514,6 +1688,8 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
               )}
             </div>
           )}
+          </>
+        )}
         </div>
       </div>
 
