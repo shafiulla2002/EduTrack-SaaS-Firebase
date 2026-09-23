@@ -146,102 +146,171 @@ export class TenantController {
       return cached.data;
     }
 
-    const [
-      currentUser,
-      setup,
-      classesCount,
-      teachersCount,
-      studentsCount,
-      subscription
-    ] = await Promise.all([
-      this.prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          avatarUrl: true,
-          staffProfile: {
-            select: { id: true, staffRole: true, designation: true, staffCategory: true }
-          }
-        },
-      }),
-      this.prisma.schoolSetup.findUnique({
-        where: { tenantId },
-        include: { tenant: true },
-      }),
-      this.prisma.classSection.count({
-        where: {
-          tenantId,
-          class: {
-            isActive: true,
-          },
-        },
-      }),
-      this.prisma.staffProfile.count({
-        where: {
-          user: {
-            tenantId,
-            isActive: true,
-            role: { in: ['TEACHER', 'STAFF'] },
-          },
-        },
-      }),
-      this.prisma.studentProfile.count({
-        where: {
-          user: {
-            tenantId,
-            isActive: true,
-          },
-        },
-      }),
-      this.prisma.tenantSubscription.findUnique({
-        where: { tenantId },
-        include: { plan: true },
-      })
-    ]);
-
-    if (!setup) {
-      const tenant = await this.prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
-      const incompleteResult = {
-        setupCompleted: false,
-        completionPercentage: 0,
+    try {
+      const [
+        currentUser,
+        setup,
         classesCount,
         teachersCount,
         studentsCount,
-        missingFields: [
-          'schoolName',
-          'schoolType',
-          'adminName',
-          'mobileNumber',
-          'email',
-          'address',
-          'academicYear',
-        ],
-        setup: tenant ? {
-          id: '',
-          tenantId: tenant.id,
-          schoolName: tenant.name || '',
-          schoolType: tenant.subtitle || 'School',
-          adminName: currentUser?.name || tenant.name || 'Admin',
-          mobileNumber: tenant.phone || '',
-          email: tenant.email || '',
-          address: tenant.address || '',
-          academicYear: '2026-2027',
-          principalName: '',
-          country: '',
-          state: '',
-          district: '',
-          city: '',
-          postalCode: '',
-          schoolLogo: tenant.logoUrl || null,
-          isCompleted: false,
-        } : null,
-        tenantName: tenant?.name || '',
-        tenantLogo: tenant?.logoUrl || null,
+        subscription
+      ] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: req.user.id },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            avatarUrl: true,
+            staffProfile: {
+              select: { id: true, staffRole: true, designation: true, staffCategory: true }
+            }
+          },
+        }),
+        this.prisma.schoolSetup.findUnique({
+          where: { tenantId },
+          include: { tenant: true },
+        }),
+        this.prisma.classSection.count({
+          where: {
+            tenantId,
+            class: {
+              isActive: true,
+            },
+          },
+        }),
+        this.prisma.staffProfile.count({
+          where: {
+            user: {
+              tenantId,
+              isActive: true,
+              role: { in: ['TEACHER', 'STAFF'] },
+            },
+          },
+        }),
+        this.prisma.studentProfile.count({
+          where: {
+            user: {
+              tenantId,
+              isActive: true,
+            },
+          },
+        }),
+        this.prisma.tenantSubscription.findUnique({
+          where: { tenantId },
+          include: { plan: true },
+        })
+      ]);
+
+      if (!setup) {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+        });
+        const incompleteResult = {
+          setupCompleted: false,
+          completionPercentage: 0,
+          classesCount: classesCount || 0,
+          teachersCount: teachersCount || 0,
+          studentsCount: studentsCount || 0,
+          missingFields: [
+            'schoolName',
+            'schoolType',
+            'adminName',
+            'mobileNumber',
+            'email',
+            'address',
+            'academicYear',
+          ],
+          setup: tenant ? {
+            id: '',
+            tenantId: tenant.id,
+            schoolName: tenant.name || '',
+            schoolType: tenant.subtitle || 'School',
+            adminName: currentUser?.name || tenant.name || 'Admin',
+            mobileNumber: tenant.phone || '',
+            email: tenant.email || '',
+            address: tenant.address || '',
+            academicYear: '2026-2027',
+            principalName: '',
+            country: '',
+            state: '',
+            district: '',
+            city: '',
+            postalCode: '',
+            schoolLogo: tenant.logoUrl || null,
+            isCompleted: false,
+          } : null,
+          tenantName: tenant?.name || '',
+          tenantLogo: tenant?.logoUrl || null,
+          currentUser,
+          subscription: subscription ? {
+            plan: subscription.plan?.name || 'TRIAL',
+            status: subscription.status,
+            expiryDate: subscription.expiryDate,
+            studentLimit: subscription.plan?.studentLimit || 500,
+            teacherLimit: subscription.plan?.teacherLimit || 50,
+            features: subscription.plan?.features || [],
+          } : null,
+        };
+
+        TenantController.setupStatusCache.set(cacheKey, {
+          data: incompleteResult,
+          expiresAt: Date.now() + 60000 // 60s in-memory TTL
+        });
+
+        return incompleteResult;
+      }
+
+      // Ensure fallback to tenant/currentUser names if empty in setup
+      if (!setup.schoolName && setup.tenant?.name) {
+        setup.schoolName = setup.tenant.name;
+      }
+      if (!setup.adminName && currentUser?.name) {
+        setup.adminName = currentUser.name;
+      }
+      if (!setup.schoolLogo && setup.tenant?.logoUrl) {
+        setup.schoolLogo = setup.tenant.logoUrl;
+      }
+
+      // Calculate profile completion percentage based on 13 total fields
+      const fields = [
+        setup.schoolName, setup.schoolType, setup.adminName, setup.mobileNumber,
+        setup.email, setup.address, setup.academicYear, setup.principalName,
+        setup.country, setup.state, setup.district, setup.city, setup.postalCode
+      ];
+      
+      const filledCount = fields.filter(val => val && String(val).trim() !== '').length;
+      const completionPercentage = Math.round((filledCount / fields.length) * 100);
+
+      // Identify missing optional setup fields
+      const missingFields: string[] = [];
+      const checkFields = {
+        principalName: setup.principalName,
+        country: setup.country,
+        state: setup.state,
+        district: setup.district,
+        city: setup.city,
+        postalCode: setup.postalCode,
+        schoolLogo: setup.schoolLogo,
+      };
+
+      for (const [key, val] of Object.entries(checkFields)) {
+        if (!val || String(val).trim() === '') {
+          missingFields.push(key);
+        }
+      }
+
+      const statusResult = {
+        setupCompleted: setup.isCompleted,
+        completionPercentage,
+        classesCount: classesCount || 0,
+        teachersCount: teachersCount || 0,
+        studentsCount: studentsCount || 0,
+        missingFields,
+        setup,
+        tenantName: setup.schoolName || setup.tenant?.name || '',
+        tenantLogo: setup.schoolLogo || setup.tenant?.logoUrl || null,
         currentUser,
         subscription: subscription ? {
           plan: subscription.plan?.name || 'TRIAL',
@@ -254,79 +323,24 @@ export class TenantController {
       };
 
       TenantController.setupStatusCache.set(cacheKey, {
-        data: incompleteResult,
+        data: statusResult,
         expiresAt: Date.now() + 60000 // 60s in-memory TTL
       });
 
-      return incompleteResult;
+      return statusResult;
+    } catch (err) {
+      console.warn('[TenantController] Error in getSetupStatus, returning safe fallback:', err);
+      return {
+        setupCompleted: false,
+        completionPercentage: 0,
+        classesCount: 0,
+        teachersCount: 0,
+        studentsCount: 0,
+        setup: null,
+        currentUser: null,
+        subscription: null,
+      };
     }
-
-    // Ensure fallback to tenant/currentUser names if empty in setup
-    if (!setup.schoolName && setup.tenant?.name) {
-      setup.schoolName = setup.tenant.name;
-    }
-    if (!setup.adminName && currentUser?.name) {
-      setup.adminName = currentUser.name;
-    }
-    if (!setup.schoolLogo && setup.tenant?.logoUrl) {
-      setup.schoolLogo = setup.tenant.logoUrl;
-    }
-
-    // Calculate profile completion percentage based on 13 total fields
-    const fields = [
-      setup.schoolName, setup.schoolType, setup.adminName, setup.mobileNumber,
-      setup.email, setup.address, setup.academicYear, setup.principalName,
-      setup.country, setup.state, setup.district, setup.city, setup.postalCode
-    ];
-    
-    const filledCount = fields.filter(val => val && String(val).trim() !== '').length;
-    const completionPercentage = Math.round((filledCount / fields.length) * 100);
-
-    // Identify missing optional setup fields
-    const missingFields: string[] = [];
-    const checkFields = {
-      principalName: setup.principalName,
-      country: setup.country,
-      state: setup.state,
-      district: setup.district,
-      city: setup.city,
-      postalCode: setup.postalCode,
-      schoolLogo: setup.schoolLogo,
-    };
-
-    for (const [key, val] of Object.entries(checkFields)) {
-      if (!val || String(val).trim() === '') {
-        missingFields.push(key);
-      }
-    }
-
-    const statusResult = {
-      setupCompleted: setup.isCompleted,
-      completionPercentage,
-      classesCount,
-      teachersCount,
-      studentsCount,
-      missingFields,
-      setup,
-      tenantName: setup.schoolName || setup.tenant?.name || '',
-      tenantLogo: setup.schoolLogo || setup.tenant?.logoUrl || null,
-      currentUser,
-      subscription: subscription ? {
-        plan: subscription.plan?.name || 'TRIAL',
-        status: subscription.status,
-        expiryDate: subscription.expiryDate,
-        studentLimit: subscription.plan?.studentLimit || 500,
-        teacherLimit: subscription.plan?.teacherLimit || 50,
-        features: subscription.plan?.features || [],
-      } : null,
-    };
-
-    TenantController.setupStatusCache.set(cacheKey, {
-      data: statusResult,
-      expiresAt: Date.now() + 60000 // 60s in-memory TTL
-    });
-
-    return statusResult;
   }
 
   @UseGuards(JwtAuthGuard)

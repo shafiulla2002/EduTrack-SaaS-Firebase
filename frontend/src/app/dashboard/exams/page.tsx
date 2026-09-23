@@ -82,45 +82,26 @@ export default function ExamsAndMarksPage() {
   const ENTER_MARKS_FILTER_KEY = 'cs-edutrack-enter-marks-filter';
 
   // Metadata state loaded once on mount
-  const [academicYears, setAcademicYears] = useState<AcademicYearOption[]>(() => getCachedData<AcademicYearOption[]>('/academics/academic-years') || []);
-  const [classes, setClasses] = useState<ClassSectionOption[]>(() => getCachedData<ClassSectionOption[]>('/exams/classes') || []);
-  const [examTypes, setExamTypes] = useState<string[]>(() => getCachedData<string[]>('/exams/exam-types') || []);
-  const [components, setComponents] = useState<any[]>(() => getCachedData<any[]>('/exam-config/components') || []);
+  const [academicYears, setAcademicYears] = useState<AcademicYearOption[]>([]);
+  const [classes, setClasses] = useState<ClassSectionOption[]>([]);
+  const [examTypes, setExamTypes] = useState<string[]>([]);
+  const [components, setComponents] = useState<any[]>([]);
   const [availableSubjects, setAvailableSubjects] = useState<SubjectOption[]>([]);
   const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
 
-  // ── SINGLE UNIFIED FILTER STATE ─────────────────────────────────────────────
+  // ── SINGLE UNIFIED FILTER STATE (SSR SAFE INITIAL STATE) ────────────────────
   const [selectedFilters, setSelectedFilters] = useState<{
     academicYearId: string;
     classSectionId: string;
     subjectId: string;
     examName: string;
     component: string;
-  }>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const rawSaved = localStorage.getItem(ENTER_MARKS_FILTER_KEY);
-        if (rawSaved) {
-          const parsed = JSON.parse(rawSaved);
-          if (parsed && typeof parsed === 'object') {
-            return {
-              academicYearId: parsed.academicYearId || '',
-              classSectionId: parsed.classSectionId || '',
-              subjectId: parsed.subjectId || '',
-              examName: parsed.examName || '',
-              component: parsed.component || '',
-            };
-          }
-        }
-      } catch (e) {}
-    }
-    return {
-      academicYearId: '',
-      classSectionId: '',
-      subjectId: '',
-      examName: '',
-      component: '',
-    };
+  }>({
+    academicYearId: '',
+    classSectionId: '',
+    subjectId: '',
+    examName: '',
+    component: '',
   });
 
   // ── ACTIVE APPLIED FILTER SNAPSHOT ─────────────────────────────────────────
@@ -135,26 +116,7 @@ export default function ExamsAndMarksPage() {
   // ── ROSTER & REPORT RESULTS ────────────────────────────────────────────────
   const [roster, setRoster] = useState<StudentMarkRow[]>([]);
   const [reportData, setReportData] = useState<MarksReportData | null>(null);
-  const [rosterStatus, setRosterStatus] = useState<RosterStatus>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const rawSaved = localStorage.getItem(ENTER_MARKS_FILTER_KEY);
-        if (rawSaved) {
-          const parsed = JSON.parse(rawSaved);
-          if (
-            parsed?.academicYearId &&
-            parsed?.classSectionId &&
-            parsed?.subjectId &&
-            parsed?.examName &&
-            parsed?.component
-          ) {
-            return 'loading';
-          }
-        }
-      } catch (e) {}
-    }
-    return 'idle';
-  });
+  const [rosterStatus, setRosterStatus] = useState<RosterStatus>('idle');
   const [rosterError, setRosterError] = useState<string>('');
   const [metadataError, setMetadataError] = useState<string>('');
 
@@ -169,10 +131,7 @@ export default function ExamsAndMarksPage() {
     passMarks: 35,
   });
 
-  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => {
-    const cachedYears = getCachedData<AcademicYearOption[]>('/academics/academic-years');
-    return !cachedYears || cachedYears.length === 0;
-  });
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -232,10 +191,8 @@ export default function ExamsAndMarksPage() {
     isFromRestore = false
   ) => {
     const cs = targetCs || classes.find(c => c.value === filtersToApply.classSectionId);
-    if (!cs) {
-      if (!isFromRestore) {
-        showToast('Could not resolve Class Section. Please verify your selection.', 'error');
-      }
+    if (!cs && !isFromRestore) {
+      showToast('Could not resolve Class Section. Please verify your selection.', 'error');
       return false;
     }
 
@@ -250,9 +207,9 @@ export default function ExamsAndMarksPage() {
     setRosterError('');
     setIsFiltering(true);
 
-    const classSectionId = cs.value;
-    const classId = cs.classId || '';
-    const sectionId = cs.sectionId || '';
+    const classSectionId = filtersToApply.classSectionId;
+    const classId = cs?.classId || '';
+    const sectionId = cs?.sectionId || '';
     const { subjectId, examName, component } = filtersToApply;
 
     try {
@@ -260,7 +217,7 @@ export default function ExamsAndMarksPage() {
         api.get(
           `/exams/marks-entry?classSectionId=${classSectionId}&subjectId=${subjectId}&examName=${encodeURIComponent(
             examName
-          )}&subjectType=${encodeURIComponent(component)}`,
+          )}&subjectType=${encodeURIComponent(component || 'Theory')}`,
           { signal: abortController.signal }
         ),
         api.get(
@@ -340,91 +297,124 @@ export default function ExamsAndMarksPage() {
     }
   };
 
-  // ── LOAD INITIAL METADATA & RESTORE SAVED FILTER ON REFRESH ────────────────
-  useEffect(() => {
-    fetchMetadata();
-  }, []);
-
-  const fetchMetadata = async (retryCount = 0) => {
+  // ── LOAD INITIAL METADATA & PARALLEL RESTORE ON MOUNT ──────────────────────
+  const fetchMetadata = async () => {
+    let isMounted = true;
     try {
       setMetadataError('');
-      const [yearRes, classRes, typeRes, compRes] = await Promise.all([
+
+      // 1. Read saved filter from localStorage immediately on mount
+      let savedFilter: any = null;
+      try {
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem(ENTER_MARKS_FILTER_KEY);
+          if (raw) savedFilter = JSON.parse(raw);
+        }
+      } catch (e) {}
+
+      const hasSaved = Boolean(
+        savedFilter?.academicYearId &&
+        savedFilter?.classSectionId &&
+        savedFilter?.subjectId &&
+        savedFilter?.examName &&
+        savedFilter?.component
+      );
+
+      if (hasSaved) {
+        setSelectedFilters(savedFilter);
+        setRosterStatus('loading');
+        setIsFiltering(true);
+      }
+
+      // 2. Fetch all metadata and restore payloads concurrently in parallel
+      const metadataRequests = [
         fastGet('/academics/academic-years', undefined, { ttlMs: 60000 })
           .catch(() => fastGet('/academic-years', undefined, { ttlMs: 60000 }))
           .catch(() => ({ data: [] })),
-        fastGet('/exams/classes', undefined, { ttlMs: 60000 }),
-        fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }),
-        fastGet('/exam-config/components', undefined, { ttlMs: 60000 }),
+        fastGet('/exams/classes', undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
+        fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
+        fastGet('/exam-config/components', undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
+      ];
+
+      const restoreRequests = hasSaved
+        ? [
+            fastGet(`/exams/subjects?classSectionId=${savedFilter.classSectionId}`, undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
+            api.get(
+              `/exams/marks-entry?classSectionId=${savedFilter.classSectionId}&subjectId=${savedFilter.subjectId}&examName=${encodeURIComponent(
+                savedFilter.examName
+              )}&subjectType=${encodeURIComponent(savedFilter.component || 'Theory')}`
+            ).catch(() => null),
+            api.get(
+              `/exams/marks-report?academicYearId=${savedFilter.academicYearId}&classSectionId=${savedFilter.classSectionId}&examName=${encodeURIComponent(
+                savedFilter.examName
+              )}`
+            ).catch(() => null),
+          ]
+        : [];
+
+      const [metadataRes, restoreRes] = await Promise.all([
+        Promise.all(metadataRequests),
+        Promise.all(restoreRequests),
       ]);
 
-      const loadedYears: AcademicYearOption[] = yearRes.data || [];
-      const loadedClasses: ClassSectionOption[] = classRes.data || [];
-      const loadedExamTypes: string[] = typeRes.data || [];
-      const loadedComponents: any[] = compRes.data || [];
+      const [yearRes, classRes, typeRes, compRes] = metadataRes;
+      const loadedYears: AcademicYearOption[] = (yearRes as any)?.data || [];
+      const loadedClasses: ClassSectionOption[] = (classRes as any)?.data || [];
+      const loadedExamTypes: string[] = (typeRes as any)?.data || [];
+      const loadedComponents: any[] = (compRes as any)?.data || [];
 
       setAcademicYears(loadedYears);
       setClasses(loadedClasses);
       setExamTypes(loadedExamTypes);
       setComponents(loadedComponents);
 
-      // Check and restore last successfully applied filter from localStorage
-      let restoredSuccessfully = false;
-      try {
-        const rawSaved = typeof window !== 'undefined' ? localStorage.getItem(ENTER_MARKS_FILTER_KEY) : null;
-        if (rawSaved) {
-          const saved = JSON.parse(rawSaved);
-          if (
-            saved?.academicYearId &&
-            saved?.classSectionId &&
-            saved?.subjectId &&
-            saved?.examName &&
-            saved?.component
-          ) {
-            const validYear = loadedYears.some(ay => ay.id === saved.academicYearId);
-            const matchedCs = loadedClasses.find(
-              c => c.value === saved.classSectionId && (!c.academicYearId || c.academicYearId === saved.academicYearId)
-            );
-
-            if (validYear && matchedCs) {
-              // Pre-fetch available subjects for this class section
-              const subRes = await fastGet(`/exams/subjects?classSectionId=${saved.classSectionId}`, undefined, { ttlMs: 60000 });
-              const loadedSubjects: SubjectOption[] = subRes?.data || [];
-              setAvailableSubjects(loadedSubjects);
-
-              const validSub = loadedSubjects.some((s: any) => s.id === saved.subjectId);
-              const validExam = loadedExamTypes.includes(saved.examName);
-
-              if (validSub && validExam) {
-                setSelectedFilters(saved);
-                restoredSuccessfully = await executeFilterFetch(saved, matchedCs, true);
-              }
-            }
-          }
+      if (hasSaved && restoreRes.length > 0) {
+        const [subRes, marksEntryRes, reportRes] = restoreRes;
+        if (subRes?.data && Array.isArray(subRes.data)) {
+          setAvailableSubjects(subRes.data);
         }
-      } catch (e) {
-        console.warn('Error restoring saved enter-marks filter', e);
-      }
 
-      if (!restoredSuccessfully) {
-        try {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem(ENTER_MARKS_FILTER_KEY);
+        if (marksEntryRes?.data) {
+          const marksData = marksEntryRes.data;
+          const rawRoster: StudentMarkRow[] = marksData.roster || [];
+          const loadedRoster = sortRosterByRollNo(rawRoster);
+          setRoster(loadedRoster);
+
+          if (marksData.config) {
+            const maxM = Number(marksData.config.maxMarks) || 100;
+            const passPct = Number(marksData.config.passingPercentage) || 35;
+            const passM =
+              marksData.config.passMarks !== undefined && marksData.config.passMarks !== null
+                ? Number(marksData.config.passMarks)
+                : Number(((passPct / 100) * maxM).toFixed(2));
+            setExamConfig({ maxMarks: maxM, passingPercentage: passPct, passMarks: passM });
           }
-        } catch (e) {}
+
+          if (reportRes?.data) {
+            setReportData(reportRes.data);
+          }
+
+          setActiveFilter({ ...savedFilter });
+          setRosterStatus('success');
+        } else {
+          setRosterStatus('idle');
+        }
+      } else {
         setRosterStatus('idle');
       }
     } catch (err: any) {
       console.error('[Exam Page] API ERROR fetchMetadata:', err);
-      if (retryCount < 2) {
-        setTimeout(() => fetchMetadata(retryCount + 1), 600);
-      } else {
-        setMetadataError('Failed to load academic years and exam metadata. Please click Retry.');
-        setRosterStatus('idle');
-      }
+      setMetadataError('Failed to load academic years and exam metadata. Please click Retry.');
+      setRosterStatus('idle');
     } finally {
       setIsInitialLoading(false);
+      setIsFiltering(false);
     }
   };
+
+  useEffect(() => {
+    fetchMetadata();
+  }, []);
 
   // ── PROGRESSIVE CASCADING DROPDOWN DERIVATION ────────────────────────────────
 
@@ -1178,7 +1168,7 @@ export default function ExamsAndMarksPage() {
           <button
             onClick={() => {
               setMetadataError('');
-              fetchMetadata(0);
+              fetchMetadata();
             }}
             className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
           >

@@ -436,13 +436,12 @@ export class ExamsService {
         },
       }),
       resolvedExamId
-        ? this.prisma.examSubject.findUnique({
+        ? this.prisma.examSubject.findFirst({
             where: {
-              examId_subjectId_subjectType: {
-                examId: resolvedExamId,
-                subjectId,
-                subjectType,
-              },
+              tenantId,
+              examId: resolvedExamId,
+              subjectId,
+              ...(subjectType ? { subjectType: { equals: subjectType, mode: 'insensitive' } } : {}),
             },
           })
         : null,
@@ -452,7 +451,7 @@ export class ExamsService {
               tenantId,
               examId: resolvedExamId,
               subjectId,
-              subjectType,
+              ...(subjectType ? { subjectType: { equals: subjectType, mode: 'insensitive' } } : {}),
             },
             select: {
               studentId: true,
@@ -501,20 +500,27 @@ export class ExamsService {
     let passingPercentage = 35;
     let passMarks = 35;
 
-    if (existingExamSubject) {
-      maxMarks = Number(existingExamSubject.maxMarks) || 100;
-      passingPercentage = Number(existingExamSubject.passingPercentage) || 35;
-      passMarks = existingExamSubject.passMarks !== null && existingExamSubject.passMarks !== undefined
-        ? Number(existingExamSubject.passMarks)
-        : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-    } else {
-      // In-memory resolution from template hierarchy without saving to DB
-      const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
-      const subRec = subjectId ? await this.prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } }) : null;
-      const resolved = this.examConfigService.resolveSubjectConfig(cfg, subjectId, subjectType, subRec?.name);
-      maxMarks = resolved.maxMarks;
-      passingPercentage = resolved.passingPercentage;
-      passMarks = resolved.passMarks;
+    try {
+      if (existingExamSubject) {
+        maxMarks = Number(existingExamSubject.maxMarks) || 100;
+        passingPercentage = Number(existingExamSubject.passingPercentage) || 35;
+        passMarks = existingExamSubject.passMarks !== null && existingExamSubject.passMarks !== undefined
+          ? Number(existingExamSubject.passMarks)
+          : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
+      } else {
+        // In-memory resolution from template hierarchy without saving to DB
+        const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
+        const subRec = subjectId ? await this.prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } }) : null;
+        const resolved = this.examConfigService.resolveSubjectConfig(cfg, subjectId, subjectType, subRec?.name);
+        maxMarks = resolved.maxMarks;
+        passingPercentage = resolved.passingPercentage;
+        passMarks = resolved.passMarks;
+      }
+    } catch (configErr) {
+      console.warn('[ExamsService] Error resolving exam subject config, using safe defaults:', configErr);
+      maxMarks = 100;
+      passingPercentage = 35;
+      passMarks = 35;
     }
 
     // Ensure safe numeric values (never NaN)
@@ -942,7 +948,7 @@ export class ExamsService {
       where: {
         tenantId,
         classSectionId: resolvedClassSectionId,
-        name: examName.trim(),
+        name: { equals: examName.trim(), mode: 'insensitive' },
       },
     });
 

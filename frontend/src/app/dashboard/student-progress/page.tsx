@@ -6,18 +6,13 @@ import LoadingSpinner from '@/components/loading/LoadingSpinner';
 import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, ChevronRight, User, Sparkles, BarChart3, RefreshCw } from 'lucide-react';
 
 export default function StudentProgressPage() {
-  // Synchronous cache initialization for instant 0ms load
-  const [classes, setClasses] = useState<any[]>(() => getCachedData<any[]>('/teacher-portal/classes') || []);
+  const [classes, setClasses] = useState<any[]>([]);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [students, setStudents] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
   const [progress, setProgress] = useState<any | null>(null);
 
-  const [loading, setLoading] = useState<boolean>(() => {
-    const cached = getCachedData<any[]>('/teacher-portal/classes');
-    return !cached || cached.length === 0;
-  });
-
+  const [loading, setLoading] = useState<boolean>(true);
   const [loadingStudents, setLoadingStudents] = useState<boolean>(false);
   const [loadingStudentData, setLoadingStudentData] = useState<boolean>(false);
   const [hoveredBar, setHoveredBar] = useState<any | null>(null);
