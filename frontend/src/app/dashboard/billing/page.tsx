@@ -36,10 +36,14 @@ interface InvoicePDFData {
   schoolLogo: string;
   schoolSubtitle: string;
   invoiceNo: string;
+  receiptNumber?: string;
+  transactionId?: string;
+  paymentMethod?: string;
   invoiceDate: string;
   academicYear: string;
   admissionRef: string;
   studentName: string;
+  rollNo?: string;
   fatherName: string;
   motherName: string;
   className: string;
@@ -47,9 +51,128 @@ interface InvoicePDFData {
   studentDob: string;
   addressVillage: string;
   totalAmount: number;
+  paidAmount?: number;
   parentPhone?: string;
   remainingBalance?: number;
   items: { particulars: string; amount: number }[];
+}
+
+interface PaymentSuccessRecord {
+  invoiceId: string;
+  receiptNumber: string;
+  transactionId: string;
+  studentId: string;
+  studentName: string;
+  rollNo?: string;
+  className?: string;
+  sectionName?: string;
+  fatherName?: string;
+  motherName?: string;
+  parentPhone?: string;
+  fatherPhone?: string;
+  motherPhone?: string;
+  guardianPhone?: string;
+  amountPaid: number;
+  totalInvoiceAmount?: number;
+  remainingBalance: number;
+  paymentMethod: string;
+  paymentMethodLabel: string;
+  paymentDate: string;
+  schoolName?: string;
+  schoolLogo?: string;
+  items: Array<{ particulars: string; amount: number }>;
+}
+
+/**
+ * Normalizes phone numbers strictly according to E.164 without '+' for WhatsApp deep-links.
+ * For Indian numbers: converts 10 digits, +91, 0-prefixed, formatted (+91 98765-43210) into 91XXXXXXXXXX.
+ */
+function normalizeWhatsAppNumber(rawNumber?: string | null): {
+  valid: boolean;
+  normalized: string;
+  error?: string;
+} {
+  if (!rawNumber || !rawNumber.trim()) {
+    return {
+      valid: false,
+      normalized: '',
+      error: 'Parent WhatsApp number is not available for this student.',
+    };
+  }
+
+  // Strip all non-digit characters
+  const digits = rawNumber.replace(/\D/g, '');
+
+  if (!digits || digits.length === 0) {
+    return {
+      valid: false,
+      normalized: '',
+      error: 'Parent WhatsApp number is not available for this student.',
+    };
+  }
+
+  // 10 digits (e.g. 9876543210) -> 919876543210
+  if (digits.length === 10) {
+    return { valid: true, normalized: `91${digits}` };
+  }
+
+  // 11 digits with leading 0 (e.g. 09876543210) -> 919876543210
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return { valid: true, normalized: `91${digits.slice(1)}` };
+  }
+
+  // 12 digits with 91 country code (e.g. 919876543210) -> 919876543210
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return { valid: true, normalized: digits };
+  }
+
+  // 13 digits with 910 (e.g. 9109876543210 -> strip 0 after 91)
+  if (digits.length === 13 && digits.startsWith('910')) {
+    return { valid: true, normalized: `91${digits.slice(3)}` };
+  }
+
+  // Other standard international numbers (10-15 digits)
+  if (digits.length >= 10 && digits.length <= 15) {
+    return { valid: true, normalized: digits };
+  }
+
+  return {
+    valid: false,
+    normalized: '',
+    error: "Invalid parent WhatsApp number. Please update the parent's contact number.",
+  };
+}
+
+/**
+ * Formats the prefilled WhatsApp receipt message according to Section 2 specifications.
+ */
+function formatWhatsAppReceiptMessage(params: {
+  studentName: string;
+  receiptNumber: string;
+  transactionId: string;
+  amountPaid: number;
+  remainingBalance: number;
+  paymentMethod: string;
+  paymentDate: string;
+  schoolName?: string;
+  receiptUrl?: string;
+}): string {
+  const formattedPaid = params.amountPaid.toLocaleString('en-IN');
+  const formattedBalance = params.remainingBalance.toLocaleString('en-IN');
+  const school = params.schoolName || 'CS EduTrack';
+
+  return `Dear Parent,\n\n`
+    + `Fee payment receipt for *${params.studentName}*\n\n`
+    + `*Receipt Number:* ${params.receiptNumber}\n`
+    + `*Transaction ID:* ${params.transactionId}\n\n`
+    + `*Amount Paid:* ₹${formattedPaid}\n`
+    + `*Remaining Balance:* ₹${formattedBalance}\n\n`
+    + `*Payment Method:* ${params.paymentMethod}\n`
+    + `*Payment Date:* ${params.paymentDate}\n\n`
+    + (params.receiptUrl ? `*Receipt Link:* ${params.receiptUrl}\n\n` : '')
+    + `Please find the payment receipt for your reference.\n\n`
+    + `Thank you,\n`
+    + `${school}`;
 }
 
 export default function FeesBillingPage() {
@@ -86,6 +209,7 @@ export default function FeesBillingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [successModalOpen, setSuccessModalOpen] = useState(false);
   const [successInvoiceId, setSuccessInvoiceId] = useState<string | null>(null);
+  const [lastPaymentSuccess, setLastPaymentSuccess] = useState<PaymentSuccessRecord | null>(null);
   const [lastPaidStudentName, setLastPaidStudentName] = useState('');
   const [lastPaidAmount, setLastPaidAmount] = useState(0);
 
@@ -385,12 +509,55 @@ export default function FeesBillingPage() {
 
       const createdInvoiceId = res.data;
       const nextBalance = Math.max(0, (selectedStudent.totalPendingBalance || 0) - billingTotal);
+      const paymentDateFormatted = new Date().toLocaleString('en-IN');
+      const channelObj = paymentChannels.find(c => c.value === selectedChannel);
+      const methodLabel = channelObj?.label || selectedChannel;
       
+      const parentPhoneResolved = selectedStudent.account.parentPhone 
+        || selectedStudent.fatherPhone 
+        || selectedStudent.motherPhone 
+        || selectedStudent.guardianPhone 
+        || selectedStudent.account.phone 
+        || selectedStudent.phone 
+        || '';
+
+      const paymentRecord: PaymentSuccessRecord = {
+        invoiceId: createdInvoiceId,
+        receiptNumber: createdInvoiceId,
+        transactionId: createdInvoiceId,
+        studentId: selectedStudent.account.id,
+        studentName: selectedStudent.account.name,
+        rollNo: selectedStudent.account.rollNo || '',
+        className: selectedStudent.account.class || '',
+        sectionName: selectedStudent.account.section || '',
+        fatherName: selectedStudent.account.fatherName || '',
+        motherName: selectedStudent.account.motherName || '',
+        parentPhone: parentPhoneResolved,
+        fatherPhone: selectedStudent.fatherPhone || '',
+        motherPhone: selectedStudent.motherPhone || '',
+        guardianPhone: selectedStudent.guardianPhone || '',
+        amountPaid: billingTotal,
+        totalInvoiceAmount: billingTotal,
+        remainingBalance: nextBalance,
+        paymentMethod: selectedChannel,
+        paymentMethodLabel: methodLabel,
+        paymentDate: paymentDateFormatted,
+        schoolName: schoolName || 'CS EduTrack',
+        items: itemsToPay.map(item => {
+          const matchedFee = feeItems.find(f => f.id === item.oliId);
+          return {
+            particulars: matchedFee?.name || 'Fee Component',
+            amount: item.amount,
+          };
+        }),
+      };
+
+      setLastPaymentSuccess(paymentRecord);
       setLastPaidStudentName(selectedStudent.account.name);
       setLastPaidAmount(billingTotal);
       setSuccessInvoiceId(createdInvoiceId);
       setSuccessRemainingBalance(nextBalance);
-      setSuccessPaymentDate(new Date().toLocaleString('en-IN'));
+      setSuccessPaymentDate(paymentDateFormatted);
       
       setConfirmModalOpen(false);
       setSuccessModalOpen(true);
@@ -421,9 +588,74 @@ export default function FeesBillingPage() {
     }
   };
 
-  const generateInvoicePDFInstance = async (invoiceId: string) => {
-    const res = await api.get(`/billing/invoices/${invoiceId}/pdf`);
-    const data: InvoicePDFData = res.data;
+  const generateInvoicePDFInstance = async (invoiceId: string, overrideData?: Partial<PaymentSuccessRecord> | null) => {
+    let data: InvoicePDFData;
+    try {
+      const res = await api.get(`/billing/invoices/${invoiceId}/pdf`);
+      data = res.data;
+    } catch (fetchErr) {
+      console.warn('Could not fetch invoice PDF data from server, using local payment record:', fetchErr);
+      data = {
+        schoolName: overrideData?.schoolName || schoolName || 'CS EduTrack',
+        schoolAddress: 'School Campus Address',
+        schoolPhone: '+91 999 999 9999',
+        schoolLogo: '',
+        schoolSubtitle: 'Inspiring Excellence, Nurturing Values',
+        invoiceNo: overrideData?.receiptNumber || invoiceId,
+        receiptNumber: overrideData?.receiptNumber || invoiceId,
+        transactionId: overrideData?.transactionId || invoiceId,
+        invoiceDate: overrideData?.paymentDate || new Date().toISOString().split('T')[0],
+        academicYear: selectedYear || '2026-2027',
+        admissionRef: overrideData?.rollNo ? `Roll No: ${overrideData.rollNo}` : invoiceId,
+        studentName: overrideData?.studentName || lastPaidStudentName || 'Student',
+        rollNo: overrideData?.rollNo || '',
+        fatherName: overrideData?.fatherName || '',
+        motherName: overrideData?.motherName || '',
+        className: overrideData?.className || '',
+        sectionName: overrideData?.sectionName || '',
+        studentDob: '',
+        addressVillage: '',
+        totalAmount: overrideData?.amountPaid ?? lastPaidAmount ?? 0,
+        paidAmount: overrideData?.amountPaid ?? lastPaidAmount ?? 0,
+        remainingBalance: overrideData?.remainingBalance ?? successRemainingBalance ?? 0,
+        parentPhone: overrideData?.parentPhone || '',
+        paymentMethod: overrideData?.paymentMethodLabel || 'Physical Cash',
+        items: overrideData?.items || [{ particulars: 'Fee Payment', amount: overrideData?.amountPaid || lastPaidAmount || 0 }],
+      };
+    }
+
+    // Ensure authoritative payment data matches exactly across modal, PDF, and WhatsApp
+    if (overrideData) {
+      if (overrideData.amountPaid !== undefined) {
+        data.paidAmount = overrideData.amountPaid;
+        data.totalAmount = overrideData.amountPaid;
+      }
+      if (overrideData.remainingBalance !== undefined) {
+        data.remainingBalance = overrideData.remainingBalance;
+      }
+      if (overrideData.paymentMethodLabel) {
+        data.paymentMethod = overrideData.paymentMethodLabel;
+      }
+      if (overrideData.studentName) {
+        data.studentName = overrideData.studentName;
+      }
+      if (overrideData.parentPhone) {
+        data.parentPhone = overrideData.parentPhone;
+      }
+      if (overrideData.rollNo) {
+        data.rollNo = overrideData.rollNo;
+      }
+      if (overrideData.receiptNumber) {
+        data.receiptNumber = overrideData.receiptNumber;
+      }
+      if (overrideData.transactionId) {
+        data.transactionId = overrideData.transactionId;
+      }
+    }
+
+    const paidDisplay = (data.paidAmount ?? data.totalAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    const balanceDisplay = (data.remainingBalance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    const isBalancePositive = (data.remainingBalance ?? 0) > 0;
 
     // 1. Preload logo image (if exists) to ensure html2canvas can capture it successfully
     if (data.schoolLogo) {
@@ -443,16 +675,16 @@ export default function FeesBillingPage() {
     container.style.width = '800px';
     container.style.backgroundColor = '#ffffff';
     container.style.color = '#2d3748';
-    container.style.fontFamily = 'sans-serif';
+    container.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
     container.style.padding = '40px';
     
     container.innerHTML = `
-      <div style="border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+      <div style="border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); background-color: #ffffff;">
         <!-- Header -->
         <div style="background-color: #1a365d; color: #ffffff; padding: 30px; border-bottom: 6px solid #ed8936; display: flex; align-items: center; gap: 20px;">
-          <div style="width: 80px; height: 80px; background-color: #ffffff; border-radius: 50%; padding: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; shrink: 0;">
+          <div style="width: 75px; height: 75px; background-color: #ffffff; border-radius: 50%; padding: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; shrink: 0;">
             ${data.schoolLogo ? `<img src="${data.schoolLogo}" style="width: 100%; height: 100%; object-fit: contain;" />` : `
-              <svg style="width: 50px; height: 50px; stroke: #1a365d; stroke-width: 2; fill: none;" viewBox="0 0 24 24">
+              <svg style="width: 45px; height: 45px; stroke: #1a365d; stroke-width: 2; fill: none;" viewBox="0 0 24 24">
                 <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
                 <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
               </svg>
@@ -465,27 +697,31 @@ export default function FeesBillingPage() {
         </div>
 
         <!-- Body -->
-        <div style="padding: 40px; min-height: 400px;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h2 style="margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; color: #1a365d;">Fee Receipt</h2>
+        <div style="padding: 35px; min-height: 400px;">
+          <div style="text-align: center; margin-bottom: 25px;">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; color: #1a365d;">Official Student Fee Receipt</h2>
           </div>
 
           <!-- Metadata Table -->
-          <table style="width: 100%; font-size: 13px; margin-bottom: 25px; border-collapse: collapse; border-bottom: 1px solid #e2e8f0; padding-bottom: 15px;">
+          <table style="width: 100%; font-size: 13px; margin-bottom: 20px; border-collapse: collapse; border-bottom: 1px solid #e2e8f0; padding-bottom: 15px;">
             <tbody>
               <tr>
-                <td style="padding: 6px 0;"><strong>Receipt No:</strong> <span style="font-family: monospace; font-weight: bold; color: #1e293b;">${data.invoiceNo}</span></td>
+                <td style="padding: 6px 0;"><strong>Receipt No:</strong> <span style="font-family: monospace; font-weight: bold; color: #1e293b;">${data.receiptNumber || data.invoiceNo}</span></td>
                 <td style="padding: 6px 0; text-align: right;"><strong>Academic Year:</strong> <span style="font-weight: bold; color: #1e293b;">${data.academicYear}</span></td>
               </tr>
               <tr>
-                <td style="padding: 6px 0;"><strong>Receipt Date:</strong> <span style="color: #1e293b;">${data.invoiceDate}</span></td>
-                <td style="padding: 6px 0; text-align: right;"><strong>Admission Ref:</strong> <span style="font-family: monospace; color: #1e293b;">${data.admissionRef}</span></td>
+                <td style="padding: 6px 0;"><strong>Transaction ID:</strong> <span style="font-family: monospace; color: #475569;">${data.transactionId || invoiceId}</span></td>
+                <td style="padding: 6px 0; text-align: right;"><strong>Payment Method:</strong> <span style="font-weight: bold; color: #1e293b;">${data.paymentMethod || 'Physical Cash'}</span></td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0;"><strong>Payment Date & Time:</strong> <span style="color: #1e293b;">${data.invoiceDate}</span></td>
+                <td style="padding: 6px 0; text-align: right;"><strong>${data.rollNo ? `Roll No: ${data.rollNo}` : 'Admission Ref'}:</strong> <span style="font-family: monospace; color: #1e293b;">${data.admissionRef}</span></td>
               </tr>
             </tbody>
           </table>
 
           <!-- Student Card -->
-          <div style="background-color: #f7fafc; border: 1px solid #e2e8f0; border-left: 5px solid #1a365d; padding: 20px; border-radius: 6px; margin-bottom: 30px;">
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid #1a365d; padding: 18px; border-radius: 8px; margin-bottom: 25px;">
             <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
               <tbody>
                 <tr>
@@ -493,25 +729,24 @@ export default function FeesBillingPage() {
                     <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Student Name</div>
                     <div style="font-size: 15px; color: #1a365d; font-weight: bold; margin-top: 2px;">${data.studentName}</div>
                     
-                    <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase; margin-top: 15px;">Parent Details</div>
-                    <div style="color: #4b5563; margin-top: 4px; line-height: 1.5;">
-                      Father: <span style="font-weight: 600; color: #1f2937;">${data.fatherName}</span><br/>
-                      Mother: <span style="font-weight: 600; color: #1f2937;">${data.motherName}</span>
+                    <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase; margin-top: 12px;">Parent Details</div>
+                    <div style="color: #4b5563; margin-top: 3px; line-height: 1.5; font-size: 12px;">
+                      ${data.fatherName ? `Father: <span style="font-weight: 600; color: #1f2937;">${data.fatherName}</span><br/>` : ''}
+                      ${data.motherName ? `Mother: <span style="font-weight: 600; color: #1f2937;">${data.motherName}</span><br/>` : ''}
+                      ${data.parentPhone ? `Contact: <span style="font-family: monospace; font-weight: 600; color: #1f2937;">${data.parentPhone}</span>` : ''}
                     </div>
                   </td>
                   <td style="width: 30%; vertical-align: top; padding: 0 15px;">
                     <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Class & Section</div>
-                    <div style="font-size: 14px; color: #1a365d; font-weight: bold; margin-top: 2px;">${data.className} - ${data.sectionName}</div>
+                    <div style="font-size: 14px; color: #1a365d; font-weight: bold; margin-top: 2px;">${data.className}${data.sectionName ? ` - ${data.sectionName}` : ''}</div>
                     
-                    <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase; margin-top: 15px;">Date of Birth</div>
-                    <div style="font-size: 13px; color: #1f2937; font-weight: 500; margin-top: 2px;">${data.studentDob || '15 May 2012'}</div>
+                    <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase; margin-top: 12px;">Status</div>
+                    <div style="font-size: 13px; color: #166534; font-weight: bold; margin-top: 2px;">PAID / CONFIRMED</div>
                   </td>
                   <td style="width: 35%; vertical-align: top;">
-                    <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">Mailing Address</div>
-                    <div style="font-weight: 600; line-height: 1.5; margin-top: 4px; font-size: 12px; color: #1f2937;">
-                      ${data.addressVillage || 'Plot No. 12, Vikas Nagar,'}<br/>
-                      New Delhi - 110009,<br/>
-                      Delhi, India.
+                    <div style="font-size: 10px; color: #94a3b8; font-weight: bold; text-transform: uppercase;">School Address</div>
+                    <div style="font-weight: 500; line-height: 1.5; margin-top: 4px; font-size: 12px; color: #4b5563;">
+                      ${data.schoolAddress || 'School Campus Address'}
                     </div>
                   </td>
                 </tr>
@@ -520,20 +755,20 @@ export default function FeesBillingPage() {
           </div>
 
           <!-- Particulars Table -->
-          <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
             <thead>
               <tr style="background-color: #ebf8ff; color: #1a365d; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 2px solid #cbd5e1;">
-                <th style="padding: 12px 16px; text-align: left; width: 15%;">Sl. No</th>
-                <th style="padding: 12px 16px; text-align: left; width: 55%;">Particulars Description</th>
-                <th style="padding: 12px 16px; text-align: right; width: 30%;">Amount Paid</th>
+                <th style="padding: 10px 14px; text-align: left; width: 12%;">Sl. No</th>
+                <th style="padding: 10px 14px; text-align: left; width: 58%;">Particulars Description</th>
+                <th style="padding: 10px 14px; text-align: right; width: 30%;">Amount Paid</th>
               </tr>
             </thead>
             <tbody style="font-size: 13px;">
               ${data.items.map((item, index) => `
                 <tr style="border-bottom: 1px solid #f1f5f9;">
-                  <td style="padding: 14px 16px; color: #64748b; font-weight: 500;">${index + 1}</td>
-                  <td style="padding: 14px 16px; font-weight: 600; color: #1e293b;">${item.particulars}</td>
-                  <td style="padding: 14px 16px; text-align: right; font-weight: bold; color: ${item.amount < 0 ? '#059669' : '#1e293b'};">
+                  <td style="padding: 12px 14px; color: #64748b; font-weight: 500;">${index + 1}</td>
+                  <td style="padding: 12px 14px; font-weight: 600; color: #1e293b;">${item.particulars}</td>
+                  <td style="padding: 12px 14px; text-align: right; font-weight: bold; color: ${item.amount < 0 ? '#059669' : '#1e293b'};">
                     ${item.amount < 0 ? '-' : ''}₹${Math.abs(item.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
@@ -542,14 +777,20 @@ export default function FeesBillingPage() {
           </table>
         </div>
 
-        <!-- Footer Grand Total -->
-        <div style="background-color: #f8fafc; border-top: 1px solid #f1f5f9; padding: 30px 40px; display: flex; justify-content: space-between; align-items: center;">
-          <div style="font-size: 11px; color: #94a3b8; font-weight: 600; line-height: 1.5; max-width: 350px;">
-            This is a computer generated fee receipt. No physical signature is required. For verification query, contact the accounting department.
+        <!-- Footer Dual Amount Summary -->
+        <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 25px 35px; display: flex; justify-content: space-between; align-items: center; gap: 20px;">
+          <div style="font-size: 11px; color: #94a3b8; font-weight: 500; line-height: 1.5; max-width: 320px;">
+            This is a computer generated fee receipt. No physical signature is required. For any billing queries, contact the administration.
           </div>
-          <div style="background-color: #1a365d; color: #ffffff; border-radius: 8px; padding: 15px 25px; display: flex; align-items: center; gap: 30px; shrink: 0;">
-            <span style="font-size: 12px; font-weight: 500; text-transform: uppercase; color: #cbd5e1;">Grand Total Paid</span>
-            <span style="font-size: 20px; font-weight: 900; font-family: monospace;">₹${data.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+          <div style="display: flex; gap: 12px; align-items: center; shrink: 0;">
+            <div style="background-color: #1a365d; color: #ffffff; border-radius: 8px; padding: 12px 20px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; min-width: 150px;">
+              <span style="font-size: 10px; font-weight: 600; text-transform: uppercase; color: #93c5fd; letter-spacing: 0.5px;">Amount Paid</span>
+              <span style="font-size: 17px; font-weight: 900; font-family: monospace; color: #ffffff;">₹${paidDisplay}</span>
+            </div>
+            <div style="background-color: ${isBalancePositive ? '#fff1f2' : '#f0fdf4'}; color: ${isBalancePositive ? '#9f1239' : '#166534'}; border: 1px solid ${isBalancePositive ? '#fecdd3' : '#bbf7d0'}; border-radius: 8px; padding: 12px 20px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; min-width: 150px;">
+              <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Remaining Balance</span>
+              <span style="font-size: 17px; font-weight: 900; font-family: monospace;">₹${balanceDisplay}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -593,16 +834,16 @@ export default function FeesBillingPage() {
       heightLeft -= pageHeight;
     }
 
-    const safeInvoiceNo = (data.invoiceNo || invoiceId).replace(/[^a-zA-Z0-9]/g, '_');
+    const safeInvoiceNo = (data.receiptNumber || data.invoiceNo || invoiceId).replace(/[^a-zA-Z0-9]/g, '_');
     const filename = `fee_receipt_${safeInvoiceNo}.pdf`;
 
     return { pdf, data, filename };
   };
 
-  const downloadInvoicePDF = async (invoiceId: string) => {
+  const downloadInvoicePDF = async (invoiceId: string, recordOverride?: PaymentSuccessRecord | null) => {
     try {
       setIsLoading(true);
-      const { pdf, filename } = await generateInvoicePDFInstance(invoiceId);
+      const { pdf, filename } = await generateInvoicePDFInstance(invoiceId, recordOverride || lastPaymentSuccess);
       pdf.save(filename);
     } catch (err: any) {
       console.error('Failed to generate PDF download:', err);
@@ -613,81 +854,114 @@ export default function FeesBillingPage() {
     }
   };
 
-  const shareInvoiceWhatsApp = async (invoiceId: string) => {
+  const shareInvoiceWhatsApp = async (invoiceId: string, recordOverride?: PaymentSuccessRecord | null) => {
+    if (isSharingWhatsApp) return;
+
+    const record = recordOverride || lastPaymentSuccess;
+
+    // 1. Resolve parent phone number strictly from student/payment records
+    const rawPhone = record?.parentPhone 
+      || record?.fatherPhone 
+      || record?.motherPhone 
+      || record?.guardianPhone 
+      || selectedStudent?.account?.parentPhone 
+      || selectedStudent?.fatherPhone 
+      || selectedStudent?.motherPhone 
+      || selectedStudent?.guardianPhone 
+      || selectedStudent?.account?.phone 
+      || '';
+
+    const phoneValidation = normalizeWhatsAppNumber(rawPhone);
+
+    // Requirement 6: Handle missing or invalid parent phone number
+    if (!phoneValidation.valid) {
+      const errorMsg = phoneValidation.error || 'Parent WhatsApp number is not available for this student.';
+      alert(errorMsg);
+      setToastMessage(errorMsg);
+      setTimeout(() => setToastMessage(null), 5000);
+      return;
+    }
+
+    const phoneClean = phoneValidation.normalized;
+
+    // Build receipt URL for parent
+    const receiptUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/dashboard/billing/invoices/${invoiceId}`
+      : `/dashboard/billing/invoices/${invoiceId}`;
+
+    // Compose prefilled share message matching Requirement 2
+    const studentName = record?.studentName || lastPaidStudentName || 'Student';
+    const amountPaidVal = record?.amountPaid ?? lastPaidAmount ?? 0;
+    const remainingBalanceVal = record?.remainingBalance ?? successRemainingBalance ?? 0;
+    const paymentMethodVal = record?.paymentMethodLabel || paymentChannels.find(c => c.value === selectedChannel)?.label || 'Physical Cash';
+    const paymentDateVal = record?.paymentDate || successPaymentDate || new Date().toLocaleString('en-IN');
+    const schoolTitle = record?.schoolName || schoolName || 'CS EduTrack';
+
+    const shareText = formatWhatsAppReceiptMessage({
+      studentName,
+      receiptNumber: record?.receiptNumber || invoiceId,
+      transactionId: record?.transactionId || invoiceId,
+      amountPaid: amountPaidVal,
+      remainingBalance: remainingBalanceVal,
+      paymentMethod: paymentMethodVal,
+      paymentDate: paymentDateVal,
+      schoolName: schoolTitle,
+      receiptUrl,
+    });
+
+    const whatsappUrl = `https://wa.me/${phoneClean}?text=${encodeURIComponent(shareText)}`;
+
+    // Desktop Chrome Popup-Blocker Prevention:
+    // Synchronously open blank window reference on user click gesture
+    let popupWindow: Window | null = null;
     try {
-      setIsSharingWhatsApp(true);
-      const { pdf, data, filename } = await generateInvoicePDFInstance(invoiceId);
+      popupWindow = window.open('about:blank', '_blank');
+      if (popupWindow) {
+        popupWindow.document.write(`
+          <html>
+            <head><title>Opening WhatsApp...</title></head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f8fafc; color: #1e293b;">
+              <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; text-align: center; max-width: 400px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);">
+                <div style="width: 48px; height: 48px; background: #ecfdf5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                  <span style="font-size: 24px;">💬</span>
+                </div>
+                <h3 style="margin: 0 0 8px; font-size: 16px; font-weight: 700;">Opening WhatsApp Chat</h3>
+                <p style="margin: 0; font-size: 13px; color: #64748b;">Preparing receipt PDF and redirecting to WhatsApp...</p>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+    } catch (popupErr) {
+      console.warn('Could not pre-open popup window:', popupErr);
+    }
 
-      // Convert jsPDF instance to binary Blob and File for native share support
-      const pdfBlob = pdf.output('blob');
-      const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+    setIsSharingWhatsApp(true);
 
-      // Determine parent phone number
-      const acc = selectedStudent?.account || {};
-      const rawPhone = (data.parentPhone || selectedStudent?.fatherPhone || selectedStudent?.motherPhone || acc.phone || selectedStudent?.phone || '').replace(/\D/g, '');
-      const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
+    try {
+      // 1. Generate and download the official high-resolution PDF
+      const { pdf, filename } = await generateInvoicePDFInstance(invoiceId, record);
+      pdf.save(filename);
 
-      // Build absolute receipt URL for online viewing/download
-      const receiptUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/dashboard/billing/invoices/${invoiceId}`
-        : `/dashboard/billing/invoices/${invoiceId}`;
-
-      // Compose share message with receipt details and link
-      const shareText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n`
-        + `🏫 *School:* ${data.schoolName || schoolName || 'EduTrack School Portal'}\n`
-        + `📄 *Receipt No:* ${data.invoiceNo || invoiceId}\n`
-        + `👤 *Student:* ${data.studentName || lastPaidStudentName} (${data.className || ''} ${data.sectionName || ''})\n`
-        + `📅 *Date & Time:* ${data.invoiceDate || successPaymentDate}\n\n`
-        + `----------------------------------------\n`
-        + `💳 *Amount Paid:* ₹${(data.totalAmount || lastPaidAmount).toLocaleString('en-IN')}\n`
-        + `⏳ *Remaining Balance:* ₹${(data.remainingBalance !== undefined ? data.remainingBalance : successRemainingBalance).toLocaleString('en-IN')}\n`
-        + `----------------------------------------\n\n`
-        + `📎 *View & Download Official PDF Receipt:* ${receiptUrl}\n\n`
-        + `Thank you for your payment!`;
-
-      // 1. Attempt native share with PDF attachment (mobile browsers supporting Web Share API)
-      if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-        try {
-          await navigator.share({
-            files: [pdfFile],
-            title: `Fee Receipt - ${data.invoiceNo || invoiceId}`,
-            text: shareText,
-          });
-          return; // Successful native share, no further action needed
-        } catch (shareErr: any) {
-          if (shareErr.name === 'AbortError') return; // User cancelled the native share dialog
-          console.warn('Native share failed, falling back to download + WhatsApp link:', shareErr);
-        }
+      // 2. Redirect popup window to WhatsApp deep-link
+      if (popupWindow && !popupWindow.closed) {
+        popupWindow.location.href = whatsappUrl;
+      } else {
+        window.open(whatsappUrl, '_blank');
       }
 
-      // 2. Fallback for desktop or unsupported browsers: download PDF then open WhatsApp with link
-      pdf.save(filename);
-      const whatsappBase = phoneClean ? `https://wa.me/${phoneClean}` : 'https://api.whatsapp.com/send';
-      const whatsappUrl = `${whatsappBase}?text=${encodeURIComponent(shareText)}`;
-      window.open(whatsappUrl, '_blank');
+      setToastMessage('WhatsApp chat opened. Please attach the downloaded receipt PDF to the chat if needed.');
+      setTimeout(() => setToastMessage(null), 6000);
     } catch (err: any) {
-      console.error('Failed to share PDF via WhatsApp:', err);
-      // Fallback: send minimal text message with receipt link if PDF generation fails
-      const acc = selectedStudent?.account || {};
-      const rawPhone = (selectedStudent?.fatherPhone || selectedStudent?.motherPhone || acc.phone || selectedStudent?.phone || '').replace(/\D/g, '');
-      const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
-      const receiptUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/dashboard/billing/invoices/${invoiceId}`
-        : `/dashboard/billing/invoices/${invoiceId}`;
-      const fallbackText = `*FEE PAYMENT RECEIPT CONFIRMATION*\n`
-        + `🏫 *School:* ${schoolName || 'EduTrack School Portal'}\n`
-        + `📄 *Receipt No:* ${invoiceId}\n`
-        + `👤 *Student:* ${lastPaidStudentName}\n`
-        + `📅 *Date & Time:* ${successPaymentDate}\n\n`
-        + `----------------------------------------\n`
-        + `💳 *Amount Paid:* ₹${lastPaidAmount.toLocaleString('en-IN')}\n`
-        + `⏳ *Remaining Balance:* ₹${successRemainingBalance.toLocaleString('en-IN')}\n`
-        + `----------------------------------------\n\n`
-        + `📎 *Online PDF Receipt:* ${receiptUrl}\n\n`
-        + `Thank you for your payment!`;
-      const whatsappBase = phoneClean ? `https://wa.me/${phoneClean}` : 'https://api.whatsapp.com/send';
-      const whatsappUrl = `${whatsappBase}?text=${encodeURIComponent(fallbackText)}`;
-      window.open(whatsappUrl, '_blank');
+      console.error('Failed to generate PDF during WhatsApp share:', err);
+      // Fallback: still redirect to WhatsApp with prefilled details even if PDF generation throws
+      if (popupWindow && !popupWindow.closed) {
+        popupWindow.location.href = whatsappUrl;
+      } else {
+        window.open(whatsappUrl, '_blank');
+      }
+      setToastMessage('WhatsApp chat opened with receipt details.');
+      setTimeout(() => setToastMessage(null), 6000);
     } finally {
       setIsSharingWhatsApp(false);
     }
@@ -1340,33 +1614,33 @@ export default function FeesBillingPage() {
             <div className="bg-slate-50 rounded-xl p-3.5 text-xs text-slate-650 space-y-1.5 text-left border border-slate-100">
               <div className="flex justify-between">
                 <span className="font-semibold text-slate-400">Student:</span>
-                <span className="font-bold text-slate-800">{lastPaidStudentName}</span>
+                <span className="font-bold text-slate-800">{lastPaymentSuccess?.studentName || lastPaidStudentName}</span>
               </div>
               <div className="flex justify-between">
                 <span className="font-semibold text-slate-400">Receipt Number:</span>
-                <span className="font-mono text-slate-800 font-bold">{successInvoiceId}</span>
+                <span className="font-mono text-slate-800 font-bold">{lastPaymentSuccess?.receiptNumber || successInvoiceId}</span>
               </div>
               <div className="flex justify-between">
                 <span className="font-semibold text-slate-400">Transaction ID:</span>
-                <span className="font-mono text-slate-800">{successInvoiceId}</span>
+                <span className="font-mono text-slate-800">{lastPaymentSuccess?.transactionId || successInvoiceId}</span>
               </div>
               <div className="flex justify-between">
                 <span className="font-semibold text-slate-400">Amount Paid:</span>
-                <span className="font-extrabold text-slate-900">₹{lastPaidAmount.toLocaleString()}</span>
+                <span className="font-extrabold text-slate-900">₹{(lastPaymentSuccess?.amountPaid ?? lastPaidAmount).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">
                 <span className="font-semibold text-slate-400">Payment Method:</span>
                 <span className="font-semibold text-slate-800">
-                  {paymentChannels.find(c => c.value === selectedChannel)?.label || selectedChannel}
+                  {lastPaymentSuccess?.paymentMethodLabel || paymentChannels.find(c => c.value === selectedChannel)?.label || selectedChannel}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="font-semibold text-slate-400">Payment Date &amp; Time:</span>
-                <span className="font-mono text-slate-700 font-semibold">{successPaymentDate}</span>
+                <span className="font-mono text-slate-700 font-semibold">{lastPaymentSuccess?.paymentDate || successPaymentDate}</span>
               </div>
               <div className="flex justify-between border-t border-slate-200/60 pt-1.5">
                 <span className="font-bold text-slate-500">Remaining Balance:</span>
-                <span className="font-black text-rose-600 font-mono">₹{successRemainingBalance.toLocaleString()}</span>
+                <span className="font-black text-rose-600 font-mono">₹{(lastPaymentSuccess?.remainingBalance ?? successRemainingBalance).toLocaleString('en-IN')}</span>
               </div>
             </div>
 
@@ -1375,7 +1649,7 @@ export default function FeesBillingPage() {
                 type="button"
                 onClick={() => {
                   if (successInvoiceId) {
-                    downloadInvoicePDF(successInvoiceId);
+                    downloadInvoicePDF(successInvoiceId, lastPaymentSuccess);
                   }
                 }}
                 className="w-full sm:w-auto flex-1 px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer border-none"
@@ -1387,7 +1661,7 @@ export default function FeesBillingPage() {
                 disabled={isSharingWhatsApp}
                 onClick={() => {
                   if (successInvoiceId) {
-                    shareInvoiceWhatsApp(successInvoiceId);
+                    shareInvoiceWhatsApp(successInvoiceId, lastPaymentSuccess);
                   }
                 }}
                 className={`w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm border-none ${

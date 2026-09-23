@@ -32,15 +32,20 @@ export class CommunicationsService {
   }
 
   async getNotifications(recipientId: string) {
-    const tenantId = this.getTenantId();
-    const user = await this.prisma.user.findUnique({ where: { id: recipientId } });
-    if (!user || user.tenantId !== tenantId) {
-      throw new NotFoundException('Recipient user not found in this school context');
+    if (!recipientId) return [];
+    try {
+      const tenantId = this.getTenantId();
+      const user = await this.prisma.user.findUnique({ where: { id: recipientId } });
+      if (!user || (user.tenantId && user.tenantId !== tenantId)) {
+        return [];
+      }
+      return await this.prisma.notification.findMany({
+        where: { recipientId },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch {
+      return [];
     }
-    return this.prisma.notification.findMany({
-      where: { recipientId },
-      orderBy: { createdAt: 'desc' },
-    });
   }
 
   async markAsRead(id: string) {

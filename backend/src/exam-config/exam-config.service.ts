@@ -72,7 +72,7 @@ export class ExamConfigService {
         ? await prisma.examConfig.findFirst({
             where: {
               tenantId: tid,
-              examTypeName: { equals: cleanExamType, mode: 'insensitive' },
+              ...(cleanExamType ? { examTypeName: { equals: cleanExamType, mode: 'insensitive' } } : {}),
               classId,
               academicYearId,
             },
@@ -84,7 +84,7 @@ export class ExamConfigService {
         classCfg = await prisma.examConfig.findFirst({
           where: {
             tenantId: tid,
-            examTypeName: { equals: cleanExamType, mode: 'insensitive' },
+            ...(cleanExamType ? { examTypeName: { equals: cleanExamType, mode: 'insensitive' } } : {}),
             classId,
           },
           include: { subjectConfigs: { include: { subject: true } } },
@@ -93,8 +93,8 @@ export class ExamConfigService {
 
       if (classCfg) {
         return {
-          passingPercentage: Number(classCfg.passingPercentage),
-          maxMarks: classCfg.maxMarks,
+          passingPercentage: Number(classCfg.passingPercentage) || 35,
+          maxMarks: Number(classCfg.maxMarks) || 100,
           gradeRanges: parseGradeRanges(classCfg.gradeRanges),
           source: 'class-specific',
           subjectConfigs: classCfg.subjectConfigs,
@@ -103,33 +103,39 @@ export class ExamConfigService {
     }
 
     // 1. Try exam-specific config (global template for the specific Exam Type, classId/academicYearId = null)
-    const specific = await prisma.examConfig.findFirst({
+    if (cleanExamType) {
+      const specific = await prisma.examConfig.findFirst({
+        where: {
+          tenantId: tid,
+          examTypeName: { equals: cleanExamType, mode: 'insensitive' },
+          classId: null,
+        },
+        include: { subjectConfigs: { include: { subject: true } } },
+      });
+      if (specific) {
+        return {
+          passingPercentage: Number(specific.passingPercentage) || 35,
+          maxMarks: Number(specific.maxMarks) || 100,
+          gradeRanges: parseGradeRanges(specific.gradeRanges),
+          source: 'exam-specific',
+          subjectConfigs: specific.subjectConfigs,
+        };
+      }
+    }
+
+    // 2. Try global config (stored under key '__global__' or null)
+    const globalCfg = await prisma.examConfig.findFirst({
       where: {
         tenantId: tid,
-        examTypeName: { equals: cleanExamType, mode: 'insensitive' },
+        OR: [{ examTypeName: '__global__' }, { examTypeName: null }],
         classId: null,
       },
       include: { subjectConfigs: { include: { subject: true } } },
     });
-    if (specific) {
-      return {
-        passingPercentage: Number(specific.passingPercentage),
-        maxMarks: specific.maxMarks,
-        gradeRanges: parseGradeRanges(specific.gradeRanges),
-        source: 'exam-specific',
-        subjectConfigs: specific.subjectConfigs,
-      };
-    }
-
-    // 2. Try global config (stored under key '__global__')
-    const globalCfg = await prisma.examConfig.findFirst({
-      where: { tenantId: tid, examTypeName: '__global__', classId: null },
-      include: { subjectConfigs: { include: { subject: true } } },
-    });
     if (globalCfg) {
       return {
-        passingPercentage: Number(globalCfg.passingPercentage),
-        maxMarks: globalCfg.maxMarks,
+        passingPercentage: Number(globalCfg.passingPercentage) || 35,
+        maxMarks: Number(globalCfg.maxMarks) || 100,
         gradeRanges: parseGradeRanges(globalCfg.gradeRanges),
         source: 'global',
         subjectConfigs: globalCfg.subjectConfigs,
@@ -146,6 +152,7 @@ export class ExamConfigService {
   }
 
   async getClassSectionDetails(classSectionId: string) {
+    if (!classSectionId) return null;
     return this.prisma.classSection.findUnique({
       where: { id: classSectionId },
       include: { class: true },
@@ -153,6 +160,7 @@ export class ExamConfigService {
   }
 
   async getSubjectById(subjectId: string) {
+    if (!subjectId) return null;
     return this.prisma.subject.findUnique({
       where: { id: subjectId },
     });
@@ -204,32 +212,32 @@ export class ExamConfigService {
     }
 
     if (matchedSc) {
-      const maxMarks = Number(matchedSc.maxMarks);
-      const passingPercentage = Number(matchedSc.passingPercentage);
-      const passMarks = matchedSc.passMarks !== null && matchedSc.passMarks !== undefined
+      const maxMarks = Number(matchedSc.maxMarks) || 100;
+      const passingPercentage = Number(matchedSc.passingPercentage) || 35;
+      const passMarks = matchedSc.passMarks !== null && matchedSc.passMarks !== undefined && !isNaN(Number(matchedSc.passMarks))
         ? Number(matchedSc.passMarks)
         : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-      return { maxMarks, passMarks, passingPercentage };
+      return {
+        maxMarks: isNaN(maxMarks) || maxMarks <= 0 ? 100 : maxMarks,
+        passMarks: isNaN(passMarks) || passMarks < 0 ? 35 : passMarks,
+        passingPercentage: isNaN(passingPercentage) || passingPercentage < 0 ? 35 : passingPercentage,
+      };
     }
 
-    // Default subject maxMarks calculation:
-    // If the template has subjectConfigs (e.g. 8 subjects @ 50 marks each, total 400),
-    // an individual subject must NOT get 400!
-    // It should get the first subject's maxMarks (e.g. 50), or 100 if default.
     let defaultSubjectMax = 100;
     if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
       defaultSubjectMax = Number(cfg.subjectConfigs[0].maxMarks) || 100;
     } else if (cfg.maxMarks > 0 && cfg.maxMarks <= 100) {
-      defaultSubjectMax = cfg.maxMarks;
+      defaultSubjectMax = Number(cfg.maxMarks) || 100;
     }
 
-    const passingPercentage = Number(cfg.passingPercentage || 35);
+    const passingPercentage = Number(cfg.passingPercentage) || 35;
     const passMarks = Number(((passingPercentage / 100) * defaultSubjectMax).toFixed(2));
 
     return {
-      maxMarks: defaultSubjectMax,
-      passMarks,
-      passingPercentage,
+      maxMarks: isNaN(defaultSubjectMax) || defaultSubjectMax <= 0 ? 100 : defaultSubjectMax,
+      passMarks: isNaN(passMarks) || passMarks < 0 ? 35 : passMarks,
+      passingPercentage: isNaN(passingPercentage) || passingPercentage < 0 ? 35 : passingPercentage,
     };
   }
 

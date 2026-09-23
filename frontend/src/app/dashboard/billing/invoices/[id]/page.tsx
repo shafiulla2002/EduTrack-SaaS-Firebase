@@ -16,10 +16,14 @@ interface InvoicePDFData {
   schoolLogo: string;
   schoolSubtitle: string;
   invoiceNo: string;
+  receiptNumber?: string;
+  transactionId?: string;
+  paymentMethod?: string;
   invoiceDate: string;
   academicYear: string;
   admissionRef: string;
   studentName: string;
+  rollNo?: string;
   fatherName: string;
   motherName: string;
   className: string;
@@ -31,6 +35,92 @@ interface InvoicePDFData {
   remainingBalance?: number;
   parentPhone?: string;
   items: { particulars: string; amount: number }[];
+}
+
+/**
+ * Normalizes phone numbers strictly according to E.164 without '+' for WhatsApp deep-links.
+ * For Indian numbers: converts 10 digits, +91, 0-prefixed, formatted (+91 98765-43210) into 91XXXXXXXXXX.
+ */
+function normalizeWhatsAppNumber(rawNumber?: string | null): {
+  valid: boolean;
+  normalized: string;
+  error?: string;
+} {
+  if (!rawNumber || !rawNumber.trim()) {
+    return {
+      valid: false,
+      normalized: '',
+      error: 'Parent WhatsApp number is not available for this student.',
+    };
+  }
+
+  const digits = rawNumber.replace(/\D/g, '');
+
+  if (!digits || digits.length === 0) {
+    return {
+      valid: false,
+      normalized: '',
+      error: 'Parent WhatsApp number is not available for this student.',
+    };
+  }
+
+  if (digits.length === 10) {
+    return { valid: true, normalized: `91${digits}` };
+  }
+
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return { valid: true, normalized: `91${digits.slice(1)}` };
+  }
+
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return { valid: true, normalized: digits };
+  }
+
+  if (digits.length === 13 && digits.startsWith('910')) {
+    return { valid: true, normalized: `91${digits.slice(3)}` };
+  }
+
+  if (digits.length >= 10 && digits.length <= 15) {
+    return { valid: true, normalized: digits };
+  }
+
+  return {
+    valid: false,
+    normalized: '',
+    error: "Invalid parent WhatsApp number. Please update the parent's contact number.",
+  };
+}
+
+/**
+ * Formats the prefilled WhatsApp receipt message according to Section 2 specifications.
+ */
+function formatWhatsAppReceiptMessage(params: {
+  studentName: string;
+  receiptNumber: string;
+  transactionId: string;
+  amountPaid: number;
+  remainingBalance: number;
+  paymentMethod: string;
+  paymentDate: string;
+  schoolName?: string;
+  receiptUrl?: string;
+}): string {
+  const formattedPaid = params.amountPaid.toLocaleString('en-IN');
+  const formattedBalance = params.remainingBalance.toLocaleString('en-IN');
+  const school = params.schoolName || 'CS EduTrack';
+
+  return `Dear Parent,\n\n`
+    + `Fee payment receipt for *${params.studentName}*\n\n`
+    + `*Receipt Number:* ${params.receiptNumber}\n`
+    + `*Transaction ID:* ${params.transactionId}\n\n`
+    + `*Amount Paid:* ₹${formattedPaid}\n`
+    + `*Remaining Balance:* ₹${formattedBalance}\n\n`
+    + `*Payment Method:* ${params.paymentMethod}\n`
+    + `*Payment Date:* ${params.paymentDate}\n\n`
+    + (params.receiptUrl ? `*Receipt Link:* ${params.receiptUrl}\n\n` : '')
+    + `Please find the payment receipt for your reference.\n\n`
+    + `Thank you,\n`
+    + `${school}`;
 }
 
 export default function InvoicePrintPage() {
@@ -98,8 +188,8 @@ export default function InvoicePrintPage() {
 
     setIsGeneratingPDF(true);
     try {
-      const safeInvoiceNo = invoiceData.invoiceNo.replace(/[^a-zA-Z0-9]/g, '_');
-      const filename = `Invoice_${safeInvoiceNo}`;
+      const safeInvoiceNo = (invoiceData.receiptNumber || invoiceData.invoiceNo || id).replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `fee_receipt_${safeInvoiceNo}.pdf`;
 
       await PDFService.export({
         element,
@@ -123,31 +213,65 @@ export default function InvoicePrintPage() {
   const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
 
   const handleShareWhatsApp = async () => {
-    if (!invoiceData) return;
+    if (!invoiceData || isSharingWhatsApp) return;
+
+    const phoneValidation = normalizeWhatsAppNumber(invoiceData.parentPhone);
+    if (!phoneValidation.valid) {
+      alert(phoneValidation.error || 'Parent WhatsApp number is not available for this student.');
+      return;
+    }
+
+    const phoneClean = phoneValidation.normalized;
+    const safeInvoiceNo = (invoiceData.receiptNumber || invoiceData.invoiceNo || id).replace(/[^a-zA-Z0-9]/g, '_');
+    const filename = `fee_receipt_${safeInvoiceNo}.pdf`;
+
+    const receiptUrl = typeof window !== 'undefined' 
+      ? window.location.href 
+      : `/dashboard/billing/invoices/${id}`;
+
+    const text = formatWhatsAppReceiptMessage({
+      studentName: invoiceData.studentName,
+      receiptNumber: invoiceData.receiptNumber || invoiceData.invoiceNo,
+      transactionId: invoiceData.transactionId || id,
+      amountPaid: invoiceData.paidAmount ?? invoiceData.totalAmount,
+      remainingBalance: invoiceData.remainingBalance ?? 0,
+      paymentMethod: invoiceData.paymentMethod || 'Physical Cash',
+      paymentDate: invoiceData.invoiceDate,
+      schoolName: invoiceData.schoolName,
+      receiptUrl,
+    });
+
+    const whatsappUrl = `https://wa.me/${phoneClean}?text=${encodeURIComponent(text)}`;
+
+    // Desktop Chrome Popup-Blocker Prevention:
+    // Synchronously open blank window reference on user click gesture
+    let popupWindow: Window | null = null;
+    try {
+      popupWindow = window.open('about:blank', '_blank');
+      if (popupWindow) {
+        popupWindow.document.write(`
+          <html>
+            <head><title>Opening WhatsApp...</title></head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f8fafc; color: #1e293b;">
+              <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; text-align: center; max-width: 400px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);">
+                <div style="width: 48px; height: 48px; background: #ecfdf5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                  <span style="font-size: 24px;">💬</span>
+                </div>
+                <h3 style="margin: 0 0 8px; font-size: 16px; font-weight: 700;">Opening WhatsApp Chat</h3>
+                <p style="margin: 0; font-size: 13px; color: #64748b;">Preparing receipt PDF and redirecting to WhatsApp...</p>
+              </div>
+            </body>
+          </html>
+        `);
+      }
+    } catch (popupErr) {
+      console.warn('Could not pre-open popup window:', popupErr);
+    }
+
     setIsSharingWhatsApp(true);
+
     try {
       const element = document.getElementById('invoice-pdf-element');
-      const safeInvoiceNo = invoiceData.invoiceNo.replace(/[^a-zA-Z0-9]/g, '_');
-      const filename = `fee_receipt_${safeInvoiceNo}.pdf`;
-
-      const rawPhone = (invoiceData.parentPhone || '').replace(/\D/g, '');
-      const phoneClean = rawPhone ? (rawPhone.length === 10 ? `91${rawPhone}` : rawPhone) : '';
-
-      const receiptUrl = typeof window !== 'undefined' 
-        ? window.location.href 
-        : `/dashboard/billing/invoices/${id}`;
-
-      const text = `*OFFICIAL STUDENT FEE RECEIPT*\n` +
-        `🏫 *School:* ${invoiceData.schoolName}\n` +
-        `📄 *Receipt No:* ${invoiceData.invoiceNo}\n` +
-        `📅 *Date:* ${invoiceData.invoiceDate}\n` +
-        `👤 *Student:* ${invoiceData.studentName} (${invoiceData.className} - ${invoiceData.sectionName})\n\n` +
-        `----------------------------------------\n` +
-        `💳 *Amount Paid:* ₹${invoiceData.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
-        `⏳ *Remaining Balance:* ₹${(invoiceData.remainingBalance ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
-        `----------------------------------------\n\n` +
-        `📎 *View & Download Official PDF Receipt:* \n${receiptUrl}\n\n` +
-        `Thank you for your payment!`;
 
       if (element) {
         const pdf = await PDFService.generatePDF({
@@ -162,36 +286,23 @@ export default function InvoicePrintPage() {
           },
         });
 
-        const pdfBlob = pdf.output('blob');
-        const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
-
-        // 1. If Web Share API with files is supported (Mobile / Tablet / Safari / Chrome Mobile)
-        if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-          try {
-            await navigator.share({
-              files: [pdfFile],
-              title: `Fee Receipt - ${invoiceData.invoiceNo}`,
-              text
-            });
-            return;
-          } catch (shareErr: any) {
-            if (shareErr.name === 'AbortError') return;
-            console.warn('Native share failed or dismissed, falling back to download + WhatsApp Web:', shareErr);
-          }
-        }
-
-        // 2. On desktop browsers / fallback: Auto-download the high-res PDF
+        // Auto-download the high-res PDF
         pdf.save(filename);
       }
 
-      // 3. Open WhatsApp with full breakdown + direct receipt link
-      const whatsappUrl = phoneClean 
-        ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(text)}`
-        : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-
-      window.open(whatsappUrl, '_blank');
+      // Redirect popup window to WhatsApp deep-link
+      if (popupWindow && !popupWindow.closed) {
+        popupWindow.location.href = whatsappUrl;
+      } else {
+        window.open(whatsappUrl, '_blank');
+      }
     } catch (err: any) {
       console.error('Failed to share PDF via WhatsApp:', err);
+      if (popupWindow && !popupWindow.closed) {
+        popupWindow.location.href = whatsappUrl;
+      } else {
+        window.open(whatsappUrl, '_blank');
+      }
     } finally {
       setIsSharingWhatsApp(false);
     }
@@ -320,12 +431,14 @@ export default function InvoicePrintPage() {
           reportTitle="Official Student Fee Receipt"
           documentType="receipt"
           metadata={[
-            { label: 'Receipt No', value: invoiceData.invoiceNo },
+            { label: 'Receipt No', value: invoiceData.receiptNumber || invoiceData.invoiceNo },
+            { label: 'Transaction ID', value: invoiceData.transactionId || id },
             { label: 'Academic Year', value: invoiceData.academicYear },
             { label: 'Receipt Date', value: invoiceData.invoiceDate },
-            { label: 'Admission Ref', value: invoiceData.admissionRef },
+            { label: 'Payment Method', value: invoiceData.paymentMethod || 'Physical Cash' },
+            { label: invoiceData.rollNo ? 'Roll No' : 'Admission Ref', value: invoiceData.rollNo ? invoiceData.rollNo : invoiceData.admissionRef },
             { label: 'Student Name', value: invoiceData.studentName },
-            { label: 'Class & Section', value: `${invoiceData.className} - ${invoiceData.sectionName}` },
+            { label: 'Class & Section', value: `${invoiceData.className}${invoiceData.sectionName ? ` - ${invoiceData.sectionName}` : ''}` },
             { label: 'Date of Birth', value: invoiceData.studentDob || '15 May 2012' },
             { label: 'Father Name', value: invoiceData.fatherName }
           ]}
@@ -369,7 +482,7 @@ export default function InvoicePrintPage() {
             <div style={{ backgroundColor: '#1a365d', color: '#ffffff', borderRadius: '0.5rem', padding: '0.85rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', minWidth: '240px' }}>
               <span style={{ fontSize: '11px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#cbd5e1' }}>Paid Amount</span>
               <span style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: '#ffffff' }}>
-                ₹{(invoiceData.paidAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                ₹{(invoiceData.paidAmount ?? invoiceData.totalAmount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </span>
             </div>
             <div style={{ backgroundColor: (invoiceData.remainingBalance ?? 0) > 0 ? '#fff1f2' : '#f0fdf4', color: (invoiceData.remainingBalance ?? 0) > 0 ? '#9f1239' : '#166534', border: `1px solid ${(invoiceData.remainingBalance ?? 0) > 0 ? '#fecdd3' : '#bbf7d0'}`, borderRadius: '0.5rem', padding: '0.85rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', minWidth: '240px' }}>

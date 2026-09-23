@@ -846,6 +846,10 @@ export class BillingService {
         profilePhotoUrl: student.profilePhotoUrl,
         fatherName: student.fatherName,
         motherName: student.motherName,
+        fatherPhone: student.fatherPhone || '',
+        motherPhone: student.motherPhone || '',
+        guardianPhone: student.guardianPhone || '',
+        parentPhone: student.fatherPhone || student.motherPhone || student.guardianPhone || student.user?.phone || '',
         aadharNo: student.aadharNo,
         class: student.classSection?.class.name || '',
         section: student.classSection?.section.name || '',
@@ -1299,19 +1303,33 @@ export class BillingService {
       });
       totalRemainingBalance = studentInvoices.reduce((sum, inv) => sum + Number(inv.remainingBalance || 0), 0);
     }
-    const parentPhone = invoice.student.fatherPhone || invoice.student.motherPhone || invoice.student.user?.phone || '';
+    const parentPhone = invoice.student.fatherPhone || invoice.student.motherPhone || invoice.student.guardianPhone || invoice.student.user?.phone || '';
+
+    const formatPaymentMethod = (method?: string | null) => {
+      if (!method) return 'Physical Cash';
+      if (method === 'CASH') return 'Physical Cash';
+      if (method === 'UPI') return 'UPI / QR Code';
+      if (method === 'NET_BANKING') return 'Net Banking';
+      if (method === 'CHEQUE') return 'Cheque / DD';
+      if (method === 'CARD') return 'Debit / Credit Card';
+      return method;
+    };
 
     const result = {
-      schoolName: school?.name || 'Vikas Senior Secondary School',
+      schoolName: school?.name || 'CS EduTrack',
       schoolAddress: school?.address || 'School Campus Address',
       schoolPhone: school?.phone || '+91 999 999 9999',
       schoolLogo: school?.logoUrl || '',
       schoolSubtitle: school?.subtitle || 'Inspiring Excellence, Nurturing Values',
       invoiceNo: `INV-2026-${invoice.student.rollNo?.slice(-3) || invoice.id.slice(-3)}`,
+      receiptNumber: invoice.id,
+      transactionId: invoice.id,
+      paymentMethod: formatPaymentMethod(invoice.paymentMethod),
       invoiceDate: invoice.invoiceDate.toISOString().split('T')[0],
       academicYear: invoice.opportunity?.academicYear?.name || '2026-2027',
       admissionRef: invoice.opportunity?.name || `ADMISSION-REF-${invoice.student.rollNo || ''}`,
       studentName: invoice.student.user.name,
+      rollNo: invoice.student.rollNo || '',
       fatherName: invoice.student.fatherName || '',
       motherName: invoice.student.motherName || '',
       className: invoice.student.classSection?.class.name || '',

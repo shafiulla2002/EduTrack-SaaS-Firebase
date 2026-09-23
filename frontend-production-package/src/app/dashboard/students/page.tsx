@@ -8,7 +8,7 @@ import {
   MapPin, Calendar as CalendarIcon, DollarSign, BookOpen, ShieldAlert,
   Percent, Trash2, FileText, Download
 } from 'lucide-react';
-import { api, cachedGet, fastGet } from '@/lib/api';
+import { api, fastGet } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
 import { useSchoolSetupUpdate } from '@/lib/events';
 import { useToast } from '@/components/Toast';
@@ -16,11 +16,8 @@ import StudentAvatar from '@/components/StudentAvatar';
 import axios from 'axios';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
 import {
-  PencilSpinner,
-  TableSkeleton,
+  LoadingSpinner,
   EmptyState,
-  ErrorState,
-  LoadingButton,
 } from '@/components/loading';
 
 interface Student {
@@ -29,6 +26,9 @@ interface Student {
   name: string;
   email: string;
   phone: string;
+  fatherPhone?: string;
+  motherPhone?: string;
+  guardianPhone?: string;
   class: string;
   section: string;
   fatherName: string;
@@ -36,30 +36,40 @@ interface Student {
   aadharNo: string;
   paidAmount: number;
   balanceDue: number;
-  totalFees?: number;
-  pendingPercentage?: number;
-  paidPercentage?: number;
-  financialStatus?: string;
-  academicYearId?: string;
+  totalFees: number;
+  pendingPercentage: number;
+  paidPercentage: number;
+  financialStatus: string;
+  academicYearId: string;
   profilePhotoUrl?: string | null;
 }
 
 export default function StudentsDirectory() {
   const router = useRouter();
   const { showToast } = useToast();
-  const [search, setSearch] = useState('');
+
+  // Filter States
   const [searchVal, setSearchVal] = useState('');
+  const [search, setSearch] = useState('');
+  const [selectedYear, setSelectedYear] = useState('All');
   const [selectedClass, setSelectedClass] = useState('All');
   const [selectedSection, setSelectedSection] = useState('All');
-  const [selectedYear, setSelectedYear] = useState('All');
   const [selectedFinancialStatus, setSelectedFinancialStatus] = useState('All');
-  const [isExportingPDF, setIsExportingPDF] = useState(false);
+
+  // Metadata dropdown options
   const [academicYears, setAcademicYears] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [sections, setSections] = useState<any[]>([]);
+
+  // Request-specific loading states (Requirement 13)
+  const [loadingStudents, setLoadingStudents] = useState(true);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+
+  // Student dataset
   const [students, setStudents] = useState<Student[]>([]);
-  const [loading, setLoading] = useState(true);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+
+  // Delete modal state
   const [deleteConfirm, setDeleteConfirm] = useState<{
     show: boolean;
     studentIds: string[];
@@ -82,8 +92,261 @@ export default function StudentsDirectory() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
+  // Race Condition & Abort Guards (Requirement 4 & 15)
   const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef<number>(0);
 
+  // ── Unified Student Data Mapper (Requirement 16) ──────────────────────────
+  const mapStudentRecord = useCallback((s: any): Student => {
+    const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
+    const due = s.balanceDue !== undefined ? Number(s.balanceDue) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
+    const totalFees = s.totalFees !== undefined ? Number(s.totalFees) : (paid + due);
+    const pendingPercentage = s.pendingPercentage !== undefined ? Number(s.pendingPercentage) : (totalFees > 0 ? Math.round((due / totalFees) * 100) : 0);
+    const paidPercentage = s.paidPercentage !== undefined ? Number(s.paidPercentage) : (totalFees > 0 ? Math.round((paid / totalFees) * 100) : 100);
+
+    const financialStatus = s.financialStatus || (due > 0 ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
+
+    const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
+    const cleanPhone = !rawPhone ? 'N/A' : (rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone);
+
+    return {
+      id: s.id,
+      rollNo: s.rollNo || 'N/A',
+      name: s.user?.name || s.name || 'Unknown Student',
+      email: s.user?.email || 'N/A',
+      phone: cleanPhone,
+      fatherPhone: s.fatherPhone || 'N/A',
+      motherPhone: s.motherPhone || 'N/A',
+      guardianPhone: s.guardianPhone || 'N/A',
+      class: s.classSection?.class?.name || s.class || 'N/A',
+      section: s.classSection?.section?.name || s.section || 'N/A',
+      fatherName: s.fatherName || s.parentName || 'N/A',
+      motherName: s.motherName || 'N/A',
+      aadharNo: s.aadharNo || 'N/A',
+      paidAmount: paid,
+      balanceDue: due,
+      totalFees,
+      pendingPercentage,
+      paidPercentage,
+      financialStatus,
+      academicYearId: s.classSection?.class?.academicYearId || '',
+      profilePhotoUrl: s.profilePhotoUrl || null,
+    };
+  }, []);
+
+  // ── Canonical Query Builder (Requirements 9, 10, 11) ──────────────────────
+  const buildStudentQueryParams = useCallback((pageNumber?: number, customLimit?: number) => {
+    const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
+
+    // Requirement 10: Scope class resolution to the currently selected academicYearId
+    let classId: string | undefined;
+    let className: string | undefined;
+
+    if (selectedClass !== 'All' && selectedClass.trim()) {
+      className = selectedClass.trim();
+      if (academicYearId) {
+        const matchingClass = classes.find(c => c.name === selectedClass && c.academicYearId === academicYearId);
+        if (matchingClass) {
+          classId = matchingClass.id;
+        }
+      } else {
+        const matchingClass = classes.find(c => c.name === selectedClass);
+        if (matchingClass) {
+          classId = matchingClass.id;
+        }
+      }
+    }
+
+    // Requirement 11: Canonical section filter
+    let sectionId: string | undefined;
+    let sectionName: string | undefined;
+
+    if (selectedSection !== 'All' && selectedSection.trim()) {
+      sectionName = selectedSection.trim();
+      const cleanSecFilter = selectedSection.replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
+      const matchingSection = sections.find(s => {
+        if (s.name === selectedSection) return true;
+        const sClean = (s.name || '').replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
+        return sClean === cleanSecFilter;
+      });
+      if (matchingSection) {
+        sectionId = matchingSection.id;
+      }
+    }
+
+    const trimmedSearch = search.trim();
+
+    return {
+      ...(pageNumber !== undefined ? { page: pageNumber } : {}),
+      ...(customLimit !== undefined ? { limit: customLimit } : {}),
+      search: trimmedSearch || undefined,
+      classId,
+      className: !classId ? className : undefined,
+      sectionId,
+      sectionName: !sectionId ? sectionName : undefined,
+      academicYearId,
+      financialStatus: selectedFinancialStatus === 'All' ? undefined : selectedFinancialStatus,
+    };
+  }, [selectedYear, selectedClass, selectedSection, selectedFinancialStatus, search, classes, sections]);
+
+  // ── Scoped Class & Section Dropdown Lists ─────────────────────────────────
+  const filteredClassesForYear = useMemo(() => {
+    if (selectedYear === 'All' || !selectedYear) return classes;
+    return classes.filter(c => c.academicYearId === selectedYear);
+  }, [classes, selectedYear]);
+
+  const availableClassNames = useMemo(() => {
+    const names = Array.from(new Set(filteredClassesForYear.map(c => c.name))).filter(Boolean);
+    return names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [filteredClassesForYear]);
+
+  const availableSectionNames = useMemo(() => {
+    const names = Array.from(new Set(sections.map(s => s.name))).filter(Boolean);
+    return names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [sections]);
+
+  // ── Load Filter Options (Years, Classes, Sections) ────────────────────────
+  const loadFilterOptions = async () => {
+    try {
+      const [ayRes, classRes, secRes] = await Promise.all([
+        fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
+      ]);
+      setAcademicYears(ayRes.data || []);
+      setClasses(classRes.data || []);
+      setSections(secRes.data || []);
+    } catch (err) {
+      console.error('Failed to load filter options:', err);
+    }
+  };
+
+  // ── Load Students with Race-Condition & Abort Controller Guard ────────────
+  const loadStudents = useCallback(async (pageNumber = 1) => {
+    // 1. Immediately abort previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // 2. Increment monotonically tracking request ID (Requirement 4 & 15)
+    requestIdRef.current += 1;
+    const currentRequestId = requestIdRef.current;
+
+    // 3. Mark loading immediately (Requirements 2, 3, 14, 15)
+    setLoadingStudents(true);
+
+    try {
+      const queryParams = buildStudentQueryParams(pageNumber, limit);
+
+      const res = await api.get('/students', {
+        params: queryParams,
+        signal: controller.signal,
+      });
+
+      // 4. Ignore superseded response if newer filter request was initiated
+      if (currentRequestId !== requestIdRef.current) {
+        return;
+      }
+
+      const rawData = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+      const serverTotal = res.data?.total !== undefined ? res.data.total : (Array.isArray(res.data) ? res.data.length : 0);
+      const serverTotalPages = res.data?.totalPages !== undefined ? res.data.totalPages : (res.data?.total !== undefined ? Math.ceil(res.data.total / limit) : 1);
+      const serverPage = res.data?.page !== undefined ? res.data.page : pageNumber;
+
+      const mapped = rawData.map(mapStudentRecord);
+      setStudents(mapped);
+      setTotal(serverTotal);
+      setTotalPages(serverTotalPages);
+      setPage(serverPage);
+    } catch (err: any) {
+      if (axios.isCancel(err) || err?.name === 'CanceledError' || currentRequestId !== requestIdRef.current) {
+        return; // Request was cancelled by a newer filter action; silently discard
+      }
+      console.error('Failed to load students:', err);
+      showToast('Failed to load students directory records.', 'error');
+    } finally {
+      if (currentRequestId === requestIdRef.current) {
+        setLoadingStudents(false);
+      }
+    }
+  }, [buildStudentQueryParams, limit, mapStudentRecord, showToast]);
+
+  // Initial load
+  useEffect(() => {
+    loadFilterOptions();
+  }, []);
+
+  useEffect(() => {
+    loadStudents(1);
+  }, [loadStudents]);
+
+  useSchoolSetupUpdate(() => {
+    loadFilterOptions();
+    loadStudents(1);
+  });
+
+  // Debounced search (300ms) with immediate loading indication on input
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setSearch(searchVal);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchVal]);
+
+  // Filter change handlers (immediate loading triggers)
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchVal(e.target.value);
+  };
+
+  const handleYearChange = (yearId: string) => {
+    setLoadingStudents(true);
+    setSelectedYear(yearId);
+    setPage(1);
+  };
+
+  const handleClassChange = (className: string) => {
+    setLoadingStudents(true);
+    setSelectedClass(className);
+    setPage(1);
+  };
+
+  const handleSectionChange = (sectionName: string) => {
+    setLoadingStudents(true);
+    setSelectedSection(sectionName);
+    setPage(1);
+  };
+
+  const handleFinancialStatusChange = (status: string) => {
+    setLoadingStudents(true);
+    setSelectedFinancialStatus(status);
+    setPage(1);
+  };
+
+  // Selection handlers
+  const isAllSelected = students.length > 0 && students.every(s => selectedIds.includes(s.id));
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      const currentIds = students.map(s => s.id);
+      setSelectedIds(prev => prev.filter(id => !currentIds.includes(id)));
+    } else {
+      const currentIds = students.map(s => s.id);
+      setSelectedIds(prev => {
+        const union = new Set([...prev, ...currentIds]);
+        return Array.from(union);
+      });
+    }
+  };
+
+  // Profile navigation & prefetching
   const navigateToProfile = (st: Student) => {
     try {
       sessionStorage.setItem(`preseed_student_${st.id}`, JSON.stringify(st));
@@ -100,12 +363,7 @@ export default function StudentsDirectory() {
     fastGet(`/complaint-box/student-cases/${st.id}`, undefined, { ttlMs: 60000 }).catch(() => {});
   };
 
-  const handleToggleSelect = (id: string) => {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  };
-
+  // Delete handlers
   const handleConfirmDelete = async () => {
     try {
       if (deleteConfirm.studentIds.length === 1) {
@@ -133,179 +391,6 @@ export default function StudentsDirectory() {
     }
   };
 
-  const mapAndSetStudents = (data: any[], serverTotal: number, serverTotalPages: number, pageNumber: number) => {
-    setStudents(data.map((s: any) => {
-      const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
-      const due = s.balanceDue !== undefined ? Number(s.balanceDue) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
-      return {
-        id: s.id,
-        rollNo: s.rollNo || 'N/A',
-        name: s.user?.name || 'Unknown Student',
-        email: s.user?.email || 'N/A',
-        phone: (() => {
-          const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
-          if (!rawPhone) return 'N/A';
-          return rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone;
-        })(),
-        fatherPhone: s.fatherPhone || 'N/A',
-        motherPhone: s.motherPhone || 'N/A',
-        guardianPhone: s.guardianPhone || 'N/A',
-        class: s.classSection?.class?.name || 'N/A',
-        section: s.classSection?.section?.name || 'N/A',
-        fatherName: s.fatherName || 'N/A',
-        motherName: s.motherName || 'N/A',
-        aadharNo: s.aadharNo || 'N/A',
-        paidAmount: paid,
-        balanceDue: due,
-        totalFees: s.totalFees,
-        pendingPercentage: s.pendingPercentage,
-        paidPercentage: s.paidPercentage,
-        financialStatus: s.financialStatus,
-        academicYearId: s.classSection?.class?.academicYearId || '',
-        profilePhotoUrl: s.profilePhotoUrl || null,
-      };
-    }));
-
-    setTotal(serverTotal);
-    setTotalPages(serverTotalPages);
-    setPage(pageNumber);
-  };
-
-  const loadFilterOptions = async () => {
-    try {
-      const [ayRes, classRes, secRes] = await Promise.all([
-        fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
-        fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
-        fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
-      ]);
-      setAcademicYears(ayRes.data || []);
-      setClasses(classRes.data || []);
-      setSections(secRes.data || []);
-    } catch (err) {
-      console.error('Failed to load filter options:', err);
-    }
-  };
-
-  const loadStudents = useCallback(async (pageNumber = 1) => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    try {
-      const classId = selectedClass === 'All' ? undefined : classes.find(c => c.name === selectedClass)?.id;
-      const sectionId = selectedSection === 'All' ? undefined : sections.find(s => s.name === selectedSection)?.id;
-      const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
-
-      const res = await fastGet('/students', {
-        params: {
-          page: pageNumber,
-          limit,
-          search: search || undefined,
-          classId,
-          sectionId,
-          academicYearId,
-          financialStatus: selectedFinancialStatus === 'All' ? undefined : selectedFinancialStatus,
-        },
-        signal: controller.signal,
-      }, { ttlMs: 15000 });
-
-      if (res.data && res.data.data) {
-        mapAndSetStudents(res.data.data, res.data.total, res.data.totalPages, res.data.page);
-      } else if (Array.isArray(res.data)) {
-        mapAndSetStudents(res.data, res.data.length, 1, 1);
-      } else {
-        setStudents([]);
-        setTotal(0);
-        setTotalPages(0);
-      }
-    } catch (err: any) {
-      if (axios.isCancel(err)) return;
-      console.error('Failed to load students:', err);
-      showToast('Failed to load students directory records.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedClass, selectedSection, selectedYear, selectedFinancialStatus, search, classes, sections, limit, showToast]);
-
-  // Initial load
-  useEffect(() => {
-    loadFilterOptions();
-  }, []);
-
-  useEffect(() => {
-    loadStudents(1);
-  }, [loadStudents]);
-
-  useSchoolSetupUpdate(() => {
-    loadFilterOptions();
-    loadStudents(1);
-  });
-
-  // Debounced search
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setSearch(searchVal);
-    }, 300);
-    return () => clearTimeout(handler);
-  }, [searchVal]);
-
-  // Client-side filtering when needed
-  const filteredStudents = useMemo(() => {
-    return students.filter(student => {
-      // 1. Search Query
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        const matchName = student.name.toLowerCase().includes(q);
-        const matchRoll = student.rollNo.toLowerCase().includes(q);
-        const matchPhone = student.phone.includes(q);
-        if (!matchName && !matchRoll && !matchPhone) return false;
-      }
-
-      // 2. Class Filter
-      if (selectedClass !== 'All' && student.class !== selectedClass) {
-        return false;
-      }
-
-      // 3. Section Filter
-      if (selectedSection !== 'All') {
-        const studentSec = (student.section || '').replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
-        const filterSec = selectedSection.replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
-        if (studentSec !== filterSec) return false;
-      }
-
-      // 4. Financial Status Filter
-      if (selectedFinancialStatus !== 'All') {
-        const totalFees = student.totalFees ?? (student.paidAmount + student.balanceDue);
-        const paidPct = student.paidPercentage ?? (totalFees > 0 ? Math.round((student.paidAmount / totalFees) * 100) : 100);
-
-        if (selectedFinancialStatus === 'FULLY_PAID' && student.balanceDue > 0) return false;
-        if (selectedFinancialStatus === 'ABOVE_75' && (paidPct < 75 || student.balanceDue === 0)) return false;
-        if (selectedFinancialStatus === 'PAID_50_75' && (paidPct < 50 || paidPct >= 75)) return false;
-        if (selectedFinancialStatus === 'BELOW_50' && paidPct >= 50) return false;
-        if (selectedFinancialStatus === 'PENDING_BALANCE' && student.balanceDue <= 0) return false;
-      }
-
-      return true;
-    });
-  }, [students, search, selectedClass, selectedSection, selectedFinancialStatus]);
-
-  const isAllSelected = filteredStudents.length > 0 && filteredStudents.every(s => selectedIds.includes(s.id));
-
-  const handleToggleSelectAll = () => {
-    if (isAllSelected) {
-      const filteredIds = filteredStudents.map(s => s.id);
-      setSelectedIds(prev => prev.filter(id => !filteredIds.includes(id)));
-    } else {
-      const filteredIds = filteredStudents.map(s => s.id);
-      setSelectedIds(prev => {
-        const union = new Set([...prev, ...filteredIds]);
-        return Array.from(union);
-      });
-    }
-  };
-
   // ── Floating bar padding: keep last row always visible ──────────────────
   const isBarVisible =
     (selectedIds.length > 0 ||
@@ -316,46 +401,53 @@ export default function StudentsDirectory() {
       search !== '') &&
     students.length > 0;
   const { barRef, contentPaddingBottom } = useFloatingBarPadding({ visible: isBarVisible });
-  // ────────────────────────────────────────────────────────────────────────
 
+  // ── PDF Export Pipeline (Requirements 1, 5, 8, 9, 12, 13, 16, 17) ─────────
   const handleExportPDF = async () => {
+    if (isExportingPDF || loadingStudents) return;
+
     try {
       setIsExportingPDF(true);
-      const classId = selectedClass === 'All' ? undefined : classes.find(c => c.name === selectedClass)?.id;
-      const sectionId = selectedSection === 'All' ? undefined : sections.find(s => s.name === selectedSection)?.id;
-      const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
+
+      // Build canonical query parameters for full dataset (Requirements 9 & 12)
+      const exportParams = buildStudentQueryParams(1, 10000);
+
+      // Requirement 17: Log debug filter parameters
+      console.log('PDF FILTER PARAMETERS:', {
+        academicYearId: exportParams.academicYearId || 'All',
+        classId: exportParams.classId || 'All',
+        className: exportParams.className || 'All',
+        sectionId: exportParams.sectionId || 'All',
+        sectionName: exportParams.sectionName || 'All',
+        financialStatus: exportParams.financialStatus || 'All',
+        searchTerm: exportParams.search || 'None',
+      });
 
       const res = await api.get('/students', {
-        params: {
-          page: 1,
-          limit: 10000,
-          search: search || undefined,
-          classId,
-          sectionId,
-          academicYearId,
-          financialStatus: selectedFinancialStatus === 'All' ? undefined : selectedFinancialStatus,
-        }
+        params: exportParams,
       });
 
       const rawList = res.data?.data || (Array.isArray(res.data) ? res.data : []);
-      const exportList = rawList.map((s: any) => {
-        const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : 0;
-        const due = s.balanceDue !== undefined ? Number(s.balanceDue) : 0;
-        const tot = s.totalFees !== undefined ? Number(s.totalFees) : (paid + due);
-        return {
-          rollNo: s.rollNo || 'N/A',
-          name: s.user?.name || s.name || 'Unknown Student',
-          className: s.classSection?.class?.name || s.class || 'N/A',
-          sectionName: s.classSection?.section?.name || s.section || 'N/A',
-          parentName: s.fatherName || s.parentName || 'N/A',
-          phone: s.user?.phone || s.phone || s.fatherPhone || 'N/A',
-          totalFee: tot,
-          paidAmount: paid,
-          balanceDue: due,
-          financialStatus: due > 0 ? `Pending (Rs. ${due.toLocaleString('en-IN')} Due)` : 'Fully Paid (Rs. 0 Balance)'
-        };
+      const exportList: Student[] = rawList.map(mapStudentRecord);
+
+      // Requirement 17: Log total matching students
+      console.log('PDF RESULT:', {
+        totalMatchingStudents: exportList.length,
       });
 
+      // Requirement 17: Pre-generation validation
+      if (exportList.length === 0 && total > 0) {
+        console.error('PDF Export Safety Check Failed: Export query returned 0 students while directory has records.');
+        showToast('Could not export PDF: Filtered student dataset mismatch. Please retry.', 'error');
+        return;
+      }
+
+      if (exportList.length === 0) {
+        showToast('No matching student records found to export.', 'info');
+        return;
+      }
+
+      // Generate landscape vector PDF
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       const pageWidth = 297;
@@ -363,7 +455,9 @@ export default function StudentsDirectory() {
       const margin = 12;
       const printableWidth = pageWidth - (margin * 2);
 
-      const yearName = selectedYear !== 'All' ? (academicYears.find(ay => ay.id === selectedYear)?.name || 'Selected Year') : 'All Academic Years';
+      const yearName = selectedYear !== 'All' 
+        ? (academicYears.find(ay => ay.id === selectedYear)?.name || 'Selected Year') 
+        : 'All Academic Years';
       const gradeName = selectedClass !== 'All' ? selectedClass : 'All Grades';
       const secName = selectedSection !== 'All' ? selectedSection : 'All Sections';
       const finStatusLabel = ({
@@ -406,141 +500,131 @@ export default function StudentsDirectory() {
 
       y += 18;
 
-      if (exportList.length === 0) {
-        doc.setFillColor(254, 242, 242);
-        doc.setDrawColor(254, 202, 202);
-        doc.roundedRect(margin, y, printableWidth, 24, 2, 2, 'FD');
+      // Table Columns Configuration
+      const cols = [
+        { header: '#', width: 10, align: 'center' },
+        { header: 'Roll No', width: 18, align: 'left' },
+        { header: 'Student Name', width: 45, align: 'left' },
+        { header: 'Class - Sec', width: 28, align: 'left' },
+        { header: 'Parent / Guardian', width: 40, align: 'left' },
+        { header: 'Phone', width: 26, align: 'left' },
+        { header: 'Total Fee', width: 26, align: 'right' },
+        { header: 'Paid', width: 26, align: 'right' },
+        { header: 'Balance Due', width: 26, align: 'right' },
+        { header: 'Financial Status', width: 28, align: 'center' },
+      ];
+
+      const drawTableHeader = (curY: number) => {
+        doc.setFillColor(241, 245, 249); // slate-100
+        doc.setDrawColor(203, 213, 225); // slate-300
+        doc.rect(margin, curY, printableWidth, 7, 'FD');
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(185, 28, 28);
-        doc.text('No students match the selected filters.', pageWidth / 2, y + 14, { align: 'center' });
-      } else {
-        // Table Columns Configuration
-        const cols = [
-          { header: '#', width: 10, align: 'center' },
-          { header: 'Roll No', width: 18, align: 'left' },
-          { header: 'Student Name', width: 45, align: 'left' },
-          { header: 'Class - Sec', width: 28, align: 'left' },
-          { header: 'Parent / Guardian', width: 40, align: 'left' },
-          { header: 'Phone', width: 26, align: 'left' },
-          { header: 'Total Fee', width: 26, align: 'right' },
-          { header: 'Paid', width: 26, align: 'right' },
-          { header: 'Balance Due', width: 26, align: 'right' },
-          { header: 'Financial Status', width: 28, align: 'center' },
-        ];
+        doc.setFontSize(8);
+        doc.setTextColor(30, 41, 59);
 
-        const drawTableHeader = (curY: number) => {
-          doc.setFillColor(241, 245, 249); // slate-100
-          doc.setDrawColor(203, 213, 225); // slate-300
-          doc.rect(margin, curY, printableWidth, 7, 'FD');
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(8);
-          doc.setTextColor(30, 41, 59);
-
-          let curX = margin;
-          for (const c of cols) {
-            const posX = c.align === 'right' ? curX + c.width - 2 : c.align === 'center' ? curX + (c.width / 2) : curX + 2;
-            doc.text(c.header, posX, curY + 4.8, { align: c.align as any });
-            curX += c.width;
-          }
-          return curY + 7;
-        };
-
-        y = drawTableHeader(y);
-
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7.5);
-
-        for (let i = 0; i < exportList.length; i++) {
-          const item = exportList[i];
-          const rowHeight = 6.5;
-
-          if (y + rowHeight > pageHeight - margin - 8) {
-            // Add page footer
-            doc.setFontSize(7);
-            doc.setTextColor(148, 163, 184);
-            doc.text(`Page ${doc.getNumberOfPages()} | EduTrack Institute Platform`, pageWidth / 2, pageHeight - 6, { align: 'center' });
-
-            doc.addPage();
-            y = margin;
-            y = drawTableHeader(y);
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(7.5);
-          }
-
-          // Row background
-          if (i % 2 === 1) {
-            doc.setFillColor(248, 250, 252);
-            doc.rect(margin, y, printableWidth, rowHeight, 'F');
-          }
-
-          doc.setDrawColor(241, 245, 249);
-          doc.line(margin, y + rowHeight, margin + printableWidth, y + rowHeight);
-
-          let curX = margin;
-          const hasDue = item.balanceDue > 0;
-
-          // Col 1: #
-          doc.setTextColor(100, 116, 139);
-          doc.text(String(i + 1), curX + (cols[0].width / 2), y + 4.5, { align: 'center' });
-          curX += cols[0].width;
-
-          // Col 2: Roll No
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(37, 99, 235); // blue-600
-          doc.text(item.rollNo, curX + 2, y + 4.5);
-          curX += cols[1].width;
-
-          // Col 3: Student Name
-          doc.setTextColor(15, 23, 42); // slate-900
-          const truncatedName = item.name.length > 25 ? item.name.substring(0, 23) + '...' : item.name;
-          doc.text(truncatedName, curX + 2, y + 4.5);
-          curX += cols[2].width;
-
-          // Col 4: Class - Sec
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(71, 85, 105);
-          const classSec = `${item.className} - ${item.sectionName}`;
-          doc.text(classSec, curX + 2, y + 4.5);
-          curX += cols[3].width;
-
-          // Col 5: Parent
-          const truncatedParent = item.parentName.length > 22 ? item.parentName.substring(0, 20) + '...' : item.parentName;
-          doc.text(truncatedParent, curX + 2, y + 4.5);
-          curX += cols[4].width;
-
-          // Col 6: Phone
-          doc.text(item.phone, curX + 2, y + 4.5);
-          curX += cols[5].width;
-
-          // Col 7: Total Fee
-          doc.text(`Rs. ${item.totalFee.toLocaleString('en-IN')}`, curX + cols[6].width - 2, y + 4.5, { align: 'right' });
-          curX += cols[6].width;
-
-          // Col 8: Paid
-          doc.setTextColor(5, 150, 105); // emerald-600
-          doc.text(`Rs. ${item.paidAmount.toLocaleString('en-IN')}`, curX + cols[7].width - 2, y + 4.5, { align: 'right' });
-          curX += cols[7].width;
-
-          // Col 9: Balance Due
-          doc.setTextColor(hasDue ? 217 : 71, hasDue ? 119 : 85, hasDue ? 6 : 105); // amber-600 or slate-600
-          doc.setFont('helvetica', hasDue ? 'bold' : 'normal');
-          doc.text(`Rs. ${item.balanceDue.toLocaleString('en-IN')}`, curX + cols[8].width - 2, y + 4.5, { align: 'right' });
-          curX += cols[8].width;
-
-          // Col 10: Financial Status
-          doc.setFont('helvetica', 'bold');
-          if (hasDue) {
-            doc.setTextColor(180, 83, 9); // amber-700
-            doc.text(`Pending Due`, curX + (cols[9].width / 2), y + 4.5, { align: 'center' });
-          } else {
-            doc.setTextColor(4, 120, 87); // emerald-700
-            doc.text(`Fully Paid`, curX + (cols[9].width / 2), y + 4.5, { align: 'center' });
-          }
-          curX += cols[9].width;
-
-          y += rowHeight;
+        let curX = margin;
+        for (const c of cols) {
+          const posX = c.align === 'right' ? curX + c.width - 2 : c.align === 'center' ? curX + (c.width / 2) : curX + 2;
+          doc.text(c.header, posX, curY + 4.8, { align: c.align as any });
+          curX += c.width;
         }
+        return curY + 7;
+      };
+
+      y = drawTableHeader(y);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+
+      for (let i = 0; i < exportList.length; i++) {
+        const item = exportList[i];
+        const rowHeight = 6.5;
+
+        if (y + rowHeight > pageHeight - margin - 8) {
+          // Add page footer
+          doc.setFontSize(7);
+          doc.setTextColor(148, 163, 184);
+          doc.text(`Page ${doc.getNumberOfPages()} | EduTrack Institute Platform`, pageWidth / 2, pageHeight - 6, { align: 'center' });
+
+          doc.addPage();
+          y = margin;
+          y = drawTableHeader(y);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7.5);
+        }
+
+        // Row background
+        if (i % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, y, printableWidth, rowHeight, 'F');
+        }
+
+        doc.setDrawColor(241, 245, 249);
+        doc.line(margin, y + rowHeight, margin + printableWidth, y + rowHeight);
+
+        let curX = margin;
+        const hasDue = item.balanceDue > 0;
+
+        // Col 1: #
+        doc.setTextColor(100, 116, 139);
+        doc.text(String(i + 1), curX + (cols[0].width / 2), y + 4.5, { align: 'center' });
+        curX += cols[0].width;
+
+        // Col 2: Roll No
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(37, 99, 235); // blue-600
+        doc.text(item.rollNo, curX + 2, y + 4.5);
+        curX += cols[1].width;
+
+        // Col 3: Student Name
+        doc.setTextColor(15, 23, 42); // slate-900
+        const truncatedName = item.name.length > 25 ? item.name.substring(0, 23) + '...' : item.name;
+        doc.text(truncatedName, curX + 2, y + 4.5);
+        curX += cols[2].width;
+
+        // Col 4: Class - Sec
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(71, 85, 105);
+        const classSec = `${item.class} - ${item.section}`;
+        doc.text(classSec, curX + 2, y + 4.5);
+        curX += cols[3].width;
+
+        // Col 5: Parent
+        const truncatedParent = item.fatherName.length > 22 ? item.fatherName.substring(0, 20) + '...' : item.fatherName;
+        doc.text(truncatedParent, curX + 2, y + 4.5);
+        curX += cols[4].width;
+
+        // Col 6: Phone
+        doc.text(item.phone, curX + 2, y + 4.5);
+        curX += cols[5].width;
+
+        // Col 7: Total Fee
+        doc.text(`Rs. ${item.totalFees.toLocaleString('en-IN')}`, curX + cols[6].width - 2, y + 4.5, { align: 'right' });
+        curX += cols[6].width;
+
+        // Col 8: Paid
+        doc.setTextColor(5, 150, 105); // emerald-600
+        doc.text(`Rs. ${item.paidAmount.toLocaleString('en-IN')}`, curX + cols[7].width - 2, y + 4.5, { align: 'right' });
+        curX += cols[7].width;
+
+        // Col 9: Balance Due
+        doc.setTextColor(hasDue ? 217 : 71, hasDue ? 119 : 85, hasDue ? 6 : 105); // amber-600 or slate-600
+        doc.setFont('helvetica', hasDue ? 'bold' : 'normal');
+        doc.text(`Rs. ${item.balanceDue.toLocaleString('en-IN')}`, curX + cols[8].width - 2, y + 4.5, { align: 'right' });
+        curX += cols[8].width;
+
+        // Col 10: Financial Status
+        doc.setFont('helvetica', 'bold');
+        if (hasDue) {
+          doc.setTextColor(180, 83, 9); // amber-700
+          doc.text(`Pending Due`, curX + (cols[9].width / 2), y + 4.5, { align: 'center' });
+        } else {
+          doc.setTextColor(4, 120, 87); // emerald-700
+          doc.text(`Fully Paid`, curX + (cols[9].width / 2), y + 4.5, { align: 'center' });
+        }
+        curX += cols[9].width;
+
+        y += rowHeight;
       }
 
       // Page footer for final page
@@ -548,7 +632,7 @@ export default function StudentsDirectory() {
       doc.setTextColor(148, 163, 184);
       doc.text(`Page ${doc.getNumberOfPages()} | EduTrack Institute Platform`, pageWidth / 2, pageHeight - 6, { align: 'center' });
 
-      const safeFilename = `student_directory_report_${new Date().toISOString().split('T')[0]}.pdf`;
+      const safeFilename = `Student_Directory_Report_${new Date().toISOString().split('T')[0]}.pdf`;
       doc.save(safeFilename);
       showToast(`Exported PDF successfully (${exportList.length} students).`, 'success');
     } catch (err: any) {
@@ -561,7 +645,7 @@ export default function StudentsDirectory() {
 
   return (
     <div className="space-y-6 animate-in pb-12">
-      {/* ================= LIST VIEW ================= */}
+      {/* ================= HEADER VIEW ================= */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h2 className="text-[28px] font-bold text-slate-900 leading-none">
@@ -572,15 +656,16 @@ export default function StudentsDirectory() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Requirement 5 & 13: PDF Button Loading with Round Spinner */}
           <button
             onClick={handleExportPDF}
-            disabled={isExportingPDF}
-            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-750 hover:text-[#2E5BFF] hover:border-blue-200 text-[12px] font-bold shadow-xs transition-all cursor-pointer min-h-[36px] disabled:opacity-50"
+            disabled={isExportingPDF || loadingStudents}
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-750 hover:text-[#2E5BFF] hover:border-blue-200 text-[12px] font-bold shadow-xs transition-all cursor-pointer min-h-[36px] disabled:opacity-50 disabled:cursor-not-allowed"
             title="Download Filtered Students PDF Report"
           >
             {isExportingPDF ? (
               <>
-                <PencilSpinner size="xs" />
+                <LoadingSpinner size="xs" variant="brand" />
                 <span>Generating PDF...</span>
               </>
             ) : (
@@ -604,14 +689,14 @@ export default function StudentsDirectory() {
             type="text"
             placeholder="Search by Name, roll number, or phone..."
             value={searchVal}
-            onChange={(e) => setSearchVal(e.target.value)}
+            onChange={handleSearchInputChange}
             className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-200 rounded-xl text-[13px] font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
           />
         </div>
 
         <select
           value={selectedYear}
-          onChange={(e) => setSelectedYear(e.target.value)}
+          onChange={(e) => handleYearChange(e.target.value)}
           className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
         >
           <option value="All">All Academic Years</option>
@@ -622,29 +707,29 @@ export default function StudentsDirectory() {
 
         <select
           value={selectedClass}
-          onChange={(e) => setSelectedClass(e.target.value)}
+          onChange={(e) => handleClassChange(e.target.value)}
           className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
         >
           <option value="All">All Grades</option>
-          {classes.map(c => (
-            <option key={c.id} value={c.name}>{c.name}</option>
+          {availableClassNames.map(name => (
+            <option key={name} value={name}>{name}</option>
           ))}
         </select>
 
         <select
           value={selectedSection}
-          onChange={(e) => setSelectedSection(e.target.value)}
+          onChange={(e) => handleSectionChange(e.target.value)}
           className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
         >
           <option value="All">All Sections</option>
-          {sections.map(s => (
-            <option key={s.id} value={s.name}>{s.name}</option>
+          {availableSectionNames.map(name => (
+            <option key={name} value={name}>{name}</option>
           ))}
         </select>
 
         <select
           value={selectedFinancialStatus}
-          onChange={(e) => setSelectedFinancialStatus(e.target.value)}
+          onChange={(e) => handleFinancialStatusChange(e.target.value)}
           className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
         >
           <option value="All">All Financial Status</option>
@@ -663,53 +748,53 @@ export default function StudentsDirectory() {
       >
         {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto">
-          {loading ? (
-            <TableSkeleton
-              headers={['Select', 'Roll No', 'Student', 'Class / Section', 'Parent / Guardian', 'Financial Status', 'Actions']}
-              loadingLabel="Loading student directory..."
-              rows={6}
-              alignments={['left', 'left', 'left', 'left', 'left', 'left', 'right']}
-            />
-          ) : (
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-                  <th className="px-3.5 py-3.5 w-8">
-                    <input 
-                      type="checkbox" 
-                      checked={isAllSelected} 
-                      onChange={handleToggleSelectAll} 
-                      className="rounded border-slate-300 text-[#2E5BFF] focus:ring-blue-500 cursor-pointer w-4 h-4"
-                    />
-                  </th>
-                  <th className="px-3 py-3.5 leading-tight">
-                    ROLL<br/>NO
-                  </th>
-                  <th className="px-3.5 py-3.5">NAME</th>
-                  <th className="px-3.5 py-3.5">CLASS / SECTION</th>
-                  <th className="px-3.5 py-3.5 leading-tight">
-                    PARENT<br/>GUARDIAN
-                  </th>
-                  <th className="px-3.5 py-3.5">FINANCIAL STATUS</th>
-                  <th className="px-3.5 py-3.5 text-right">ACTIONS</th>
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
+                <th className="px-3.5 py-3.5 w-8">
+                  <input 
+                    type="checkbox" 
+                    checked={isAllSelected} 
+                    onChange={handleToggleSelectAll} 
+                    disabled={loadingStudents || students.length === 0}
+                    className="rounded border-slate-300 text-[#2E5BFF] focus:ring-blue-500 cursor-pointer w-4 h-4 disabled:opacity-40"
+                  />
+                </th>
+                <th className="px-3 py-3.5 leading-tight">
+                  ROLL<br/>NO
+                </th>
+                <th className="px-3.5 py-3.5">NAME</th>
+                <th className="px-3.5 py-3.5">CLASS / SECTION</th>
+                <th className="px-3.5 py-3.5 leading-tight">
+                  PARENT<br/>GUARDIAN
+                </th>
+                <th className="px-3.5 py-3.5">FINANCIAL STATUS</th>
+                <th className="px-3.5 py-3.5 text-right">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
+              {/* Requirements 2 & 14: Strict 3-state rendering */}
+              {loadingStudents ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-20 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <LoadingSpinner size="lg" variant="brand" />
+                      <p className="text-xs font-semibold text-slate-500">Loading student directory records...</p>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
-                {filteredStudents.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-6 text-center">
-                      <EmptyState
-                        title="No matching student records found"
-                        description="Try adjusting your search query, grade, or section filter."
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  filteredStudents.map((student) => {
+              ) : students.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-8 text-center">
+                    <EmptyState
+                      title="No matching student records found"
+                      description="Try adjusting your search query, grade, or section filter."
+                    />
+                  </td>
+                </tr>
+              ) : (
+                students.map((student) => {
                   const hasDue = student.balanceDue > 0;
-                  const totalFees = student.totalFees ?? (student.paidAmount + student.balanceDue);
-                  const pendingPercentage = student.pendingPercentage ?? (totalFees > 0 ? Math.round((student.balanceDue / totalFees) * 100) : 0);
-                  const financialStatus = student.financialStatus || (hasDue ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
                   return (
                     <tr
                       key={student.id}
@@ -808,32 +893,24 @@ export default function StudentsDirectory() {
               )}
             </tbody>
           </table>
-          )}
         </div>
 
         {/* Mobile Card View */}
         <div className="block md:hidden divide-y divide-slate-100">
-          {loading ? (
-            Array.from({ length: 3 }).map((_, idx) => (
-              <div key={idx} className="p-4 space-y-3 animate-pulse">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-200" />
-                    <div className="space-y-2">
-                      <div className="h-3 w-16 bg-slate-200 rounded" />
-                      <div className="h-4 w-24 bg-slate-200 rounded" />
-                      <div className="h-3 w-32 bg-slate-200 rounded" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : filteredStudents.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-400 font-medium">
-              No matching student records found.
+          {loadingStudents ? (
+            <div className="py-20 flex flex-col items-center justify-center gap-3">
+              <LoadingSpinner size="lg" variant="brand" />
+              <p className="text-xs font-semibold text-slate-500">Loading student directory records...</p>
+            </div>
+          ) : students.length === 0 ? (
+            <div className="p-8 text-center">
+              <EmptyState
+                title="No matching student records found"
+                description="Try adjusting your search query, grade, or section filter."
+              />
             </div>
           ) : (
-            filteredStudents.map((student) => {
+            students.map((student) => {
               const hasDue = student.balanceDue > 0;
               return (
                 <div key={student.id} className="p-4 space-y-3">
@@ -866,7 +943,7 @@ export default function StudentsDirectory() {
                     <div>
                       <span className="text-[10px] text-slate-400 block font-semibold uppercase">Class & Section</span>
                       <span className="font-bold text-slate-700 block mt-0.5">
-                        {student.class} - {student.section.replace('Section ', '')}
+                        {student.class} - {student.section.replace(/^section\s*[-_]?/i, '')}
                       </span>
                     </div>
                     <div>
@@ -905,7 +982,7 @@ export default function StudentsDirectory() {
         </div>
 
         {/* Pagination Controls */}
-        {!loading && totalPages > 1 && (
+        {!loadingStudents && totalPages > 1 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-100 px-6 py-4 bg-slate-50/50">
             <div className="text-[12px] text-slate-550 font-medium text-center sm:text-left">
               Showing <span className="font-bold text-slate-800">{((page - 1) * limit) + 1}</span> to{' '}
@@ -974,7 +1051,7 @@ export default function StudentsDirectory() {
       </div>
 
       {/* Floating Bulk Actions Bar */}
-      {(selectedIds.length > 0 || selectedClass !== 'All' || selectedSection !== 'All' || selectedYear !== 'All' || search !== '') && filteredStudents.length > 0 && (
+      {(selectedIds.length > 0 || selectedClass !== 'All' || selectedSection !== 'All' || selectedYear !== 'All' || search !== '') && students.length > 0 && (
         <div 
           ref={barRef} 
           className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md text-white px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-xl shadow-2xl flex flex-row items-center justify-between gap-2.5 sm:gap-4 z-40 border border-slate-800/80 animate-slide-up w-[92%] sm:w-auto max-w-lg"
@@ -988,7 +1065,7 @@ export default function StudentsDirectory() {
                 </span>
               ) : (
                 <span>
-                  <strong className="text-white font-bold">{filteredStudents.length}</strong> match filters
+                  <strong className="text-white font-bold">{total || students.length}</strong> match filters
                 </span>
               )}
             </span>
@@ -1013,11 +1090,11 @@ export default function StudentsDirectory() {
             )}
             <button
               onClick={() => {
-                const filteredIds = filteredStudents.map(s => s.id);
+                const studentIds = students.map(s => s.id);
                 setDeleteConfirm({
                   show: true,
-                  studentIds: filteredIds,
-                  count: filteredIds.length,
+                  studentIds,
+                  count: total || studentIds.length,
                   yearName: selectedYear !== 'All' ? academicYears.find(ay => ay.id === selectedYear)?.name : undefined,
                   className: selectedClass !== 'All' ? selectedClass : undefined,
                   sectionName: selectedSection !== 'All' ? selectedSection : undefined
@@ -1026,7 +1103,7 @@ export default function StudentsDirectory() {
               className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:text-white font-medium text-[11px] sm:text-xs transition-all cursor-pointer min-h-[32px] flex items-center gap-1 whitespace-nowrap"
             >
               <Trash2 className="w-3 h-3 text-slate-400" />
-              <span>Delete All Filtered ({filteredStudents.length})</span>
+              <span>Delete All Filtered ({total || students.length})</span>
             </button>
           </div>
         </div>

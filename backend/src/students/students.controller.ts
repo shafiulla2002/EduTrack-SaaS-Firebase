@@ -20,7 +20,9 @@ export class StudentsController {
   async search(
     @Query('search') search?: string,
     @Query('classId') classId?: string,
+    @Query('className') className?: string,
     @Query('sectionId') sectionId?: string,
+    @Query('sectionName') sectionName?: string,
     @Query('academicYearId') academicYearId?: string,
     @Query('financialStatus') financialStatus?: string,
     @Query('page') page?: string,
@@ -28,7 +30,17 @@ export class StudentsController {
   ) {
     const p = page ? parseInt(page, 10) : undefined;
     const l = limit ? parseInt(limit, 10) : undefined;
-    return this.studentsService.searchStudents(search, classId, sectionId, academicYearId, p, l, financialStatus);
+    return this.studentsService.searchStudents(
+      search,
+      classId,
+      sectionId,
+      academicYearId,
+      p,
+      l,
+      financialStatus,
+      className,
+      sectionName,
+    );
   }
 
   @Get('promotion-candidates')

@@ -368,7 +368,7 @@ export class ExamsService {
       const exam = await this.prisma.exam.findUnique({
         where: { id: resolvedExamId },
       });
-      if (exam) {
+      if (exam && exam.tenantId === tenantId) {
         resolvedClassSectionId = exam.classSectionId;
       }
     }
@@ -393,61 +393,109 @@ export class ExamsService {
       );
     }
 
-    // Parallelize fetching student roster and classSection context
-    const [students, classSection] = await Promise.all([
+    // Parallelize fetching student roster, classSection context, existing examSubject & existing marks (100% READ-ONLY)
+    const [students, classSection, existingExamSubject, currentMarks] = await Promise.all([
       this.prisma.studentProfile.findMany({
         where: {
           classSectionId: resolvedClassSectionId,
-          user: { tenantId, isActive: true },
+          tenantId,
+          user: { isActive: true },
         },
-        include: {
+        select: {
+          id: true,
+          rollNo: true,
           user: {
             select: { name: true },
           },
         },
-        orderBy: { user: { name: 'asc' } },
+        orderBy: [
+          { rollNo: 'asc' },
+          { user: { name: 'asc' } },
+        ],
       }),
       this.prisma.classSection.findUnique({
         where: { id: resolvedClassSectionId },
-        include: { class: true },
+        select: {
+          id: true,
+          classId: true,
+          sectionId: true,
+          tenantId: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+              academicYearId: true,
+            },
+          },
+        },
       }),
+      resolvedExamId
+        ? this.prisma.examSubject.findUnique({
+            where: {
+              examId_subjectId_subjectType: {
+                examId: resolvedExamId,
+                subjectId,
+                subjectType,
+              },
+            },
+          })
+        : null,
+      resolvedExamId
+        ? this.prisma.examMark.findMany({
+            where: {
+              tenantId,
+              examId: resolvedExamId,
+              subjectId,
+              subjectType,
+            },
+            select: {
+              studentId: true,
+              marksObtained: true,
+              remarks: true,
+            },
+          })
+        : [],
     ]);
+
+    if (classSection && classSection.tenantId !== tenantId) {
+      throw new BadRequestException('Class section does not belong to this school');
+    }
+
     const classId = classSection?.classId;
     const academicYearId = classSection?.class?.academicYearId;
 
-    const marksMap = new Map<string, any>();
-    // Load config for this exact context
-    let maxMarks = 100;
-    let passingPercentage = 35;
-    let passMarks = 35;
-    
-    if (resolvedExamId) {
-      const currentMarks = await this.prisma.examMark.findMany({
-        where: {
-          tenantId,
-          examId: resolvedExamId,
-          subjectId,
-          subjectType,
-        },
-      });
+    const marksMap = new Map<string, { marksObtained: any; remarks: string | null }>();
+    if (currentMarks && currentMarks.length > 0) {
       for (const m of currentMarks) {
         marksMap.set(m.studentId, m);
       }
-      
-      const examSub = await this.examConfigService.getOrInitializeExamSubject(resolvedExamId, subjectId, subjectType, tenantId);
-      maxMarks = examSub?.maxMarks || 100;
-      passingPercentage = Number(examSub?.passingPercentage || 35);
-      passMarks = examSub?.passMarks !== null && examSub?.passMarks !== undefined
-        ? Number(examSub.passMarks)
+    }
+
+    // Load config in a 100% read-only manner without mutating the database
+    let maxMarks = 100;
+    let passingPercentage = 35;
+    let passMarks = 35;
+
+    if (existingExamSubject) {
+      maxMarks = Number(existingExamSubject.maxMarks) || 100;
+      passingPercentage = Number(existingExamSubject.passingPercentage) || 35;
+      passMarks = existingExamSubject.passMarks !== null && existingExamSubject.passMarks !== undefined
+        ? Number(existingExamSubject.passMarks)
         : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
     } else {
+      // In-memory resolution from template hierarchy without saving to DB
       const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
-      const subRec = subjectId ? await this.prisma.subject.findUnique({ where: { id: subjectId } }) : null;
+      const subRec = subjectId ? await this.prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } }) : null;
       const resolved = this.examConfigService.resolveSubjectConfig(cfg, subjectId, subjectType, subRec?.name);
       maxMarks = resolved.maxMarks;
       passingPercentage = resolved.passingPercentage;
       passMarks = resolved.passMarks;
     }
+
+    // Ensure safe numeric values (never NaN)
+    maxMarks = isNaN(maxMarks) || maxMarks <= 0 ? 100 : maxMarks;
+    passingPercentage = isNaN(passingPercentage) || passingPercentage < 0 ? 35 : passingPercentage;
+    passMarks = isNaN(passMarks) || passMarks < 0 ? Number(((passingPercentage / 100) * maxMarks).toFixed(2)) : passMarks;
 
     return {
       roster: students.map(s => {
@@ -456,12 +504,14 @@ export class ExamsService {
           studentId: s.id,
           name: s.user?.name || 'Student',
           rollNo: s.rollNo || 'N/A',
-          hasMarks: !!markRecord,
-          marksObtained: markRecord ? Number(markRecord.marksObtained) : null,
-          remarks: markRecord ? markRecord.remarks : '',
+          hasMarks: markRecord !== undefined && markRecord.marksObtained !== null,
+          marksObtained: markRecord && markRecord.marksObtained !== null && markRecord.marksObtained !== undefined
+            ? Number(markRecord.marksObtained)
+            : null,
+          remarks: markRecord ? markRecord.remarks || '' : '',
         };
       }),
-      config: { maxMarks, passingPercentage, passMarks }
+      config: { maxMarks, passingPercentage, passMarks },
     };
   }
 

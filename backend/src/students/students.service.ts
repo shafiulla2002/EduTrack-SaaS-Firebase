@@ -572,6 +572,8 @@ export class StudentsService implements OnModuleInit {
     page?: number,
     limit?: number,
     financialStatus?: string,
+    className?: string,
+    sectionName?: string,
   ) {
     const tenantId = this.getTenantId();
 
@@ -580,40 +582,57 @@ export class StudentsService implements OnModuleInit {
       user: {
         isActive: true
       },
-      ...(searchTerm ? {
-        OR: [
-          { rollNo: { contains: searchTerm, mode: 'insensitive' } },
-          {
-            user: {
-              OR: [
-                { name: { contains: searchTerm, mode: 'insensitive' } },
-                { email: { contains: searchTerm, mode: 'insensitive' } },
-                { phone: { contains: searchTerm, mode: 'insensitive' } },
-              ]
-            }
-          }
-        ]
-      } : {}),
-      ...(classId || sectionId ? {
-        classSection: {
-          classId: classId || undefined,
-          sectionId: sectionId || undefined,
-        }
-      } : {})
     };
 
-    if (academicYearId) {
-      if (where.classSection) {
-        where.classSection.class = {
-          academicYearId
-        };
-      } else {
-        where.classSection = {
-          class: {
-            academicYearId
+    if (searchTerm && searchTerm.trim()) {
+      const term = searchTerm.trim();
+      where.OR = [
+        { rollNo: { contains: term, mode: 'insensitive' } },
+        { fatherName: { contains: term, mode: 'insensitive' } },
+        { motherName: { contains: term, mode: 'insensitive' } },
+        { fatherPhone: { contains: term, mode: 'insensitive' } },
+        { motherPhone: { contains: term, mode: 'insensitive' } },
+        { guardianPhone: { contains: term, mode: 'insensitive' } },
+        {
+          user: {
+            OR: [
+              { name: { contains: term, mode: 'insensitive' } },
+              { email: { contains: term, mode: 'insensitive' } },
+              { phone: { contains: term, mode: 'insensitive' } },
+            ]
           }
-        };
-      }
+        }
+      ];
+    }
+
+    const classSectionFilter: any = {};
+    if (classId) {
+      classSectionFilter.classId = classId;
+    }
+    if (sectionId) {
+      classSectionFilter.sectionId = sectionId;
+    }
+
+    const classFilter: any = {};
+    if (academicYearId) {
+      classFilter.academicYearId = academicYearId;
+    }
+    if (className && !classId) {
+      classFilter.name = { equals: className, mode: 'insensitive' };
+    }
+    if (Object.keys(classFilter).length > 0) {
+      classSectionFilter.class = classFilter;
+    }
+
+    if (sectionName && !sectionId) {
+      const cleanSec = sectionName.replace(/^section\s*[-_]?/i, '').trim();
+      classSectionFilter.section = {
+        name: { contains: cleanSec, mode: 'insensitive' }
+      };
+    }
+
+    if (Object.keys(classSectionFilter).length > 0) {
+      where.classSection = classSectionFilter;
     }
 
     const isPaginated = page !== undefined && limit !== undefined;

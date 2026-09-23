@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
-  Award, FileText, CheckCircle, Save, Plus, ArrowRight, X,
-  PlusCircle, MinusCircle, Info, TrendingUp, Sparkles, RefreshCw, Settings, AlertTriangle, Users, Check
+  Award, CheckCircle, Save, X, PlusCircle, MinusCircle, 
+  RefreshCw, Settings, AlertTriangle
 } from 'lucide-react';
 import { api, fastGet, getCachedData } from '@/lib/api';
 import LoadingSpinner from '@/components/loading/LoadingSpinner';
@@ -33,17 +33,23 @@ type StudentMarkRow = {
   remarks?: string;
 };
 
+type RosterStatus = 'idle' | 'loading' | 'success' | 'error';
+
 export default function ExamsAndMarksPage() {
   const router = useRouter();
   const { showToast } = useToast();
 
-  // Synchronous metadata cache initialization for instant 0ms load
+  // Active request tracking refs for race-condition prevention & abort handling
+  const activeRosterRequestIdRef = useRef<string>('');
+  const rosterAbortControllerRef = useRef<AbortController | null>(null);
+
+  // Synchronous metadata cache initialization
   const [classes, setClasses] = useState<ClassSectionOption[]>(() => getCachedData<ClassSectionOption[]>('/exams/classes') || []);
   const [subjects, setSubjects] = useState<SubjectOption[]>(() => getCachedData<SubjectOption[]>('/exams/subjects') || []);
   const [examTypes, setExamTypes] = useState<string[]>(() => getCachedData<string[]>('/exams/exam-types') || []);
   const [components, setComponents] = useState<any[]>(() => getCachedData<any[]>('/exam-config/components') || []);
 
-  // Selection states with session persistence / instant default selection
+  // Selection states with session persistence
   const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const saved = sessionStorage.getItem('last_exam_class');
@@ -80,42 +86,17 @@ export default function ExamsAndMarksPage() {
     return cached && cached.length > 0 ? cached[0].name : 'Theory';
   });
 
-  // Roster & marks list
-  const [roster, setRoster] = useState<StudentMarkRow[]>(() => {
-    const initClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_class')) ||
-      (getCachedData<ClassSectionOption[]>('/exams/classes')?.[0]?.value);
-    const initSub = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_subject')) ||
-      (getCachedData<SubjectOption[]>('/exams/subjects')?.[0]?.id);
-    const initExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_name')) ||
-      (getCachedData<string[]>('/exams/exam-types')?.[0]);
-    const initType = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_component')) ||
-      (getCachedData<any[]>('/exam-config/components')?.[0]?.name || 'Theory');
+  // State separation: Roster records, Roster status & Errors
+  const [roster, setRoster] = useState<StudentMarkRow[]>([]);
+  const [rosterStatus, setRosterStatus] = useState<RosterStatus>('idle');
+  const [rosterError, setRosterError] = useState<string>('');
+  const [metadataError, setMetadataError] = useState<string>('');
 
-    if (initClass && initSub && initExam && initType) {
-      const url = `/exams/marks-entry?classSectionId=${initClass}&subjectId=${initSub}&examName=${encodeURIComponent(initExam)}&subjectType=${encodeURIComponent(initType)}`;
-      const cached = getCachedData<any>(url);
-      if (cached?.roster) return cached.roster;
-    }
-    return [];
-  });
-
-  // Exam configuration (pass % and max marks from ExamConfigService)
-  const [examConfig, setExamConfig] = useState<{ passingPercentage: number; maxMarks: number; passMarks?: number }>(() => {
-    const initClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_class')) ||
-      (getCachedData<ClassSectionOption[]>('/exams/classes')?.[0]?.value);
-    const initSub = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_subject')) ||
-      (getCachedData<SubjectOption[]>('/exams/subjects')?.[0]?.id);
-    const initExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_name')) ||
-      (getCachedData<string[]>('/exams/exam-types')?.[0]);
-    const initType = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_component')) ||
-      (getCachedData<any[]>('/exam-config/components')?.[0]?.name || 'Theory');
-
-    if (initClass && initSub && initExam && initType) {
-      const url = `/exams/marks-entry?classSectionId=${initClass}&subjectId=${initSub}&examName=${encodeURIComponent(initExam)}&subjectType=${encodeURIComponent(initType)}`;
-      const cached = getCachedData<any>(url);
-      if (cached?.config) return cached.config;
-    }
-    return { passingPercentage: 35, maxMarks: 100, passMarks: 35 };
+  // Exam configuration (pass % and max marks)
+  const [examConfig, setExamConfig] = useState<{ passingPercentage: number; maxMarks: number; passMarks?: number }>({
+    passingPercentage: 35,
+    maxMarks: 100,
+    passMarks: 35,
   });
 
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => {
@@ -123,26 +104,8 @@ export default function ExamsAndMarksPage() {
     return !cachedClasses || cachedClasses.length === 0;
   });
 
-  const [isLoadingRoster, setIsLoadingRoster] = useState<boolean>(() => {
-    const initClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_class')) ||
-      (getCachedData<ClassSectionOption[]>('/exams/classes')?.[0]?.value);
-    const initSub = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_subject')) ||
-      (getCachedData<SubjectOption[]>('/exams/subjects')?.[0]?.id);
-    const initExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_name')) ||
-      (getCachedData<string[]>('/exams/exam-types')?.[0]);
-    const initType = (typeof window !== 'undefined' && sessionStorage.getItem('last_exam_component')) ||
-      (getCachedData<any[]>('/exam-config/components')?.[0]?.name || 'Theory');
-
-    if (initClass && initSub && initExam && initType) {
-      const url = `/exams/marks-entry?classSectionId=${initClass}&subjectId=${initSub}&examName=${encodeURIComponent(initExam)}&subjectType=${encodeURIComponent(initType)}`;
-      return !getCachedData<any>(url);
-    }
-    return false;
-  });
-
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
   const [popupAlert, setPopupAlert] = useState<{
     show: boolean;
     title: string;
@@ -189,7 +152,7 @@ export default function ExamsAndMarksPage() {
       await api.post('/exams/exam-types', { name: newTypeName });
       setNewTypeName('');
       await fetchManageTypes();
-      await fetchMetadata(); // Refresh parent dropdown options!
+      await fetchMetadata();
     } catch (err: any) {
       setTypeError(err.response?.data?.message || 'Failed to create exam type.');
     } finally {
@@ -206,7 +169,7 @@ export default function ExamsAndMarksPage() {
       setEditingTypeId(null);
       setEditingTypeName('');
       await fetchManageTypes();
-      await fetchMetadata(); // Refresh parent dropdown options!
+      await fetchMetadata();
     } catch (err: any) {
       setTypeError(err.response?.data?.message || 'Failed to update exam type.');
     } finally {
@@ -220,20 +183,22 @@ export default function ExamsAndMarksPage() {
     try {
       await api.delete(`/exams/exam-types/${id}`);
       await fetchManageTypes();
-      await fetchMetadata(); // Refresh parent dropdown options!
+      await fetchMetadata();
     } catch (err: any) {
       setTypeError(err.response?.data?.message || 'Failed to delete exam type.');
     }
   };
 
+  // Initial metadata fetch
   useEffect(() => {
     fetchMetadata();
   }, []);
 
   const fetchMetadata = async (retryCount = 0) => {
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
     try {
-      setErrorMsg('');
-      // Fetch all independent metadata in parallel with caching
+      setMetadataError('');
+      // Fetch independent metadata in parallel
       const [classRes, subRes, compRes, typeRes] = await Promise.all([
         fastGet('/exams/classes', undefined, { ttlMs: 60000 }),
         fastGet('/exams/subjects', undefined, { ttlMs: 60000 }),
@@ -261,47 +226,30 @@ export default function ExamsAndMarksPage() {
       if (!selectedSubjectType && targetComp) setSelectedSubjectType(targetComp);
       if (!selectedExamName && targetExam) setSelectedExamName(targetExam);
 
+      const elapsed = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Exam Page] loadMetadata completed: ${elapsed}ms`);
+      }
+
       if (targetClassId && targetSubId && targetExam && targetComp) {
         fetchRoster(targetClassId, targetSubId, targetExam, targetComp);
       }
     } catch (err: any) {
-      console.error('Error fetching exams metadata:', err);
+      const elapsed = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+      console.error(`[Exam Page] API ERROR fetchMetadata duration: ${elapsed}ms`, err);
       if (retryCount < 2) {
         setTimeout(() => fetchMetadata(retryCount + 1), 600);
       } else {
-        setErrorMsg('Failed to load class, subject, or exam metadata.');
+        setMetadataError('Failed to load class, subject, or exam metadata. Please check connection and click Retry.');
       }
     } finally {
       setIsInitialLoading(false);
     }
   };
 
-  // Re-fetch exam config when exam name, class, subject, or component changes
-  useEffect(() => {
-    if (!selectedExamName) return;
-    const params: any = { examType: selectedExamName };
-    if (selectedClassSectionId) params.classSectionId = selectedClassSectionId;
-    if (selectedSubjectId) params.subjectId = selectedSubjectId;
-    if (selectedSubjectType) params.subjectType = selectedSubjectType;
-    const subObj = subjects.find(s => s.id === selectedSubjectId);
-    if (subObj?.name) params.subjectName = subObj.name;
-    
-    fastGet('/exam-config/resolve', { params }, { ttlMs: 60000 })
-      .then(res => {
-        if (res.data) {
-          setExamConfig({
-            passingPercentage: res.data.passingPercentage,
-            maxMarks: res.data.maxMarks,
-            passMarks: res.data.passMarks,
-          });
-        }
-      })
-      .catch(() => {});
-  }, [selectedExamName, selectedClassSectionId, selectedSubjectId, selectedSubjectType, subjects]);
-
   // Fetch roster when filter changes
   useEffect(() => {
-    if (selectedClassSectionId && selectedSubjectId && selectedExamName && selectedSubjectType) {
+    if (!isInitialLoading && selectedClassSectionId && selectedSubjectId && selectedExamName && selectedSubjectType) {
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('last_exam_class', selectedClassSectionId);
         sessionStorage.setItem('last_exam_subject', selectedSubjectId);
@@ -310,80 +258,104 @@ export default function ExamsAndMarksPage() {
       }
       fetchRoster(selectedClassSectionId, selectedSubjectId, selectedExamName, selectedSubjectType);
     }
-  }, [selectedClassSectionId, selectedSubjectId, selectedExamName, selectedSubjectType]);
+  }, [selectedClassSectionId, selectedSubjectId, selectedExamName, selectedSubjectType, isInitialLoading]);
 
-  const fetchRoster = async (classSectionId?: string, subjectId?: string, examName?: string, subjectType?: string) => {
+  // Main student roster fetching logic with Request ID & AbortController
+  const fetchRoster = async (
+    classSectionId?: string,
+    subjectId?: string,
+    examName?: string,
+    subjectType?: string
+  ) => {
     const targetClassId = classSectionId || selectedClassSectionId;
     const targetSubId = subjectId || selectedSubjectId;
     const targetExamName = examName || selectedExamName;
     const targetSubType = subjectType || selectedSubjectType;
 
-    if (!targetClassId || !targetSubId || !targetExamName || !targetSubType) return;
+    if (!targetClassId || !targetSubId || !targetExamName || !targetSubType) {
+      setRosterStatus('idle');
+      setRoster([]);
+      return;
+    }
+
+    // Abort previous in-flight READ request to prevent stale response race condition
+    if (rosterAbortControllerRef.current) {
+      rosterAbortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    rosterAbortControllerRef.current = abortController;
+
+    const currentRequestId = `${targetClassId}::${targetSubId}::${targetExamName}::${targetSubType}::${Date.now()}`;
+    activeRosterRequestIdRef.current = currentRequestId;
 
     const url = `/exams/marks-entry?classSectionId=${targetClassId}&subjectId=${targetSubId}&examName=${encodeURIComponent(
       targetExamName
     )}&subjectType=${encodeURIComponent(targetSubType)}`;
 
-    // Instant SWR memory lookup (0ms reflection)
-    const cachedRosterData = getCachedData<any>(url);
-    if (cachedRosterData) {
-      setRoster(cachedRosterData.roster || []);
-      if (cachedRosterData.config) {
-        setExamConfig(cachedRosterData.config);
-      }
-      setIsLoadingRoster(false);
-    } else {
-      setIsLoadingRoster(true);
-    }
+    setRosterStatus('loading');
+    setRosterError('');
 
-    setErrorMsg('');
+    const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
     try {
-      const res = await fastGet(
-        url,
-        undefined,
-        {
-          ttlMs: 30000,
-          onRevalidate: (fresh) => {
-            if (fresh?.roster) setRoster(fresh.roster);
-            if (fresh?.config) setExamConfig(fresh.config);
-          }
-        }
-      );
+      const res = await api.get(url, { signal: abortController.signal });
+
+      // Stale request protection: Ignore response if user switched selection in the meantime
+      if (activeRosterRequestIdRef.current !== currentRequestId) {
+        return;
+      }
+
+      const elapsed = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Exam Page] fetchRoster completed in ${elapsed}ms for ${targetExamName}`);
+      }
+
       if (res.data) {
         setRoster(res.data.roster || []);
         if (res.data.config) {
-          setExamConfig(res.data.config);
+          setExamConfig({
+            maxMarks: Number(res.data.config.maxMarks) || 100,
+            passingPercentage: Number(res.data.config.passingPercentage) || 35,
+            passMarks: res.data.config.passMarks !== undefined && res.data.config.passMarks !== null
+              ? Number(res.data.config.passMarks)
+              : Number(((Number(res.data.config.passingPercentage || 35) / 100) * (Number(res.data.config.maxMarks) || 100)).toFixed(2)),
+          });
         }
+      } else {
+        setRoster([]);
       }
 
-      // Background pre-fetch: pre-warm other subjects for this class and exam
-      if (subjects.length > 1) {
-        subjects.slice(0, 6).forEach(s => {
-          if (s.id !== targetSubId) {
-            const prefetchUrl = `/exams/marks-entry?classSectionId=${targetClassId}&subjectId=${s.id}&examName=${encodeURIComponent(
-              targetExamName
-            )}&subjectType=${encodeURIComponent(targetSubType)}`;
-            fastGet(prefetchUrl, undefined, { ttlMs: 60000 }).catch(() => {});
-          }
-        });
-      }
+      setRosterStatus('success');
     } catch (err: any) {
-      console.error('Error fetching marks entry list:', err);
+      // If request was intentionally aborted due to newer filter selection, do not trigger error state
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+        return;
+      }
+
+      // Ignore if a newer request is already underway
+      if (activeRosterRequestIdRef.current !== currentRequestId) {
+        return;
+      }
+
+      const elapsed = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+      console.error(`[Exam Page] API ERROR fetchRoster endpoint: ${url} status: ${err.response?.status} duration: ${elapsed}ms`, err);
+
       const backendMsg = err.response?.data?.message;
       if (backendMsg === 'Exam not found' || err.response?.status === 404) {
-        setErrorMsg('No exam has been configured for the selected Class, Subject, and Exam Term. Please create or configure the exam before entering marks.');
+        setRosterError('No exam has been configured for the selected Class, Subject, and Exam Term. Please create or configure the exam before entering marks.');
       } else if (backendMsg && backendMsg !== 'Internal server error') {
-        setErrorMsg(backendMsg);
+        setRosterError(backendMsg);
       } else {
-        setErrorMsg('Failed to load students roster for mark entry. Please click Retry.');
+        setRosterError('Failed to load students roster for mark entry. Please click Retry.');
       }
-    } finally {
-      setIsLoadingRoster(false);
+
+      setRoster([]);
+      setRosterStatus('error');
     }
   };
 
   const handleScoreChange = (studentId: string, valStr: string) => {
-    setErrorMsg('');
+    setRosterError('');
     if (valStr === '') {
       setRoster(prev =>
         prev.map(item =>
@@ -396,7 +368,7 @@ export default function ExamsAndMarksPage() {
     if (isNaN(valNum)) return;
     if (valNum < 0) {
       const msg = 'Marks cannot be negative.';
-      setErrorMsg(msg);
+      setRosterError(msg);
       showToast(msg, 'error');
       setPopupAlert({
         show: true,
@@ -409,7 +381,7 @@ export default function ExamsAndMarksPage() {
     }
     if (valNum > examConfig.maxMarks) {
       const msg = `Marks cannot exceed the configured maximum of ${examConfig.maxMarks}.`;
-      setErrorMsg(msg);
+      setRosterError(msg);
       showToast(msg, 'error');
       setPopupAlert({
         show: true,
@@ -428,7 +400,7 @@ export default function ExamsAndMarksPage() {
   };
 
   const handleIncrement = (studentId: string) => {
-    setErrorMsg('');
+    setRosterError('');
     setRoster(prev =>
       prev.map(item => {
         if (item.studentId === studentId) {
@@ -451,7 +423,7 @@ export default function ExamsAndMarksPage() {
   };
 
   const handleDecrement = (studentId: string) => {
-    setErrorMsg('');
+    setRosterError('');
     setRoster(prev =>
       prev.map(item => {
         if (item.studentId === studentId) {
@@ -473,7 +445,7 @@ export default function ExamsAndMarksPage() {
     const invalidEntry = roster.find(r => r.marksObtained !== null && (r.marksObtained > examConfig.maxMarks || r.marksObtained < 0));
     if (invalidEntry) {
       const msg = `Student ${invalidEntry.name} has invalid marks (${invalidEntry.marksObtained}). Marks must be between 0 and ${examConfig.maxMarks}.`;
-      setErrorMsg(msg);
+      setRosterError(msg);
       showToast(msg, 'error');
       setPopupAlert({
         show: true,
@@ -486,7 +458,7 @@ export default function ExamsAndMarksPage() {
     }
 
     setIsSaving(true);
-    setErrorMsg('');
+    setRosterError('');
     try {
       const marksPayload = roster.map(r => ({
         studentId: r.studentId,
@@ -513,11 +485,11 @@ export default function ExamsAndMarksPage() {
       const backendMsg = err.response?.data?.message;
       if (backendMsg === 'Exam not found' || err.response?.status === 404) {
         const msg = 'No exam has been configured for the selected Class, Subject, and Exam Term. Please create or configure the exam before entering marks.';
-        setErrorMsg(msg);
+        setRosterError(msg);
         showToast(msg, 'error');
       } else {
         const msg = backendMsg || 'Failed to save scoresheet.';
-        setErrorMsg(msg);
+        setRosterError(msg);
         showToast(msg, 'error');
       }
     } finally {
@@ -525,7 +497,7 @@ export default function ExamsAndMarksPage() {
     }
   };
 
-  // Grade badge – uses configured pass marks & percentages
+  // Grade badge calculator
   const getGradeInfo = (score: number | null) => {
     if (score === null) return { letter: '—', color: 'bg-slate-50 text-slate-400 border-slate-200', result: null };
     const passMarks = examConfig.passMarks !== undefined
@@ -543,7 +515,7 @@ export default function ExamsAndMarksPage() {
     return { letter: 'F', color: 'bg-rose-50 text-rose-600 border-rose-100', result: false };
   };
 
-  // Compute stats
+  // Statistics computations
   const validScores = roster
     .map(r => r.marksObtained)
     .filter((s): s is number => s !== null);
@@ -554,7 +526,7 @@ export default function ExamsAndMarksPage() {
 
   const highestMarks = validScores.length > 0 ? Math.max(...validScores) : 0;
 
-  // Initial Loading state with Dual Spinner + Skeleton Loading
+  // Initial Loading state
   if (isInitialLoading) {
     return (
       <div className="relative space-y-6 max-w-md mx-auto sm:max-w-none pb-20 lg:pb-6">
@@ -673,7 +645,7 @@ export default function ExamsAndMarksPage() {
           </button>
           <button
             onClick={handleSaveMarks}
-            disabled={roster.length === 0 || isLoadingRoster || isSaving || !!errorMsg}
+            disabled={roster.length === 0 || rosterStatus === 'loading' || isSaving || rosterStatus === 'error'}
             className="col-span-2 sm:col-span-1 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-slate-300 text-white font-semibold text-xs sm:text-[13px] flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer w-full sm:w-auto"
           >
             {isSaving ? (
@@ -698,16 +670,37 @@ export default function ExamsAndMarksPage() {
         </div>
       )}
 
-      {errorMsg && (
+      {/* Metadata Loading Error Banner */}
+      {metadataError && (
         <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm">
           <div className="flex items-center gap-3">
             <X className="w-5 h-5 text-rose-600 shrink-0" />
-            <span className="font-semibold">{errorMsg}</span>
+            <span className="font-semibold">{metadataError}</span>
           </div>
           <button
             onClick={() => {
-              setErrorMsg('');
+              setMetadataError('');
               fetchMetadata(0);
+            }}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry Metadata
+          </button>
+        </div>
+      )}
+
+      {/* Roster Loading Error Banner */}
+      {rosterError && rosterStatus === 'error' && (
+        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm">
+          <div className="flex items-center gap-3">
+            <X className="w-5 h-5 text-rose-600 shrink-0" />
+            <span className="font-semibold">{rosterError}</span>
+          </div>
+          <button
+            onClick={() => {
+              setRosterError('');
+              fetchRoster();
             }}
             className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
           >
@@ -793,7 +786,9 @@ export default function ExamsAndMarksPage() {
           </div>
           <div className="min-w-0">
             <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate block">Roster Entries</span>
-            <span className="text-base sm:text-xl font-extrabold text-slate-850 block mt-0.5 truncate">{roster.length} Students</span>
+            <span className="text-base sm:text-xl font-extrabold text-slate-850 block mt-0.5 truncate">
+              {rosterStatus === 'loading' ? 'Loading...' : `${roster.length} Students`}
+            </span>
           </div>
         </div>
 
@@ -822,7 +817,8 @@ export default function ExamsAndMarksPage() {
         </div>
 
         <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-          {isLoadingRoster ? (
+          {/* STATE A: LOADING */}
+          {rosterStatus === 'loading' ? (
             <div className="relative min-h-[260px] flex flex-col justify-center">
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/75 backdrop-blur-[2px]">
                 <div className="bg-white border border-blue-100 shadow-xl shadow-blue-500/10 rounded-2xl px-6 py-4 flex items-center gap-3.5 animate-in fade-in zoom-in duration-200">
@@ -845,11 +841,34 @@ export default function ExamsAndMarksPage() {
                 ))}
               </div>
             </div>
-          ) : roster.length === 0 ? (
+          ) : rosterStatus === 'error' ? (
+            /* STATE B: ERROR (Never show "No students enrolled") */
+            <div className="py-16 px-4 flex flex-col items-center justify-center text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shadow-xs">
+                <AlertTriangle className="w-6 h-6 text-rose-600" />
+              </div>
+              <div className="space-y-1 max-w-md">
+                <h4 className="text-sm font-bold text-slate-800">Failed to load student roster</h4>
+                <p className="text-xs text-slate-500 font-medium">{rosterError || 'An error occurred while fetching student marks roster.'}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setRosterError('');
+                  fetchRoster();
+                }}
+                className="mt-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Retry Loading Roster</span>
+              </button>
+            </div>
+          ) : rosterStatus === 'success' && roster.length === 0 ? (
+            /* STATE C: SUCCESS WITH 0 RECORDS */
             <div className="py-16 text-center text-slate-400 text-xs font-semibold">
               No students enrolled in the selected class and section.
             </div>
           ) : (
+            /* STATE D: SUCCESS WITH RECORDS */
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">

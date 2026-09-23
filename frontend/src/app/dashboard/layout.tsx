@@ -623,16 +623,14 @@ export default function DashboardLayout({
       fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/sections', undefined, { ttlMs: 60000 }).catch(() => {});
-    } else if (href.startsWith('/dashboard/staff')) {
-      fastGet('/staff', undefined, { ttlMs: 30000 }).catch(() => {});
-    } else if (href.startsWith('/dashboard/teachers')) {
+    } else if (href.startsWith('/dashboard/staff') || href.startsWith('/dashboard/teachers')) {
       fastGet('/teachers', undefined, { ttlMs: 30000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/attendance-mgmt') || href.startsWith('/dashboard/attendance')) {
       fastGet('/attendance/dashboard', undefined, { ttlMs: 30000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/billing') || href.startsWith('/dashboard/fee-mgmt')) {
-      fastGet('/billing/dashboard-summary', undefined, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/dashboard/summary', undefined, { ttlMs: 30000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/expenses')) {
       fastGet('/expenses', undefined, { ttlMs: 30000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/grades')) {
@@ -1609,10 +1607,10 @@ function NotificationBell() {
   const fetchNotifications = async () => {
     if (!currentUser?.id) return;
     try {
-      const res = await api.get(`/communications/user/${currentUser.id}`);
+      const res = await fastGet('/communications/user-notifications', undefined, { ttlMs: 15000 });
       setNotifications(res.data || []);
-    } catch (err) {
-      console.error('Failed to fetch notifications:', err);
+    } catch {
+      // Non-critical background polling - fail quietly
     }
   };
 
