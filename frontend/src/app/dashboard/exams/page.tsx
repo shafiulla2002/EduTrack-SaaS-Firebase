@@ -78,6 +78,9 @@ export default function ExamsAndMarksPage() {
   // Active request abort controller
   const rosterAbortControllerRef = useRef<AbortController | null>(null);
 
+  // ── STORAGE KEY FOR LAST SUCCESSFULLY APPLIED FILTER ────────────────────────
+  const ENTER_MARKS_FILTER_KEY = 'cs-edutrack-enter-marks-filter';
+
   // Metadata state loaded once on mount
   const [academicYears, setAcademicYears] = useState<AcademicYearOption[]>(() => getCachedData<AcademicYearOption[]>('/academics/academic-years') || []);
   const [classes, setClasses] = useState<ClassSectionOption[]>(() => getCachedData<ClassSectionOption[]>('/exams/classes') || []);
@@ -86,19 +89,38 @@ export default function ExamsAndMarksPage() {
   const [availableSubjects, setAvailableSubjects] = useState<SubjectOption[]>([]);
   const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
 
-  // ── SINGLE UNIFIED FILTER STATE (NO DEFAULT SELECTIONS) ─────────────────────
+  // ── SINGLE UNIFIED FILTER STATE ─────────────────────────────────────────────
   const [selectedFilters, setSelectedFilters] = useState<{
     academicYearId: string;
     classSectionId: string;
     subjectId: string;
     examName: string;
     component: string;
-  }>({
-    academicYearId: '',
-    classSectionId: '',
-    subjectId: '',
-    examName: '',
-    component: '',
+  }>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const rawSaved = localStorage.getItem(ENTER_MARKS_FILTER_KEY);
+        if (rawSaved) {
+          const parsed = JSON.parse(rawSaved);
+          if (parsed && typeof parsed === 'object') {
+            return {
+              academicYearId: parsed.academicYearId || '',
+              classSectionId: parsed.classSectionId || '',
+              subjectId: parsed.subjectId || '',
+              examName: parsed.examName || '',
+              component: parsed.component || '',
+            };
+          }
+        }
+      } catch (e) {}
+    }
+    return {
+      academicYearId: '',
+      classSectionId: '',
+      subjectId: '',
+      examName: '',
+      component: '',
+    };
   });
 
   // ── ACTIVE APPLIED FILTER SNAPSHOT ─────────────────────────────────────────
@@ -113,7 +135,26 @@ export default function ExamsAndMarksPage() {
   // ── ROSTER & REPORT RESULTS ────────────────────────────────────────────────
   const [roster, setRoster] = useState<StudentMarkRow[]>([]);
   const [reportData, setReportData] = useState<MarksReportData | null>(null);
-  const [rosterStatus, setRosterStatus] = useState<RosterStatus>('idle');
+  const [rosterStatus, setRosterStatus] = useState<RosterStatus>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const rawSaved = localStorage.getItem(ENTER_MARKS_FILTER_KEY);
+        if (rawSaved) {
+          const parsed = JSON.parse(rawSaved);
+          if (
+            parsed?.academicYearId &&
+            parsed?.classSectionId &&
+            parsed?.subjectId &&
+            parsed?.examName &&
+            parsed?.component
+          ) {
+            return 'loading';
+          }
+        }
+      } catch (e) {}
+    }
+    return 'idle';
+  });
   const [rosterError, setRosterError] = useState<string>('');
   const [metadataError, setMetadataError] = useState<string>('');
 
@@ -156,7 +197,150 @@ export default function ExamsAndMarksPage() {
   const [isSavingType, setIsSavingType] = useState(false);
   const [typeError, setTypeError] = useState('');
 
-  // ── LOAD INITIAL METADATA (WITHOUT AUTO-SELECTING DEFAULTS) ─────────────────
+  // ── STRICT ASCENDING NUMERIC ROLL NUMBER SORTER ─────────────────────────────
+  const parseRollNo = (r?: string | null) => {
+    if (!r) return { num: Infinity, str: '' };
+    const trimmed = String(r).trim();
+    const match = trimmed.match(/^(\d+)(.*)$/);
+    if (match) {
+      return { num: parseInt(match[1], 10), str: match[2] };
+    }
+    const num = parseInt(trimmed, 10);
+    return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
+  };
+
+  const sortRosterByRollNo = (students: StudentMarkRow[]): StudentMarkRow[] => {
+    return [...students].sort((a, b) => {
+      const rollA = parseRollNo(a.rollNo);
+      const rollB = parseRollNo(b.rollNo);
+      if (rollA.num !== rollB.num) return rollA.num - rollB.num; // Ascending: 1, 2, 3, 4, 5...
+      if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  };
+
+  // ── CORE FILTER EXECUTION & PERSISTENCE ENGINE ──────────────────────────────
+  const executeFilterFetch = async (
+    filtersToApply: {
+      academicYearId: string;
+      classSectionId: string;
+      subjectId: string;
+      examName: string;
+      component: string;
+    },
+    targetCs?: ClassSectionOption | null,
+    isFromRestore = false
+  ) => {
+    const cs = targetCs || classes.find(c => c.value === filtersToApply.classSectionId);
+    if (!cs) {
+      if (!isFromRestore) {
+        showToast('Could not resolve Class Section. Please verify your selection.', 'error');
+      }
+      return false;
+    }
+
+    // Abort previous in-flight requests
+    if (rosterAbortControllerRef.current) {
+      rosterAbortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    rosterAbortControllerRef.current = abortController;
+
+    setRosterStatus('loading');
+    setRosterError('');
+    setIsFiltering(true);
+
+    const classSectionId = cs.value;
+    const classId = cs.classId || '';
+    const sectionId = cs.sectionId || '';
+    const { subjectId, examName, component } = filtersToApply;
+
+    try {
+      const [marksEntryRes, reportRes] = await Promise.all([
+        api.get(
+          `/exams/marks-entry?classSectionId=${classSectionId}&subjectId=${subjectId}&examName=${encodeURIComponent(
+            examName
+          )}&subjectType=${encodeURIComponent(component)}`,
+          { signal: abortController.signal }
+        ),
+        api.get(
+          `/exams/marks-report?academicYearId=${filtersToApply.academicYearId}&classId=${classId}&sectionId=${sectionId}&classSectionId=${classSectionId}&examName=${encodeURIComponent(
+            examName
+          )}`,
+          { signal: abortController.signal }
+        ),
+      ]);
+
+      const rawRoster: StudentMarkRow[] = marksEntryRes.data?.roster || [];
+      const loadedRoster = sortRosterByRollNo(rawRoster);
+      setRoster(loadedRoster);
+
+      if (marksEntryRes.data?.config) {
+        const maxM = Number(marksEntryRes.data.config.maxMarks) || 100;
+        const passPct = Number(marksEntryRes.data.config.passingPercentage) || 35;
+        const passM =
+          marksEntryRes.data.config.passMarks !== undefined && marksEntryRes.data.config.passMarks !== null
+            ? Number(marksEntryRes.data.config.passMarks)
+            : Number(((passPct / 100) * maxM).toFixed(2));
+        setExamConfig({ maxMarks: maxM, passingPercentage: passPct, passMarks: passM });
+      }
+
+      setReportData(reportRes.data);
+      setActiveFilter({ ...filtersToApply });
+      setSelectedFilters({ ...filtersToApply });
+      setRosterStatus('success');
+
+      // Persist the LAST SUCCESSFULLY APPLIED filter to localStorage
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(ENTER_MARKS_FILTER_KEY, JSON.stringify(filtersToApply));
+        }
+      } catch (e) {
+        console.warn('Failed to save enter-marks filter to localStorage', e);
+      }
+
+      if (!isFromRestore) {
+        if (loadedRoster.length === 0) {
+          showToast('No students enrolled in the selected class and section.', 'info');
+        } else {
+          showToast(`Loaded scoresheet for ${loadedRoster.length} students.`, 'success');
+        }
+      }
+      return true;
+    } catch (err: any) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+        return false;
+      }
+      console.error('[Exam Page] Filter API Error:', err);
+      setRoster([]);
+      setReportData(null);
+      setActiveFilter(null);
+
+      if (isFromRestore) {
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(ENTER_MARKS_FILTER_KEY);
+          }
+        } catch (e) {}
+        setRosterStatus('idle');
+      } else {
+        setRosterStatus('error');
+        const backendMsg = err.response?.data?.message;
+        if (backendMsg === 'Exam not found' || err.response?.status === 404) {
+          setRosterError('No exam configuration found for the selected Class, Subject, and Exam Term.');
+        } else if (backendMsg) {
+          setRosterError(backendMsg);
+        } else {
+          setRosterError('Failed to load students roster for mark entry. Please click Retry.');
+        }
+      }
+      return false;
+    } finally {
+      setIsFiltering(false);
+    }
+  };
+
+  // ── LOAD INITIAL METADATA & RESTORE SAVED FILTER ON REFRESH ────────────────
   useEffect(() => {
     fetchMetadata();
   }, []);
@@ -173,16 +357,69 @@ export default function ExamsAndMarksPage() {
         fastGet('/exam-config/components', undefined, { ttlMs: 60000 }),
       ]);
 
-      setAcademicYears(yearRes.data || []);
-      setClasses(classRes.data || []);
-      setExamTypes(typeRes.data || []);
-      setComponents(compRes.data || []);
+      const loadedYears: AcademicYearOption[] = yearRes.data || [];
+      const loadedClasses: ClassSectionOption[] = classRes.data || [];
+      const loadedExamTypes: string[] = typeRes.data || [];
+      const loadedComponents: any[] = compRes.data || [];
+
+      setAcademicYears(loadedYears);
+      setClasses(loadedClasses);
+      setExamTypes(loadedExamTypes);
+      setComponents(loadedComponents);
+
+      // Check and restore last successfully applied filter from localStorage
+      let restoredSuccessfully = false;
+      try {
+        const rawSaved = typeof window !== 'undefined' ? localStorage.getItem(ENTER_MARKS_FILTER_KEY) : null;
+        if (rawSaved) {
+          const saved = JSON.parse(rawSaved);
+          if (
+            saved?.academicYearId &&
+            saved?.classSectionId &&
+            saved?.subjectId &&
+            saved?.examName &&
+            saved?.component
+          ) {
+            const validYear = loadedYears.some(ay => ay.id === saved.academicYearId);
+            const matchedCs = loadedClasses.find(
+              c => c.value === saved.classSectionId && (!c.academicYearId || c.academicYearId === saved.academicYearId)
+            );
+
+            if (validYear && matchedCs) {
+              // Pre-fetch available subjects for this class section
+              const subRes = await fastGet(`/exams/subjects?classSectionId=${saved.classSectionId}`, undefined, { ttlMs: 60000 });
+              const loadedSubjects: SubjectOption[] = subRes?.data || [];
+              setAvailableSubjects(loadedSubjects);
+
+              const validSub = loadedSubjects.some((s: any) => s.id === saved.subjectId);
+              const validExam = loadedExamTypes.includes(saved.examName);
+
+              if (validSub && validExam) {
+                setSelectedFilters(saved);
+                restoredSuccessfully = await executeFilterFetch(saved, matchedCs, true);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error restoring saved enter-marks filter', e);
+      }
+
+      if (!restoredSuccessfully) {
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem(ENTER_MARKS_FILTER_KEY);
+          }
+        } catch (e) {}
+        setRosterStatus('idle');
+      }
     } catch (err: any) {
       console.error('[Exam Page] API ERROR fetchMetadata:', err);
       if (retryCount < 2) {
         setTimeout(() => fetchMetadata(retryCount + 1), 600);
       } else {
         setMetadataError('Failed to load academic years and exam metadata. Please click Retry.');
+        setRosterStatus('idle');
       }
     } finally {
       setIsInitialLoading(false);
@@ -254,7 +491,7 @@ export default function ExamsAndMarksPage() {
     return ['Theory', 'Practical'];
   }, [components]);
 
-  // ── RESET STATE ON PARENT FILTER CHANGES ────────────────────────────────────
+  // ── RESET STATE ON PARENT FILTER CHANGES (MARKS SELECTION AS UNAPPLIED) ─────
 
   const clearRosterAndReport = () => {
     setRoster([]);
@@ -313,28 +550,6 @@ export default function ExamsAndMarksPage() {
     clearRosterAndReport();
   };
 
-  // ── STRICT ASCENDING NUMERIC ROLL NUMBER SORTER ─────────────────────────────
-  const parseRollNo = (r?: string | null) => {
-    if (!r) return { num: Infinity, str: '' };
-    const trimmed = String(r).trim();
-    const match = trimmed.match(/^(\d+)(.*)$/);
-    if (match) {
-      return { num: parseInt(match[1], 10), str: match[2] };
-    }
-    const num = parseInt(trimmed, 10);
-    return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
-  };
-
-  const sortRosterByRollNo = (students: StudentMarkRow[]): StudentMarkRow[] => {
-    return [...students].sort((a, b) => {
-      const rollA = parseRollNo(a.rollNo);
-      const rollB = parseRollNo(b.rollNo);
-      if (rollA.num !== rollB.num) return rollA.num - rollB.num; // Ascending: 1, 2, 3, 4, 5...
-      if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
-      return (a.name || '').localeCompare(b.name || '');
-    });
-  };
-
   // ── FILTER COMPLETENESS & PDF ENABLED STATUS ────────────────────────────────
 
   const isFilterComplete = Boolean(
@@ -360,93 +575,14 @@ export default function ExamsAndMarksPage() {
     !isDownloadingPdf
   );
 
-  // ── EXECUTE FILTER QUERY ────────────────────────────────────────────────────
+  // ── TRIGGER FILTER BUTTON ───────────────────────────────────────────────────
 
   const handleFilter = async () => {
     if (!isFilterComplete) {
       showToast('Please select all required filters before clicking Filter.', 'error');
       return;
     }
-
-    if (!matchedClassSection) {
-      showToast('Could not resolve Class Section. Please verify your selection.', 'error');
-      return;
-    }
-
-    // Abort previous in-flight requests
-    if (rosterAbortControllerRef.current) {
-      rosterAbortControllerRef.current.abort();
-    }
-    const abortController = new AbortController();
-    rosterAbortControllerRef.current = abortController;
-
-    setRosterStatus('loading');
-    setRosterError('');
-    setIsFiltering(true);
-
-    const classSectionId = matchedClassSection.value;
-    const classId = matchedClassSection.classId || '';
-    const sectionId = matchedClassSection.sectionId || '';
-    const { subjectId, examName, component } = selectedFilters;
-
-    try {
-      const [marksEntryRes, reportRes] = await Promise.all([
-        api.get(
-          `/exams/marks-entry?classSectionId=${classSectionId}&subjectId=${subjectId}&examName=${encodeURIComponent(
-            examName
-          )}&subjectType=${encodeURIComponent(component)}`,
-          { signal: abortController.signal }
-        ),
-        api.get(
-          `/exams/marks-report?academicYearId=${selectedFilters.academicYearId}&classId=${classId}&sectionId=${sectionId}&classSectionId=${classSectionId}&examName=${encodeURIComponent(
-            examName
-          )}`,
-          { signal: abortController.signal }
-        ),
-      ]);
-
-      const rawRoster: StudentMarkRow[] = marksEntryRes.data?.roster || [];
-      const loadedRoster = sortRosterByRollNo(rawRoster);
-      setRoster(loadedRoster);
-
-      if (marksEntryRes.data?.config) {
-        const maxM = Number(marksEntryRes.data.config.maxMarks) || 100;
-        const passPct = Number(marksEntryRes.data.config.passingPercentage) || 35;
-        const passM = marksEntryRes.data.config.passMarks !== undefined && marksEntryRes.data.config.passMarks !== null
-          ? Number(marksEntryRes.data.config.passMarks)
-          : Number(((passPct / 100) * maxM).toFixed(2));
-        setExamConfig({ maxMarks: maxM, passingPercentage: passPct, passMarks: passM });
-      }
-
-      setReportData(reportRes.data);
-      setActiveFilter({ ...selectedFilters });
-      setRosterStatus('success');
-
-      if (loadedRoster.length === 0) {
-        showToast('No students enrolled in the selected class and section.', 'info');
-      } else {
-        showToast(`Loaded scoresheet for ${loadedRoster.length} students.`, 'success');
-      }
-    } catch (err: any) {
-      if (err.name === 'CanceledError' || err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
-        return;
-      }
-      console.error('[Exam Page] Filter API Error:', err);
-      setRoster([]);
-      setReportData(null);
-      setActiveFilter(null);
-      setRosterStatus('error');
-      const backendMsg = err.response?.data?.message;
-      if (backendMsg === 'Exam not found' || err.response?.status === 404) {
-        setRosterError('No exam configuration found for the selected Class, Subject, and Exam Term.');
-      } else if (backendMsg) {
-        setRosterError(backendMsg);
-      } else {
-        setRosterError('Failed to load students roster for mark entry. Please click Retry.');
-      }
-    } finally {
-      setIsFiltering(false);
-    }
+    await executeFilterFetch(selectedFilters, matchedClassSection, false);
   };
 
   // ── SCORE INPUT CHANGE HANDLERS ─────────────────────────────────────────────
