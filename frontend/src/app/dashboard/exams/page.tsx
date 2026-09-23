@@ -88,15 +88,13 @@ export default function ExamsAndMarksPage() {
   // ── SINGLE UNIFIED FILTER STATE (NO DEFAULT SELECTIONS) ─────────────────────
   const [selectedFilters, setSelectedFilters] = useState<{
     academicYearId: string;
-    classId: string;
-    sectionId: string;
+    classSectionId: string;
     subjectId: string;
     examName: string;
     component: string;
   }>({
     academicYearId: '',
-    classId: '',
-    sectionId: '',
+    classSectionId: '',
     subjectId: '',
     examName: '',
     component: '',
@@ -105,8 +103,7 @@ export default function ExamsAndMarksPage() {
   // ── ACTIVE APPLIED FILTER SNAPSHOT ─────────────────────────────────────────
   const [activeFilter, setActiveFilter] = useState<{
     academicYearId: string;
-    classId: string;
-    sectionId: string;
+    classSectionId: string;
     subjectId: string;
     examName: string;
     component: string;
@@ -193,48 +190,25 @@ export default function ExamsAndMarksPage() {
 
   // ── PROGRESSIVE CASCADING DROPDOWN DERIVATION ────────────────────────────────
 
-  // Classes for selected Academic Year
-  const availableClasses = useMemo(() => {
+  // Class & Section options for selected Academic Year
+  const availableClassSections = useMemo(() => {
     if (!selectedFilters.academicYearId) return [];
-    const filtered = classes.filter(c => !c.academicYearId || c.academicYearId === selectedFilters.academicYearId);
-    const map = new Map<string, { id: string; name: string }>();
-    for (const c of filtered) {
-      if (c.classId && !map.has(c.classId)) {
-        const name = c.className || c.label.split(' - ')[0] || 'Class';
-        map.set(c.classId, { id: c.classId, name });
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    return classes
+      .filter(c => !c.academicYearId || c.academicYearId === selectedFilters.academicYearId)
+      .sort((a, b) => {
+        const nameA = a.displayName || a.label || `${a.className} - ${a.sectionName}`;
+        const nameB = b.displayName || b.label || `${b.className} - ${b.sectionName}`;
+        return nameA.localeCompare(nameB, undefined, { numeric: true });
+      });
   }, [classes, selectedFilters.academicYearId]);
 
-  // Sections for selected Class & Academic Year
-  const availableSections = useMemo(() => {
-    if (!selectedFilters.classId) return [];
-    const filtered = classes.filter(c => 
-      c.classId === selectedFilters.classId && 
-      (!selectedFilters.academicYearId || !c.academicYearId || c.academicYearId === selectedFilters.academicYearId)
-    );
-    const map = new Map<string, { id: string; name: string; classSectionId: string }>();
-    for (const c of filtered) {
-      if (c.sectionId && !map.has(c.sectionId)) {
-        const name = c.sectionName || (c.label.includes(' - ') ? c.label.split(' - ')[1] : 'Section');
-        map.set(c.sectionId, { id: c.sectionId, name, classSectionId: c.value });
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  }, [classes, selectedFilters.classId, selectedFilters.academicYearId]);
-
-  // Resolve matching ClassSectionId
+  // Resolve matching ClassSection
   const matchedClassSection = useMemo(() => {
-    if (!selectedFilters.classId || !selectedFilters.sectionId) return null;
-    return classes.find(c => 
-      c.classId === selectedFilters.classId && 
-      c.sectionId === selectedFilters.sectionId &&
-      (!selectedFilters.academicYearId || !c.academicYearId || c.academicYearId === selectedFilters.academicYearId)
-    ) || null;
-  }, [classes, selectedFilters.classId, selectedFilters.sectionId, selectedFilters.academicYearId]);
+    if (!selectedFilters.classSectionId) return null;
+    return classes.find(c => c.value === selectedFilters.classSectionId) || null;
+  }, [classes, selectedFilters.classSectionId]);
 
-  // Load available subjects when section is selected
+  // Load available subjects when Class / Section is selected
   useEffect(() => {
     if (!matchedClassSection) {
       setAvailableSubjects([]);
@@ -271,8 +245,7 @@ export default function ExamsAndMarksPage() {
   const handleYearChange = (yearId: string) => {
     setSelectedFilters({
       academicYearId: yearId,
-      classId: '',
-      sectionId: '',
+      classSectionId: '',
       subjectId: '',
       examName: '',
       component: '',
@@ -280,22 +253,10 @@ export default function ExamsAndMarksPage() {
     clearRosterAndReport();
   };
 
-  const handleClassChange = (classId: string) => {
+  const handleClassSectionChange = (classSectionId: string) => {
     setSelectedFilters(prev => ({
       ...prev,
-      classId,
-      sectionId: '',
-      subjectId: '',
-      examName: '',
-      component: '',
-    }));
-    clearRosterAndReport();
-  };
-
-  const handleSectionChange = (sectionId: string) => {
-    setSelectedFilters(prev => ({
-      ...prev,
-      sectionId,
+      classSectionId,
       subjectId: '',
       examName: '',
       component: '',
@@ -330,12 +291,33 @@ export default function ExamsAndMarksPage() {
     clearRosterAndReport();
   };
 
+  // ── STRICT ASCENDING NUMERIC ROLL NUMBER SORTER ─────────────────────────────
+  const parseRollNo = (r?: string | null) => {
+    if (!r) return { num: Infinity, str: '' };
+    const trimmed = String(r).trim();
+    const match = trimmed.match(/^(\d+)(.*)$/);
+    if (match) {
+      return { num: parseInt(match[1], 10), str: match[2] };
+    }
+    const num = parseInt(trimmed, 10);
+    return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
+  };
+
+  const sortRosterByRollNo = (students: StudentMarkRow[]): StudentMarkRow[] => {
+    return [...students].sort((a, b) => {
+      const rollA = parseRollNo(a.rollNo);
+      const rollB = parseRollNo(b.rollNo);
+      if (rollA.num !== rollB.num) return rollA.num - rollB.num; // Ascending: 1, 2, 3, 4, 5...
+      if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  };
+
   // ── FILTER COMPLETENESS & PDF ENABLED STATUS ────────────────────────────────
 
   const isFilterComplete = Boolean(
     selectedFilters.academicYearId &&
-    selectedFilters.classId &&
-    selectedFilters.sectionId &&
+    selectedFilters.classSectionId &&
     selectedFilters.subjectId &&
     selectedFilters.examName &&
     selectedFilters.component
@@ -347,8 +329,7 @@ export default function ExamsAndMarksPage() {
     reportData.students &&
     reportData.students.length > 0 &&
     selectedFilters.academicYearId === activeFilter.academicYearId &&
-    selectedFilters.classId === activeFilter.classId &&
-    selectedFilters.sectionId === activeFilter.sectionId &&
+    selectedFilters.classSectionId === activeFilter.classSectionId &&
     selectedFilters.subjectId === activeFilter.subjectId &&
     selectedFilters.examName === activeFilter.examName &&
     selectedFilters.component === activeFilter.component &&
@@ -382,6 +363,8 @@ export default function ExamsAndMarksPage() {
     setIsFiltering(true);
 
     const classSectionId = matchedClassSection.value;
+    const classId = matchedClassSection.classId || '';
+    const sectionId = matchedClassSection.sectionId || '';
     const { subjectId, examName, component } = selectedFilters;
 
     try {
@@ -393,14 +376,15 @@ export default function ExamsAndMarksPage() {
           { signal: abortController.signal }
         ),
         api.get(
-          `/exams/marks-report?academicYearId=${selectedFilters.academicYearId}&classId=${selectedFilters.classId}&sectionId=${selectedFilters.sectionId}&classSectionId=${classSectionId}&examName=${encodeURIComponent(
+          `/exams/marks-report?academicYearId=${selectedFilters.academicYearId}&classId=${classId}&sectionId=${sectionId}&classSectionId=${classSectionId}&examName=${encodeURIComponent(
             examName
           )}`,
           { signal: abortController.signal }
         ),
       ]);
 
-      const loadedRoster: StudentMarkRow[] = marksEntryRes.data?.roster || [];
+      const rawRoster: StudentMarkRow[] = marksEntryRes.data?.roster || [];
+      const loadedRoster = sortRosterByRollNo(rawRoster);
       setRoster(loadedRoster);
 
       if (marksEntryRes.data?.config) {
@@ -562,7 +546,7 @@ export default function ExamsAndMarksPage() {
 
       // Refresh report data in background for PDF export parity
       api.get(
-        `/exams/marks-report?academicYearId=${selectedFilters.academicYearId}&classId=${selectedFilters.classId}&sectionId=${selectedFilters.sectionId}&classSectionId=${matchedClassSection.value}&examName=${encodeURIComponent(
+        `/exams/marks-report?academicYearId=${selectedFilters.academicYearId}&classId=${matchedClassSection.classId}&sectionId=${matchedClassSection.sectionId}&classSectionId=${matchedClassSection.value}&examName=${encodeURIComponent(
           selectedFilters.examName
         )}`
       ).then(res => setReportData(res.data)).catch(() => {});
@@ -944,8 +928,7 @@ export default function ExamsAndMarksPage() {
 
   // Resolved display names for scoring matrix header
   const currentSubjectName = availableSubjects.find(s => s.id === selectedFilters.subjectId)?.name || 'Subject';
-  const currentClassName = availableClasses.find(c => c.id === selectedFilters.classId)?.name || 'Class';
-  const currentSectionName = availableSections.find(s => s.id === selectedFilters.sectionId)?.name || 'Section';
+  const currentClassSectionLabel = matchedClassSection?.displayName || matchedClassSection?.label || (matchedClassSection ? `${matchedClassSection.className} - ${matchedClassSection.sectionName}` : 'Class & Section');
 
   // ── INITIAL SKELETON LOADING ────────────────────────────────────────────────
   if (isInitialLoading) {
@@ -984,8 +967,8 @@ export default function ExamsAndMarksPage() {
         </div>
 
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-sm opacity-60 animate-pulse">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 sm:gap-4">
-            {[...Array(6)].map((_, i) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
+            {[...Array(5)].map((_, i) => (
               <div key={i} className="space-y-2">
                 <div className="h-3 bg-slate-200 rounded w-20"></div>
                 <div className="h-10 bg-slate-100 rounded-xl"></div>
@@ -1057,7 +1040,7 @@ export default function ExamsAndMarksPage() {
             <div>
               <h3 className="text-sm font-bold text-slate-900">Select Exam Cohort & Subject</h3>
               <p className="text-[11px] font-medium text-slate-500">
-                Choose Academic Year, Class, Section, Subject, Exam Term, and Component to load students.
+                Choose Academic Year, Class / Section, Subject, Exam Term, and Component to load students.
               </p>
             </div>
           </div>
@@ -1069,8 +1052,8 @@ export default function ExamsAndMarksPage() {
           )}
         </div>
 
-        {/* 6 Cascading Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-3.5 text-xs font-bold">
+        {/* 5 Cascading Dropdowns */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-3.5 text-xs font-bold">
           {/* 1. Academic Year */}
           <div>
             <label className="block text-slate-500 mb-1.5 uppercase tracking-wider text-[10px]">
@@ -1090,47 +1073,27 @@ export default function ExamsAndMarksPage() {
             </select>
           </div>
 
-          {/* 2. Class */}
+          {/* 2. Class / Section */}
           <div>
             <label className="block text-slate-500 mb-1.5 uppercase tracking-wider text-[10px]">
-              Class / Grade <span className="text-rose-500">*</span>
+              Class / Section <span className="text-rose-500">*</span>
             </label>
             <select
-              value={selectedFilters.classId}
-              onChange={(e) => handleClassChange(e.target.value)}
-              disabled={!selectedFilters.academicYearId || availableClasses.length === 0}
+              value={selectedFilters.classSectionId}
+              onChange={(e) => handleClassSectionChange(e.target.value)}
+              disabled={!selectedFilters.academicYearId || availableClassSections.length === 0}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none focus:border-blue-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
             >
-              <option value="">Select Class</option>
-              {availableClasses.map((cls) => (
-                <option key={cls.id} value={cls.id}>
-                  {cls.name}
+              <option value="">Select Class / Section</option>
+              {availableClassSections.map((cs) => (
+                <option key={cs.value} value={cs.value}>
+                  {cs.displayName || cs.label || `${cs.className} - ${cs.sectionName}`}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* 3. Section */}
-          <div>
-            <label className="block text-slate-500 mb-1.5 uppercase tracking-wider text-[10px]">
-              Section <span className="text-rose-500">*</span>
-            </label>
-            <select
-              value={selectedFilters.sectionId}
-              onChange={(e) => handleSectionChange(e.target.value)}
-              disabled={!selectedFilters.classId || availableSections.length === 0}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none focus:border-blue-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
-            >
-              <option value="">Select Section</option>
-              {availableSections.map((sec) => (
-                <option key={sec.id} value={sec.id}>
-                  {sec.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 4. Subject */}
+          {/* 3. Subject */}
           <div>
             <label className="block text-slate-500 mb-1.5 uppercase tracking-wider text-[10px]">
               Subject <span className="text-rose-500">*</span>
@@ -1138,7 +1101,7 @@ export default function ExamsAndMarksPage() {
             <select
               value={selectedFilters.subjectId}
               onChange={(e) => handleSubjectChange(e.target.value)}
-              disabled={!selectedFilters.sectionId || availableSubjects.length === 0}
+              disabled={!selectedFilters.classSectionId || availableSubjects.length === 0}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none focus:border-blue-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
             >
               <option value="">Select Subject</option>
@@ -1150,7 +1113,7 @@ export default function ExamsAndMarksPage() {
             </select>
           </div>
 
-          {/* 5. Exam Term */}
+          {/* 4. Exam Term */}
           <div>
             <label className="block text-slate-500 mb-1.5 uppercase tracking-wider text-[10px]">
               Exam Term <span className="text-rose-500">*</span>
@@ -1170,7 +1133,7 @@ export default function ExamsAndMarksPage() {
             </select>
           </div>
 
-          {/* 6. Component */}
+          {/* 5. Component */}
           <div>
             <label className="block text-slate-500 mb-1.5 uppercase tracking-wider text-[10px]">
               Component <span className="text-rose-500">*</span>
@@ -1261,7 +1224,7 @@ export default function ExamsAndMarksPage() {
           <div className="max-w-md mx-auto space-y-1">
             <h4 className="text-sm font-bold text-slate-800">Select Filters & Click Filter</h4>
             <p className="text-xs text-slate-500 font-medium leading-relaxed">
-              Please select Academic Year, Class, Section, Subject, Exam Term, and Component above, then click{' '}
+              Please select Academic Year, Class / Section, Subject, Exam Term, and Component above, then click{' '}
               <strong className="text-slate-700">Filter</strong> to load the student scoresheet and enter marks.
             </p>
           </div>
@@ -1378,7 +1341,7 @@ export default function ExamsAndMarksPage() {
                   Scoring Matrix: {currentSubjectName} ({selectedFilters.component}) — Max Marks: {examConfig.maxMarks}
                 </h3>
                 <span className="text-[11px] text-slate-500 font-semibold block mt-0.5">
-                  {currentClassName} - {currentSectionName} · {selectedFilters.examName}
+                  {currentClassSectionLabel} · {selectedFilters.examName}
                 </span>
               </div>
               <button
