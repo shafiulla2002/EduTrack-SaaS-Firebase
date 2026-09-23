@@ -60,49 +60,13 @@ export default function GradesMarksPage() {
   const [classes, setClasses] = useState<ClassSectionOption[]>(() => getCachedData<ClassSectionOption[]>('/exams/classes') || []);
   const [examTypes, setExamTypes] = useState<string[]>(() => getCachedData<string[]>('/exams/exam-types') || []);
 
-  // Selection filters
-  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('last_grades_class');
-      if (saved) return saved;
-    }
-    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
-    return cachedClasses && cachedClasses.length > 0 ? cachedClasses[0].value : '';
-  });
-
-  const [selectedExamName, setSelectedExamName] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('last_grades_exam');
-      if (saved) return saved;
-    }
-    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
-    return cachedTypes && cachedTypes.length > 0 ? cachedTypes[0] : '';
-  });
+  // Selection filters (No default selections, starts with placeholders)
+  const [selectedClassSectionId, setSelectedClassSectionId] = useState<string>('');
+  const [selectedExamName, setSelectedExamName] = useState<string>('');
 
   // Results list
-  const [records, setRecords] = useState<GradeRecord[]>(() => {
-    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
-    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
-    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_class')) || cachedClasses?.[0]?.value;
-    const initialExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_exam')) || cachedTypes?.[0];
-    if (initialClass && initialExam) {
-      return getCachedData<GradeRecord[]>(`/exams/grades-report?classSectionId=${initialClass}&examName=${encodeURIComponent(initialExam)}`) || [];
-    }
-    return [];
-  });
-
-  const [isLoading, setIsLoading] = useState<boolean>(() => {
-    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
-    const cachedTypes = getCachedData<string[]>('/exams/exam-types');
-    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_class')) || cachedClasses?.[0]?.value;
-    const initialExam = (typeof window !== 'undefined' && sessionStorage.getItem('last_grades_exam')) || cachedTypes?.[0];
-    if (initialClass && initialExam) {
-      const cachedReport = getCachedData(`/exams/grades-report?classSectionId=${initialClass}&examName=${encodeURIComponent(initialExam)}`);
-      return !cachedReport;
-    }
-    return true;
-  });
-
+  const [records, setRecords] = useState<GradeRecord[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isFetchingRoster, setIsFetchingRoster] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
@@ -165,9 +129,6 @@ export default function GradesMarksPage() {
           onRevalidate: (fresh) => {
             if (fresh && fresh.length > 0) {
               setClasses(fresh);
-              if (!selectedClassSectionId) {
-                setSelectedClassSectionId(fresh[0].value);
-              }
             }
           }
         }),
@@ -176,9 +137,6 @@ export default function GradesMarksPage() {
           onRevalidate: (fresh) => {
             if (fresh && fresh.length > 0) {
               setExamTypes(fresh);
-              if (!selectedExamName) {
-                setSelectedExamName(fresh[0]);
-              }
             }
           }
         })
@@ -187,50 +145,38 @@ export default function GradesMarksPage() {
       const typeList = typeRes.data || [];
       if (classList.length > 0) setClasses(classList);
       if (typeList.length > 0) setExamTypes(typeList);
-
-      const targetClassId = selectedClassSectionId || (classList.length > 0 ? classList[0].value : '');
-      const targetExamName = selectedExamName || (typeList.length > 0 ? typeList[0] : '');
-
-      if (!selectedClassSectionId && targetClassId) setSelectedClassSectionId(targetClassId);
-      if (!selectedExamName && targetExamName) setSelectedExamName(targetExamName);
-
-      if (targetClassId && targetExamName) {
-        fetchGrades(targetClassId, targetExamName);
-        // Pre-warm reports for other exam types in the same class
-        typeList.forEach((et: string) => {
-          if (et !== targetExamName) {
-            fastGet(`/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(et)}`, undefined, { ttlMs: 60000 }).catch(() => {});
-          }
-        });
-      }
     } catch (err: any) {
       console.error('Error fetching grades metadata:', err);
       setErrorMsg('Failed to load class or exam type filters.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     if (selectedClassSectionId && selectedExamName) {
       fetchGrades(selectedClassSectionId, selectedExamName);
+    } else {
+      setRecords([]);
+      setIsLoading(false);
+      setIsFetchingRoster(false);
     }
   }, [selectedClassSectionId, selectedExamName]);
 
   const fetchGrades = async (classSectionId?: string, examName?: string) => {
-    const targetClassId = classSectionId || selectedClassSectionId;
-    const targetExamName = examName || selectedExamName;
-    if (!targetClassId || !targetExamName) return;
-
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('last_grades_class', targetClassId);
-      sessionStorage.setItem('last_grades_exam', targetExamName);
+    const targetClassId = classSectionId !== undefined ? classSectionId : selectedClassSectionId;
+    const targetExamName = examName !== undefined ? examName : selectedExamName;
+    if (!targetClassId || !targetExamName) {
+      setRecords([]);
+      setIsLoading(false);
+      setIsFetchingRoster(false);
+      return;
     }
 
-    const cached = getCachedData<GradeRecord[]>(`/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(targetExamName)}`);
+    const cacheKey = `/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(targetExamName)}`;
+    const cached = getCachedData<GradeRecord[]>(cacheKey);
     if (cached && cached.length > 0) {
       setRecords(cached);
       setIsLoading(false);
+      setIsFetchingRoster(false);
     } else if (records.length === 0) {
       setIsLoading(true);
     } else {
@@ -240,17 +186,19 @@ export default function GradesMarksPage() {
     setErrorMsg('');
     try {
       const res = await fastGet(
-        `/exams/grades-report?classSectionId=${targetClassId}&examName=${encodeURIComponent(
-          targetExamName
-        )}`,
+        cacheKey,
+        undefined,
         {
           ttlMs: 60000,
           onRevalidate: (fresh: any) => {
-            if (fresh) setRecords(fresh?.data || fresh);
+            if (fresh) {
+              const freshData = fresh?.data || fresh;
+              if (Array.isArray(freshData)) setRecords(freshData);
+            }
           }
         }
       );
-      if (res.data) {
+      if (res.data && Array.isArray(res.data)) {
         setRecords(res.data);
       }
     } catch (err: any) {
@@ -264,17 +212,39 @@ export default function GradesMarksPage() {
 
   const handleResetFilters = () => {
     setSearch('');
-    if (classes.length > 0) setSelectedClassSectionId(classes[0].value);
-    if (examTypes.length > 0) setSelectedExamName(examTypes[0]);
+    setSelectedClassSectionId('');
+    setSelectedExamName('');
+    setRecords([]);
+    setErrorMsg('');
   };
 
-  // Filter computation by search query
-  const filteredRecords = records.filter(r => {
-    return (
-      r.name.toLowerCase().includes(search.toLowerCase()) ||
-      r.rollNo.toLowerCase().includes(search.toLowerCase())
-    );
-  });
+  // ── NATURAL NUMERIC ROLL NUMBER SORTER ──────────────────────────────────────
+  const parseRollNo = (r?: string | null) => {
+    if (!r) return { num: Infinity, str: '' };
+    const trimmed = String(r).trim();
+    const match = trimmed.match(/^(\d+)(.*)$/);
+    if (match) {
+      return { num: parseInt(match[1], 10), str: match[2] };
+    }
+    const num = parseInt(trimmed, 10);
+    return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
+  };
+
+  // Filter computation by search query & sorted in ascending roll number order
+  const filteredRecords = records
+    .filter(r => {
+      return (
+        r.name.toLowerCase().includes(search.toLowerCase()) ||
+        r.rollNo.toLowerCase().includes(search.toLowerCase())
+      );
+    })
+    .sort((a, b) => {
+      const rollA = parseRollNo(a.rollNo);
+      const rollB = parseRollNo(b.rollNo);
+      if (rollA.num !== rollB.num) return rollA.num - rollB.num; // Ascending: 1, 2, 3...
+      if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
+      return a.rank - b.rank;
+    });
 
   // KPI Calculations based on exact result from backend
   const totalStudents = filteredRecords.length;
@@ -441,9 +411,13 @@ export default function GradesMarksPage() {
         {/* Class select */}
         <select
           value={selectedClassSectionId}
-          onChange={(e) => setSelectedClassSectionId(e.target.value)}
-          className="border border-slate-200 rounded-xl p-2.5 text-[13px] text-slate-755 font-bold bg-white shadow-xs outline-none"
+          onChange={(e) => {
+            const val = e.target.value;
+            setSelectedClassSectionId(val);
+          }}
+          className="border border-slate-200 rounded-xl p-2.5 text-[13px] text-slate-800 font-bold bg-white shadow-xs outline-none focus:border-blue-600 transition-colors cursor-pointer"
         >
+          <option value="">Select Class / Section</option>
           {classes.map(c => (
             <option key={c.value} value={c.value}>{c.label}</option>
           ))}
@@ -452,9 +426,13 @@ export default function GradesMarksPage() {
         {/* Test select */}
         <select
           value={selectedExamName}
-          onChange={(e) => setSelectedExamName(e.target.value)}
-          className="border border-slate-200 rounded-xl p-2.5 text-[13px] text-slate-755 font-bold bg-white shadow-xs outline-none"
+          onChange={(e) => {
+            const val = e.target.value;
+            setSelectedExamName(val);
+          }}
+          className="border border-slate-200 rounded-xl p-2.5 text-[13px] text-slate-800 font-bold bg-white shadow-xs outline-none focus:border-blue-600 transition-colors cursor-pointer"
         >
+          <option value="">Select Exam Term</option>
           {examTypes.map(t => (
             <option key={t} value={t}>{t}</option>
           ))}
@@ -515,7 +493,17 @@ export default function GradesMarksPage() {
           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tap a card to view report card</span>
         </div>
 
-        {isLoading ? (
+        {!selectedClassSectionId || !selectedExamName ? (
+          <div className="py-16 text-center space-y-2">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center mx-auto shadow-xs">
+              <BookOpen className="w-6 h-6 text-blue-600" />
+            </div>
+            <h4 className="text-sm font-bold text-slate-800">Select Class / Section &amp; Exam Term</h4>
+            <p className="text-xs text-slate-400 font-semibold max-w-sm mx-auto">
+              Please choose a Class / Section and an Exam Term from the dropdowns above to load the student performance roster.
+            </p>
+          </div>
+        ) : isLoading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400">
             <RefreshCw className="w-8 h-8 animate-spin" />
             <span className="text-xs font-semibold">Generating report roster...</span>
