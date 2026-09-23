@@ -598,20 +598,27 @@ export default function ExamsAndMarksPage() {
 
       const dateStr = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
       const schoolTitle = (reportData.schoolName || 'CS EduTrack Institute').toUpperCase();
-      const schoolCodeText = reportData.schoolCode ? `[ School Code / UDISE: ${reportData.schoolCode} ]` : '';
 
       // Header Banner
       doc.setFillColor(30, 41, 59); // slate-800
       doc.rect(margin, margin, printableWidth, 16, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
-      doc.text(`${schoolTitle} ${schoolCodeText}`, margin + 6, margin + 10.5);
+      doc.setFontSize(12);
+
+      // Fit school title on top left
+      const maxTitleWidth = printableWidth - 75;
+      let displayTitle = schoolTitle;
+      while (displayTitle.length > 4 && doc.getTextWidth(displayTitle) > maxTitleWidth) {
+        displayTitle = displayTitle.slice(0, -1);
+      }
+      if (displayTitle !== schoolTitle) displayTitle += '..';
+      doc.text(displayTitle, margin + 6, margin + 10.5);
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.setTextColor(203, 213, 225); // slate-300
-      doc.text(`Generated: ${dateStr} | Total Students: ${reportData.totalStudents}`, printableWidth + margin - 6, margin + 10.5, {
+      doc.text(`Generated: ${dateStr} | Total: ${reportData.totalStudents} Students`, printableWidth + margin - 6, margin + 10.5, {
         align: 'right',
       });
 
@@ -621,19 +628,19 @@ export default function ExamsAndMarksPage() {
       doc.setDrawColor(226, 232, 240);
       doc.roundedRect(margin, y, printableWidth, 14, 2, 2, 'FD');
 
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.setTextColor(71, 85, 105);
       doc.setFont('helvetica', 'bold');
       doc.text('EXAMINATION REPORT DETAILS:', margin + 4, y + 5.5);
       doc.setFont('helvetica', 'normal');
       doc.text(
-        `Academic Year: ${reportData.academicYear}   |   Class: ${reportData.className}   |   Section: ${reportData.sectionName}`,
-        margin + 56,
+        `Academic Year: ${reportData.academicYear}   |   Class: ${reportData.className}   |   Section: ${reportData.sectionName}   |   School Code: ${reportData.schoolCode || '—'}`,
+        margin + 54,
         y + 5.5
       );
       doc.text(
         `Exam Term: ${reportData.examType}   |   Format: Government-Style Consolidated Mark Sheet   |   Status: Validated`,
-        margin + 56,
+        margin + 54,
         y + 10.5
       );
 
@@ -642,11 +649,11 @@ export default function ExamsAndMarksPage() {
       // Table columns setup
       const fixedLeftCols = [
         { header: '#', key: '_sno', width: 9, align: 'center' },
-        { header: 'School Code', key: '_schoolCode', width: 22, align: 'center' },
-        { header: 'Admission No', key: '_admNo', width: 24, align: 'left' },
-        { header: 'Roll No', key: '_rollNo', width: 18, align: 'left' },
+        { header: 'School Code', key: '_schoolCode', width: 24, align: 'center' },
+        { header: 'Admission No', key: '_admNo', width: 22, align: 'left' },
+        { header: 'Roll No', key: '_rollNo', width: 16, align: 'center' },
         { header: 'Student Name', key: '_name', width: 44, align: 'left' },
-        { header: 'Exam Type', key: '_examType', width: 26, align: 'left' },
+        { header: 'Exam Type', key: '_examType', width: 24, align: 'left' },
       ];
 
       const subjects = reportData.subjects || [];
@@ -655,7 +662,7 @@ export default function ExamsAndMarksPage() {
       const fixedRightWidth = 20;
       const remainingWidth = printableWidth - fixedLeftWidth - fixedRightWidth;
 
-      const calculatedSubWidth = Math.max(14, Math.min(26, remainingWidth / numSubjects));
+      const calculatedSubWidth = Math.max(13, Math.min(25, remainingWidth / numSubjects));
       const subjectCols = subjects.map(s => ({
         header: s.name,
         key: `sub_${s.name}`,
@@ -674,6 +681,15 @@ export default function ExamsAndMarksPage() {
         }
       }
 
+      const fitCellText = (text: string, maxW: number) => {
+        let str = String(text || '');
+        if (doc.getTextWidth(str) <= maxW) return str;
+        while (str.length > 2 && doc.getTextWidth(str + '..') > maxW) {
+          str = str.slice(0, -1);
+        }
+        return str + '..';
+      };
+
       const drawTableHeader = (curY: number) => {
         doc.setFillColor(241, 245, 249);
         doc.setDrawColor(203, 213, 225);
@@ -685,10 +701,7 @@ export default function ExamsAndMarksPage() {
         let curX = margin;
         for (const c of allCols) {
           const posX = c.align === 'right' ? curX + c.width - 2 : c.align === 'center' ? curX + c.width / 2 : curX + 2;
-          let text = c.header;
-          if (c.width < 18 && text.length > 8) {
-            text = text.substring(0, 7) + '..';
-          }
+          let text = fitCellText(c.header, c.width - 2);
           doc.text(text, posX, curY + 5, { align: c.align as any });
           curX += c.width;
         }
@@ -700,7 +713,25 @@ export default function ExamsAndMarksPage() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7.5);
 
-      const students = reportData.students || [];
+      // Sort students numerically by roll number: 1, 2, 3, ..., 10, 11...
+      const parseRoll = (r?: string | null) => {
+        if (!r) return { num: Infinity, str: '' };
+        const trimmed = String(r).trim();
+        const match = trimmed.match(/^(\d+)(.*)$/);
+        if (match) {
+          return { num: parseInt(match[1], 10), str: match[2] };
+        }
+        const num = parseInt(trimmed, 10);
+        return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
+      };
+
+      const students = [...(reportData.students || [])].sort((a, b) => {
+        const rollA = parseRoll(a.rollNo);
+        const rollB = parseRoll(b.rollNo);
+        if (rollA.num !== rollB.num) return rollA.num - rollB.num;
+        if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
+        return (a.studentName || '').localeCompare(b.studentName || '');
+      });
 
       for (let i = 0; i < students.length; i++) {
         const item = students[i];
@@ -737,34 +768,34 @@ export default function ExamsAndMarksPage() {
         // 2. School Code
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(71, 85, 105);
-        doc.text(reportData.schoolCode || '—', curX + allCols[1].width / 2, y + 4.6, { align: 'center' });
+        const sCodeText = fitCellText(reportData.schoolCode || '—', allCols[1].width - 2);
+        doc.text(sCodeText, curX + allCols[1].width / 2, y + 4.6, { align: 'center' });
         curX += allCols[1].width;
 
         // 3. Admission No
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(30, 41, 59);
-        doc.text(item.admissionNo || '—', curX + 2, y + 4.6);
+        const admNoText = fitCellText(item.admissionNo || '—', allCols[2].width - 2);
+        doc.text(admNoText, curX + 2, y + 4.6);
         curX += allCols[2].width;
 
         // 4. Roll No
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(71, 85, 105);
-        doc.text(item.rollNo || '—', curX + 2, y + 4.6);
+        doc.text(String(item.rollNo || '—'), curX + allCols[3].width / 2, y + 4.6, { align: 'center' });
         curX += allCols[3].width;
 
         // 5. Student Name
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(15, 23, 42);
-        let sName = item.studentName || 'Student';
-        if (sName.length > 22) sName = sName.substring(0, 20) + '..';
+        const sName = fitCellText(item.studentName || 'Student', allCols[4].width - 3);
         doc.text(sName, curX + 2, y + 4.6);
         curX += allCols[4].width;
 
         // 6. Exam Type
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(71, 85, 105);
-        let exType = reportData.examType || 'Exam';
-        if (exType.length > 14) exType = exType.substring(0, 12) + '..';
+        const exType = fitCellText(reportData.examType || 'Exam', allCols[5].width - 3);
         doc.text(exType, curX + 2, y + 4.6);
         curX += allCols[5].width;
 

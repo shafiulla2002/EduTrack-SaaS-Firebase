@@ -467,6 +467,25 @@ export class ExamsService {
       throw new BadRequestException('Class section does not belong to this school');
     }
 
+    const parseRollNo = (r?: string | null) => {
+      if (!r) return { num: Infinity, str: '' };
+      const trimmed = r.trim();
+      const match = trimmed.match(/^(\d+)(.*)$/);
+      if (match) {
+        return { num: parseInt(match[1], 10), str: match[2] };
+      }
+      const num = parseInt(trimmed, 10);
+      return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
+    };
+
+    students.sort((a, b) => {
+      const rollA = parseRollNo(a.rollNo);
+      const rollB = parseRollNo(b.rollNo);
+      if (rollA.num !== rollB.num) return rollA.num - rollB.num;
+      if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
+      return (a.user?.name || '').localeCompare(b.user?.name || '');
+    });
+
     const classId = classSection?.classId;
     const academicYearId = classSection?.class?.academicYearId;
 
@@ -812,6 +831,12 @@ export class ExamsService {
         address: true,
         phone: true,
         email: true,
+        schoolSetup: {
+          select: {
+            schoolName: true,
+            schoolLogo: true,
+          },
+        },
       },
     });
     if (!tenant) {
@@ -963,6 +988,25 @@ export class ExamsService {
       ],
     });
 
+    const parseRollNo = (r?: string | null) => {
+      if (!r) return { num: Infinity, str: '' };
+      const trimmed = r.trim();
+      const match = trimmed.match(/^(\d+)(.*)$/);
+      if (match) {
+        return { num: parseInt(match[1], 10), str: match[2] };
+      }
+      const num = parseInt(trimmed, 10);
+      return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
+    };
+
+    students.sort((a, b) => {
+      const rollA = parseRollNo(a.rollNo);
+      const rollB = parseRollNo(b.rollNo);
+      if (rollA.num !== rollB.num) return rollA.num - rollB.num;
+      if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
+      return (a.user?.name || '').localeCompare(b.user?.name || '');
+    });
+
     // 6. Compile Normalized Student Mark Rows
     const studentRows = students.map(s => {
       const marksObj: Record<string, number | 'AB' | '—'> = {};
@@ -999,9 +1043,12 @@ export class ExamsService {
       };
     });
 
+    const resolvedSchoolName = tenant.schoolSetup?.schoolName?.trim() || tenant.name?.trim() || 'CS EduTrack Institute';
+    const resolvedSchoolCode = tenant.subDomain?.trim() || tenant.id.substring(0, 8).toUpperCase();
+
     return {
-      schoolName: tenant.name || 'CS EduTrack Institute',
-      schoolCode: tenant.subDomain || tenant.id.substring(0, 8).toUpperCase(),
+      schoolName: resolvedSchoolName,
+      schoolCode: resolvedSchoolCode,
       academicYear: resolvedAcademicYearName,
       academicYearId: resolvedAcademicYearId,
       className: resolvedClassName,
