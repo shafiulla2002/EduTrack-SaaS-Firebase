@@ -84,6 +84,7 @@ export default function ExamsAndMarksPage() {
   const [examTypes, setExamTypes] = useState<string[]>(() => getCachedData<string[]>('/exams/exam-types') || []);
   const [components, setComponents] = useState<any[]>(() => getCachedData<any[]>('/exam-config/components') || []);
   const [availableSubjects, setAvailableSubjects] = useState<SubjectOption[]>([]);
+  const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
 
   // ── SINGLE UNIFIED FILTER STATE (NO DEFAULT SELECTIONS) ─────────────────────
   const [selectedFilters, setSelectedFilters] = useState<{
@@ -210,19 +211,40 @@ export default function ExamsAndMarksPage() {
 
   // Load available subjects when Class / Section is selected
   useEffect(() => {
-    if (!matchedClassSection) {
+    const csId = selectedFilters.classSectionId;
+    if (!csId) {
       setAvailableSubjects([]);
+      setIsLoadingSubjects(false);
       return;
     }
-    fastGet(`/exams/subjects?classSectionId=${matchedClassSection.value}`, undefined, { ttlMs: 30000 })
+
+    const cached = getCachedData<SubjectOption[]>(`/exams/subjects?classSectionId=${csId}`);
+    if (cached && cached.length > 0) {
+      setAvailableSubjects(cached);
+    } else {
+      setIsLoadingSubjects(true);
+    }
+
+    fastGet(`/exams/subjects?classSectionId=${csId}`, undefined, {
+      ttlMs: 60000,
+      onRevalidate: (fresh) => {
+        if (fresh && Array.isArray(fresh)) {
+          setAvailableSubjects(fresh);
+        }
+      },
+    })
       .then((res) => {
-        setAvailableSubjects(res.data || []);
+        if (res?.data && Array.isArray(res.data)) {
+          setAvailableSubjects(res.data);
+        }
       })
       .catch((err) => {
         console.error('Error fetching subjects for class-section:', err);
-        setAvailableSubjects([]);
+      })
+      .finally(() => {
+        setIsLoadingSubjects(false);
       });
-  }, [matchedClassSection]);
+  }, [selectedFilters.classSectionId]);
 
   // Available components (Theory, Practical, etc.)
   const availableComponents = useMemo(() => {
@@ -1101,10 +1123,18 @@ export default function ExamsAndMarksPage() {
             <select
               value={selectedFilters.subjectId}
               onChange={(e) => handleSubjectChange(e.target.value)}
-              disabled={!selectedFilters.classSectionId || availableSubjects.length === 0}
+              disabled={!selectedFilters.classSectionId || isLoadingSubjects || availableSubjects.length === 0}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 font-bold outline-none focus:border-blue-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors"
             >
-              <option value="">Select Subject</option>
+              <option value="">
+                {!selectedFilters.classSectionId
+                  ? 'Select Class / Section first'
+                  : isLoadingSubjects
+                  ? 'Loading subjects...'
+                  : availableSubjects.length === 0
+                  ? 'No subjects found'
+                  : 'Select Subject'}
+              </option>
               {availableSubjects.map((sub) => (
                 <option key={sub.id} value={sub.id}>
                   {sub.name}

@@ -8,70 +8,27 @@ import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, Chevron
 export default function StudentProgressPage() {
   // Synchronous cache initialization for instant 0ms load
   const [classes, setClasses] = useState<any[]>(() => getCachedData<any[]>('/teacher-portal/classes') || []);
-  
-  const [selectedClass, setSelectedClass] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('last_progress_class');
-      if (saved) return saved;
-    }
-    const cachedClasses = getCachedData<any[]>('/teacher-portal/classes');
-    return cachedClasses && cachedClasses.length > 0 ? cachedClasses[0].classSectionId : '';
-  });
-
-  const [students, setStudents] = useState<any[]>(() => {
-    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_progress_class')) ||
-      (getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId);
-    if (initialClass) {
-      return getCachedData<any[]>(`/teacher-portal/classes/${initialClass}/students`) || [];
-    }
-    return [];
-  });
-
-  const [selectedStudent, setSelectedStudent] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('last_progress_student');
-      if (saved) return saved;
-    }
-    const initialClass = (typeof window !== 'undefined' && sessionStorage.getItem('last_progress_class')) ||
-      (getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId);
-    if (initialClass) {
-      const cachedStudents = getCachedData<any[]>(`/teacher-portal/classes/${initialClass}/students`);
-      return cachedStudents && cachedStudents.length > 0 ? cachedStudents[0].id : '';
-    }
-    return '';
-  });
-
-  const [progress, setProgress] = useState<any | null>(() => {
-    const savedStudent = typeof window !== 'undefined' ? sessionStorage.getItem('last_progress_student') : '';
-    const initialStudent = savedStudent ||
-      (getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId
-        ? getCachedData<any[]>(`/teacher-portal/classes/${getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId}/students`)?.[0]?.id
-        : '');
-    if (initialStudent) {
-      return getCachedData<any>(`/teacher-portal/student-progress/${initialStudent}`) || null;
-    }
-    return null;
-  });
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [students, setStudents] = useState<any[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<string>('');
+  const [progress, setProgress] = useState<any | null>(null);
 
   const [loading, setLoading] = useState<boolean>(() => {
     const cached = getCachedData<any[]>('/teacher-portal/classes');
     return !cached || cached.length === 0;
   });
 
-  const [loadingStudentData, setLoadingStudentData] = useState<boolean>(() => {
-    const savedStudent = typeof window !== 'undefined' ? sessionStorage.getItem('last_progress_student') : '';
-    const initialStudent = savedStudent ||
-      (getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId
-        ? getCachedData<any[]>(`/teacher-portal/classes/${getCachedData<any[]>('/teacher-portal/classes')?.[0]?.classSectionId}/students`)?.[0]?.id
-        : '');
-    if (initialStudent) {
-      return !getCachedData(`/teacher-portal/student-progress/${initialStudent}`);
-    }
-    return false;
-  });
-
+  const [loadingStudents, setLoadingStudents] = useState<boolean>(false);
+  const [loadingStudentData, setLoadingStudentData] = useState<boolean>(false);
   const [hoveredBar, setHoveredBar] = useState<any | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  // Natural numeric roll number sorter (1, 2, 3... 10 instead of 1, 10, 2)
+  const parseRollNo = (roll: any): number => {
+    if (roll === null || roll === undefined || roll === '') return 999999;
+    const num = parseInt(String(roll).replace(/\D/g, ''), 10);
+    return isNaN(num) ? 999999 : num;
+  };
 
   useEffect(() => {
     const checkMobile = () => {
@@ -82,7 +39,7 @@ export default function StudentProgressPage() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // 1. Fetch Classes with fast SWR
+  // 1. Fetch Classes with fast SWR (No auto-selection)
   useEffect(() => {
     async function loadClasses() {
       try {
@@ -91,17 +48,11 @@ export default function StudentProgressPage() {
           onRevalidate: (fresh) => {
             if (fresh && fresh.length > 0) {
               setClasses(fresh);
-              if (!selectedClass) {
-                setSelectedClass(fresh[0].classSectionId);
-              }
             }
           },
         });
         if (res?.data && res.data.length > 0) {
           setClasses(res.data);
-          if (!selectedClass) {
-            setSelectedClass(res.data[0].classSectionId);
-          }
         }
       } catch (err) {
         console.error('Failed to load classes:', err);
@@ -112,32 +63,31 @@ export default function StudentProgressPage() {
     loadClasses();
   }, []);
 
-  // 2. Fetch Students when selectedClass changes
+  // 2. Fetch Students when selectedClass changes (No auto-selection, sorted by roll number ascending)
   useEffect(() => {
     if (!selectedClass) {
       setStudents([]);
       setSelectedStudent('');
       setProgress(null);
+      setLoadingStudents(false);
       return;
     }
 
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('last_progress_class', selectedClass);
-    }
+    setSelectedStudent('');
+    setProgress(null);
 
     // Check synchronous cache first for instant reflection
     const cachedStudents = getCachedData<any[]>(`/teacher-portal/classes/${selectedClass}/students`);
     if (cachedStudents && cachedStudents.length > 0) {
-      setStudents(cachedStudents);
-      const nextStudentId = (!selectedStudent || !cachedStudents.some(s => s.id === selectedStudent))
-        ? cachedStudents[0].id
-        : selectedStudent;
-      setSelectedStudent(nextStudentId);
-      const cachedStudentProgress = getCachedData<any>(`/teacher-portal/student-progress/${nextStudentId}`);
-      if (cachedStudentProgress) {
-        setProgress(cachedStudentProgress);
-        setLoadingStudentData(false);
-      }
+      const sorted = [...cachedStudents].sort((a: any, b: any) => {
+        const rollA = parseRollNo(a.rollNo);
+        const rollB = parseRollNo(b.rollNo);
+        if (rollA !== rollB) return rollA - rollB;
+        return (a.user?.name || '').localeCompare(b.user?.name || '');
+      });
+      setStudents(sorted);
+    } else {
+      setLoadingStudents(true);
     }
 
     async function loadStudents() {
@@ -146,40 +96,40 @@ export default function StudentProgressPage() {
           ttlMs: 60000,
           onRevalidate: (fresh) => {
             if (fresh && fresh.length > 0) {
-              setStudents(fresh);
-              if (!selectedStudent || !fresh.some((s: any) => s.id === selectedStudent)) {
-                setSelectedStudent(fresh[0].id);
-              }
+              const sorted = [...fresh].sort((a: any, b: any) => {
+                const rollA = parseRollNo(a.rollNo);
+                const rollB = parseRollNo(b.rollNo);
+                if (rollA !== rollB) return rollA - rollB;
+                return (a.user?.name || '').localeCompare(b.user?.name || '');
+              });
+              setStudents(sorted);
             }
           },
         });
         if (res?.data && res.data.length > 0) {
-          setStudents(res.data);
-          if (!selectedStudent || !res.data.some((s: any) => s.id === selectedStudent)) {
-            setSelectedStudent(res.data[0].id);
-          }
-          // Background pre-fetch: pre-warm progress for ALL students in this class section
-          res.data.forEach((st: any) => {
-            fastGet(`/teacher-portal/student-progress/${st.id}`, undefined, { ttlMs: 120000 }).catch(() => {});
+          const sorted = [...res.data].sort((a: any, b: any) => {
+            const rollA = parseRollNo(a.rollNo);
+            const rollB = parseRollNo(b.rollNo);
+            if (rollA !== rollB) return rollA - rollB;
+            return (a.user?.name || '').localeCompare(b.user?.name || '');
           });
+          setStudents(sorted);
         }
       } catch (err) {
         console.error('Failed to load students:', err);
+      } finally {
+        setLoadingStudents(false);
       }
     }
     loadStudents();
   }, [selectedClass]);
 
-  // 3. Fetch Student Progress Details when selectedStudent changes
+  // 3. Fetch Student Progress Details ONLY when selectedStudent is explicitly chosen
   useEffect(() => {
     if (!selectedStudent) {
       setProgress(null);
       setLoadingStudentData(false);
       return;
-    }
-
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('last_progress_student', selectedStudent);
     }
 
     // Check synchronous cache first for 0ms instant display
@@ -194,7 +144,7 @@ export default function StudentProgressPage() {
     async function loadProgressDetails() {
       try {
         const res = await fastGet(`/teacher-portal/student-progress/${selectedStudent}`, undefined, {
-          ttlMs: 120000,
+          ttlMs: 60000,
           onRevalidate: (fresh) => {
             if (fresh) setProgress(fresh);
           },
@@ -547,15 +497,15 @@ export default function StudentProgressPage() {
 
       {/* Select Filters Form */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Class Section</label>
             <select
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
+              className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
             >
-              <option value="">Select...</option>
+              <option value="">Select Class / Section</option>
               {classes.map(c => <option key={c.classSectionId} value={c.classSectionId}>{c.className}</option>)}
             </select>
           </div>
@@ -564,11 +514,23 @@ export default function StudentProgressPage() {
             <select
               value={selectedStudent}
               onChange={(e) => setSelectedStudent(e.target.value)}
-              className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
-              disabled={!selectedClass || students.length === 0}
+              className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+              disabled={!selectedClass || loadingStudents || students.length === 0}
             >
-              <option value="">{students.length === 0 ? 'No students found' : 'Select student...'}</option>
-              {students.map(s => <option key={s.id} value={s.id}>{s.user?.name || 'Student'}</option>)}
+              <option value="">
+                {!selectedClass
+                  ? 'Select Class first'
+                  : loadingStudents
+                  ? 'Loading students...'
+                  : students.length === 0
+                  ? 'No students found'
+                  : 'Select Student'}
+              </option>
+              {students.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.rollNo ? `Roll ${s.rollNo} - ` : ''}{s.user?.name || 'Student'}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -619,9 +581,13 @@ export default function StudentProgressPage() {
           <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
             <User className="w-6 h-6" />
           </div>
-          <h3 className="text-base font-bold text-slate-800">No Student Selected</h3>
+          <h3 className="text-base font-bold text-slate-800">
+            {!selectedClass ? 'Select Class / Section & Student' : 'Select a Student'}
+          </h3>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Please select a class and student from the dropdowns above to view detailed performance metrics, exam trends, and teacher insights.
+            {!selectedClass 
+              ? 'Please select a class section above, then choose a student to view real-time performance analytics, scores, and exam trends.' 
+              : 'Choose a student from the dropdown above to view comprehensive performance analytics, grades, attendance, and exam trends.'}
           </p>
         </div>
       )}

@@ -2142,7 +2142,7 @@ export class TeacherPortalService {
       throw new UnauthorizedException('User not found.');
     }
 
-    const student = await this.prisma.studentProfile.findUnique({
+    const student = await this.prisma.studentProfile.findFirst({
       where: { id: studentId, tenantId },
       select: {
         id: true,
