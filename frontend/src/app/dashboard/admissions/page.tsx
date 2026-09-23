@@ -83,19 +83,16 @@ export default function AdmissionsPage() {
         setClasses(cRes.data);
         
         let initialYear = '';
-        let initialClass = '';
-
-        if (yRes.data.length > 0) {
-          initialYear = yRes.data[0].value;
-        }
-        if (cRes.data.length > 0) {
-          initialClass = cRes.data[0].value;
+        if (yRes.data && yRes.data.length > 0) {
+          const activeYr = yRes.data.find((y: any) => y.isActive) || yRes.data[0];
+          initialYear = activeYr.value;
         }
 
         setTempStudent(prev => ({
           ...prev,
           academicYear: initialYear,
-          selectedClass: initialClass
+          selectedClass: '',
+          selectedSection: ''
         }));
       } catch (err) {
         console.error('Failed to fetch options', err);
@@ -109,17 +106,16 @@ export default function AdmissionsPage() {
       const fetchSections = async () => {
         try {
           const res = await api.get(`/billing/options/sections?classId=${tempStudent.selectedClass}`);
-          setSections(res.data);
-          if (res.data.length > 0) {
-            setTempStudent(prev => ({ ...prev, selectedSection: res.data[0].value }));
-          } else {
-            setTempStudent(prev => ({ ...prev, selectedSection: '' }));
-          }
+          setSections(res.data || []);
+          setTempStudent(prev => ({ ...prev, selectedSection: '' }));
         } catch (err) {
           console.error('Failed to fetch sections', err);
         }
       };
       fetchSections();
+    } else {
+      setSections([]);
+      setTempStudent(prev => ({ ...prev, selectedSection: '' }));
     }
   }, [tempStudent.selectedClass]);
 
@@ -133,9 +129,10 @@ export default function AdmissionsPage() {
           academicYearId: tempStudent.academicYear
         }
       });
-      setAvailableProducts(res.data);
-      // Select all products by default to match SF behavior
-      setSelectedProductIds(res.data.map((p: any) => p.id));
+      const prods = res.data || [];
+      setAvailableProducts(prods);
+      // Products start unselected so user must make explicit selection
+      setSelectedProductIds([]);
     } catch (err) {
       console.error('Failed to fetch active products', err);
     } finally {
@@ -207,10 +204,28 @@ export default function AdmissionsPage() {
         alert('Please fill out all required profile details.');
         return;
       }
-    }
-    if (currentStep === 2) {
+      setCurrentStep(2);
+    } else if (currentStep === 2) {
+      if (!tempStudent.academicYear) {
+        alert('Please select an Academic Year.');
+        return;
+      }
+      if (!tempStudent.selectedClass) {
+        alert('Please select a Class.');
+        return;
+      }
+      if (!tempStudent.selectedSection) {
+        alert('Please select a Section.');
+        return;
+      }
       fetchProducts();
       setCurrentStep(3);
+    } else if (currentStep === 3) {
+      if (availableProducts.length > 0 && selectedProductIds.length === 0) {
+        alert('Please select at least one fee product / item to continue.');
+        return;
+      }
+      setCurrentStep(4);
     } else if (currentStep === 4) {
       const submitAdmission = async () => {
         setIsLoading(true);
@@ -249,8 +264,6 @@ export default function AdmissionsPage() {
         }
       };
       submitAdmission();
-    } else {
-      setCurrentStep(prev => prev + 1);
     }
   };
 
@@ -535,6 +548,7 @@ export default function AdmissionsPage() {
                       className="border border-slate-200 bg-slate-50 px-4 py-2.5 rounded-xl outline-none"
                       required
                     >
+                      <option value="">Select Academic Year</option>
                       {academicYears.map(ay => (
                         <option key={ay.value} value={ay.value}>{ay.label}</option>
                       ))}
@@ -549,19 +563,25 @@ export default function AdmissionsPage() {
                       className="border border-slate-200 bg-slate-50 px-4 py-2.5 rounded-xl outline-none"
                       required
                     >
+                      <option value="">Select Class</option>
                       {classes.map(c => (
                         <option key={c.value} value={c.value}>{c.label}</option>
                       ))}
                     </select>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <label className="font-semibold text-slate-700">Section</label>
+                    <label className="font-semibold text-slate-700">Section <span className="text-rose-500">*</span></label>
                     <select
                       name="selectedSection"
                       value={tempStudent.selectedSection}
                       onChange={handleInputChange}
                       className="border border-slate-200 bg-slate-50 px-4 py-2.5 rounded-xl outline-none"
+                      disabled={!tempStudent.selectedClass}
+                      required
                     >
+                      <option value="">
+                        {tempStudent.selectedClass ? 'Select Section' : 'Select Class First'}
+                      </option>
                       {sections.map(sec => (
                         <option key={sec.value} value={sec.value}>{sec.label}</option>
                       ))}
@@ -794,9 +814,9 @@ export default function AdmissionsPage() {
                         pincode: '',
                         state: '',
                         country: '',
-                        selectedClass: classes.length > 0 ? classes[0].value : '',
+                        selectedClass: '',
                         selectedSection: '',
-                        academicYear: academicYears.length > 0 ? academicYears[0].value : '',
+                        academicYear: academicYears.length > 0 ? (academicYears.find((y: any) => y.isActive)?.value || academicYears[0].value) : '',
                         profilePhotoUrl: null,
                       });
                       setSelectedProductIds([]);
