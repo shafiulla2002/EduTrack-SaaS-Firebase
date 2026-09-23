@@ -9,7 +9,7 @@ import { formatDateDDMMYYYY } from '@/lib/date';
 import { 
   Receipt, Search, CreditCard, Sparkles, X, CheckCircle2, 
   QrCode, User, ArrowRight, CornerDownRight, RotateCcw,
-  BookOpen, Calendar, Printer, ShieldCheck, AlertCircle, MessageCircle
+  BookOpen, Calendar, Printer, ShieldCheck, AlertCircle, MessageCircle, RefreshCw
 } from 'lucide-react';
 import {
   PencilSpinner,
@@ -911,55 +911,22 @@ export default function FeesBillingPage() {
 
     const whatsappUrl = `https://wa.me/${phoneClean}?text=${encodeURIComponent(shareText)}`;
 
-    // Desktop Chrome Popup-Blocker Prevention:
-    // Synchronously open blank window reference on user click gesture
-    let popupWindow: Window | null = null;
-    try {
-      popupWindow = window.open('about:blank', '_blank');
-      if (popupWindow) {
-        popupWindow.document.write(`
-          <html>
-            <head><title>Opening WhatsApp...</title></head>
-            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f8fafc; color: #1e293b;">
-              <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; text-align: center; max-width: 400px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);">
-                <div style="width: 48px; height: 48px; background: #ecfdf5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
-                  <span style="font-size: 24px;">💬</span>
-                </div>
-                <h3 style="margin: 0 0 8px; font-size: 16px; font-weight: 700;">Opening WhatsApp Chat</h3>
-                <p style="margin: 0; font-size: 13px; color: #64748b;">Preparing receipt PDF and redirecting to WhatsApp...</p>
-              </div>
-            </body>
-          </html>
-        `);
-      }
-    } catch (popupErr) {
-      console.warn('Could not pre-open popup window:', popupErr);
-    }
-
     setIsSharingWhatsApp(true);
 
     try {
-      // 1. Generate and download the official high-resolution PDF
+      // 1. Generate and download the official high-resolution PDF directly on the same page
       const { pdf, filename } = await generateInvoicePDFInstance(invoiceId, record);
       pdf.save(filename);
 
-      // 2. Redirect popup window to WhatsApp deep-link
-      if (popupWindow && !popupWindow.closed) {
-        popupWindow.location.href = whatsappUrl;
-      } else {
-        window.open(whatsappUrl, '_blank');
-      }
+      // 2. Open WhatsApp via deeplink after PDF creation completes
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
 
-      setToastMessage('WhatsApp chat opened. Please attach the downloaded receipt PDF to the chat if needed.');
+      setToastMessage('Receipt PDF downloaded! Opening WhatsApp to share with parent.');
       setTimeout(() => setToastMessage(null), 6000);
     } catch (err: any) {
       console.error('Failed to generate PDF during WhatsApp share:', err);
-      // Fallback: still redirect to WhatsApp with prefilled details even if PDF generation throws
-      if (popupWindow && !popupWindow.closed) {
-        popupWindow.location.href = whatsappUrl;
-      } else {
-        window.open(whatsappUrl, '_blank');
-      }
+      // Fallback: still open WhatsApp with prefilled details even if PDF generation throws
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
       setToastMessage('WhatsApp chat opened with receipt details.');
       setTimeout(() => setToastMessage(null), 6000);
     } finally {
@@ -1666,12 +1633,21 @@ export default function FeesBillingPage() {
                 }}
                 className={`w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm border-none ${
                   isSharingWhatsApp 
-                    ? 'bg-emerald-400 cursor-not-allowed' 
+                    ? 'bg-emerald-500 cursor-not-allowed opacity-90' 
                     : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
                 }`}
               >
-                <MessageCircle className="w-4 h-4" />
-                {isSharingWhatsApp ? 'Preparing PDF...' : 'Share WhatsApp'}
+                {isSharingWhatsApp ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Preparing PDF & WhatsApp...</span>
+                  </>
+                ) : (
+                  <>
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Share WhatsApp</span>
+                  </>
+                )}
               </button>
               <button
                 type="button"
