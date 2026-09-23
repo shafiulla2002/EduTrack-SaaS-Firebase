@@ -25,6 +25,9 @@ export default function DashboardLayout({
   const isImpersonating = typeof window !== 'undefined' && sessionStorage.getItem('impersonating_from_platform') === 'true';
   const impersonatedSchool = typeof window !== 'undefined' ? (sessionStorage.getItem('impersonated_school_name') || schoolName) : schoolName;
 
+  const desktopSidebarRef = useRef<HTMLElement>(null);
+  const mobileSidebarRef = useRef<HTMLElement>(null);
+
   // Subscription state helpers
   const isSubscriptionBlocked = !isSubscriptionActive;
 
@@ -568,6 +571,105 @@ export default function DashboardLayout({
   // Collect all sidebar hrefs to check for more specific nested matches
   const allSidebarHrefs = navSections.flatMap(section => section.items.map(item => item.href));
 
+  const isRouteActive = (itemHref: string): boolean => {
+    if (!pathname) return false;
+    if (pathname === itemHref) return true;
+
+    // Special handling for Complaint Box routes (/complaint-box and /dashboard/complaints)
+    if (
+      (itemHref === '/complaint-box' || itemHref === '/dashboard/complaints') &&
+      (pathname === '/complaint-box' || pathname.startsWith('/complaint-box/') || pathname === '/dashboard/complaints' || pathname.startsWith('/dashboard/complaints/'))
+    ) {
+      return true;
+    }
+
+    // Special handling for Attendance routes
+    if (
+      (itemHref === '/attendance/dashboard' || itemHref === '/dashboard/attendance' || itemHref === '/dashboard/attendance-mgmt') &&
+      (pathname.startsWith('/attendance') || pathname.startsWith('/dashboard/attendance'))
+    ) {
+      if (itemHref === '/attendance/dashboard' && (pathname === '/attendance' || pathname.startsWith('/attendance/'))) {
+        return true;
+      }
+      if (itemHref === '/dashboard/attendance-mgmt' && pathname.startsWith('/dashboard/attendance-mgmt')) {
+        return true;
+      }
+      if (itemHref === '/dashboard/attendance' && pathname === '/dashboard/attendance') {
+        return true;
+      }
+    }
+
+    // Standard nested route checking with specificity check
+    if (itemHref !== '/dashboard' && (pathname === itemHref || pathname.startsWith(itemHref + '/'))) {
+      return !allSidebarHrefs.some(otherHref =>
+        otherHref !== itemHref &&
+        otherHref.length > itemHref.length &&
+        (pathname === otherHref || pathname.startsWith(otherHref + '/'))
+      );
+    }
+
+    return false;
+  };
+
+  const handleSidebarScroll = (e: React.UIEvent<HTMLElement>) => {
+    const target = e.currentTarget;
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('edutrack_sidebar_scroll_pos', target.scrollTop.toString());
+    }
+  };
+
+  const ensureActiveItemVisible = (container: HTMLElement | null) => {
+    if (!container) return;
+
+    const activeEl = container.querySelector('[data-sidebar-active="true"]') as HTMLElement | null;
+    if (!activeEl) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const activeRect = activeEl.getBoundingClientRect();
+
+    // If active item is below the visible viewport of the sidebar container
+    if (activeRect.bottom > containerRect.bottom - 20) {
+      const diff = activeRect.bottom - containerRect.bottom + 40;
+      container.scrollTop += diff;
+      if (typeof window !== 'undefined' && container === desktopSidebarRef.current) {
+        sessionStorage.setItem('edutrack_sidebar_scroll_pos', container.scrollTop.toString());
+      }
+    } 
+    // If active item is above the visible viewport of the sidebar container
+    else if (activeRect.top < containerRect.top + 20) {
+      const diff = containerRect.top - activeRect.top + 40;
+      container.scrollTop -= diff;
+      if (typeof window !== 'undefined' && container === desktopSidebarRef.current) {
+        sessionStorage.setItem('edutrack_sidebar_scroll_pos', container.scrollTop.toString());
+      }
+    }
+  };
+
+  useEffect(() => {
+    // Restore sidebar scroll position if available
+    if (typeof window !== 'undefined') {
+      const savedScroll = sessionStorage.getItem('edutrack_sidebar_scroll_pos');
+      if (savedScroll && desktopSidebarRef.current) {
+        desktopSidebarRef.current.scrollTop = parseInt(savedScroll, 10) || 0;
+      }
+    }
+
+    const frameId = requestAnimationFrame(() => {
+      ensureActiveItemVisible(desktopSidebarRef.current);
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (mobileOpen) {
+      const frameId = requestAnimationFrame(() => {
+        ensureActiveItemVisible(mobileSidebarRef.current);
+      });
+      return () => cancelAnimationFrame(frameId);
+    }
+  }, [mobileOpen, pathname]);
+
   // If subscription is expired (after grace period) and user is a teacher/driver, show full screen block
   if (isSubscriptionBlocked && currentUser?.role !== 'SCHOOL_ADMIN' && currentUser?.role !== 'SUPER_ADMIN') {
     return (
@@ -704,7 +806,11 @@ export default function DashboardLayout({
       )}
       <div className="flex-1 flex min-h-screen">
       {/* Sidebar - Fix position matching .sidebar in LWC CSS */}
-      <aside className="hidden lg:block w-[280px] bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-50 py-6 select-none shadow-sm print:hidden">
+      <aside
+        ref={desktopSidebarRef}
+        onScroll={handleSidebarScroll}
+        className="hidden lg:block w-[280px] bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-50 py-6 select-none shadow-sm print:hidden"
+      >
         {/* Sidebar Brand Header */}
         <div className="flex items-center gap-2.5 px-6 mb-5">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
@@ -726,19 +832,13 @@ export default function DashboardLayout({
               </div>
               <div className="space-y-1">
                 {section.items.map((item) => {
-                  const isActive = pathname === item.href || (
-                    item.href !== '/dashboard' &&
-                    (pathname === item.href || pathname.startsWith(item.href + '/')) &&
-                    !allSidebarHrefs.some(otherHref =>
-                      otherHref !== item.href &&
-                      otherHref.length > item.href.length &&
-                      (pathname === otherHref || pathname.startsWith(otherHref + '/'))
-                    )
-                  );
+                  const isActive = isRouteActive(item.href);
                   const isLocked = isModuleLocked(item.href);
                   return (
                     <Link
                       key={item.name}
+                      id={`sidebar-nav-${item.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
+                      data-sidebar-active={isActive ? 'true' : undefined}
                       href={isLocked ? '#' : item.href}
                       prefetch={true}
                       onMouseEnter={() => prefetchRouteData(item.href)}
@@ -938,6 +1038,7 @@ export default function DashboardLayout({
         onClick={() => setMobileOpen(false)}
       >
         <div
+          ref={mobileSidebarRef as any}
           className={`w-[280px] bg-white h-full py-6 pb-6 select-none overflow-y-auto flex flex-col justify-start transition-transform duration-300 ease-in-out transform ${
             mobileOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
@@ -991,19 +1092,13 @@ export default function DashboardLayout({
                   </div>
                   <div className="space-y-1">
                     {section.items.map((item) => {
-                      const isActive = pathname === item.href || (
-                        item.href !== '/dashboard' &&
-                        (pathname === item.href || pathname.startsWith(item.href + '/')) &&
-                        !allSidebarHrefs.some(otherHref =>
-                          otherHref !== item.href &&
-                          otherHref.length > item.href.length &&
-                          (pathname === otherHref || pathname.startsWith(otherHref + '/'))
-                        )
-                      );
+                      const isActive = isRouteActive(item.href);
                       const isLocked = isModuleLocked(item.href);
                       return (
                         <Link
                           key={item.name}
+                          id={`mobile-sidebar-nav-${item.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
+                          data-sidebar-active={isActive ? 'true' : undefined}
                           href={isLocked ? '#' : item.href}
                           prefetch={true}
                           onMouseEnter={() => prefetchRouteData(item.href)}
