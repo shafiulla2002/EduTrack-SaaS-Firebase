@@ -627,39 +627,42 @@ export default function DashboardLayout({
     const containerRect = container.getBoundingClientRect();
     const activeRect = activeEl.getBoundingClientRect();
 
-    // If active item is below the visible viewport of the sidebar container
-    if (activeRect.bottom > containerRect.bottom - 20) {
-      const diff = activeRect.bottom - containerRect.bottom + 40;
-      container.scrollTop += diff;
+    const isAbove = activeRect.top < containerRect.top + 20;
+    const isBelow = activeRect.bottom > containerRect.bottom - 20;
+
+    if (isAbove || isBelow) {
+      // Calculate target scrollTop so activeEl is centered in sidebar container
+      const itemOffsetTop = activeEl.offsetTop;
+      const targetScrollTop = Math.max(0, itemOffsetTop - (container.clientHeight / 2) + (activeEl.clientHeight / 2));
+      container.scrollTop = targetScrollTop;
       if (typeof window !== 'undefined' && container === desktopSidebarRef.current) {
-        sessionStorage.setItem('edutrack_sidebar_scroll_pos', container.scrollTop.toString());
-      }
-    } 
-    // If active item is above the visible viewport of the sidebar container
-    else if (activeRect.top < containerRect.top + 20) {
-      const diff = containerRect.top - activeRect.top + 40;
-      container.scrollTop -= diff;
-      if (typeof window !== 'undefined' && container === desktopSidebarRef.current) {
-        sessionStorage.setItem('edutrack_sidebar_scroll_pos', container.scrollTop.toString());
+        sessionStorage.setItem('edutrack_sidebar_scroll_pos', targetScrollTop.toString());
       }
     }
   };
 
   useEffect(() => {
-    // Restore sidebar scroll position if available
-    if (typeof window !== 'undefined') {
-      const savedScroll = sessionStorage.getItem('edutrack_sidebar_scroll_pos');
-      if (savedScroll && desktopSidebarRef.current) {
-        desktopSidebarRef.current.scrollTop = parseInt(savedScroll, 10) || 0;
-      }
-    }
+    if (loading) return;
 
+    const restoreAndAlign = () => {
+      const container = desktopSidebarRef.current;
+      if (!container) return;
+
+      const savedScroll = typeof window !== 'undefined' ? sessionStorage.getItem('edutrack_sidebar_scroll_pos') : null;
+      if (savedScroll !== null) {
+        container.scrollTop = parseInt(savedScroll, 10) || 0;
+      }
+
+      ensureActiveItemVisible(container);
+    };
+
+    restoreAndAlign();
     const frameId = requestAnimationFrame(() => {
-      ensureActiveItemVisible(desktopSidebarRef.current);
+      restoreAndAlign();
     });
 
     return () => cancelAnimationFrame(frameId);
-  }, [pathname]);
+  }, [pathname, loading]);
 
   useEffect(() => {
     if (mobileOpen) {
@@ -841,9 +844,13 @@ export default function DashboardLayout({
                       data-sidebar-active={isActive ? 'true' : undefined}
                       href={isLocked ? '#' : item.href}
                       prefetch={true}
+                      scroll={false}
                       onMouseEnter={() => prefetchRouteData(item.href)}
                       onTouchStart={() => prefetchRouteData(item.href)}
                       onClick={(e) => {
+                        if (desktopSidebarRef.current) {
+                          sessionStorage.setItem('edutrack_sidebar_scroll_pos', desktopSidebarRef.current.scrollTop.toString());
+                        }
                         if (isLocked) {
                           e.preventDefault();
                           setShowLockPopup(true);
@@ -1101,10 +1108,14 @@ export default function DashboardLayout({
                           data-sidebar-active={isActive ? 'true' : undefined}
                           href={isLocked ? '#' : item.href}
                           prefetch={true}
+                          scroll={false}
                           onMouseEnter={() => prefetchRouteData(item.href)}
                           onTouchStart={() => prefetchRouteData(item.href)}
                           onClick={(e) => {
                             setMobileOpen(false);
+                            if (mobileSidebarRef.current) {
+                              sessionStorage.setItem('edutrack_sidebar_scroll_pos', (mobileSidebarRef.current as HTMLElement).scrollTop.toString());
+                            }
                             if (isLocked) {
                               e.preventDefault();
                               setShowLockPopup(true);
