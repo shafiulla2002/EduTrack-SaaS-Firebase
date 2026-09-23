@@ -187,6 +187,21 @@ export class TimetableController {
     return this.timetableService.getAllTeachers();
   }
 
+  @Get('class-matrix')
+  getClassMatrixData(
+    @Query('classSectionId') classSectionId: string,
+    @Query('academicYearId') academicYearId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string
+  ) {
+    return this.timetableService.getClassMatrixData(
+      classSectionId,
+      academicYearId,
+      startDate,
+      endDate
+    );
+  }
+
   @Get('class/:classSectionId/periods')
   getPeriodsForClassSection(
     @Param('classSectionId') classSectionId: string,

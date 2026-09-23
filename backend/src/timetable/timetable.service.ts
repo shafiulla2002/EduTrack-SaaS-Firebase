@@ -568,6 +568,175 @@ export class TimetableService {
   }
 
   // ---------- Timetable Periods ----------
+  async getClassMatrixData(
+    classSectionId: string,
+    academicYearId?: string,
+    startDate?: string,
+    endDate?: string
+  ) {
+    const tenantId = this.getTenantId();
+
+    // 1. Fetch or auto-create period timings if missing
+    let periodTimings = await this.prisma.periodTiming.findMany({
+      where: { tenantId, isActive: true },
+      orderBy: { periodNumber: 'asc' },
+    });
+    if (periodTimings.length === 0) {
+      const defaultTimings = [
+        { periodNumber: 1, name: 'P1', startTime: '09:00 AM', endTime: '10:00 AM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 2, name: 'P2', startTime: '10:00 AM', endTime: '11:00 AM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 3, name: 'P3', startTime: '11:00 AM', endTime: '12:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 4, name: 'P4', startTime: '12:00 PM', endTime: '01:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 5, name: 'P5', startTime: '01:00 PM', endTime: '02:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 6, name: 'P6', startTime: '02:00 PM', endTime: '03:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 7, name: 'P7', startTime: '03:00 PM', endTime: '04:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 8, name: 'P8', startTime: '04:00 PM', endTime: '05:00 PM', isBreak: false, isActive: true, tenantId },
+      ];
+      await this.prisma.periodTiming.createMany({ data: defaultTimings });
+      periodTimings = await this.prisma.periodTiming.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: { periodNumber: 'asc' },
+      });
+    }
+
+    // 2. Fetch or auto-create config if missing
+    let config = await this.prisma.timetableConfig.findUnique({
+      where: { tenantId },
+    });
+    if (!config) {
+      config = await this.prisma.timetableConfig.create({
+        data: {
+          tenantId,
+          workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+          schoolStartTime: '09:00 AM',
+          schoolEndTime: '04:00 PM',
+          periodDuration: 45,
+          autoGenerate: false,
+          numPeriods: 8,
+        },
+      });
+    }
+
+    // 3. Parallel fetch of classSection info, periods, all subjects, all teaching staff & skills
+    const [classSection, periods, allSubjects, allTeachers, teacherSkills] = await Promise.all([
+      this.prisma.classSection.findUnique({
+        where: { id: classSectionId },
+        include: {
+          class: true,
+          section: true,
+          classSubjects: {
+            include: { subject: true },
+            orderBy: { subject: { name: 'asc' } },
+          },
+          teacherAssigns: {
+            include: { teacher: { include: { user: true } }, subject: true },
+          },
+        },
+      }),
+      this.prisma.period.findMany({
+        where: { classSectionId, tenantId },
+        include: {
+          subject: true,
+          teacher: { include: { user: true } },
+          substituteTeacher: { include: { user: true } },
+          periodTiming: true,
+        },
+      }),
+      this.prisma.subject.findMany({
+        where: { tenantId },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.staffProfile.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { user: { role: 'TEACHER' } },
+            { designation: { contains: 'Teacher', mode: 'insensitive' } },
+            { teacherSkills: { some: {} } },
+          ],
+        },
+        include: { user: true },
+        orderBy: { user: { name: 'asc' } },
+      }),
+      this.prisma.teacherSkill.findMany({
+        where: { tenantId },
+        include: { teacher: { include: { user: true } } },
+      }),
+    ]);
+
+    // 4. Map class subjects
+    const classSubjectsList = (classSection?.classSubjects || []).map(cs => ({
+      subjectId: cs.subjectId,
+      subjectName: cs.subject?.name ?? '',
+    }));
+
+    // 5. Build subjectTeachers map (in-memory, 0ms)
+    const allTeacherOptions = allTeachers.map(t => ({
+      Id: t.id,
+      Name: t.user?.name ?? '',
+      teacherId: t.id,
+      teacherName: t.user?.name ?? '',
+      skillLevel: 'Expert',
+    }));
+
+    const subjectTeachersMap: Record<string, any[]> = {};
+    for (const sub of allSubjects) {
+      const skilled = teacherSkills
+        .filter(sk => sk.subjectId === sub.id)
+        .map(sk => ({
+          Id: sk.teacherId,
+          Name: sk.teacher?.user?.name ?? '',
+          teacherId: sk.teacherId,
+          teacherName: sk.teacher?.user?.name ?? '',
+          skillLevel: sk.skillLevel,
+        }));
+      subjectTeachersMap[sub.id] = skilled.length > 0 ? skilled : allTeacherOptions;
+    }
+
+    // 6. Map periods with fallback period numbers
+    const timingIdToNum = new Map(periodTimings.map(pt => [pt.id, pt.periodNumber]));
+    const mappedPeriods = periods.map(p => {
+      const pNum = p.periodTiming?.periodNumber ?? timingIdToNum.get(p.periodTimingId) ?? 0;
+      return {
+        periodId: p.id,
+        day: p.dayOfWeek,
+        periodNumber: pNum,
+        subjectId: p.subjectId,
+        subjectName: p.subject?.name ?? '—',
+        teacherId: p.teacherId,
+        teacherName: p.teacher?.user?.name ?? 'Unassigned',
+        classSectionId: p.classSectionId ?? '',
+        academicYearId: academicYearId || '',
+        startTime: p.periodTiming?.startTime ?? '',
+        endTime: p.periodTiming?.endTime ?? '',
+        frequency: 'Weekly',
+        isSubstitute: !!p.substituteTeacherId,
+        substituteTeacherId: p.substituteTeacherId ?? null,
+        substituteTeacherName: (p as any).substituteTeacher?.user?.name ?? null,
+        originalTeacherName: p.teacher?.user?.name ?? null,
+      };
+    });
+
+    return {
+      classSection: classSection
+        ? {
+            id: classSection.id,
+            name: `${classSection.class?.name || 'Class'} - ${classSection.section?.name || 'Section'}`,
+            classId: classSection.classId,
+            sectionId: classSection.sectionId,
+            strength: classSection.strength,
+          }
+        : null,
+      classSubjects: classSubjectsList,
+      allSubjects: allSubjects.map(s => ({ id: s.id, name: s.name })),
+      periodTimings,
+      config,
+      periods: mappedPeriods,
+      subjectTeachers: subjectTeachersMap,
+      allTeachers: allTeacherOptions,
+    };
+  }
+
   async getTimetableForClass(classSectionId: string, academicYearId: string, startDate?: string, endDate?: string) {
     const tenantId = this.getTenantId();
     const periods = await this.prisma.period.findMany({
@@ -716,6 +885,63 @@ export class TimetableService {
       this.prisma.timetableConfig.findFirst({ where: { tenantId } }),
     ]);
 
+    let finalAcademicYears = academicYears;
+    if (finalAcademicYears.length === 0) {
+      try {
+        const defaultYear = await this.prisma.academicYear.create({
+          data: {
+            name: '2026-2027',
+            startDate: new Date('2026-06-01'),
+            endDate: new Date('2027-04-30'),
+            isActive: true,
+            tenantId,
+          },
+        });
+        finalAcademicYears = [defaultYear];
+      } catch (e) {
+        // Safe fallback
+      }
+    }
+
+    let finalPeriodTimings = periodTimings;
+    if (finalPeriodTimings.length === 0) {
+      try {
+        const defaultTimings = [
+          { periodNumber: 1, name: 'P1', startTime: '09:00 AM', endTime: '10:00 AM', isBreak: false, isActive: true, tenantId },
+          { periodNumber: 2, name: 'P2', startTime: '10:00 AM', endTime: '11:00 AM', isBreak: false, isActive: true, tenantId },
+          { periodNumber: 3, name: 'P3', startTime: '11:00 AM', endTime: '12:00 PM', isBreak: false, isActive: true, tenantId },
+          { periodNumber: 4, name: 'P4', startTime: '12:00 PM', endTime: '01:00 PM', isBreak: false, isActive: true, tenantId },
+          { periodNumber: 5, name: 'P5', startTime: '01:00 PM', endTime: '02:00 PM', isBreak: false, isActive: true, tenantId },
+          { periodNumber: 6, name: 'P6', startTime: '02:00 PM', endTime: '03:00 PM', isBreak: false, isActive: true, tenantId },
+          { periodNumber: 7, name: 'P7', startTime: '03:00 PM', endTime: '04:00 PM', isBreak: false, isActive: true, tenantId },
+          { periodNumber: 8, name: 'P8', startTime: '04:00 PM', endTime: '05:00 PM', isBreak: false, isActive: true, tenantId },
+        ];
+        await this.prisma.periodTiming.createMany({ data: defaultTimings });
+        finalPeriodTimings = await this.prisma.periodTiming.findMany({ where: { tenantId }, orderBy: { periodNumber: 'asc' } });
+      } catch (e) {
+        // Safe fallback
+      }
+    }
+
+    let finalConfig = config;
+    if (!finalConfig) {
+      try {
+        finalConfig = await this.prisma.timetableConfig.create({
+          data: {
+            tenantId,
+            workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+            schoolStartTime: '09:00 AM',
+            schoolEndTime: '04:00 PM',
+            periodDuration: 45,
+            autoGenerate: false,
+            numPeriods: 8
+          }
+        });
+      } catch (e) {
+        // Safe fallback
+      }
+    }
+
     let totalLoad = 0;
     for (const t of teachersList) {
       const totalPeriods = t.teacherAssignments?.reduce((sum, a) => sum + (a.periodsPerWeek || 0), 0) || 0;
@@ -756,8 +982,8 @@ export class TimetableService {
       return {
         classSectionId: cs.id,
         classId: cs.classId,
-        name: `${cs.class.name} - ${cs.section.name}`,
-        academicYear: cs.class.academicYear?.name || '2026-2027',
+        name: `${cs.class?.name || 'Class'} - ${cs.section?.name || 'Section'}`,
+        academicYear: cs.class?.academicYear?.name || '2026-2027',
         subjectCount,
         staffedCount,
         loadPercent,
@@ -774,10 +1000,10 @@ export class TimetableService {
       teachers: mappedTeachers,
       classes: mappedClassSections,
       subjects,
-      academicYears,
+      academicYears: finalAcademicYears,
       sections,
-      periodTimings,
-      config,
+      periodTimings: finalPeriodTimings,
+      config: finalConfig,
     };
 
     TimetableService.workloadCache.set(tenantId, {

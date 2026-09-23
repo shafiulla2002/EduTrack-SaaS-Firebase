@@ -642,10 +642,15 @@ export default function TeacherClassManagement() {
       setNumPeriods(data.config.numPeriods);
     }
 
+    if (mappedClasses.length > 0) {
+      setTtSelectedClassSectionId(prev => prev || mappedClasses[0].id);
+      setTtSelectedClassName(prev => prev || mappedClasses[0].name);
+    }
+
     const activeYear = (data.academicYears || []).find((y: any) => y.isActive) || data.academicYears?.[0];
     if (activeYear) {
       setSelectedAcademicYear(activeYear.id);
-      setTtSelectedAcademicYear(activeYear.id);
+      setTtSelectedAcademicYear(prev => prev || activeYear.id);
     }
   }, []);
 
@@ -1029,8 +1034,11 @@ export default function TeacherClassManagement() {
   };
 
   // ── TIMETABLE MATRIX LOADER & SAVE ──
-  const loadTimetableGrid = async () => {
-    if (!ttSelectedClassSectionId) {
+  const loadTimetableGrid = async (overrideClassId?: string, overrideYearId?: string) => {
+    const targetClassId = overrideClassId || ttSelectedClassSectionId;
+    const targetYearId = overrideYearId || ttSelectedAcademicYear || selectedAcademicYear;
+
+    if (!targetClassId) {
       showToast('Please select a Class Section first.', 'error');
       return;
     }
@@ -1039,17 +1047,39 @@ export default function TeacherClassManagement() {
       setTimetableError(null);
       setShowTimetableGrid(false);
 
-      // Fetch subjects, timings, workload & current timetable in parallel
-      const [workloadRes, timingsRes, timetableRes, subjectsRes, configRes] = await Promise.all([
-        api.get(`/timetable/workload/class-section/${ttSelectedClassSectionId}`),
-        api.get('/timetable/period-timings'),
-        api.get(`/timetable/class/${ttSelectedClassSectionId}/periods?academicYearId=${ttSelectedAcademicYear}&startDate=${ttStartDate}&endDate=${ttEndDate}`),
-        api.get('/timetable/subjects'),
-        api.get('/timetable/config')
-      ]);
+      // Fast unified matrix loader with fallback
+      let matrixData: any = null;
+      try {
+        const matrixRes = await api.get('/timetable/class-matrix', {
+          params: {
+            classSectionId: targetClassId,
+            academicYearId: targetYearId,
+            startDate: ttStartDate,
+            endDate: ttEndDate,
+          }
+        });
+        matrixData = matrixRes.data;
+      } catch (fallbackErr) {
+        // Fallback for backward compatibility if class-matrix endpoint is unavailable
+        const [workloadRes, timingsRes, timetableRes, subjectsRes, configRes] = await Promise.all([
+          api.get(`/timetable/workload/class-section/${targetClassId}`),
+          api.get('/timetable/period-timings'),
+          api.get(`/timetable/class/${targetClassId}/periods?academicYearId=${targetYearId}&startDate=${ttStartDate}&endDate=${ttEndDate}`),
+          api.get('/timetable/subjects'),
+          api.get('/timetable/config')
+        ]);
+        matrixData = {
+          classSubjects: workloadRes.data?.subjects || [],
+          periodTimings: timingsRes.data || [],
+          periods: timetableRes.data || [],
+          allSubjects: subjectsRes.data || [],
+          config: configRes.data || {},
+          subjectTeachers: {}
+        };
+      }
 
-      setClassSubjects(workloadRes.data.subjects || []);
-      const rawTimings = timingsRes.data || [];
+      setClassSubjects(matrixData.classSubjects || []);
+      const rawTimings = matrixData.periodTimings || [];
       const sortedTimings = [...rawTimings].sort((a: any, b: any) => (a.periodNumber ?? a.num ?? 0) - (b.periodNumber ?? b.num ?? 0));
       let displayCount = 1;
       const mappedTimings = sortedTimings.map((pt: any) => {
@@ -1072,22 +1102,21 @@ export default function TeacherClassManagement() {
       });
       setTimings(mappedTimings);
 
-      // Always refresh the full subjects list so the dropdown is never empty
-      if (subjectsRes.data && subjectsRes.data.length > 0) {
-        setAllSubjects(subjectsRes.data);
+      if (matrixData.allSubjects && matrixData.allSubjects.length > 0) {
+        setAllSubjects(matrixData.allSubjects);
       }
 
-      const activeDays = configRes.data?.workingDays || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const activeDays = matrixData.config?.workingDays || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       setWorkingDays(activeDays);
 
       const dayShortMap: Record<string, string> = {
         'Monday': 'MON', 'Tuesday': 'TUE', 'Wednesday': 'WED', 
-        'Thursday': 'THU', 'Friday': 'FRI', 'Saturday': 'SAT', 'Sunday': 'SUN'
+        'Thursday': 'THU', 'Friday': 'FRI', 'Saturday': 'SAT', 'Sunday': 'SUN',
+        'MON': 'MON', 'TUE': 'TUE', 'WED': 'WED', 'THU': 'THU', 'FRI': 'FRI', 'SAT': 'SAT', 'SUN': 'SUN'
       };
 
-      // Initialize timetable grid using actual period numbers from timings data
       const formattedData: Record<string, { subject: string; teacherId: string }> = {};
-      const periodNumbers = (timingsRes.data || []).map((t: any) => t.periodNumber).filter(Boolean);
+      const periodNumbers = (matrixData.periodTimings || []).map((t: any) => t.periodNumber).filter(Boolean);
       const allPeriodNums = periodNumbers.length > 0 ? periodNumbers : [1, 2, 3, 4, 5, 6, 7, 8];
       
       for (const day of activeDays) {
@@ -1097,14 +1126,13 @@ export default function TeacherClassManagement() {
         }
       }
 
-      // Fill backend scheduled periods (flat array mapping)
-      const backendData = Array.isArray(timetableRes.data) ? timetableRes.data : [];
-      const uniqueSubIds = new Set<string>();
+      const backendData = Array.isArray(matrixData.periods) ? matrixData.periods : [];
+      const missingTeacherSubIds = new Set<string>();
 
       for (const p of backendData) {
         const backDay = p.day;
         const periodNum = p.periodNumber;
-        const frontDay = dayShortMap[backDay] || backDay.substring(0, 3).toUpperCase();
+        const frontDay = dayShortMap[backDay] || backDay?.substring(0, 3).toUpperCase();
 
         if (frontDay && periodNum) {
           const subId = p.subjectId || '';
@@ -1114,16 +1142,19 @@ export default function TeacherClassManagement() {
             subject: subId,
             teacherId: tId
           };
-          if (subId) uniqueSubIds.add(subId);
+          if (subId && (!matrixData.subjectTeachers || !matrixData.subjectTeachers[subId])) {
+            missingTeacherSubIds.add(subId);
+          }
         }
       }
 
-      // Pre-cache subject teachers concurrently in parallel (eliminating sequential HTTP requests)
-      const cachedSubjectTeachers: Record<string, any[]> = {};
-      if (uniqueSubIds.size > 0) {
-        const teacherPromises = Array.from(uniqueSubIds).map(async (subId) => {
+      if (matrixData.subjectTeachers && Object.keys(matrixData.subjectTeachers).length > 0) {
+        setSubjectTeachers(prev => ({ ...prev, ...matrixData.subjectTeachers }));
+      } else if (missingTeacherSubIds.size > 0) {
+        const cachedSubjectTeachers: Record<string, any[]> = {};
+        const teacherPromises = Array.from(missingTeacherSubIds).map(async (subId) => {
           try {
-            const res = await api.get(`/timetable/teachers/subject-in-class?subjectId=${subId}&classSectionId=${ttSelectedClassSectionId}`);
+            const res = await api.get(`/timetable/teachers/subject-in-class?subjectId=${subId}&classSectionId=${targetClassId}`);
             return { subId, teachers: res.data || [] };
           } catch (e) {
             return { subId, teachers: [] };
@@ -1133,9 +1164,9 @@ export default function TeacherClassManagement() {
         results.forEach(item => {
           cachedSubjectTeachers[item.subId] = item.teachers;
         });
+        setSubjectTeachers(prev => ({ ...prev, ...cachedSubjectTeachers }));
       }
 
-      setSubjectTeachers(prev => ({ ...prev, ...cachedSubjectTeachers }));
       setTimetableData(formattedData);
       setShowTimetableGrid(true);
       showToast('Timetable loaded successfully!', 'success');
@@ -1160,7 +1191,7 @@ export default function TeacherClassManagement() {
       return { ...prev, [cellKey]: updated };
     });
 
-    if (field === 'subject' && value) {
+    if (field === 'subject' && value && !subjectTeachers[value]) {
       try {
         const res = await api.get(`/timetable/teachers/subject-in-class?subjectId=${value}&classSectionId=${ttSelectedClassSectionId}`);
         setSubjectTeachers(prev => ({
@@ -1799,7 +1830,26 @@ export default function TeacherClassManagement() {
                 <button onClick={() => { setIsTimetableConfigView(true); }} className="action-pill action-pill-timetable action-pill-primary">
                   <Settings className="w-3.5 h-3.5 stroke-[2.5]" /> Timetable Setup
                 </button>
-                <button onClick={() => { setIsTimetableView(true); setShowTimetableGrid(false); }} className="action-pill action-pill-timetable">
+                <button
+                  onClick={() => {
+                    setIsTimetableView(true);
+                    setShowTimetableGrid(false);
+                    const targetClassId = ttSelectedClassSectionId || (classes.length > 0 ? classes[0].id : '');
+                    const targetYearId = ttSelectedAcademicYear || (academicYears.length > 0 ? (academicYears.find((y: any) => y.isActive)?.id || academicYears[0].id) : '');
+                    if (targetClassId) {
+                      setTtSelectedClassSectionId(targetClassId);
+                      const csOpt = classes.find(c => c.id === targetClassId);
+                      setTtSelectedClassName(csOpt ? csOpt.name : '');
+                    }
+                    if (targetYearId) {
+                      setTtSelectedAcademicYear(targetYearId);
+                    }
+                    if (targetClassId) {
+                      loadTimetableGrid(targetClassId, targetYearId);
+                    }
+                  }}
+                  className="action-pill action-pill-timetable"
+                >
                   <Calendar className="w-3.5 h-3.5 stroke-[2.5]" /> Timetable
                 </button>
               </div>
@@ -2702,14 +2752,18 @@ export default function TeacherClassManagement() {
                 <select
                   value={ttSelectedClassSectionId}
                   onChange={e => {
-                    setTtSelectedClassSectionId(e.target.value);
-                    const csOpt = classes.find(c => c.id === e.target.value);
+                    const val = e.target.value;
+                    setTtSelectedClassSectionId(val);
+                    const csOpt = classes.find(c => c.id === val);
                     setTtSelectedClassName(csOpt ? csOpt.name : '');
                     setShowTimetableGrid(false);
+                    if (val) {
+                      loadTimetableGrid(val, ttSelectedAcademicYear);
+                    }
                   }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none"
                 >
-                  <option value="">Select Class Section</option>
+                  <option value="">{isLoading && classes.length === 0 ? 'Loading Class Sections...' : 'Select Class Section'}</option>
                   {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
@@ -2717,10 +2771,17 @@ export default function TeacherClassManagement() {
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Academic Year *</label>
                 <select
                   value={ttSelectedAcademicYear}
-                  onChange={e => { setTtSelectedAcademicYear(e.target.value); setShowTimetableGrid(false); }}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setTtSelectedAcademicYear(val);
+                    setShowTimetableGrid(false);
+                    if (ttSelectedClassSectionId) {
+                      loadTimetableGrid(ttSelectedClassSectionId, val);
+                    }
+                  }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none"
                 >
-                  <option value="">Select Academic Year</option>
+                  <option value="">{isLoading && academicYears.length === 0 ? 'Loading Academic Years...' : 'Select Academic Year'}</option>
                   {academicYears.map(y => <option key={y.id} value={y.id}>{y.name}</option>)}
                 </select>
               </div>
@@ -2771,7 +2832,7 @@ export default function TeacherClassManagement() {
               </div>
               <div>
                 <button
-                  onClick={loadTimetableGrid}
+                  onClick={() => loadTimetableGrid()}
                   disabled={isTimetableLoading}
                   className="w-full px-4 py-2.5 rounded-xl border border-blue-600 hover:bg-blue-50 text-blue-600 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -2807,7 +2868,7 @@ export default function TeacherClassManagement() {
               <h3 className="text-base font-bold text-slate-800">Unable to load timetable</h3>
               <p className="text-xs text-rose-600 mt-1 max-w-md mx-auto">{timetableError}</p>
               <button
-                onClick={loadTimetableGrid}
+                onClick={() => loadTimetableGrid()}
                 className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Try Again
