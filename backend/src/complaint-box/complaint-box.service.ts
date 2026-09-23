@@ -9,7 +9,7 @@ import { UpdateCaseStatusDto } from './dto/update-case-status.dto';
 
 @Injectable()
 export class ComplaintBoxService {
-  private cache = new Map<string, { data: any; expiresAt: number }>();
+  private static cache = new Map<string, { data: any; expiresAt: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -26,13 +26,13 @@ export class ComplaintBoxService {
 
   private invalidateCache(tenantId?: string) {
     if (tenantId) {
-      this.cache.forEach((_, key) => {
+      ComplaintBoxService.cache.forEach((_, key) => {
         if (key.startsWith(`${tenantId}:`)) {
-          this.cache.delete(key);
+          ComplaintBoxService.cache.delete(key);
         }
       });
     } else {
-      this.cache.clear();
+      ComplaintBoxService.cache.clear();
     }
   }
 
@@ -41,14 +41,14 @@ export class ComplaintBoxService {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
     if (!user || !user.id) {
-      throw new BadRequestException('User not authenticated');
+      return null;
     }
     const profile = await this.prisma.staffProfile.findUnique({
       where: { userId: user.id },
       include: { user: true },
     });
     if (!profile || profile.user.tenantId !== tenantId) {
-      throw new NotFoundException('Teacher profile not found');
+      return null;
     }
     return profile;
   }
@@ -58,7 +58,7 @@ export class ComplaintBoxService {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
     const cacheKey = `${tenantId}:student-classes:${user?.id || 'admin'}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -94,7 +94,7 @@ export class ComplaintBoxService {
       });
     }
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 30000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
     return result;
   }
 
@@ -102,7 +102,7 @@ export class ComplaintBoxService {
   async getTeachers() {
     const tenantId = this.getTenantId();
     const cacheKey = `${tenantId}:teachers`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -115,7 +115,7 @@ export class ComplaintBoxService {
       orderBy: { user: { name: 'asc' } },
     });
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
     return result;
   }
 
@@ -282,13 +282,13 @@ export class ComplaintBoxService {
   async getAcademicYears() {
     const tenantId = this.getTenantId();
     const cacheKey = `${tenantId}:academic-years`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
 
     const result = await this.prisma.academicYear.findMany({ where: { tenantId }, orderBy: { name: 'desc' } });
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
     return result;
   }
 
@@ -297,7 +297,7 @@ export class ComplaintBoxService {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
     const cacheKey = `${tenantId}:pending-cases:${academicYear || 'All'}:${user?.id || 'admin'}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -348,7 +348,7 @@ export class ComplaintBoxService {
       orderBy: { createdAt: 'desc' },
     });
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 20000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 30000 });
     return result;
   }
 
@@ -358,7 +358,7 @@ export class ComplaintBoxService {
     const user = (this.request as any).user;
     const cacheKey = `${tenantId}:student_cases:${studentId}:${academicYear || ''}:${user?.id || 'admin'}`;
 
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -411,7 +411,7 @@ export class ComplaintBoxService {
       take: 50,
     });
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
     return result;
   }
 
@@ -545,7 +545,7 @@ export class ComplaintBoxService {
   async getParentComplaints(statusFilter?: string) {
     const tenantId = this.getTenantId();
     const cacheKey = `${tenantId}:parent-complaints:${statusFilter || 'All'}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -585,7 +585,7 @@ export class ComplaintBoxService {
       statusHistories: historyMap.get(c.id) || [],
     }));
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 30000 });
     return result;
   }
 
