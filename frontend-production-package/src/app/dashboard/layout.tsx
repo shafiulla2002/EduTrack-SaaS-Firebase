@@ -731,8 +731,7 @@ export default function DashboardLayout({
     } else if (href.startsWith('/dashboard/staff')) {
       fastGet('/staff', undefined, { ttlMs: 30000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/teachers')) {
-      fastGet('/teachers', undefined, { ttlMs: 30000 }).catch(() => {});
-      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
+      fastGet('/timetable/workload/dashboard', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/attendance-mgmt') || href.startsWith('/dashboard/attendance')) {
       fastGet('/attendance/dashboard', undefined, { ttlMs: 30000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});

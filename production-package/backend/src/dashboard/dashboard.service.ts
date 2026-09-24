@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
-import { Role } from '@prisma/client';
+import { Role, Prisma } from '@prisma/client';
 import { RoleFilterHelper } from '../common/role-filter.helper';
 
 @Injectable()
@@ -383,8 +383,8 @@ export class DashboardService {
   async getReportsSummary(userId?: string, role?: string) {
     const tenantId = this.getTenantId();
 
-    let studentWhere: any = { user: { tenantId, isActive: true } };
-    let marksWhere: any = { tenantId };
+    let studentWhereSql = Prisma.sql`sp."tenantId" = ${tenantId} AND u."isActive" = true`;
+    let marksWhereSql = Prisma.sql`em."tenantId" = ${tenantId}`;
     let showFinancials = true;
 
     if (this.roleFilterHelper.isTeacher(role)) {
@@ -392,125 +392,132 @@ export class DashboardService {
       try {
         const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
         const classSectionIds = scope.assignedClassSectionIds;
-        studentWhere = {
-          tenantId,
-          classSectionId: { in: classSectionIds },
-          user: { isActive: true },
-        };
-        marksWhere = {
-          tenantId,
-          student: { classSectionId: { in: classSectionIds } },
-        };
+        if (!classSectionIds || classSectionIds.length === 0) {
+          studentWhereSql = Prisma.sql`1=0`;
+          marksWhereSql = Prisma.sql`1=0`;
+        } else {
+          studentWhereSql = Prisma.sql`sp."tenantId" = ${tenantId} AND u."isActive" = true AND sp."classSectionId" IN (${Prisma.join(classSectionIds)})`;
+          marksWhereSql = Prisma.sql`em."tenantId" = ${tenantId} AND sp."classSectionId" IN (${Prisma.join(classSectionIds)})`;
+        }
       } catch {
-        studentWhere = { id: 'none' };
-        marksWhere = { id: 'none' };
+        studentWhereSql = Prisma.sql`1=0`;
+        marksWhereSql = Prisma.sql`1=0`;
       }
     }
 
-    // 1. Enrollment Demographics (Student counts grouped by class)
-    const students = await this.prisma.studentProfile.findMany({
-      where: studentWhere,
-      include: {
-        user: { select: { createdAt: true } },
-        classSection: {
-          include: { class: true, section: true }
-        }
-      }
-    });
+    // Run parallel SQL queries
+    const [classRows, timelineRows, finRows, markRows, examSubjects] = await Promise.all([
+      // 1. Enrollment Demographics (Student counts grouped by class)
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          COALESCE(c.name, 'Unassigned') AS "className",
+          COUNT(*)::int AS "count"
+        FROM "StudentProfile" sp
+        INNER JOIN "User" u ON sp."userId" = u.id
+        LEFT JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+        LEFT JOIN "Class" c ON cs."classId" = c.id
+        WHERE ${studentWhereSql}
+        GROUP BY c.name
+      `,
+      // 2. Timeline groups
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          TO_CHAR(u."createdAt", 'YYYY-MM') AS "date",
+          COUNT(*)::int AS "count"
+        FROM "StudentProfile" sp
+        INNER JOIN "User" u ON sp."userId" = u.id
+        WHERE ${studentWhereSql}
+        GROUP BY TO_CHAR(u."createdAt", 'YYYY-MM')
+        ORDER BY "date" ASC
+      `,
+      // 3. Financial Statements
+      showFinancials
+        ? this.prisma.$queryRaw<any[]>`
+            SELECT
+              (SELECT COALESCE(SUM("paidAmount"), 0) FROM "Invoice" WHERE "tenantId" = ${tenantId})::float AS "totalRevenue",
+              (SELECT COALESCE(SUM("remainingBalance"), 0) FROM "Invoice" WHERE "tenantId" = ${tenantId})::float AS "outstandingReceivables",
+              (SELECT COALESCE(SUM("amount"), 0) FROM "Expense" WHERE "tenantId" = ${tenantId} AND status::text = 'PAID')::float AS "totalExpenses"
+          `
+        : Promise.resolve([]),
+      // 4. Exam marks for grading summary
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          em."examId",
+          em."subjectId",
+          em."subjectType"::text AS "subjectType",
+          em."marksObtained"::float AS "marksObtained"
+        FROM "ExamMark" em
+        INNER JOIN "StudentProfile" sp ON em."studentId" = sp.id
+        WHERE ${marksWhereSql}
+      `,
+      // 5. ExamSubjects config
+      this.prisma.examSubject.findMany({
+        where: { tenantId },
+        select: { examId: true, subjectId: true, subjectType: true, maxMarks: true, passingPercentage: true },
+      }),
+    ]);
 
     const classDistribution: Record<string, number> = {};
-    students.forEach(s => {
-      const className = s.classSection?.class.name || 'Unassigned';
-      classDistribution[className] = (classDistribution[className] || 0) + 1;
+    let totalStudents = 0;
+    classRows.forEach(r => {
+      classDistribution[r.className] = Number(r.count);
+      totalStudents += Number(r.count);
     });
 
-    const timelineGroups: Record<string, number> = {};
-    students.forEach(s => {
-      const dateStr = s.user.createdAt.toISOString().slice(0, 7); // YYYY-MM
-      timelineGroups[dateStr] = (timelineGroups[dateStr] || 0) + 1;
-    });
-    const timeline = Object.entries(timelineGroups)
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    const timeline = timelineRows.map(r => ({
+      date: r.date,
+      count: Number(r.count),
+    }));
 
     const demographics = {
-      totalStudents: students.length,
+      totalStudents,
       classDistribution,
-      timeline
+      timeline,
     };
 
-    // 2. Financial Statements (Paid revenue, outstanding balances, salaries paid)
     let financials = {
       totalRevenue: 0,
       outstandingReceivables: 0,
       totalExpenses: 0,
-      netCashflow: 0
+      netCashflow: 0,
     };
 
-    if (showFinancials) {
-      const [invoices, expenses] = await Promise.all([
-        this.prisma.invoice.findMany({
-          where: { tenantId }
-        }),
-        this.prisma.expense.findMany({
-          where: { tenantId, status: 'PAID' }
-        })
-      ]);
-
-      let totalRevenue = 0;
-      let outstandingReceivables = 0;
-      invoices.forEach(inv => {
-        totalRevenue += Number(inv.paidAmount || 0);
-        outstandingReceivables += Number(inv.remainingBalance || 0);
-      });
-
-      let totalExpenses = 0;
-      expenses.forEach(exp => {
-        totalExpenses += Number(exp.amount || 0);
-      });
-
+    if (showFinancials && finRows.length > 0) {
+      const totalRevenue = Number(finRows[0].totalRevenue || 0);
+      const outstandingReceivables = Number(finRows[0].outstandingReceivables || 0);
+      const totalExpenses = Number(finRows[0].totalExpenses || 0);
       financials = {
         totalRevenue,
         outstandingReceivables,
         totalExpenses,
-        netCashflow: totalRevenue - totalExpenses
+        netCashflow: totalRevenue - totalExpenses,
       };
     }
 
-    // 3. Grading Averages & Mark Distribution curve
-    const [marks, examSubjects] = await Promise.all([
-      this.prisma.examMark.findMany({
-        where: marksWhere
-      }),
-      this.prisma.examSubject.findMany({
-        where: { tenantId }
-      })
-    ]);
-    
-    const subjectConfigMap = new Map(examSubjects.map(es => [`${es.examId}_${es.subjectId}_${es.subjectType}`, es]));
+    const subjectConfigMap = new Map(
+      examSubjects.map(es => [`${es.examId}_${es.subjectId}_${es.subjectType}`, es]),
+    );
 
     let totalPctScore = 0;
     let passedCount = 0;
-    let failedCount = 0;
     const distribution = {
       failed: 0, // < 35
       belowAverage: 0, // 35 - 60
       average: 0, // 60 - 75
       firstDivision: 0, // 75 - 90
-      highDistinction: 0 // 90 - 100
+      highDistinction: 0, // 90 - 100
     };
 
-    marks.forEach(m => {
+    markRows.forEach(m => {
       const score = Number(m.marksObtained);
       const es = subjectConfigMap.get(`${m.examId}_${m.subjectId}_${m.subjectType}`);
       const maxMarks = es ? es.maxMarks : 100;
       const passingPct = es ? Number(es.passingPercentage) : 35;
-      
+
       const pct = maxMarks > 0 ? (score / maxMarks) * 100 : 0;
       totalPctScore += pct;
 
       if (pct < passingPct) {
-        failedCount++;
         distribution.failed++;
       } else {
         passedCount++;
@@ -521,58 +528,67 @@ export class DashboardService {
       }
     });
 
-    const totalMarksEntries = marks.length;
-    const averageScore = totalMarksEntries > 0 ? (totalPctScore / totalMarksEntries) : 0;
+    const totalMarksEntries = markRows.length;
+    const averageScore = totalMarksEntries > 0 ? totalPctScore / totalMarksEntries : 0;
     const passRate = totalMarksEntries > 0 ? (passedCount / totalMarksEntries) * 100 : 0;
 
     const grading = {
       averageScore: Math.round(averageScore * 10) / 10,
       passRate: Math.round(passRate * 10) / 10,
-      distribution
+      distribution,
     };
 
     return {
       demographics,
       financials,
-      grading
+      grading,
     };
   }
 
   async getDemographicsReport(userId?: string, role?: string) {
     const tenantId = this.getTenantId();
-    let studentWhere: any = { user: { tenantId, isActive: true } };
+    let studentWhereSql = Prisma.sql`sp."tenantId" = ${tenantId} AND u."isActive" = true`;
 
     if (this.roleFilterHelper.isTeacher(role)) {
       try {
         const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
-        studentWhere = {
-          tenantId,
-          classSectionId: { in: scope.assignedClassSectionIds },
-          user: { isActive: true },
-        };
+        const classSectionIds = scope.assignedClassSectionIds;
+        if (!classSectionIds || classSectionIds.length === 0) {
+          studentWhereSql = Prisma.sql`1=0`;
+        } else {
+          studentWhereSql = Prisma.sql`sp."tenantId" = ${tenantId} AND u."isActive" = true AND sp."classSectionId" IN (${Prisma.join(classSectionIds)})`;
+        }
       } catch {
-        studentWhere = { id: 'none' };
+        studentWhereSql = Prisma.sql`1=0`;
       }
     }
 
-    const students = await this.prisma.studentProfile.findMany({
-      where: studentWhere,
-      include: {
-        user: { select: { name: true, email: true, phone: true, createdAt: true } },
-        classSection: {
-          include: { class: true, section: true }
-        }
-      }
-    });
+    const students = await this.prisma.$queryRaw<any[]>`
+      SELECT
+        u.name AS "name",
+        COALESCE(u.email, 'N/A') AS "email",
+        COALESCE(u.phone, 'N/A') AS "phone",
+        COALESCE(c.name, 'Unassigned') AS "class",
+        COALESCE(sec.name, 'Unassigned') AS "section",
+        COALESCE(sp."rollNo", 'N/A') AS "rollNo",
+        TO_CHAR(u."createdAt", 'YYYY-MM-DD') AS "joiningDate"
+      FROM "StudentProfile" sp
+      INNER JOIN "User" u ON sp."userId" = u.id
+      LEFT JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+      LEFT JOIN "Class" c ON cs."classId" = c.id
+      LEFT JOIN "Section" sec ON cs."sectionId" = sec.id
+      WHERE ${studentWhereSql}
+      ORDER BY sp.id ASC
+    `;
 
     return students.map(s => ({
-      name: s.user.name,
-      email: s.user.email || 'N/A',
-      phone: s.user.phone || 'N/A',
-      class: s.classSection?.class.name || 'Unassigned',
-      section: s.classSection?.section.name || 'Unassigned',
-      rollNo: s.rollNo || 'N/A',
-      joiningDate: s.user.createdAt.toISOString().split('T')[0]
+      name: s.name,
+      email: s.email,
+      phone: s.phone,
+      class: s.class,
+      section: s.section,
+      rollNo: s.rollNo,
+      joiningDate: s.joiningDate,
     }));
   }
 
@@ -583,43 +599,62 @@ export class DashboardService {
     }
 
     const tenantId = this.getTenantId();
-    const [invoices, expenses] = await Promise.all([
-      this.prisma.invoice.findMany({
-        where: { tenantId },
-        include: { student: { include: { user: { select: { name: true } } } } }
-      }),
-      this.prisma.expense.findMany({
-        where: { tenantId, status: 'PAID' }
-      })
+    const [invoiceRows, expenseRows] = await Promise.all([
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          i.id,
+          u.name AS "studentName",
+          i."paidAmount"::float AS "paidAmount",
+          i."remainingBalance"::float AS "remainingBalance",
+          TO_CHAR(i."invoiceDate", 'YYYY-MM-DD') AS "invoiceDate",
+          TO_CHAR(i."dueDate", 'YYYY-MM-DD') AS "dueDate",
+          i.status::text AS "status"
+        FROM "Invoice" i
+        LEFT JOIN "StudentProfile" sp ON i."studentId" = sp.id
+        LEFT JOIN "User" u ON sp."userId" = u.id
+        WHERE i."tenantId" = ${tenantId}
+        ORDER BY i.id ASC
+      `,
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          e.id,
+          COALESCE(e.description, e.category, 'Vendor Payment') AS "name",
+          e.amount::float AS "amount",
+          TO_CHAR(e.date, 'YYYY-MM-DD') AS "date",
+          e.status::text AS "status"
+        FROM "Expense" e
+        WHERE e."tenantId" = ${tenantId} AND e.status::text = 'PAID'
+        ORDER BY e.id ASC
+      `,
     ]);
 
     const txs: any[] = [];
-    invoices.forEach(inv => {
+    invoiceRows.forEach(inv => {
       txs.push({
         type: 'Fee Revenue',
-        name: inv.student?.user.name || 'Student Fee',
+        name: inv.studentName || 'Student Fee',
         amount: Number(inv.paidAmount),
-        date: inv.invoiceDate.toISOString().split('T')[0],
-        status: inv.status
+        date: inv.invoiceDate,
+        status: inv.status,
       });
       if (Number(inv.remainingBalance) > 0) {
         txs.push({
           type: 'Receivable Outstanding',
-          name: inv.student?.user.name || 'Student Fee',
+          name: inv.studentName || 'Student Fee',
           amount: Number(inv.remainingBalance),
-          date: inv.dueDate.toISOString().split('T')[0],
-          status: 'UNPAID'
+          date: inv.dueDate,
+          status: 'UNPAID',
         });
       }
     });
 
-    expenses.forEach(exp => {
+    expenseRows.forEach(exp => {
       txs.push({
         type: 'School Expense',
-        name: exp.description || exp.category || 'Vendor Payment',
+        name: exp.name,
         amount: -Number(exp.amount),
-        date: exp.date.toISOString().split('T')[0],
-        status: 'PAID'
+        date: exp.date,
+        status: 'PAID',
       });
     });
 
@@ -628,48 +663,64 @@ export class DashboardService {
 
   async getGradingReport(userId?: string, role?: string) {
     const tenantId = this.getTenantId();
-    let marksWhere: any = { tenantId };
+    let marksWhereSql = Prisma.sql`em."tenantId" = ${tenantId}`;
 
     if (this.roleFilterHelper.isTeacher(role)) {
       try {
         const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
-        marksWhere = {
-          tenantId,
-          student: { classSectionId: { in: scope.assignedClassSectionIds } },
-        };
+        const classSectionIds = scope.assignedClassSectionIds;
+        if (!classSectionIds || classSectionIds.length === 0) {
+          marksWhereSql = Prisma.sql`1=0`;
+        } else {
+          marksWhereSql = Prisma.sql`em."tenantId" = ${tenantId} AND sp."classSectionId" IN (${Prisma.join(classSectionIds)})`;
+        }
       } catch {
-        marksWhere = { id: 'none' };
+        marksWhereSql = Prisma.sql`1=0`;
       }
     }
 
     const [marks, examSubjects] = await Promise.all([
-      this.prisma.examMark.findMany({
-        where: marksWhere,
-        include: {
-          student: { include: { user: { select: { name: true } } } },
-          subject: { select: { name: true } },
-          exam: { select: { type: true } }
-        }
-      }),
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          em.id,
+          em."examId",
+          em."subjectId",
+          em."subjectType"::text AS "subjectType",
+          em."marksObtained"::float AS "marksObtained",
+          COALESCE(u.name, 'Student') AS "studentName",
+          COALESCE(sp."rollNo", 'N/A') AS "rollNo",
+          COALESCE(sub.name, 'Subject') AS "subjectName",
+          COALESCE(e.type, 'Exam') AS "examType"
+        FROM "ExamMark" em
+        LEFT JOIN "StudentProfile" sp ON em."studentId" = sp.id
+        LEFT JOIN "User" u ON sp."userId" = u.id
+        LEFT JOIN "Subject" sub ON em."subjectId" = sub.id
+        LEFT JOIN "Exam" e ON em."examId" = e.id
+        WHERE ${marksWhereSql}
+        ORDER BY em.id ASC
+      `,
       this.prisma.examSubject.findMany({
-        where: { tenantId }
-      })
+        where: { tenantId },
+        select: { examId: true, subjectId: true, subjectType: true, maxMarks: true },
+      }),
     ]);
-    
-    const subjectConfigMap = new Map(examSubjects.map(es => [`${es.examId}_${es.subjectId}_${es.subjectType}`, es]));
+
+    const subjectConfigMap = new Map(
+      examSubjects.map(es => [`${es.examId}_${es.subjectId}_${es.subjectType}`, es]),
+    );
 
     return marks.map(m => {
       const es = subjectConfigMap.get(`${m.examId}_${m.subjectId}_${m.subjectType}`);
       const maxMarks = es ? es.maxMarks : 100;
-      
+
       return {
-        studentName: m.student?.user.name || 'Student',
-        rollNo: m.student?.rollNo || 'N/A',
-        subject: m.subject?.name || 'Subject',
+        studentName: m.studentName,
+        rollNo: m.rollNo,
+        subject: m.subjectName,
         subjectType: m.subjectType,
-        examType: m.exam?.type || 'Exam',
+        examType: m.examType,
         marksObtained: Number(m.marksObtained),
-        maxMarks: maxMarks
+        maxMarks: maxMarks,
       };
     });
   }

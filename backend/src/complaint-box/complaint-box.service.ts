@@ -346,6 +346,7 @@ export class ComplaintBoxService {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
 
     ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 30000 });
@@ -528,17 +529,23 @@ export class ComplaintBoxService {
       }
     }
 
-    const total = await this.prisma.behaviorCase.count({ where: { tenantId, studentId } });
-    const complaintCount = await this.prisma.behaviorCase.count({
-      where: { tenantId, studentId, behaviorType: 'Complaint' },
-    });
-    const praiseCount = await this.prisma.behaviorCase.count({
-      where: { tenantId, studentId, behaviorType: 'Praise' },
-    });
-    const resolvedCount = await this.prisma.behaviorCase.count({
-      where: { tenantId, studentId, status: 'Closed' },
-    });
-    return { studentId, totalCases: total, complaintCount, praiseCount, resolvedCount };
+    const statsRaw = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        COUNT(*)::int AS "totalCases",
+        COALESCE(COUNT(*) FILTER (WHERE "behaviorType" = 'Complaint'), 0)::int AS "complaintCount",
+        COALESCE(COUNT(*) FILTER (WHERE "behaviorType" = 'Praise'), 0)::int AS "praiseCount",
+        COALESCE(COUNT(*) FILTER (WHERE "status" = 'Closed'), 0)::int AS "resolvedCount"
+      FROM "BehaviorCase"
+      WHERE "tenantId" = ${tenantId} AND "studentId" = ${studentId}
+    `;
+    const row = statsRaw[0] || { totalCases: 0, complaintCount: 0, praiseCount: 0, resolvedCount: 0 };
+    return {
+      studentId,
+      totalCases: row.totalCases,
+      complaintCount: row.complaintCount,
+      praiseCount: row.praiseCount,
+      resolvedCount: row.resolvedCount,
+    };
   }
 
   /** Returns parent complaints for the tenant (Admin view). */
@@ -563,6 +570,7 @@ export class ComplaintBoxService {
         academicYear: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
 
     const complaintIds = complaints.map(c => c.id);

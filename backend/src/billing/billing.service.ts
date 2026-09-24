@@ -232,8 +232,17 @@ export class BillingService {
           name: { not: { contains: 'Previous' } },
         },
       },
-      include: {
-        product: true,
+      select: {
+        id: true,
+        productId: true,
+        unitPrice: true,
+        pricebookId: true,
+        product: {
+          select: {
+            name: true,
+            description: true,
+          },
+        },
       },
       orderBy: { product: { name: 'asc' } },
       take: 1000,
@@ -242,8 +251,8 @@ export class BillingService {
     const result = (entries as any[]).map(entry => ({
       id: entry.id,
       product2Id: entry.productId,
-      productName: entry.product.name,
-      productDescription: entry.product.description || '',
+      productName: entry.product?.name || '',
+      productDescription: entry.product?.description || '',
       unitPrice: Number(entry.unitPrice),
       pricebook2Id: entry.pricebookId,
     }));
@@ -749,13 +758,22 @@ export class BillingService {
             }
           }
         },
-        include: {
-          academicYear: true,
-          opportunityLineItems: true,
+        select: {
+          academicYear: { select: { name: true } },
+          opportunityLineItems: {
+            select: {
+              unitPrice: true,
+              quantity: true,
+              discount: true,
+            }
+          },
           invoices: {
             where: {
               tenantId,
               status: { not: PaymentStatus.VOIDED }
+            },
+            select: {
+              paidAmount: true,
             }
           }
         }
@@ -771,6 +789,9 @@ export class BillingService {
           status: {
             in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID]
           }
+        },
+        select: {
+          remainingBalance: true,
         }
       })
     ]);
@@ -885,32 +906,122 @@ export class BillingService {
 
     const opportunity = await this.prisma.opportunity.findUnique({
       where: { id: opportunityId },
-      include: { academicYear: true }
+      select: {
+        id: true,
+        studentId: true,
+        classId: true,
+        academicYearId: true,
+        tenantId: true,
+        academicYear: {
+          select: {
+            id: true,
+            startDate: true,
+            name: true,
+          }
+        }
+      }
     });
-    if (!opportunity) {
+    if (!opportunity || opportunity.tenantId !== tenantId) {
       throw new NotFoundException('Opportunity not found');
     }
 
-    // Map Opportunity Line Item paid amounts from PAID or PARTIALLY_PAID invoices
-    const invoiceItems = await this.prisma.invoiceItem.findMany({
-      where: {
-        tenantId,
-        invoice: {
-          opportunityId,
-          status: { in: [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID] },
-        },
-      },
-      include: {
-        invoice: true,
-      },
-    });
+    const currentYearStart = opportunity.academicYear?.startDate || new Date(0);
 
+    // Concurrently fetch invoice items, opportunity line items, and previous year dues
+    const [invoiceItems, olisInit, prevOpps, prevOrphanInvoices] = await Promise.all([
+      this.prisma.invoiceItem.findMany({
+        where: {
+          tenantId,
+          invoice: {
+            opportunityId,
+            status: { in: [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID] },
+          },
+        },
+        select: {
+          id: true,
+          amount: true,
+          name: true,
+          opportunityLineItemId: true,
+          invoice: {
+            select: {
+              totalAmount: true,
+              paidAmount: true,
+            }
+          }
+        }
+      }),
+      this.prisma.opportunityLineItem.findMany({
+        where: { opportunityId, tenantId },
+        select: {
+          id: true,
+          productId: true,
+          unitPrice: true,
+          quantity: true,
+          discount: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+            }
+          }
+        }
+      }),
+      this.prisma.opportunity.findMany({
+        where: {
+          studentId: opportunity.studentId,
+          tenantId,
+          academicYear: {
+            startDate: {
+              lt: currentYearStart
+            }
+          }
+        },
+        select: {
+          opportunityLineItems: {
+            select: {
+              unitPrice: true,
+              quantity: true,
+              discount: true,
+            }
+          },
+          invoices: {
+            where: {
+              tenantId,
+              status: { not: PaymentStatus.VOIDED }
+            },
+            select: {
+              paidAmount: true,
+            }
+          }
+        }
+      }),
+      this.prisma.invoice.findMany({
+        where: {
+          studentId: opportunity.studentId,
+          tenantId,
+          opportunityId: null,
+          invoiceDate: {
+            lt: currentYearStart
+          },
+          status: {
+            in: [PaymentStatus.UNPAID, PaymentStatus.PARTIALLY_PAID]
+          }
+        },
+        select: {
+          remainingBalance: true,
+        }
+      })
+    ]);
+
+    let olis = olisInit;
+
+    // Map Opportunity Line Item paid amounts from PAID or PARTIALLY_PAID invoices
     const oliPaidMap = new Map<string, number>();
     const namePaidMap = new Map<string, number>();
 
     for (const item of invoiceItems) {
-      const invTotal = Number(item.invoice.totalAmount);
-      const invPaid = Number(item.invoice.paidAmount);
+      const invTotal = Number(item.invoice?.totalAmount || 0);
+      const invPaid = Number(item.invoice?.paidAmount || 0);
       const itemPaidAmount = invTotal > 0
         ? (Number(item.amount) * (invPaid / invTotal))
         : Number(item.amount);
@@ -924,12 +1035,6 @@ export class BillingService {
         namePaidMap.set(item.name.toLowerCase(), cur + itemPaidAmount);
       }
     }
-
-    // Fetch opportunity line items
-    let olis = await this.prisma.opportunityLineItem.findMany({
-      where: { opportunityId, tenantId },
-      include: { product: true },
-    });
 
     // ── FALLBACK: If this opportunity has no OLIs (e.g. promotion when pricebook
     //    lookup failed), auto-create them from the class pricebook so the admin can collect fees.
@@ -954,7 +1059,19 @@ export class BillingService {
 
         olis = await this.prisma.opportunityLineItem.findMany({
           where: { opportunityId, tenantId },
-          include: { product: true },
+          select: {
+            id: true,
+            productId: true,
+            unitPrice: true,
+            quantity: true,
+            discount: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+              }
+            }
+          }
         });
       }
     }
@@ -966,13 +1083,13 @@ export class BillingService {
       const netAmount = totalAmount - discountAmount;
       // Check both OLI-linked payments and name-based payments (from promotion invoices)
       const paidByOli = oliPaidMap.get(oli.id) || 0;
-      const paidByName = namePaidMap.get(oli.product.name.toLowerCase()) || 0;
+      const paidByName = oli.product?.name ? namePaidMap.get(oli.product.name.toLowerCase()) || 0 : 0;
       const paidAmount = Math.max(paidByOli, paidByName);
       const balanceDue = netAmount - paidAmount;
 
       return {
         oliId: oli.id,
-        productName: oli.product.name,
+        productName: oli.product?.name || 'Fee Product',
         totalAmount,
         netAmount,
         paidAmount,
@@ -983,9 +1100,26 @@ export class BillingService {
       };
     });
 
-    // Check if there are unpaid/partially paid invoices from previous years
-    const studentInfo = await this.getStudentById(opportunity.studentId, opportunity.academicYearId);
-    const prevBalanceDue = studentInfo.feeSummary.overall.totalPreviousYearDue;
+    // Calculate previous year dues
+    let prevBalanceDue = 0;
+    for (const opp of prevOpps) {
+      const oppFee = opp.opportunityLineItems.reduce((sum, oli) => {
+        const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
+        const itemDiscount = (itemTotal * Number(oli.discount)) / 100;
+        return sum + (itemTotal - itemDiscount);
+      }, 0);
+      const oppPaid = opp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+      const balance = Math.max(0, oppFee - oppPaid);
+      if (balance > 0) {
+        prevBalanceDue += balance;
+      }
+    }
+    for (const inv of prevOrphanInvoices) {
+      const balance = Number(inv.remainingBalance);
+      if (balance > 0) {
+        prevBalanceDue += balance;
+      }
+    }
 
     if (prevBalanceDue > 0) {
       result.unshift({
@@ -1157,10 +1291,21 @@ export class BillingService {
         ],
         ...(studentId ? { studentId } : {}),
       },
-      include: {
+      select: {
+        id: true,
+        invoiceDate: true,
+        status: true,
+        paidAmount: true,
+        totalAmount: true,
+        paymentMethod: true,
         student: {
-          include: {
-            user: true,
+          select: {
+            rollNo: true,
+            user: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },
@@ -2278,18 +2423,44 @@ export class BillingService {
   }
 
   async getFinancialCommandCenterData(tenantId: string, filters: any) {
-    // 1. Fetch active academic year
-    const activeYear = await this.prisma.academicYear.findFirst({
-      where: { tenantId, isActive: true },
-    });
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfYesterday = new Date(startOfToday);
+    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + (startOfWeek.getDay() === 0 ? -6 : 1));
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const last30DaysLimit = new Date(startOfToday);
+    last30DaysLimit.setDate(last30DaysLimit.getDate() - 30);
 
-    // 2. Fetch all classes and sections for mapping
-    const allClasses = await this.prisma.class.findMany({ where: { tenantId } });
-    const allSections = await this.prisma.section.findMany({ where: { tenantId } });
+    const targetTwelveMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const targetThirtyDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+
+    const startOfThisWeek = new Date(startOfToday);
+    startOfThisWeek.setDate(startOfThisWeek.getDate() - startOfThisWeek.getDay());
+    const endOfThisWeek = new Date(startOfThisWeek);
+    endOfThisWeek.setDate(endOfThisWeek.getDate() + 7);
+
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    // 1. Initial configuration lookups
+    const [activeYear, allClasses, allSections, academicYearsList] = await Promise.all([
+      this.prisma.academicYear.findFirst({ where: { tenantId, isActive: true } }),
+      this.prisma.class.findMany({ where: { tenantId }, select: { id: true, name: true } }),
+      this.prisma.section.findMany({ where: { tenantId }, select: { id: true, name: true } }),
+      this.prisma.academicYear.findMany({ where: { tenantId }, select: { id: true, name: true } }),
+    ]);
+
     const classMap = new Map(allClasses.map(c => [c.id, c.name]));
     const sectionMap = new Map(allSections.map(s => [s.id, s.name]));
 
-    // 3. Resolve Date Filter for query parameters
+    // Date Filter resolution
     let startDate: Date | undefined;
     let endDate: Date | undefined;
 
@@ -2359,372 +2530,504 @@ export class BillingService {
       expenseWhere.category = filters.expenseCategory;
     }
 
-    // 4. Fetch Live Data for filtered range
-    const filteredInvoices = await this.prisma.invoice.findMany({
-      where: invoiceWhere,
-      include: {
-        invoiceItems: true,
-        student: {
-          include: { user: true }
+    const ayStart = activeYear?.startDate || new Date(0);
+    const ayEnd = activeYear?.endDate || new Date(0);
+    const hasAY = Boolean(activeYear?.startDate && activeYear?.endDate);
+    const targetAYId = filters.academicYearId || activeYear?.id || null;
+
+    // 2. High-Performance Consolidated SQL Batch Execution
+    const [
+      macroStatsRaw,
+      monthlyInvoicesRaw,
+      monthlyExpensesRaw,
+      dailyInvoicesRaw,
+      oppAndStudentAggRaw,
+      topListsRaw,
+      filteredInvoices,
+      filteredExpenses,
+      voidedInvoices,
+      timelineAdmissions,
+      timelinePromotions,
+      timelineRollbacks,
+    ] = await Promise.all([
+      // A: Time-bucketed Revenue & Expenses, Budgets, Prior balances in single query
+      this.prisma.$queryRaw<any[]>`
+        WITH rev_stats AS (
+          SELECT
+            COALESCE(SUM("paidAmount"), 0)::float AS "allTime",
+            COALESCE(SUM(CASE WHEN "invoiceDate" >= ${startOfToday} THEN "paidAmount" ELSE 0 END), 0)::float AS "today",
+            COALESCE(SUM(CASE WHEN "invoiceDate" >= ${startOfYesterday} AND "invoiceDate" < ${startOfToday} THEN "paidAmount" ELSE 0 END), 0)::float AS "yesterday",
+            COALESCE(SUM(CASE WHEN "invoiceDate" >= ${startOfWeek} THEN "paidAmount" ELSE 0 END), 0)::float AS "thisWeek",
+            COALESCE(SUM(CASE WHEN "invoiceDate" >= ${startOfMonth} THEN "paidAmount" ELSE 0 END), 0)::float AS "currentMonth",
+            COALESCE(SUM(CASE WHEN "invoiceDate" >= ${startOfPrevMonth} AND "invoiceDate" <= ${endOfPrevMonth} THEN "paidAmount" ELSE 0 END), 0)::float AS "prevMonth",
+            COALESCE(SUM(CASE WHEN "invoiceDate" >= ${last30DaysLimit} THEN "paidAmount" ELSE 0 END), 0)::float AS "last30Days",
+            COALESCE(SUM(CASE WHEN ${hasAY} AND "invoiceDate" >= ${ayStart} AND "invoiceDate" <= ${ayEnd} THEN "paidAmount" ELSE 0 END), 0)::float AS "academicYear",
+            COALESCE(COUNT(CASE WHEN "invoiceDate" >= ${startOfMonth} AND ("status" = 'PAID' OR "status" = 'PARTIALLY_PAID') AND "paidAmount" > 0 THEN 1 END), 0)::int AS "currentMonthInvoicesCount",
+            COALESCE(COUNT(CASE WHEN "invoiceDate" >= ${startOfPrevMonth} AND "invoiceDate" <= ${endOfPrevMonth} AND ("status" = 'PAID' OR "status" = 'PARTIALLY_PAID') AND "paidAmount" > 0 THEN 1 END), 0)::int AS "prevMonthInvoicesCount"
+          FROM "Invoice"
+          WHERE "tenantId" = ${tenantId}
+            AND "status" != 'VOIDED'
+        ),
+        exp_stats AS (
+          SELECT
+            COALESCE(SUM("amount"), 0)::float AS "allTime",
+            COALESCE(SUM(CASE WHEN "date" >= ${startOfToday} THEN "amount" ELSE 0 END), 0)::float AS "today",
+            COALESCE(SUM(CASE WHEN "date" >= ${startOfWeek} THEN "amount" ELSE 0 END), 0)::float AS "thisWeek",
+            COALESCE(SUM(CASE WHEN "date" >= ${startOfMonth} THEN "amount" ELSE 0 END), 0)::float AS "currentMonth",
+            COALESCE(SUM(CASE WHEN "date" >= ${startOfPrevMonth} AND "date" <= ${endOfPrevMonth} THEN "amount" ELSE 0 END), 0)::float AS "prevMonth",
+            COALESCE(SUM(CASE WHEN ${hasAY} AND "date" >= ${ayStart} AND "date" <= ${ayEnd} THEN "amount" ELSE 0 END), 0)::float AS "academicYear",
+            COALESCE(MAX(CASE WHEN "date" >= ${startOfToday} THEN "amount" ELSE 0 END), 0)::float AS "highestToday",
+            COALESCE(MAX(CASE WHEN "date" >= ${startOfMonth} THEN "amount" ELSE 0 END), 0)::float AS "highestThisMonth"
+          FROM "Expense"
+          WHERE "tenantId" = ${tenantId}
+            AND "status" IN ('PAID', 'APPROVED')
+        ),
+        budget_stats AS (
+          SELECT
+            COALESCE(SUM(CASE WHEN "category" ILIKE '%salary%' THEN "amount" ELSE 0 END), 0)::float AS "salaries",
+            COALESCE(SUM(CASE WHEN "category" ILIKE '%transport%' THEN "amount" ELSE 0 END), 0)::float AS "transport",
+            COALESCE(SUM(CASE WHEN "category" ILIKE '%maintenance%' THEN "amount" ELSE 0 END), 0)::float AS "maintenance",
+            COALESCE(SUM(CASE WHEN "category" ILIKE '%event%' THEN "amount" ELSE 0 END), 0)::float AS "events",
+            COALESCE(SUM(CASE WHEN "category" ILIKE '%marketing%' THEN "amount" ELSE 0 END), 0)::float AS "marketing",
+            COALESCE(SUM(CASE WHEN "category" ILIKE '%electricity%' OR "category" ILIKE '%internet%' OR "category" ILIKE '%utility%' THEN "amount" ELSE 0 END), 0)::float AS "utilities"
+          FROM "Expense"
+          WHERE "tenantId" = ${tenantId}
+            AND "status" IN ('PAID', 'APPROVED')
+            AND "date" >= ${startOfPrevMonth}
+            AND "date" <= ${endOfPrevMonth}
+        ),
+        prior_invoices AS (
+          SELECT COALESCE(SUM("paidAmount"), 0)::float AS "priorInvoicesSum"
+          FROM "Invoice"
+          WHERE "tenantId" = ${tenantId}
+            AND "status" != 'VOIDED'
+            AND "invoiceDate" < ${startDate || new Date(0)}
+        ),
+        prior_expenses AS (
+          SELECT COALESCE(SUM("amount"), 0)::float AS "priorExpensesSum"
+          FROM "Expense"
+          WHERE "tenantId" = ${tenantId}
+            AND "status" IN ('PAID', 'APPROVED')
+            AND "date" < ${startDate || new Date(0)}
+        ),
+        pending_expenses AS (
+          SELECT COALESCE(SUM("amount"), 0)::float AS "pendingExpensesSum"
+          FROM "Expense"
+          WHERE "tenantId" = ${tenantId}
+            AND "status" = 'PENDING'
+        ),
+        promotions AS (
+          SELECT COUNT(id)::int AS "promotedCount"
+          FROM "ActivityLog"
+          WHERE "tenantId" = ${tenantId}
+            AND "action" = 'RECORD_UPDATE'
+            AND "entityName" = 'StudentProfile'
+            AND "details" LIKE '%Promoted from%'
+            AND (${startDate}::timestamp IS NULL OR "createdAt" >= ${startDate})
+            AND (${endDate}::timestamp IS NULL OR "createdAt" <= ${endDate})
+        )
+        SELECT 
+          row_to_json(rev_stats.*) AS rev,
+          row_to_json(exp_stats.*) AS exp,
+          row_to_json(budget_stats.*) AS budget,
+          prior_invoices."priorInvoicesSum",
+          prior_expenses."priorExpensesSum",
+          pending_expenses."pendingExpensesSum",
+          promotions."promotedCount"
+        FROM rev_stats, exp_stats, budget_stats, prior_invoices, prior_expenses, pending_expenses, promotions
+      `,
+      // B: 12-month Invoices Grouping
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          to_char("invoiceDate", 'YYYY-MM') AS "monthKey",
+          COALESCE(SUM("paidAmount"), 0)::float AS "total"
+        FROM "Invoice"
+        WHERE "tenantId" = ${tenantId}
+          AND "status" != 'VOIDED'
+          AND "invoiceDate" >= ${targetTwelveMonth}
+        GROUP BY 1
+      `,
+      // C: 12-month Expenses Grouping
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          to_char("date", 'YYYY-MM') AS "monthKey",
+          COALESCE(SUM("amount"), 0)::float AS "total"
+        FROM "Expense"
+        WHERE "tenantId" = ${tenantId}
+          AND "status" IN ('PAID', 'APPROVED')
+          AND "date" >= ${targetTwelveMonth}
+        GROUP BY 1
+      `,
+      // D: 30-day Invoices Grouping
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          to_char("invoiceDate", 'YYYY-MM-DD') AS "dayKey",
+          COALESCE(SUM("paidAmount"), 0)::float AS "total"
+        FROM "Invoice"
+        WHERE "tenantId" = ${tenantId}
+          AND "status" != 'VOIDED'
+          AND "invoiceDate" >= ${targetThirtyDays}
+        GROUP BY 1
+      `,
+      // E: Complete Opportunity & Student Dues SQL Aggregation
+      this.prisma.$queryRaw<any[]>`
+        WITH class_base_fees AS (
+          SELECT 
+            pb."classId",
+            COALESCE(SUM(pbe."unitPrice"), 0)::float AS "baseFee"
+          FROM "PricebookEntry" pbe
+          JOIN "Pricebook" pb ON pbe."pricebookId" = pb.id
+          JOIN "Product" p ON pbe."productId" = p.id
+          WHERE pbe."tenantId" = ${tenantId}
+            AND pbe."isActive" = true
+            AND pb."isActive" = true
+            AND p."isActive" = true
+            AND pb."classId" IS NOT NULL
+          GROUP BY pb."classId"
+        ),
+        opp_items AS (
+          SELECT 
+            o.id,
+            o."studentId",
+            o."classId",
+            o."sectionId",
+            o."closeDate",
+            COALESCE(inv_agg."paid", 0)::float AS "paid",
+            (CASE WHEN COALESCE(oli_agg."netFee", 0) = 0 AND o."classId" IS NOT NULL THEN COALESCE(cbf."baseFee", 0) ELSE COALESCE(oli_agg."netFee", 0) END)::float AS "totalFee",
+            GREATEST(0, (CASE WHEN COALESCE(oli_agg."netFee", 0) = 0 AND o."classId" IS NOT NULL THEN COALESCE(cbf."baseFee", 0) ELSE COALESCE(oli_agg."netFee", 0) END) - COALESCE(inv_agg."paid", 0))::float AS "pending"
+          FROM "Opportunity" o
+          LEFT JOIN class_base_fees cbf ON o."classId" = cbf."classId"
+          LEFT JOIN LATERAL (
+            SELECT 
+              SUM(oli."unitPrice" * oli."quantity" * (1 - oli."discount" / 100.0))::float AS "netFee"
+            FROM "OpportunityLineItem" oli
+            WHERE oli."opportunityId" = o.id
+          ) oli_agg ON true
+          LEFT JOIN LATERAL (
+            SELECT 
+              SUM(inv."paidAmount")::float AS "paid"
+            FROM "Invoice" inv
+            WHERE inv."opportunityId" = o.id
+              AND inv."status" != 'VOIDED'
+          ) inv_agg ON true
+          WHERE o."tenantId" = ${tenantId}
+            AND (${targetAYId}::text IS NULL OR o."academicYearId" = ${targetAYId})
+        ),
+        opp_student_totals AS (
+          SELECT 
+            oi."studentId",
+            SUM(oi."pending")::float AS "totalPending",
+            SUM(oi."paid")::float AS "totalPaid",
+            COUNT(oi.id)::int AS "oppCount"
+          FROM opp_items oi
+          GROUP BY oi."studentId"
+        ),
+        summary_stats AS (
+          SELECT 
+            COALESCE(SUM(oi."pending"), 0)::float AS "totalPending",
+            COALESCE(COUNT(DISTINCT CASE WHEN oi."pending" > 0 THEN oi."studentId" END), 0)::int AS "pendingStudentsCount",
+            COALESCE(SUM(CASE WHEN oi."pending" > 0 AND oi."closeDate" < ${startOfToday} THEN oi."pending" ELSE 0 END), 0)::float AS "overdueAmount",
+            COALESCE(SUM(CASE WHEN oi."pending" > 0 AND oi."closeDate"::date = ${startOfToday}::date THEN oi."pending" ELSE 0 END), 0)::float AS "dueToday",
+            COALESCE(SUM(CASE WHEN oi."pending" > 0 AND oi."closeDate" >= ${startOfThisWeek} AND oi."closeDate" < ${endOfThisWeek} THEN oi."pending" ELSE 0 END), 0)::float AS "dueThisWeek",
+            COALESCE(SUM(CASE WHEN oi."pending" > 0 AND oi."closeDate" >= ${startOfThisMonth} AND oi."closeDate" <= ${endOfThisMonth} THEN oi."pending" ELSE 0 END), 0)::float AS "dueThisMonth",
+            (SELECT COUNT(sp.id)::int FROM "StudentProfile" sp WHERE sp."tenantId" = ${tenantId}) AS "totalStudents",
+            (SELECT COUNT(sp.id)::int FROM "StudentProfile" sp JOIN "User" u ON sp."userId" = u.id WHERE sp."tenantId" = ${tenantId} AND u."isActive" = true) AS "activeStudents",
+            (SELECT COUNT(sp.id)::int FROM "StudentProfile" sp JOIN "User" u ON sp."userId" = u.id WHERE sp."tenantId" = ${tenantId} AND u."createdAt" >= ${currentMonthStart}) AS "newAdmissions",
+            (SELECT COUNT(sp.id)::int FROM "StudentProfile" sp JOIN "User" u ON sp."userId" = u.id WHERE sp."tenantId" = ${tenantId} AND u."createdAt" >= ${prevMonthStart} AND u."createdAt" < ${currentMonthStart}) AS "prevMonthAdmissions",
+            (SELECT COUNT(sp.id)::int FROM "StudentProfile" sp LEFT JOIN opp_student_totals ost ON sp.id = ost."studentId" WHERE sp."tenantId" = ${tenantId} AND (ost."oppCount" IS NULL OR ost."totalPending" = 0)) AS "paidCompletely",
+            (SELECT COUNT(sp.id)::int FROM "StudentProfile" sp LEFT JOIN opp_student_totals ost ON sp.id = ost."studentId" WHERE sp."tenantId" = ${tenantId} AND ost."totalPending" > 0 AND ost."totalPaid" > 0) AS "partiallyPaid",
+            (SELECT COUNT(sp.id)::int FROM "StudentProfile" sp LEFT JOIN opp_student_totals ost ON sp.id = ost."studentId" WHERE sp."tenantId" = ${tenantId} AND ost."totalPending" > 0 AND (ost."totalPaid" = 0 OR ost."totalPaid" IS NULL)) AS "pending"
+          FROM opp_items oi
+        )
+        SELECT 
+          row_to_json(summary_stats.*) AS summary,
+          (SELECT json_agg(t.data) FROM (SELECT json_build_object(
+            'classId', c.id,
+            'className', c.name,
+            'totalPending', COALESCE(SUM(oi."pending"), 0)::float,
+            'collected', COALESCE(SUM(oi."paid"), 0)::float,
+            'studentCount', COALESCE(COUNT(oi.id), 0)::int
+          ) as data
+          FROM "Class" c
+          LEFT JOIN opp_items oi ON oi."classId" = c.id
+          WHERE c."tenantId" = ${tenantId}
+          GROUP BY c.id, c.name
+          ORDER BY COALESCE(SUM(oi."pending"), 0) DESC) t) AS "classDues",
+          (SELECT json_agg(t.data) FROM (SELECT json_build_object(
+            'sectionId', s.id,
+            'sectionName', s.name,
+            'totalPending', COALESCE(SUM(oi."pending"), 0)::float,
+            'collected', COALESCE(SUM(oi."paid"), 0)::float,
+            'studentCount', COALESCE(COUNT(oi.id), 0)::int
+          ) as data
+          FROM "Section" s
+          LEFT JOIN opp_items oi ON oi."sectionId" = s.id
+          WHERE s."tenantId" = ${tenantId}
+          GROUP BY s.id, s.name
+          ORDER BY COALESCE(SUM(oi."pending"), 0) DESC) t) AS "sectionDues",
+          (SELECT json_agg(t.data) FROM (SELECT json_build_object(
+            'categoryName', p.name,
+            'collected', COALESCE(SUM((oli."unitPrice" * oli."quantity" * (1 - oli."discount" / 100.0)) * (CASE WHEN ot."totalFee" > 0 THEN (ot."paid" / ot."totalFee") ELSE 1.0 END)), 0)::float,
+            'pending', COALESCE(SUM(GREATEST(0, (oli."unitPrice" * oli."quantity" * (1 - oli."discount" / 100.0)) - ((oli."unitPrice" * oli."quantity" * (1 - oli."discount" / 100.0)) * (CASE WHEN ot."totalFee" > 0 THEN (ot."paid" / ot."totalFee") ELSE 1.0 END)))), 0)::float
+          ) as data
+          FROM "OpportunityLineItem" oli
+          JOIN "Opportunity" o ON oli."opportunityId" = o.id
+          JOIN opp_items ot ON ot.id = o.id
+          JOIN "Product" p ON oli."productId" = p.id
+          WHERE oli."tenantId" = ${tenantId}
+            AND (${targetAYId}::text IS NULL OR o."academicYearId" = ${targetAYId})
+          GROUP BY p.name) t) AS "feeCategories"
+        FROM summary_stats
+      `,
+      // F: Top Lists in single query (pending, paying, cleared, near due date, adjustments, admissions)
+      this.prisma.$queryRaw<any[]>`
+        WITH class_base_fees AS (
+          SELECT 
+            pb."classId",
+            COALESCE(SUM(pbe."unitPrice"), 0)::float AS "baseFee"
+          FROM "PricebookEntry" pbe
+          JOIN "Pricebook" pb ON pbe."pricebookId" = pb.id
+          JOIN "Product" p ON pbe."productId" = p.id
+          WHERE pbe."tenantId" = ${tenantId}
+            AND pbe."isActive" = true
+            AND pb."isActive" = true
+            AND p."isActive" = true
+            AND pb."classId" IS NOT NULL
+          GROUP BY pb."classId"
+        ),
+        opp_items AS (
+          SELECT 
+            o.id,
+            o."studentId",
+            o."closeDate",
+            COALESCE(inv_agg."paid", 0)::float AS "paid",
+            (CASE WHEN COALESCE(oli_agg."netFee", 0) = 0 AND o."classId" IS NOT NULL THEN COALESCE(cbf."baseFee", 0) ELSE COALESCE(oli_agg."netFee", 0) END)::float AS "totalFee",
+            GREATEST(0, (CASE WHEN COALESCE(oli_agg."netFee", 0) = 0 AND o."classId" IS NOT NULL THEN COALESCE(cbf."baseFee", 0) ELSE COALESCE(oli_agg."netFee", 0) END) - COALESCE(inv_agg."paid", 0))::float AS "pending"
+          FROM "Opportunity" o
+          LEFT JOIN class_base_fees cbf ON o."classId" = cbf."classId"
+          LEFT JOIN LATERAL (
+            SELECT 
+              SUM(oli."unitPrice" * oli."quantity" * (1 - oli."discount" / 100.0))::float AS "netFee"
+            FROM "OpportunityLineItem" oli
+            WHERE oli."opportunityId" = o.id
+          ) oli_agg ON true
+          LEFT JOIN LATERAL (
+            SELECT 
+              SUM(inv."paidAmount")::float AS "paid"
+            FROM "Invoice" inv
+            WHERE inv."opportunityId" = o.id
+              AND inv."status" != 'VOIDED'
+          ) inv_agg ON true
+          WHERE o."tenantId" = ${tenantId}
+            AND (${targetAYId}::text IS NULL OR o."academicYearId" = ${targetAYId})
+        ),
+        opp_full AS (
+          SELECT 
+            oi."studentId",
+            COALESCE(u.name, 'Unknown Student') AS "studentName",
+            COALESCE(sp."rollNo", '') AS "rollNo",
+            COALESCE(c.name, '') AS "className",
+            COALESCE(s.name, '') AS "sectionName",
+            oi."totalFee",
+            oi."paid",
+            oi."pending",
+            oi."closeDate"
+          FROM opp_items oi
+          LEFT JOIN "StudentProfile" sp ON oi."studentId" = sp.id
+          LEFT JOIN "User" u ON sp."userId" = u.id
+          LEFT JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+          LEFT JOIN "Class" c ON cs."classId" = c.id
+          LEFT JOIN "Section" s ON cs."sectionId" = s.id
+        )
+        SELECT 
+          (SELECT json_agg(t) FROM (SELECT * FROM opp_full ORDER BY "pending" DESC LIMIT 10) t) AS "topPending",
+          (SELECT json_agg(t) FROM (SELECT * FROM opp_full ORDER BY "paid" DESC LIMIT 10) t) AS "topPaying",
+          (SELECT json_agg(t) FROM (SELECT * FROM opp_full WHERE "pending" = 0 AND "paid" > 0 LIMIT 10) t) AS "recentlyCleared",
+          (SELECT json_agg(t) FROM (SELECT * FROM opp_full WHERE "pending" > 0 ORDER BY "closeDate" ASC LIMIT 10) t) AS "studentsNearDueDate",
+          (SELECT json_agg(t) FROM (
+            SELECT 
+              oli.id,
+              p.name AS "productName",
+              oli.discount::float AS "discountPercent",
+              oli."unitPrice"::float AS "unitPrice"
+            FROM "OpportunityLineItem" oli
+            JOIN "Opportunity" o ON oli."opportunityId" = o.id
+            JOIN "Product" p ON oli."productId" = p.id
+            WHERE oli."tenantId" = ${tenantId}
+              AND (${targetAYId}::text IS NULL OR o."academicYearId" = ${targetAYId})
+              AND oli.discount > 0
+            LIMIT 10
+          ) t) AS "latestFeeAdjustments",
+          (SELECT json_agg(t) FROM (
+            SELECT 
+              sp.id,
+              u.name,
+              to_char(u."createdAt", 'YYYY-MM-DD') AS "date",
+              COALESCE(c.name, 'N/A') AS "class"
+            FROM "StudentProfile" sp
+            JOIN "User" u ON sp."userId" = u.id
+            LEFT JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+            LEFT JOIN "Class" c ON cs."classId" = c.id
+            WHERE sp."tenantId" = ${tenantId}
+            ORDER BY u."createdAt" DESC
+            LIMIT 10
+          ) t) AS "latestAdmissions"
+      `,
+      // G: Filtered Invoices (lightweight projection)
+      this.prisma.invoice.findMany({
+        where: invoiceWhere,
+        select: {
+          id: true,
+          paidAmount: true,
+          invoiceDate: true,
+          paymentMethod: true,
+          student: { select: { user: { select: { name: true } } } }
         }
-      }
-    });
+      }),
+      // H: Filtered Expenses (lightweight projection)
+      this.prisma.expense.findMany({
+        where: expenseWhere,
+        select: {
+          id: true,
+          category: true,
+          amount: true,
+          date: true,
+          description: true,
+          paymentMode: true,
+        }
+      }),
+      // I: Voided Invoices (top 10 for activities)
+      this.prisma.invoice.findMany({
+        where: { tenantId, status: PaymentStatus.VOIDED },
+        select: {
+          id: true,
+          totalAmount: true,
+          invoiceDate: true,
+          student: { select: { user: { select: { name: true } } } }
+        },
+        orderBy: { invoiceDate: 'desc' },
+        take: 10
+      }),
+      // J: Timeline Admissions (top 30 recent only)
+      this.prisma.studentProfile.findMany({
+        where: {
+          tenantId,
+          user: {
+            createdAt: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
+          }
+        },
+        select: {
+          id: true,
+          user: { select: { name: true, createdAt: true } },
+          classSection: { select: { class: { select: { name: true } } } }
+        },
+        orderBy: { user: { createdAt: 'desc' } },
+        take: 30
+      }),
+      // K: Timeline Promotions (top 30 recent only)
+      this.prisma.activityLog.findMany({
+        where: {
+          tenantId,
+          action: 'RECORD_UPDATE',
+          entityName: 'StudentProfile',
+          details: { contains: 'Promoted from' },
+          createdAt: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
+        },
+        select: { id: true, details: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 30
+      }),
+      // L: Timeline Voided Invoices (top 30 recent only)
+      this.prisma.invoice.findMany({
+        where: {
+          tenantId,
+          status: PaymentStatus.VOIDED,
+          invoiceDate: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
+        },
+        select: {
+          id: true,
+          totalAmount: true,
+          invoiceDate: true,
+          student: { select: { user: { select: { name: true } } } }
+        },
+        orderBy: { invoiceDate: 'desc' },
+        take: 30
+      })
+    ]);
 
-    const filteredExpenses = await this.prisma.expense.findMany({
-      where: expenseWhere
-    });
+    // Extract SQL Aggregates
+    const macro = macroStatsRaw[0] || {};
+    const revStats: any = macro.rev || {};
+    const expStats: any = macro.exp || {};
+    const prevBudgetStats: any = macro.budget || {};
+    const oppAndStu: any = oppAndStudentAggRaw[0] || {};
+    const oppSummary: any = oppAndStu.summary || {};
+    const topLists: any = topListsRaw[0] || {};
 
-    // Compute basic totals
     const totalCollectedFiltered = filteredInvoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
     const totalExpensesFiltered = filteredExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
 
-    // ── FINANCIAL SUMMARY CARDS (Time-based calculations) ──
-    const now = new Date();
-    
-    // Revenue calculations (time-based)
-    const allTimeInvoices = await this.prisma.invoice.findMany({
-      where: { tenantId, status: { not: PaymentStatus.VOIDED } }
-    });
-    
-    const revenueAllTime = allTimeInvoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+    const revenueAllTime = revStats.allTime || 0;
+    const revenueToday = revStats.today || 0;
+    const revenueYesterday = revStats.yesterday || 0;
+    const revenueThisWeek = revStats.thisWeek || 0;
+    const revenueCurrentMonth = revStats.currentMonth || 0;
+    const revenuePrevMonth = revStats.prevMonth || 0;
+    const revenueLast30Days = revStats.last30Days || 0;
+    const revenueAcademicYear = revStats.academicYear || 0;
+    const paidInvoicesCountCurrentMonth = revStats.currentMonthInvoicesCount || 0;
+    const paidInvoicesCountPrevMonth = revStats.prevMonthInvoicesCount || 0;
 
-    // Filter sub-ranges
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfYesterday = new Date(startOfToday);
-    startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-    
-    const startOfWeek = new Date(startOfToday);
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay() + (startOfWeek.getDay() === 0 ? -6 : 1));
-    
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-    
-    const last30DaysLimit = new Date(startOfToday);
-    last30DaysLimit.setDate(last30DaysLimit.getDate() - 30);
+    const expensesAllTime = expStats.allTime || 0;
+    const expensesToday = expStats.today || 0;
+    const expensesThisWeek = expStats.thisWeek || 0;
+    const expensesCurrentMonth = expStats.currentMonth || 0;
+    const expensesPrevMonth = expStats.prevMonth || 0;
+    const expensesAcademicYear = expStats.academicYear || 0;
 
-    let revenueToday = 0;
-    let revenueYesterday = 0;
-    let revenueThisWeek = 0;
-    let revenueCurrentMonth = 0;
-    let revenuePrevMonth = 0;
-    let revenueLast30Days = 0;
-    let revenueAcademicYear = 0;
+    const totalPendingAmount = oppSummary.totalPending || 0;
+    const pendingStudentsCount = oppSummary.pendingStudentsCount || 0;
+    const overdueAmount = oppSummary.overdueAmount || 0;
+    const dueToday = oppSummary.dueToday || 0;
+    const dueThisWeek = oppSummary.dueThisWeek || 0;
+    const dueThisMonth = oppSummary.dueThisMonth || 0;
 
-    let paidInvoicesCountCurrentMonth = 0;
-    let paidInvoicesCountPrevMonth = 0;
+    const totalStudentsCount = oppSummary.totalStudents || 0;
+    const activeStudentsCount = oppSummary.activeStudents || 0;
+    const paidCompletelyCount = oppSummary.paidCompletely || 0;
+    const partiallyPaidCount = oppSummary.partiallyPaid || 0;
+    const pendingCount = oppSummary.pending || 0;
+    const newAdmissionsCount = oppSummary.newAdmissions || 0;
+    const prevMonthAdmissionsCount = oppSummary.prevMonthAdmissions || 0;
+    const promotedCount = macro.promotedCount || 0;
 
-    for (const inv of allTimeInvoices) {
-      const amt = Number(inv.paidAmount);
-      const date = new Date(inv.invoiceDate);
-      const isPaid = inv.status === PaymentStatus.PAID || inv.status === PaymentStatus.PARTIALLY_PAID;
-
-      if (date >= startOfToday) revenueToday += amt;
-      if (date >= startOfYesterday && date < startOfToday) revenueYesterday += amt;
-      if (date >= startOfWeek) revenueThisWeek += amt;
-      
-      if (date >= startOfMonth) {
-        revenueCurrentMonth += amt;
-        if (isPaid && amt > 0) paidInvoicesCountCurrentMonth++;
-      }
-      if (date >= startOfPrevMonth && date <= endOfPrevMonth) {
-        revenuePrevMonth += amt;
-        if (isPaid && amt > 0) paidInvoicesCountPrevMonth++;
-      }
-      if (date >= last30DaysLimit) revenueLast30Days += amt;
-      
-      if (activeYear && date >= activeYear.startDate && date <= activeYear.endDate) {
-        revenueAcademicYear += amt;
-      }
-    }
-
-    // Expense calculations (time-based)
-    const allTimeExpensesList = await this.prisma.expense.findMany({
-      where: { tenantId, status: { in: [ExpenseStatus.PAID, ExpenseStatus.APPROVED] } }
-    });
-    
-    const expensesAllTime = allTimeExpensesList.reduce((sum, exp) => sum + Number(exp.amount), 0);
-
-    let expensesToday = 0;
-    let expensesThisWeek = 0;
-    let expensesCurrentMonth = 0;
-    let expensesPrevMonth = 0;
-    let expensesAcademicYear = 0;
-
-    for (const exp of allTimeExpensesList) {
-      const amt = Number(exp.amount);
-      const date = new Date(exp.date);
-
-      if (date >= startOfToday) expensesToday += amt;
-      if (date >= startOfWeek) expensesThisWeek += amt;
-      if (date >= startOfMonth) expensesCurrentMonth += amt;
-      if (date >= startOfPrevMonth && date <= endOfPrevMonth) expensesPrevMonth += amt;
-      
-      if (activeYear && date >= activeYear.startDate && date <= activeYear.endDate) {
-        expensesAcademicYear += amt;
-      }
-    }
-
-    // ── PENDING FEES & OUTSTANDING (Live calculations) ──
-    const studentProfiles = await this.prisma.studentProfile.findMany({
-      where: { tenantId },
-      include: {
-        user: true,
-        classSection: true,
-      }
-    });
-
-    const activeOpps = await this.prisma.opportunity.findMany({
-      where: {
-        tenantId,
-        academicYearId: filters.academicYearId || activeYear?.id || undefined,
-      },
-      include: {
-        opportunityLineItems: {
-          include: { product: true }
-        },
-        invoices: {
-          where: { status: { not: PaymentStatus.VOIDED } }
-        }
-      }
-    });
-
-    // Helper map to quickly find pricing totals by class
-    const classBaseFeeMap = new Map<string, number>();
-
-    // Calculate pending dues at student/opportunity level
-    let totalPendingAmount = 0;
-    const pendingStudentsSet = new Set<string>();
-    const studentDues = [];
-
-    // Grouping accumulators
-    const classPending = new Map<string, { pending: number; collected: number; studentCount: number }>();
-    const sectionPending = new Map<string, { pending: number; collected: number; studentCount: number }>();
-    const categoryPending = new Map<string, { pending: number; collected: number }>();
-
-    // Initialize maps with existing classes/sections
-    for (const c of allClasses) {
-      classPending.set(c.id, { pending: 0, collected: 0, studentCount: 0 });
-    }
-    for (const s of allSections) {
-      sectionPending.set(s.id, { pending: 0, collected: 0, studentCount: 0 });
-    }
-
-    for (const opp of activeOpps) {
-      let netFee = opp.opportunityLineItems.reduce((sum, oli) => {
-        const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
-        const itemDiscount = (itemTotal * Number(oli.discount)) / 100;
-        return sum + (itemTotal - itemDiscount);
-      }, 0);
-
-      // Fallback to pricebook if opportunity has no items
-      if (netFee === 0 && opp.classId) {
-        let pbTotal = classBaseFeeMap.get(opp.classId);
-        if (pbTotal === undefined) {
-          const pricebookProducts = await this.prisma.pricebookEntry.findMany({
-            where: {
-              tenantId,
-              isActive: true,
-              pricebook: { classId: opp.classId, isActive: true },
-              product: { isActive: true }
-            }
-          });
-          pbTotal = pricebookProducts.reduce((sum, p) => sum + Number(p.unitPrice), 0);
-          classBaseFeeMap.set(opp.classId, pbTotal);
-        }
-        netFee = pbTotal;
-      }
-
-      const paid = opp.invoices.reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
-      const pending = Math.max(0, netFee - paid);
-
-      if (pending > 0) {
-        totalPendingAmount += pending;
-        pendingStudentsSet.add(opp.studentId);
-      }
-
-      // Add dues details for insights
-      const studentProfile = studentProfiles.find(sp => sp.id === opp.studentId);
-      studentDues.push({
-        studentId: opp.studentId,
-        studentName: studentProfile?.user.name || 'Unknown Student',
-        rollNo: studentProfile?.rollNo || '',
-        className: studentProfile?.classSection ? classMap.get(studentProfile.classSection.classId) : '',
-        sectionName: studentProfile?.classSection ? sectionMap.get(studentProfile.classSection.sectionId) : '',
-        totalFee: netFee,
-        paid,
-        pending,
-        closeDate: opp.closeDate,
-      });
-
-      // Accumulate class/section summaries
-      if (opp.classId) {
-        const cur = classPending.get(opp.classId) || { pending: 0, collected: 0, studentCount: 0 };
-        classPending.set(opp.classId, {
-          pending: cur.pending + pending,
-          collected: cur.collected + paid,
-          studentCount: cur.studentCount + 1
-        });
-      }
-      if (opp.sectionId) {
-        const cur = sectionPending.get(opp.sectionId) || { pending: 0, collected: 0, studentCount: 0 };
-        sectionPending.set(opp.sectionId, {
-          pending: cur.pending + pending,
-          collected: cur.collected + paid,
-          studentCount: cur.studentCount + 1
-        });
-      }
-
-      // Accumulate category details
-      const paidRatio = netFee > 0 ? (paid / netFee) : 1;
-      for (const oli of opp.opportunityLineItems) {
-        const catName = oli.product.name;
-        const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
-        const itemDiscount = (itemTotal * Number(oli.discount)) / 100;
-        const itemNet = itemTotal - itemDiscount;
-        const itemPaid = itemNet * paidRatio;
-        const itemPending = Math.max(0, itemNet - itemPaid);
-
-        const curCat = categoryPending.get(catName) || { pending: 0, collected: 0 };
-        categoryPending.set(catName, {
-          pending: curCat.pending + itemPending,
-          collected: curCat.collected + itemPaid
-        });
-      }
-    }
-
-    // Time-based pending fee deadlines
-    let dueToday = 0;
-    let dueThisWeek = 0;
-    let dueThisMonth = 0;
-    let overdueAmount = 0;
-
-    const startOfThisWeek = new Date(startOfToday);
-    startOfThisWeek.setDate(startOfThisWeek.getDate() - startOfThisWeek.getDay());
-    const endOfThisWeek = new Date(startOfThisWeek);
-    endOfThisWeek.setDate(endOfThisWeek.getDate() + 7);
-
-    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfThisMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-    for (const due of studentDues) {
-      const deadline = new Date(due.closeDate);
-      if (due.pending > 0) {
-        if (deadline < startOfToday) overdueAmount += due.pending;
-        if (deadline.toDateString() === now.toDateString()) dueToday += due.pending;
-        if (deadline >= startOfThisWeek && deadline < endOfThisWeek) dueThisWeek += due.pending;
-        if (deadline >= startOfThisMonth && deadline <= endOfThisMonth) dueThisMonth += due.pending;
-      }
-    }
-
-    // ── STUDENT STATISTICS (Live calculations) ──
-    const totalStudentsCount = studentProfiles.length;
-    const activeStudentsCount = studentProfiles.filter(sp => sp.user.isActive).length;
-    
-    let paidCompletelyCount = 0;
-    let partiallyPaidCount = 0;
-    let pendingCount = 0;
-
-    for (const student of studentProfiles) {
-      const dues = studentDues.filter(d => d.studentId === student.id);
-      if (dues.length === 0) {
-        paidCompletelyCount++;
-        continue;
-      }
-      const totalPending = dues.reduce((sum, d) => sum + d.pending, 0);
-      const totalPaid = dues.reduce((sum, d) => sum + d.paid, 0);
-
-      if (totalPending === 0) {
-        paidCompletelyCount++;
-      } else if (totalPaid > 0) {
-        partiallyPaidCount++;
-      } else {
-        pendingCount++;
-      }
-    }
-
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const newAdmissionsCount = studentProfiles.filter(sp => new Date(sp.user.createdAt) >= currentMonthStart).length;
-    
-    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthAdmissionsCount = studentProfiles.filter(sp => {
-      const d = new Date(sp.user.createdAt);
-      return d >= prevMonthStart && d < currentMonthStart;
-    }).length;
-
-    // Promoted Count logic - query from ActivityLog
-    const promotedCount = await this.prisma.activityLog.count({
-      where: {
-        tenantId,
-        action: 'RECORD_UPDATE',
-        entityName: 'StudentProfile',
-        details: { contains: 'Promoted from' },
-        createdAt: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
-      }
-    });
-
-    // ── CASH FLOW CALCULATIONS ──
-    const priorInvoicesSum = await this.prisma.invoice.aggregate({
-      where: {
-        tenantId,
-        status: { not: PaymentStatus.VOIDED },
-        invoiceDate: { lt: startDate || new Date(0) }
-      },
-      _sum: { paidAmount: true }
-    });
-    const priorExpensesSum = await this.prisma.expense.aggregate({
-      where: {
-        tenantId,
-        status: { in: [ExpenseStatus.PAID, ExpenseStatus.APPROVED] },
-        date: { lt: startDate || new Date(0) }
-      },
-      _sum: { amount: true }
-    });
-    const openingBalance = Number(priorInvoicesSum._sum.paidAmount || 0) - Number(priorExpensesSum._sum.amount || 0);
+    const openingBalance = Number(macro.priorInvoicesSum || 0) - Number(macro.priorExpensesSum || 0);
     const closingBalance = openingBalance + totalCollectedFiltered - totalExpensesFiltered;
 
-    // Expected Income/Expenses
     const expectedIncome = totalPendingAmount;
-    const pendingExpensesSum = await this.prisma.expense.aggregate({
-      where: { tenantId, status: ExpenseStatus.PENDING },
-      _sum: { amount: true }
-    });
-    const expectedExpenses = Number(pendingExpensesSum._sum.amount || 0);
+    const expectedExpenses = Number(macro.pendingExpensesSum || 0);
     const netCashFlow = totalCollectedFiltered - totalExpensesFiltered;
 
-    // ── YEAR-OVER-YEAR (YoY) GROWTH CARDS (Live Calculations) ──
-    const computePeriodTotal = (invoices: any[], expenses: any[], start: Date, end: Date) => {
-      const rev = invoices
-        .filter(inv => {
-          const d = new Date(inv.invoiceDate);
-          return d >= start && d <= end;
-        })
-        .reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
-      const exp = expenses
-        .filter(e => {
-          const d = new Date(e.date);
-          return d >= start && d <= end;
-        })
-        .reduce((sum, e) => sum + Number(e.amount), 0);
-      return { revenue: rev, expense: exp, profit: rev - exp };
-    };
+    // Growth calculations using exact formulas
+    const currentPeriodRev = revenueCurrentMonth;
+    const currentPeriodExp = expensesCurrentMonth;
+    const currentPeriodProfit = currentPeriodRev - currentPeriodExp;
 
-    const currentPeriod = computePeriodTotal(allTimeInvoices, allTimeExpensesList, startOfMonth, now);
-    const prevPeriod = computePeriodTotal(allTimeInvoices, allTimeExpensesList, startOfPrevMonth, endOfPrevMonth);
+    const prevPeriodRev = revenuePrevMonth;
+    const prevPeriodExp = expensesPrevMonth;
+    const prevPeriodProfit = prevPeriodRev - prevPeriodExp;
 
-    // YoY growth percentage formulas
     const calcGrowth = (curr: number, prev: number) => {
       if (prev === 0) return curr > 0 ? 100 : 0;
       return Math.round(((curr - prev) / prev) * 1000) / 10;
     };
 
-    const revenueGrowthMonth = calcGrowth(currentPeriod.revenue, prevPeriod.revenue);
-    const expenseGrowthMonth = calcGrowth(currentPeriod.expense, prevPeriod.expense);
-    const profitGrowthMonth = calcGrowth(currentPeriod.profit, prevPeriod.profit);
-    const collectionGrowthMonth = calcGrowth(currentPeriod.revenue, prevPeriod.revenue);
+    const revenueGrowthMonth = calcGrowth(currentPeriodRev, prevPeriodRev);
+    const expenseGrowthMonth = calcGrowth(currentPeriodExp, prevPeriodExp);
+    const profitGrowthMonth = calcGrowth(currentPeriodProfit, prevPeriodProfit);
+    const collectionGrowthMonth = calcGrowth(currentPeriodRev, prevPeriodRev);
     const studentGrowthMonth = calcGrowth(newAdmissionsCount, prevMonthAdmissionsCount);
 
-    // ── SCHOOL HEALTH SCORE (Blended algorithm) ──
     const collectionRateVal = (revenueAcademicYear + totalPendingAmount) > 0
       ? (revenueAcademicYear / (revenueAcademicYear + totalPendingAmount)) * 100
       : 100;
@@ -2739,46 +3042,43 @@ export class BillingService {
       healthIndicator = '🟡 Good';
     }
 
-    // ── CLASS OUTSTANDING RANKING (Ranked highest pending to lowest) ──
-    const outstandingByClass = Array.from(classPending.entries()).map(([classId, data]) => {
-      const className = classMap.get(classId) || 'Unknown Class';
-      const colRate = (data.collected + data.pending) > 0 ? (data.collected / (data.collected + data.pending)) * 100 : 100;
+    // Outstanding by Class & Section
+    const outstandingByClass = (oppAndStu.classDues || []).map((data: any) => {
+      const colRate = (data.collected + data.totalPending) > 0 ? (data.collected / (data.collected + data.totalPending)) * 100 : 100;
       return {
-        classId,
-        className,
-        totalPending: data.pending,
+        classId: data.classId,
+        className: data.className || classMap.get(data.classId) || 'Unknown Class',
+        totalPending: data.totalPending,
         studentCount: data.studentCount,
         collectionPercentage: Math.round(colRate * 10) / 10,
         collected: data.collected
       };
-    }).sort((a, b) => b.totalPending - a.totalPending);
+    });
 
-    // Outstanding by Section
-    const outstandingBySection = Array.from(sectionPending.entries()).map(([sectionId, data]) => {
-      const sectionName = sectionMap.get(sectionId) || 'Unknown Section';
-      const colRate = (data.collected + data.pending) > 0 ? (data.collected / (data.collected + data.pending)) * 100 : 100;
+    const outstandingBySection = (oppAndStu.sectionDues || []).map((data: any) => {
+      const colRate = (data.collected + data.totalPending) > 0 ? (data.collected / (data.collected + data.totalPending)) * 100 : 100;
       return {
-        sectionId,
-        sectionName,
-        totalPending: data.pending,
+        sectionId: data.sectionId,
+        sectionName: data.sectionName || sectionMap.get(data.sectionId) || 'Unknown Section',
+        totalPending: data.totalPending,
         studentCount: data.studentCount,
         collectionPercentage: Math.round(colRate * 10) / 10,
         collected: data.collected
       };
-    }).sort((a, b) => b.totalPending - a.totalPending);
+    });
 
-    // ── CATEGORY ANALYTICS ──
-    const feeCategoryAnalysis = Array.from(categoryPending.entries()).map(([catName, data]) => {
+    // Fee Category Analysis
+    const feeCategoryAnalysis = (oppAndStu.feeCategories || []).map((data: any) => {
       const colRate = (data.collected + data.pending) > 0 ? (data.collected / (data.collected + data.pending)) * 100 : 100;
       return {
-        categoryName: catName,
+        categoryName: data.categoryName,
         collected: data.collected,
         pending: data.pending,
         collectionPercentage: Math.round(colRate * 10) / 10
       };
     });
 
-    // Expense categories mapping
+    // Expense Category Analysis
     const expenseCategoriesMap = new Map<string, number>();
     for (const exp of filteredExpenses) {
       const cat = exp.category;
@@ -2790,26 +3090,14 @@ export class BillingService {
       percentage: totalExpensesFiltered > 0 ? Math.round((totalAmt / totalExpensesFiltered) * 100) : 0
     }));
 
-    // Compute previous month's expenses by category to derive dynamic budget
-    const prevMonthExpensesList = allTimeExpensesList.filter(e => {
-      const d = new Date(e.date);
-      return d >= startOfPrevMonth && d <= endOfPrevMonth;
-    });
-
-    const getPrevMonthExpenseAmount = (categoryKeyword: string) => {
-      return prevMonthExpensesList
-        .filter(exp => exp.category.toLowerCase().includes(categoryKeyword.toLowerCase()))
-        .reduce((sum, exp) => sum + Number(exp.amount), 0);
-    };
-
-    // Calculate dynamic budget: 1.25 * (previous month's expenses) or fallback to a baseline minimum
+    // Budget vs Actual
     const budgetCategories = [
-      { category: 'Salaries', budget: Math.max(Math.round(getPrevMonthExpenseAmount('salary') * 1.25), 500000) },
-      { category: 'Transport', budget: Math.max(Math.round(getPrevMonthExpenseAmount('transport') * 1.25), 150000) },
-      { category: 'Maintenance', budget: Math.max(Math.round(getPrevMonthExpenseAmount('maintenance') * 1.25), 80000) },
-      { category: 'Events', budget: Math.max(Math.round(getPrevMonthExpenseAmount('event') * 1.25), 120000) },
-      { category: 'Marketing', budget: Math.max(Math.round(getPrevMonthExpenseAmount('marketing') * 1.25), 50000) },
-      { category: 'Utilities', budget: Math.max(Math.round((getPrevMonthExpenseAmount('electricity') + getPrevMonthExpenseAmount('internet') + getPrevMonthExpenseAmount('utility')) * 1.25), 60000) },
+      { category: 'Salaries', budget: Math.max(Math.round(Number(prevBudgetStats.salaries || 0) * 1.25), 500000) },
+      { category: 'Transport', budget: Math.max(Math.round(Number(prevBudgetStats.transport || 0) * 1.25), 150000) },
+      { category: 'Maintenance', budget: Math.max(Math.round(Number(prevBudgetStats.maintenance || 0) * 1.25), 80000) },
+      { category: 'Events', budget: Math.max(Math.round(Number(prevBudgetStats.events || 0) * 1.25), 120000) },
+      { category: 'Marketing', budget: Math.max(Math.round(Number(prevBudgetStats.marketing || 0) * 1.25), 50000) },
+      { category: 'Utilities', budget: Math.max(Math.round(Number(prevBudgetStats.utilities || 0) * 1.25), 60000) },
     ];
 
     const budgetVsActual = budgetCategories.map(b => {
@@ -2828,32 +3116,26 @@ export class BillingService {
       };
     });
 
-    // ── OUTSTANDING CHARTS & TRENDS ──
-    const monthlyIncome = [];
-    const monthlyExpenses = [];
-    const incomeVsExpense = [];
+    // Reconstruct 12-month and 30-day series
+    const monthlyInvoicesMap = new Map<string, number>(monthlyInvoicesRaw.map((r: any) => [r.monthKey, Number(r.total)]));
+    const monthlyExpensesMap = new Map<string, number>(monthlyExpensesRaw.map((r: any) => [r.monthKey, Number(r.total)]));
+    const dailyInvoicesMap = new Map<string, number>(dailyInvoicesRaw.map((r: any) => [r.dayKey, Number(r.total)]));
+
+    const monthlyIncome: any[] = [];
+    const monthlyExpenses: any[] = [];
+    const incomeVsExpense: any[] = [];
 
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     for (let i = 11; i >= 0; i--) {
       const targetMonth = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const mStart = new Date(targetMonth.getFullYear(), targetMonth.getMonth(), 1);
-      const mEnd = new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0, 23, 59, 59, 999);
+      const yyyy = targetMonth.getFullYear();
+      const mm = String(targetMonth.getMonth() + 1).padStart(2, '0');
+      const monthKey = `${yyyy}-${mm}`;
 
-      const mCollection = allTimeInvoices
-        .filter(inv => {
-          const d = new Date(inv.invoiceDate);
-          return d >= mStart && d <= mEnd;
-        })
-        .reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+      const mCollection = monthlyInvoicesMap.get(monthKey) || 0;
+      const mExp = monthlyExpensesMap.get(monthKey) || 0;
 
-      const mExp = allTimeExpensesList
-        .filter(exp => {
-          const d = new Date(exp.date);
-          return d >= mStart && d <= mEnd;
-        })
-        .reduce((sum, exp) => sum + Number(exp.amount), 0);
-
-      const label = `${monthNames[mStart.getMonth()]} ${String(mStart.getFullYear()).slice(-2)}`;
+      const label = `${monthNames[targetMonth.getMonth()]} ${String(yyyy).slice(-2)}`;
       monthlyIncome.push({ month: label, amount: mCollection });
       monthlyExpenses.push({ month: label, amount: mExp });
       incomeVsExpense.push({
@@ -2864,20 +3146,15 @@ export class BillingService {
       });
     }
 
-    // Daily Collection Trend last 30 days
-    const dailyCollectionTrend = [];
+    const dailyCollectionTrend: any[] = [];
     for (let i = 29; i >= 0; i--) {
       const dTarget = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-      const dStart = new Date(dTarget.getFullYear(), dTarget.getMonth(), dTarget.getDate());
-      const dEnd = new Date(dTarget.getFullYear(), dTarget.getMonth(), dTarget.getDate(), 23, 59, 59, 999);
+      const yyyy = dTarget.getFullYear();
+      const mm = String(dTarget.getMonth() + 1).padStart(2, '0');
+      const dd = String(dTarget.getDate()).padStart(2, '0');
+      const dayKey = `${yyyy}-${mm}-${dd}`;
 
-      const dCollection = allTimeInvoices
-        .filter(inv => {
-          const d = new Date(inv.invoiceDate);
-          return d >= dStart && d <= dEnd;
-        })
-        .reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
-
+      const dCollection = dailyInvoicesMap.get(dayKey) || 0;
       const label = `${dTarget.getDate()} ${monthNames[dTarget.getMonth()]}`;
       dailyCollectionTrend.push({ date: label, amount: dCollection });
     }
@@ -2894,9 +3171,8 @@ export class BillingService {
       percentage: totalCollectedFiltered > 0 ? Math.round((amount / totalCollectedFiltered) * 100) : 0
     }));
 
-    // ── EXECUTIVE INSIGHTS ──
-    const highestPayingClassObj = outstandingByClass.reduce((prev, current) => (prev.collected > current.collected) ? prev : current, { className: 'None', collected: 0 });
-    const highestPendingClassObj = outstandingByClass.reduce((prev, current) => (prev.totalPending > current.totalPending) ? prev : current, { className: 'None', totalPending: 0 });
+    const highestPayingClassObj = outstandingByClass.reduce((prev: any, current: any) => (prev.collected > current.collected) ? prev : current, { className: 'None', collected: 0 });
+    const highestPendingClassObj = outstandingByClass.reduce((prev: any, current: any) => (prev.totalPending > current.totalPending) ? prev : current, { className: 'None', totalPending: 0 });
     const highestRevenueMonthObj = monthlyIncome.reduce((prev, current) => (prev.amount > current.amount) ? prev : current, { month: 'None', amount: 0 });
     const highestExpenseMonthObj = monthlyExpenses.reduce((prev, current) => (prev.amount > current.amount) ? prev : current, { month: 'None', amount: 0 });
     const topExpenseCategoryObj = expenseCategoryAnalysis.reduce((prev, current) => (prev.amount > current.amount) ? prev : current, { categoryName: 'None', amount: 0 });
@@ -2915,32 +3191,57 @@ export class BillingService {
       profitPerStudent: totalStudentsCount > 0 ? Math.round((revenueAcademicYear - expensesAcademicYear) / totalStudentsCount) : 0,
     };
 
-    // ── STUDENT & EXPENSE DETAIL INSIGHTS ──
-    const topPendingStudents = [...studentDues]
-      .sort((a, b) => b.pending - a.pending)
-      .slice(0, 10);
+    const topPendingStudents = (topLists.topPending || []).map((s: any) => ({
+      studentId: s.studentId,
+      studentName: s.studentName,
+      rollNo: s.rollNo,
+      className: s.className,
+      sectionName: s.sectionName,
+      totalFee: s.totalFee,
+      paid: s.paid,
+      pending: s.pending,
+      closeDate: s.closeDate,
+    }));
 
-    const topPayingStudents = [...studentDues]
-      .sort((a, b) => b.paid - a.paid)
-      .slice(0, 10);
+    const topPayingStudents = (topLists.topPaying || []).map((s: any) => ({
+      studentId: s.studentId,
+      studentName: s.studentName,
+      rollNo: s.rollNo,
+      className: s.className,
+      sectionName: s.sectionName,
+      totalFee: s.totalFee,
+      paid: s.paid,
+      pending: s.pending,
+      closeDate: s.closeDate,
+    }));
 
-    const recentlyClearedDues = [...studentDues]
-      .filter(d => d.pending === 0 && d.paid > 0)
-      .slice(0, 10);
+    const recentlyClearedDues = (topLists.recentlyCleared || []).map((s: any) => ({
+      studentId: s.studentId,
+      studentName: s.studentName,
+      rollNo: s.rollNo,
+      className: s.className,
+      sectionName: s.sectionName,
+      totalFee: s.totalFee,
+      paid: s.paid,
+      pending: s.pending,
+      closeDate: s.closeDate,
+    }));
 
-    const studentsNearDueDate = [...studentDues]
-      .filter(d => d.pending > 0)
-      .sort((a, b) => new Date(a.closeDate).getTime() - new Date(b.closeDate).getTime())
-      .slice(0, 10);
+    const studentsNearDueDate = (topLists.studentsNearDueDate || []).map((s: any) => ({
+      studentId: s.studentId,
+      studentName: s.studentName,
+      rollNo: s.rollNo,
+      className: s.className,
+      sectionName: s.sectionName,
+      totalFee: s.totalFee,
+      paid: s.paid,
+      pending: s.pending,
+      closeDate: s.closeDate,
+    }));
 
-    // Expense Insights
     const sortedExpenses = [...filteredExpenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const highestExpenseToday = allTimeExpensesList
-      .filter(exp => new Date(exp.date).toDateString() === now.toDateString())
-      .reduce((max, current) => (Number(current.amount) > max ? Number(current.amount) : max), 0);
-    const highestExpenseThisMonth = allTimeExpensesList
-      .filter(exp => new Date(exp.date) >= startOfMonth)
-      .reduce((max, current) => (Number(current.amount) > max ? Number(current.amount) : max), 0);
+    const highestExpenseToday = Number(expStats.highestToday || 0);
+    const highestExpenseThisMonth = Number(expStats.highestThisMonth || 0);
 
     const expenseInsights = {
       recentExpenses: sortedExpenses.slice(0, 10).map(e => ({
@@ -2956,8 +3257,7 @@ export class BillingService {
       upcomingExpenseReminders: budgetVsActual.filter(b => b.overBudget).map(b => `Alert: Category ${b.category} exceeded budget by ₹${b.excessAmount.toLocaleString()}`)
     };
 
-    // ── FINANCIAL NOTIFICATIONS ──
-    const notifications = [];
+    const notifications: any[] = [];
     if (collectionRateVal < 75) {
       notifications.push({
         type: 'CRITICAL',
@@ -2991,8 +3291,8 @@ export class BillingService {
       });
     }
 
-    // ── FINANCIAL TIMELINE & RECENT ACTIVITIES ──
-    const timeline = [];
+    // Merge timeline items
+    const timeline: any[] = [];
 
     for (const inv of filteredInvoices) {
       timeline.push({
@@ -3016,30 +3316,19 @@ export class BillingService {
       });
     }
 
-    for (const student of studentProfiles) {
+    for (const student of timelineAdmissions) {
       const date = new Date(student.user.createdAt);
-      if (startDate && endDate && (date < startDate || date > endDate)) continue;
       timeline.push({
         id: `adm-${student.id}`,
         type: 'ADMISSION',
         title: `New Admission: ${student.user.name}`,
         amount: 0,
         date,
-        description: `Enrolled in class ${student.classSection ? classMap.get(student.classSection.classId) : 'N/A'}`
+        description: `Enrolled in class ${student.classSection?.class?.name || 'N/A'}`
       });
     }
 
-    const promotionLogs = await this.prisma.activityLog.findMany({
-      where: {
-        tenantId,
-        action: 'RECORD_UPDATE',
-        entityName: 'StudentProfile',
-        details: { contains: 'Promoted from' },
-        createdAt: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
-      }
-    });
-
-    for (const log of promotionLogs) {
+    for (const log of timelinePromotions) {
       timeline.push({
         id: `prom-${log.id}`,
         type: 'PROMOTION',
@@ -3050,16 +3339,7 @@ export class BillingService {
       });
     }
 
-    const voidedInvoicesTimeline = await this.prisma.invoice.findMany({
-      where: {
-        tenantId,
-        status: PaymentStatus.VOIDED,
-        invoiceDate: startDate && endDate ? { gte: startDate, lte: endDate } : undefined
-      },
-      include: { student: { include: { user: true } } }
-    });
-
-    for (const inv of voidedInvoicesTimeline) {
+    for (const inv of timelineRollbacks) {
       timeline.push({
         id: `void-${inv.id}`,
         type: 'ROLLBACK',
@@ -3088,8 +3368,7 @@ export class BillingService {
         method: inv.paymentMethod || 'CASH'
       }));
 
-    const latestExpenses = filteredExpenses
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    const latestExpenses = sortedExpenses
       .slice(0, 10)
       .map(e => ({
         id: e.id,
@@ -3099,13 +3378,6 @@ export class BillingService {
         mode: e.paymentMode
       }));
 
-    const voidedInvoices = await this.prisma.invoice.findMany({
-      where: { tenantId, status: PaymentStatus.VOIDED },
-      include: { student: { include: { user: true } } },
-      orderBy: { invoiceDate: 'desc' },
-      take: 10
-    });
-
     const latestRollbacks = voidedInvoices.map(v => ({
       id: v.id,
       studentName: v.student.user.name,
@@ -3113,25 +3385,14 @@ export class BillingService {
       date: v.invoiceDate.toISOString().split('T')[0]
     }));
 
-    const latestAdmissions = studentProfiles
-      .sort((a, b) => new Date(b.user.createdAt).getTime() - new Date(a.user.createdAt).getTime())
-      .slice(0, 10)
-      .map(s => ({
-        id: s.id,
-        name: s.user.name,
-        date: s.user.createdAt.toISOString().split('T')[0],
-        class: s.classSection ? classMap.get(s.classSection.classId) : 'N/A'
-      }));
+    const latestAdmissions = (topLists.latestAdmissions || []).map((s: any) => ({
+      id: s.id,
+      name: s.name,
+      date: s.date,
+      class: s.class
+    }));
 
-    const latestFeeAdjustments = activeOpps
-      .flatMap(opp => opp.opportunityLineItems.filter(oli => Number(oli.discount) > 0))
-      .slice(0, 10)
-      .map(oli => ({
-        id: oli.id,
-        productName: oli.product.name,
-        discountPercent: Number(oli.discount),
-        unitPrice: Number(oli.unitPrice)
-      }));
+    const latestFeeAdjustments = (topLists.latestFeeAdjustments || []).slice(0, 10);
 
     return {
       activeYearName: activeYear?.name || 'Current Year',
@@ -3150,7 +3411,7 @@ export class BillingService {
         },
         pending: {
           total: totalPendingAmount,
-          studentsCount: pendingStudentsSet.size,
+          studentsCount: pendingStudentsCount,
           overdue: overdueAmount,
           dueToday,
           dueThisWeek,
@@ -3240,7 +3501,7 @@ export class BillingService {
       },
       classes: allClasses.map(c => ({ id: c.id, name: c.name })),
       sections: allSections.map(s => ({ id: s.id, name: s.name })),
-      academicYears: (await this.prisma.academicYear.findMany({ where: { tenantId } })).map(y => ({ id: y.id, name: y.name })),
+      academicYears: academicYearsList.map(y => ({ id: y.id, name: y.name })),
     };
   }
 }

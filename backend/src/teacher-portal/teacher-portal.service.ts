@@ -2142,58 +2142,66 @@ export class TeacherPortalService {
       throw new UnauthorizedException('User not found.');
     }
 
-    const student = await this.prisma.studentProfile.findFirst({
-      where: { id: studentId, tenantId },
-      select: {
-        id: true,
-        rollNo: true,
-        classSectionId: true,
-        user: { select: { name: true } },
-        classSection: {
-          select: {
-            class: { select: { name: true } },
-            section: { select: { name: true } },
-          }
-        },
-      },
-    });
+    const studentRows = await this.prisma.$queryRaw<any[]>`
+      SELECT
+        sp.id,
+        sp."rollNo",
+        sp."classSectionId",
+        u.name AS "studentName",
+        c.name AS "className",
+        sec.name AS "sectionName"
+      FROM "StudentProfile" sp
+      LEFT JOIN "User" u ON sp."userId" = u.id
+      LEFT JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+      LEFT JOIN "Class" c ON cs."classId" = c.id
+      LEFT JOIN "Section" sec ON cs."sectionId" = sec.id
+      WHERE sp.id = ${studentId} AND sp."tenantId" = ${tenantId}
+    `;
 
-    if (!student) {
+    if (!studentRows || studentRows.length === 0) {
       throw new NotFoundException('Student profile not found.');
     }
+    const student = studentRows[0];
 
     if (user.role === Role.TEACHER) {
       const staff = await this.getStaffProfile(userId, tenantId);
       await this.verifyTeacherAssignment(staff.id, student.classSectionId);
     }
 
-    // Execute dependent queries concurrently with lean field projections
-    const [attendances, examMarks, homeworksList] = await Promise.all([
-      // 1. Get attendance rate (only status needed)
-      this.prisma.attendance.findMany({
-        where: { studentId, tenantId },
-        select: { status: true },
-      }),
-      // 2. Get exam marks
-      this.prisma.examMark.findMany({
-        where: { studentId, tenantId },
-        select: {
-          marksObtained: true,
-          subjectId: true,
-          exam: { select: { name: true } },
-          subject: { select: { name: true } },
-        },
-      }),
+    // Execute dependent queries concurrently with SQL aggregation & lean field projections
+    const [attAgg, examMarks, homeworksList] = await Promise.all([
+      // 1. Get attendance rate using SQL aggregation
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          COUNT(*)::int AS "totalAttendances",
+          COUNT(*) FILTER (WHERE status::text = 'PRESENT')::int AS "presentCount"
+        FROM "Attendance"
+        WHERE "studentId" = ${studentId} AND "tenantId" = ${tenantId}
+      `,
+      // 2. Get exam marks with LEFT JOINs
+      this.prisma.$queryRaw<any[]>`
+        SELECT
+          em."marksObtained",
+          em."subjectId",
+          e.name AS "examName",
+          sub.name AS "subjectName"
+        FROM "ExamMark" em
+        LEFT JOIN "Exam" e ON em."examId" = e.id
+        LEFT JOIN "Subject" sub ON em."subjectId" = sub.id
+        WHERE em."studentId" = ${studentId} AND em."tenantId" = ${tenantId}
+      `,
       // 3. Get all homeworks in this class section
-      this.prisma.homework.findMany({
-        where: { classSectionId: student.classSectionId, tenantId },
-        select: { title: true, dueDate: true },
-        orderBy: { dueDate: 'desc' },
-      })
+      student.classSectionId
+        ? this.prisma.homework.findMany({
+            where: { classSectionId: student.classSectionId, tenantId },
+            select: { title: true, dueDate: true },
+            orderBy: { dueDate: 'desc' },
+          })
+        : Promise.resolve([])
     ]);
 
-    const totalAttendances = attendances.length;
-    const presentCount = attendances.filter(a => a.status === 'PRESENT').length;
+    const totalAttendances = Number(attAgg[0]?.totalAttendances || 0);
+    const presentCount = Number(attAgg[0]?.presentCount || 0);
     const attendancePercentage = totalAttendances > 0 ? Math.round((presentCount / totalAttendances) * 100) : 100;
 
     const totalMarks = examMarks.reduce((sum, em) => sum + Number(em.marksObtained), 0);
@@ -2215,18 +2223,18 @@ export class TeacherPortalService {
 
     // Build marks trend array
     const marksHistoryMapped = examMarks.map(em => ({
-      examName: em.exam?.name || 'Exam',
+      examName: em.examName || 'Exam',
       score: Number(em.marksObtained),
-      subjectName: em.subject?.name || 'Unknown',
+      subjectName: em.subjectName || 'Unknown',
       subjectId: em.subjectId,
     }));
 
     const result = {
       student: {
         id: student.id,
-        name: student.user?.name || 'Student',
+        name: student.studentName || 'Student',
         rollNo: student.rollNo || 'N/A',
-        className: `${student.classSection?.class?.name || ''} - ${student.classSection?.section?.name || ''}`,
+        className: `${student.className || ''} - ${student.sectionName || ''}`,
       },
       stats: {
         attendanceRate: attendancePercentage,

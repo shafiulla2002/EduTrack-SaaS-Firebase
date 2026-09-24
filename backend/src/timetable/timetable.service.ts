@@ -576,49 +576,23 @@ export class TimetableService {
   ) {
     const tenantId = this.getTenantId();
 
-    // 1. Fetch or auto-create period timings if missing
-    let periodTimings = await this.prisma.periodTiming.findMany({
-      where: { tenantId, isActive: true },
-      orderBy: { periodNumber: 'asc' },
-    });
-    if (periodTimings.length === 0) {
-      const defaultTimings = [
-        { periodNumber: 1, name: 'P1', startTime: '09:00 AM', endTime: '10:00 AM', isBreak: false, isActive: true, tenantId },
-        { periodNumber: 2, name: 'P2', startTime: '10:00 AM', endTime: '11:00 AM', isBreak: false, isActive: true, tenantId },
-        { periodNumber: 3, name: 'P3', startTime: '11:00 AM', endTime: '12:00 PM', isBreak: false, isActive: true, tenantId },
-        { periodNumber: 4, name: 'P4', startTime: '12:00 PM', endTime: '01:00 PM', isBreak: false, isActive: true, tenantId },
-        { periodNumber: 5, name: 'P5', startTime: '01:00 PM', endTime: '02:00 PM', isBreak: false, isActive: true, tenantId },
-        { periodNumber: 6, name: 'P6', startTime: '02:00 PM', endTime: '03:00 PM', isBreak: false, isActive: true, tenantId },
-        { periodNumber: 7, name: 'P7', startTime: '03:00 PM', endTime: '04:00 PM', isBreak: false, isActive: true, tenantId },
-        { periodNumber: 8, name: 'P8', startTime: '04:00 PM', endTime: '05:00 PM', isBreak: false, isActive: true, tenantId },
-      ];
-      await this.prisma.periodTiming.createMany({ data: defaultTimings });
-      periodTimings = await this.prisma.periodTiming.findMany({
+    // 1. Parallel fetch of all independent data in a single unified batch
+    let [
+      periodTimings,
+      config,
+      classSection,
+      periods,
+      allSubjects,
+      allTeachers,
+      teacherSkills
+    ] = await Promise.all([
+      this.prisma.periodTiming.findMany({
         where: { tenantId, isActive: true },
         orderBy: { periodNumber: 'asc' },
-      });
-    }
-
-    // 2. Fetch or auto-create config if missing
-    let config = await this.prisma.timetableConfig.findUnique({
-      where: { tenantId },
-    });
-    if (!config) {
-      config = await this.prisma.timetableConfig.create({
-        data: {
-          tenantId,
-          workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-          schoolStartTime: '09:00 AM',
-          schoolEndTime: '04:00 PM',
-          periodDuration: 45,
-          autoGenerate: false,
-          numPeriods: 8,
-        },
-      });
-    }
-
-    // 3. Parallel fetch of classSection info, periods, all subjects, all teaching staff & skills
-    const [classSection, periods, allSubjects, allTeachers, teacherSkills] = await Promise.all([
+      }),
+      this.prisma.timetableConfig.findUnique({
+        where: { tenantId },
+      }),
       this.prisma.classSection.findUnique({
         where: { id: classSectionId },
         include: {
@@ -627,9 +601,6 @@ export class TimetableService {
           classSubjects: {
             include: { subject: true },
             orderBy: { subject: { name: 'asc' } },
-          },
-          teacherAssigns: {
-            include: { teacher: { include: { user: true } }, subject: true },
           },
         },
       }),
@@ -660,17 +631,50 @@ export class TimetableService {
       }),
       this.prisma.teacherSkill.findMany({
         where: { tenantId },
-        include: { teacher: { include: { user: true } } },
       }),
     ]);
 
-    // 4. Map class subjects
+    // 2. Safe fallback creation if configuration records are missing for a new tenant
+    if (periodTimings.length === 0) {
+      const defaultTimings = [
+        { periodNumber: 1, name: 'P1', startTime: '09:00 AM', endTime: '10:00 AM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 2, name: 'P2', startTime: '10:00 AM', endTime: '11:00 AM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 3, name: 'P3', startTime: '11:00 AM', endTime: '12:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 4, name: 'P4', startTime: '12:00 PM', endTime: '01:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 5, name: 'P5', startTime: '01:00 PM', endTime: '02:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 6, name: 'P6', startTime: '02:00 PM', endTime: '03:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 7, name: 'P7', startTime: '03:00 PM', endTime: '04:00 PM', isBreak: false, isActive: true, tenantId },
+        { periodNumber: 8, name: 'P8', startTime: '04:00 PM', endTime: '05:00 PM', isBreak: false, isActive: true, tenantId },
+      ];
+      await this.prisma.periodTiming.createMany({ data: defaultTimings });
+      periodTimings = await this.prisma.periodTiming.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: { periodNumber: 'asc' },
+      });
+    }
+
+    if (!config) {
+      config = await this.prisma.timetableConfig.create({
+        data: {
+          tenantId,
+          workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+          schoolStartTime: '09:00 AM',
+          schoolEndTime: '04:00 PM',
+          periodDuration: 45,
+          autoGenerate: false,
+          numPeriods: 8,
+        },
+      });
+    }
+
+    // 3. Map class subjects
     const classSubjectsList = (classSection?.classSubjects || []).map(cs => ({
       subjectId: cs.subjectId,
       subjectName: cs.subject?.name ?? '',
     }));
 
-    // 5. Build subjectTeachers map (in-memory, 0ms)
+    // 4. Build subjectTeachers map in-memory using already-fetched allTeachers
+    const teacherNameMap = new Map(allTeachers.map(t => [t.id, t.user?.name ?? '']));
     const allTeacherOptions = allTeachers.map(t => ({
       Id: t.id,
       Name: t.user?.name ?? '',
@@ -685,15 +689,15 @@ export class TimetableService {
         .filter(sk => sk.subjectId === sub.id)
         .map(sk => ({
           Id: sk.teacherId,
-          Name: sk.teacher?.user?.name ?? '',
+          Name: teacherNameMap.get(sk.teacherId) || '',
           teacherId: sk.teacherId,
-          teacherName: sk.teacher?.user?.name ?? '',
+          teacherName: teacherNameMap.get(sk.teacherId) || '',
           skillLevel: sk.skillLevel,
         }));
       subjectTeachersMap[sub.id] = skilled.length > 0 ? skilled : allTeacherOptions;
     }
 
-    // 6. Map periods with fallback period numbers
+    // 5. Map periods with fallback period numbers
     const timingIdToNum = new Map(periodTimings.map(pt => [pt.id, pt.periodNumber]));
     const mappedPeriods = periods.map(p => {
       const pNum = p.periodTiming?.periodNumber ?? timingIdToNum.get(p.periodTimingId) ?? 0;
@@ -849,8 +853,13 @@ export class TimetableService {
       this.prisma.teacherAssignment.count({ where: { tenantId } }),
       this.prisma.staffProfile.findMany({
         where: teacherWhere,
-        include: {
-          user: true,
+        select: {
+          id: true,
+          user: {
+            select: {
+              name: true,
+            },
+          },
           teacherAssignments: {
             select: {
               subjectId: true,
@@ -859,23 +868,47 @@ export class TimetableService {
             },
           },
           teacherSkills: {
-            include: {
-              subject: true,
+            select: {
+              subject: {
+                select: {
+                  name: true,
+                },
+              },
             },
           },
         },
       }),
       this.prisma.classSection.findMany({
         where: { tenantId },
-        include: {
+        select: {
+          id: true,
+          classId: true,
           class: {
-            include: {
-              academicYear: true,
+            select: {
+              name: true,
+              academicYear: {
+                select: {
+                  name: true,
+                },
+              },
             },
           },
-          section: true,
-          classSubjects: true,
-          teacherAssigns: true,
+          section: {
+            select: {
+              name: true,
+            },
+          },
+          classSubjects: {
+            select: {
+              subjectId: true,
+            },
+          },
+          teacherAssigns: {
+            select: {
+              teacherId: true,
+              subjectId: true,
+            },
+          },
         },
       }),
       this.prisma.subject.findMany({ where: { tenantId }, orderBy: { name: 'asc' } }),
@@ -1144,7 +1177,31 @@ export class TimetableService {
     const tenantId = this.getTenantId();
     const assignments = await this.prisma.teacherAssignment.findMany({
       where: { teacherId: id, tenantId },
-      include: { subject: true, classSection: { include: { class: true, section: true } } },
+      select: {
+        id: true,
+        subjectId: true,
+        classSectionId: true,
+        periodsPerWeek: true,
+        subject: {
+          select: {
+            name: true,
+          },
+        },
+        classSection: {
+          select: {
+            class: {
+              select: {
+                name: true,
+              },
+            },
+            section: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     // Group assignments by class section so the frontend can render classes -> subjects
@@ -1180,9 +1237,22 @@ export class TimetableService {
     // Fetch classSection with class, section, and academic year
     const classSection = await this.prisma.classSection.findFirst({
       where: { id, tenantId },
-      include: {
-        class: { include: { academicYear: true } },
-        section: true,
+      select: {
+        class: {
+          select: {
+            name: true,
+            academicYear: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        section: {
+          select: {
+            name: true,
+          },
+        },
       },
     });
 
@@ -1190,14 +1260,30 @@ export class TimetableService {
     const [classSubjects, allAssignments] = await Promise.all([
       this.prisma.classSubject.findMany({
         where: { classSectionId: id, tenantId },
-        include: { subject: true },
+        select: {
+          subjectId: true,
+          subject: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
       }),
       this.prisma.teacherAssignment.findMany({
         where: { classSectionId: id, tenantId },
-        include: {
+        select: {
+          id: true,
+          teacherId: true,
+          subjectId: true,
+          periodsPerWeek: true,
           teacher: {
-            include: {
-              user: true,
+            select: {
+              user: {
+                select: {
+                  name: true,
+                },
+              },
             },
           },
         },
@@ -1286,7 +1372,17 @@ export class TimetableService {
     const tenantId = this.getTenantId();
     const skills = await this.prisma.teacherSkill.findMany({
       where: { teacherId: id, tenantId },
-      include: { subject: true },  // Include subject so we get the subject name
+      select: {
+        id: true,
+        subjectId: true,
+        skillLevel: true,
+        yearsOfExperience: true,
+        subject: {
+          select: {
+            name: true,
+          },
+        },
+      },
     });
     return skills.map(sk => ({
       id: sk.id,
@@ -1303,32 +1399,45 @@ export class TimetableService {
 
   async getPeriodsForTeacher(teacherId: string) {
     const tenantId = this.getTenantId();
-    const periods = await this.prisma.period.findMany({
-      where: { teacherId, tenantId },
-      include: {
-        subject: true,
-        classSection: { include: { class: true, section: true } },
-        periodTiming: true,
-        substituteTeacher: { include: { user: true } },
-      },
-    });
+    const rows = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        p.id AS "periodId",
+        p."dayOfWeek" AS "day",
+        p."classSectionId" AS "classSectionId",
+        sub.name AS "subjectName",
+        c.name AS "classNameOnly",
+        sec.name AS "sectionNameOnly",
+        pt."periodNumber" AS "periodNumber",
+        pt."startTime" AS "startTime",
+        pt."endTime" AS "endTime",
+        u.name AS "substituteTeacherName"
+      FROM "Period" p
+      LEFT JOIN "Subject" sub ON p."subjectId" = sub.id
+      LEFT JOIN "ClassSection" cs ON p."classSectionId" = cs.id
+      LEFT JOIN "Class" c ON cs."classId" = c.id
+      LEFT JOIN "Section" sec ON cs."sectionId" = sec.id
+      LEFT JOIN "PeriodTiming" pt ON p."periodTimingId" = pt.id
+      LEFT JOIN "StaffProfile" sp ON p."substituteTeacherId" = sp.id
+      LEFT JOIN "User" u ON sp."userId" = u.id
+      WHERE p."teacherId" = ${teacherId} AND p."tenantId" = ${tenantId}
+    `;
 
     // Normalize to the exact shape the frontend expects
-    return periods.map(p => ({
-      periodId: p.id,
-      day: p.dayOfWeek,                                             // frontend reads p.day
-      periodNumber: p.periodTiming?.periodNumber ?? 0,
-      subjectName: p.subject?.name ?? '—',
-      className: p.classSection?.class?.name && p.classSection?.section?.name
-        ? `${p.classSection.class.name} - ${p.classSection.section.name}`
+    return rows.map(p => ({
+      periodId: p.periodId,
+      day: p.day,                                                   // frontend reads p.day
+      periodNumber: p.periodNumber ?? 0,
+      subjectName: p.subjectName ?? '—',
+      className: p.classNameOnly && p.sectionNameOnly
+        ? `${p.classNameOnly} - ${p.sectionNameOnly}`
         : '—',
       classSectionId: p.classSectionId ?? '',
       academicYearId: '',                                           // Period model has no academicYearId; keep empty string
-      startTime: p.periodTiming?.startTime ?? '',
-      endTime: p.periodTiming?.endTime ?? '',
+      startTime: p.startTime ?? '',
+      endTime: p.endTime ?? '',
       frequency: 'Weekly',
       isFreePeriod: false,
-      substituteTeacherName: (p as any).substituteTeacher?.user?.name ?? null,
+      substituteTeacherName: p.substituteTeacherName ?? null,
     }));
   }
 
@@ -1340,10 +1449,36 @@ export class TimetableService {
     const tenantId = this.getTenantId();
     const periods = await this.prisma.period.findMany({
       where: { substituteTeacherId: teacherId, tenantId },
-      include: {
-        subject: true,
-        classSection: { include: { class: true, section: true } },
-        periodTiming: true,
+      select: {
+        id: true,
+        dayOfWeek: true,
+        classSectionId: true,
+        subject: {
+          select: {
+            name: true,
+          },
+        },
+        classSection: {
+          select: {
+            class: {
+              select: {
+                name: true,
+              },
+            },
+            section: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        periodTiming: {
+          select: {
+            periodNumber: true,
+            startTime: true,
+            endTime: true,
+          },
+        },
       },
     });
 

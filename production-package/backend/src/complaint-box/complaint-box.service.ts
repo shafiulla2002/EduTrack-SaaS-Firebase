@@ -9,7 +9,7 @@ import { UpdateCaseStatusDto } from './dto/update-case-status.dto';
 
 @Injectable()
 export class ComplaintBoxService {
-  private cache = new Map<string, { data: any; expiresAt: number }>();
+  private static cache = new Map<string, { data: any; expiresAt: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -26,13 +26,13 @@ export class ComplaintBoxService {
 
   private invalidateCache(tenantId?: string) {
     if (tenantId) {
-      this.cache.forEach((_, key) => {
+      ComplaintBoxService.cache.forEach((_, key) => {
         if (key.startsWith(`${tenantId}:`)) {
-          this.cache.delete(key);
+          ComplaintBoxService.cache.delete(key);
         }
       });
     } else {
-      this.cache.clear();
+      ComplaintBoxService.cache.clear();
     }
   }
 
@@ -41,14 +41,14 @@ export class ComplaintBoxService {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
     if (!user || !user.id) {
-      throw new BadRequestException('User not authenticated');
+      return null;
     }
     const profile = await this.prisma.staffProfile.findUnique({
       where: { userId: user.id },
       include: { user: true },
     });
     if (!profile || profile.user.tenantId !== tenantId) {
-      throw new NotFoundException('Teacher profile not found');
+      return null;
     }
     return profile;
   }
@@ -58,7 +58,7 @@ export class ComplaintBoxService {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
     const cacheKey = `${tenantId}:student-classes:${user?.id || 'admin'}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -94,7 +94,7 @@ export class ComplaintBoxService {
       });
     }
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 30000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
     return result;
   }
 
@@ -102,7 +102,7 @@ export class ComplaintBoxService {
   async getTeachers() {
     const tenantId = this.getTenantId();
     const cacheKey = `${tenantId}:teachers`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -115,7 +115,7 @@ export class ComplaintBoxService {
       orderBy: { user: { name: 'asc' } },
     });
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
     return result;
   }
 
@@ -282,13 +282,13 @@ export class ComplaintBoxService {
   async getAcademicYears() {
     const tenantId = this.getTenantId();
     const cacheKey = `${tenantId}:academic-years`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
 
     const result = await this.prisma.academicYear.findMany({ where: { tenantId }, orderBy: { name: 'desc' } });
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
     return result;
   }
 
@@ -297,7 +297,7 @@ export class ComplaintBoxService {
     const tenantId = this.getTenantId();
     const user = (this.request as any).user;
     const cacheKey = `${tenantId}:pending-cases:${academicYear || 'All'}:${user?.id || 'admin'}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -346,9 +346,10 @@ export class ComplaintBoxService {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 20000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 30000 });
     return result;
   }
 
@@ -358,7 +359,7 @@ export class ComplaintBoxService {
     const user = (this.request as any).user;
     const cacheKey = `${tenantId}:student_cases:${studentId}:${academicYear || ''}:${user?.id || 'admin'}`;
 
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -411,7 +412,7 @@ export class ComplaintBoxService {
       take: 50,
     });
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 60000 });
     return result;
   }
 
@@ -528,24 +529,30 @@ export class ComplaintBoxService {
       }
     }
 
-    const total = await this.prisma.behaviorCase.count({ where: { tenantId, studentId } });
-    const complaintCount = await this.prisma.behaviorCase.count({
-      where: { tenantId, studentId, behaviorType: 'Complaint' },
-    });
-    const praiseCount = await this.prisma.behaviorCase.count({
-      where: { tenantId, studentId, behaviorType: 'Praise' },
-    });
-    const resolvedCount = await this.prisma.behaviorCase.count({
-      where: { tenantId, studentId, status: 'Closed' },
-    });
-    return { studentId, totalCases: total, complaintCount, praiseCount, resolvedCount };
+    const statsRaw = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        COUNT(*)::int AS "totalCases",
+        COALESCE(COUNT(*) FILTER (WHERE "behaviorType" = 'Complaint'), 0)::int AS "complaintCount",
+        COALESCE(COUNT(*) FILTER (WHERE "behaviorType" = 'Praise'), 0)::int AS "praiseCount",
+        COALESCE(COUNT(*) FILTER (WHERE "status" = 'Closed'), 0)::int AS "resolvedCount"
+      FROM "BehaviorCase"
+      WHERE "tenantId" = ${tenantId} AND "studentId" = ${studentId}
+    `;
+    const row = statsRaw[0] || { totalCases: 0, complaintCount: 0, praiseCount: 0, resolvedCount: 0 };
+    return {
+      studentId,
+      totalCases: row.totalCases,
+      complaintCount: row.complaintCount,
+      praiseCount: row.praiseCount,
+      resolvedCount: row.resolvedCount,
+    };
   }
 
   /** Returns parent complaints for the tenant (Admin view). */
   async getParentComplaints(statusFilter?: string) {
     const tenantId = this.getTenantId();
     const cacheKey = `${tenantId}:parent-complaints:${statusFilter || 'All'}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = ComplaintBoxService.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
@@ -563,6 +570,7 @@ export class ComplaintBoxService {
         academicYear: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: 200,
     });
 
     const complaintIds = complaints.map(c => c.id);
@@ -585,7 +593,7 @@ export class ComplaintBoxService {
       statusHistories: historyMap.get(c.id) || [],
     }));
 
-    this.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 });
+    ComplaintBoxService.cache.set(cacheKey, { data: result, expiresAt: Date.now() + 30000 });
     return result;
   }
 

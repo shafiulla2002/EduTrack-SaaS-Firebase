@@ -61,6 +61,18 @@ export default function StudentsDirectory() {
   const [classes, setClasses] = useState<any[]>([]);
   const [sections, setSections] = useState<any[]>([]);
 
+  // Refs to prevent dropdown option loading from invalidating buildStudentQueryParams callback
+  const classesRef = useRef<any[]>([]);
+  const sectionsRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    classesRef.current = classes;
+  }, [classes]);
+
+  useEffect(() => {
+    sectionsRef.current = sections;
+  }, [sections]);
+
   // Request-specific loading states (Requirement 13)
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
@@ -138,6 +150,9 @@ export default function StudentsDirectory() {
   const buildStudentQueryParams = useCallback((pageNumber?: number, customLimit?: number) => {
     const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
 
+    const currentClasses = classesRef.current.length > 0 ? classesRef.current : classes;
+    const currentSections = sectionsRef.current.length > 0 ? sectionsRef.current : sections;
+
     // Requirement 10: Scope class resolution to the currently selected academicYearId
     let classId: string | undefined;
     let className: string | undefined;
@@ -145,12 +160,12 @@ export default function StudentsDirectory() {
     if (selectedClass !== 'All' && selectedClass.trim()) {
       className = selectedClass.trim();
       if (academicYearId) {
-        const matchingClass = classes.find(c => c.name === selectedClass && c.academicYearId === academicYearId);
+        const matchingClass = currentClasses.find(c => c.name === selectedClass && c.academicYearId === academicYearId);
         if (matchingClass) {
           classId = matchingClass.id;
         }
       } else {
-        const matchingClass = classes.find(c => c.name === selectedClass);
+        const matchingClass = currentClasses.find(c => c.name === selectedClass);
         if (matchingClass) {
           classId = matchingClass.id;
         }
@@ -164,7 +179,7 @@ export default function StudentsDirectory() {
     if (selectedSection !== 'All' && selectedSection.trim()) {
       sectionName = selectedSection.trim();
       const cleanSecFilter = selectedSection.replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
-      const matchingSection = sections.find(s => {
+      const matchingSection = currentSections.find(s => {
         if (s.name === selectedSection) return true;
         const sClean = (s.name || '').replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
         return sClean === cleanSecFilter;
@@ -187,7 +202,7 @@ export default function StudentsDirectory() {
       academicYearId,
       financialStatus: selectedFinancialStatus === 'All' ? undefined : selectedFinancialStatus,
     };
-  }, [selectedYear, selectedClass, selectedSection, selectedFinancialStatus, search, classes, sections]);
+  }, [selectedYear, selectedClass, selectedSection, selectedFinancialStatus, search]);
 
   // ── Scoped Class & Section Dropdown Lists ─────────────────────────────────
   const filteredClassesForYear = useMemo(() => {
@@ -215,7 +230,9 @@ export default function StudentsDirectory() {
       ]);
       setAcademicYears(ayRes.data || []);
       setClasses(classRes.data || []);
+      classesRef.current = classRes.data || [];
       setSections(secRes.data || []);
+      sectionsRef.current = secRes.data || [];
     } catch (err) {
       console.error('Failed to load filter options:', err);
     }
@@ -282,10 +299,12 @@ export default function StudentsDirectory() {
     loadStudents(1);
   }, [loadStudents]);
 
-  useSchoolSetupUpdate(() => {
+  const handleSchoolSetupUpdate = useCallback(() => {
     loadFilterOptions();
     loadStudents(1);
-  });
+  }, [loadStudents]);
+
+  useSchoolSetupUpdate(handleSchoolSetupUpdate);
 
   // Debounced search (300ms) with immediate loading indication on input
   useEffect(() => {

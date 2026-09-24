@@ -44,7 +44,7 @@ export class AttendanceService {
       // Resolve class names from assigned class-sections
       const classSections = await this.prisma.classSection.findMany({
         where: { id: { in: scope.assignedClassSectionIds }, tenantId },
-        include: { class: true },
+        select: { class: { select: { id: true, name: true } } },
       });
       const classesMap = new Map();
       classSections.forEach(cs => classesMap.set(cs.class.id, cs.class));
@@ -57,6 +57,7 @@ export class AttendanceService {
     // Admin: all classes
     const classes = await this.prisma.class.findMany({
       where: { tenantId, isActive: true },
+      select: { name: true },
       orderBy: { name: 'asc' },
       take: 500,
     });
@@ -79,7 +80,7 @@ export class AttendanceService {
           tenantId,
           ...(classVal ? { class: { name: { equals: classVal, mode: 'insensitive' } } } : {}),
         },
-        include: { section: true },
+        select: { section: { select: { id: true, name: true } } },
       });
       const sectionsMap = new Map();
       classSections.forEach(cs => sectionsMap.set(cs.section.id, cs.section));
@@ -92,6 +93,7 @@ export class AttendanceService {
     // Admin: all sections
     const sections = await this.prisma.section.findMany({
       where: { tenantId },
+      select: { name: true },
       orderBy: { name: 'asc' },
       take: 500,
     });
@@ -104,7 +106,7 @@ export class AttendanceService {
   // Fetch teaching staff for attendance entry (strictly teaching faculty only)
   async getTeachers() {
     const tenantId = this.getTenantId();
-    // Fetch active staff profiles for tenant, excluding NON_TEACHING category
+    // Fetch active staff profiles for tenant, excluding NON_TEACHING category with selective fields
     const staff = await this.prisma.staffProfile.findMany({
       where: {
         tenantId,
@@ -114,7 +116,12 @@ export class AttendanceService {
         },
         NOT: [{ staffCategory: 'NON_TEACHING' }],
       },
-      include: {
+      select: {
+        id: true,
+        designation: true,
+        staffRole: true,
+        staffCategory: true,
+        subjectsTaught: true,
         user: {
           select: { id: true, name: true, role: true },
         },
@@ -157,15 +164,16 @@ export class AttendanceService {
         tenantId,
         date: todayDate,
       },
-      include: {
+      select: {
+        id: true,
         classSection: {
-          include: {
-            class: true,
-            section: true,
+          select: {
+            class: { select: { name: true } },
+            section: { select: { name: true } },
           },
         },
         takenBy: {
-          include: {
+          select: {
             user: {
               select: { name: true },
             },
@@ -249,30 +257,13 @@ export class AttendanceService {
     const tenantId = this.getTenantId();
     if (!classVal || !sectionVal) return [];
 
-    const [cls, sec] = await Promise.all([
-      this.prisma.class.findFirst({
-        where: {
-          tenantId,
-          name: { equals: classVal.trim(), mode: 'insensitive' },
-        },
-      }),
-      this.prisma.section.findFirst({
-        where: {
-          tenantId,
-          name: { equals: sectionVal.trim(), mode: 'insensitive' },
-        },
-      }),
-    ]);
-
-    if (!cls || !sec) return [];
-
-    const classSection = await this.prisma.classSection.findUnique({
+    const classSection = await this.prisma.classSection.findFirst({
       where: {
-        classId_sectionId: {
-          classId: cls.id,
-          sectionId: sec.id,
-        },
+        tenantId,
+        class: { name: { equals: classVal.trim(), mode: 'insensitive' } },
+        section: { name: { equals: sectionVal.trim(), mode: 'insensitive' } },
       },
+      select: { id: true },
     });
 
     if (!classSection) return [];
@@ -290,7 +281,9 @@ export class AttendanceService {
         tenantId,
         classSectionId: classSection.id,
       },
-      include: {
+      select: {
+        id: true,
+        rollNo: true,
         user: {
           select: { name: true },
         },
@@ -315,32 +308,13 @@ export class AttendanceService {
       return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
     }
 
-    const [cls, sec] = await Promise.all([
-      this.prisma.class.findFirst({
-        where: {
-          tenantId,
-          name: { equals: classVal.trim(), mode: 'insensitive' },
-        },
-      }),
-      this.prisma.section.findFirst({
-        where: {
-          tenantId,
-          name: { equals: sectionVal.trim(), mode: 'insensitive' },
-        },
-      }),
-    ]);
-
-    if (!cls || !sec) {
-      return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
-    }
-
-    const classSection = await this.prisma.classSection.findUnique({
+    const classSection = await this.prisma.classSection.findFirst({
       where: {
-        classId_sectionId: {
-          classId: cls.id,
-          sectionId: sec.id,
-        },
+        tenantId,
+        class: { name: { equals: classVal.trim(), mode: 'insensitive' } },
+        section: { name: { equals: sectionVal.trim(), mode: 'insensitive' } },
       },
+      select: { id: true },
     });
 
     if (!classSection) {
@@ -356,44 +330,56 @@ export class AttendanceService {
     }
 
     const searchDate = parseAttendanceDate(dateStr);
-
-    const session = await this.prisma.attendanceSession.findFirst({
-      where: {
-        tenantId,
-        classSectionId: classSection.id,
-        date: searchDate,
-      },
-      include: {
-        attendances: true,
-        takenBy: {
-          include: {
-            user: {
-              select: { name: true },
-            },
-          },
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    if (!session) {
-      return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
-    }
-
     const dateObj = new Date(searchDate);
     const yyyy = dateObj.getUTCFullYear();
     const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
     const monthStr = `${yyyy}-${mm}`;
     const dayIdx = dateObj.getUTCDate() - 1;
 
-    const monthlyRecords = await this.prisma.monthlyAttendance.findMany({
-      where: {
-        tenantId,
-        classSectionId: classSection.id,
-        month: monthStr,
-      },
-      select: { studentId: true, attendance: true },
-    });
+    // Parallel fetch of attendanceSession and monthlyAttendance records
+    const [session, monthlyRecords] = await Promise.all([
+      this.prisma.attendanceSession.findFirst({
+        where: {
+          tenantId,
+          classSectionId: classSection.id,
+          date: searchDate,
+        },
+        select: {
+          id: true,
+          createdAt: true,
+          updatedAt: true,
+          totalStudents: true,
+          presentCount: true,
+          absentCount: true,
+          takenBy: {
+            select: {
+              user: {
+                select: { name: true },
+              },
+            },
+          },
+          attendances: {
+            select: {
+              studentId: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.prisma.monthlyAttendance.findMany({
+        where: {
+          tenantId,
+          classSectionId: classSection.id,
+          month: monthStr,
+        },
+        select: { studentId: true, attendance: true },
+      }),
+    ]);
+
+    if (!session) {
+      return { sessionExists: false, absentIds: [], total: 0, present: 0, absent: 0 };
+    }
 
     let absentIds: string[] = [];
     if (monthlyRecords.length > 0) {

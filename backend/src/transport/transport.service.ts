@@ -319,48 +319,106 @@ export class TransportService {
   // -------------------------------------------------------------
   async getAdminDashboard(tenantId: string) {
     await this.detectAndMarkOfflineBuses(tenantId);
-    const totalBuses = await this.prisma.bus.count({ where: { tenantId } });
-    const activeBuses = await this.prisma.bus.count({ where: { tenantId, status: 'ACTIVE' } });
-    const busesRunning = await this.prisma.bus.count({
-      where: { tenantId, dutyStatus: { in: ['STARTING_ROUTE', 'EN_ROUTE', 'REACHED_STOP'] } },
-    });
-    const driversOnDuty = await this.prisma.bus.count({
-      where: { tenantId, dutyStatus: { not: 'OFF_DUTY' } },
-    });
-    const offlineDrivers = totalBuses - driversOnDuty;
-
     const thirtySecsAgo = new Date(Date.now() - 30 * 1000);
-    const gpsNotUpdating = await this.prisma.bus.count({
-      where: {
-        tenantId,
-        dutyStatus: { not: 'OFF_DUTY' },
-        OR: [
-          { lastGpsUpdate: null },
-          { lastGpsUpdate: { lt: thirtySecsAgo } },
-        ],
-      },
-    });
 
-    const studentsAssigned = await this.prisma.studentProfile.count({
-      where: { tenantId, busId: { not: null } },
-    });
+    const kpisRaw = await this.prisma.$queryRaw<any[]>`
+      SELECT
+        COUNT(b.id)::int AS "totalBuses",
+        COUNT(b.id) FILTER (WHERE b.status = 'ACTIVE')::int AS "activeBuses",
+        COUNT(b.id) FILTER (WHERE b."dutyStatus" IN ('STARTING_ROUTE', 'EN_ROUTE', 'REACHED_STOP'))::int AS "busesRunning",
+        COUNT(b.id) FILTER (WHERE b."dutyStatus" != 'OFF_DUTY')::int AS "driversOnDuty",
+        COUNT(b.id) FILTER (WHERE b."dutyStatus" != 'OFF_DUTY' AND (b."lastGpsUpdate" IS NULL OR b."lastGpsUpdate" < ${thirtySecsAgo}))::int AS "gpsNotUpdating",
+        (SELECT COUNT(*)::int FROM "StudentProfile" sp WHERE sp."tenantId" = ${tenantId} AND sp."busId" IS NOT NULL) AS "studentsAssigned",
+        (SELECT COUNT(*)::int FROM "BusRoute" br WHERE br."tenantId" = ${tenantId} AND EXISTS (SELECT 1 FROM "Bus" b2 WHERE b2."routeId" = br.id AND b2."tenantId" = ${tenantId} AND b2."dutyStatus" != 'OFF_DUTY')) AS "routesRunning"
+      FROM "Bus" b
+      WHERE b."tenantId" = ${tenantId}
+    `;
 
-    const routesRunning = await this.prisma.busRoute.count({
-      where: { tenantId, buses: { some: { dutyStatus: { not: 'OFF_DUTY' } } } },
-    });
+    const kpiRow = kpisRaw[0] || {
+      totalBuses: 0,
+      activeBuses: 0,
+      busesRunning: 0,
+      driversOnDuty: 0,
+      gpsNotUpdating: 0,
+      studentsAssigned: 0,
+      routesRunning: 0,
+    };
 
-    const buses = await this.prisma.bus.findMany({
-      where: { tenantId },
-      include: {
-        driver: {
-          include: { user: { select: { name: true, phone: true } } },
-        },
-        route: {
-          include: { stops: { orderBy: { sequenceOrder: 'asc' } } },
-        },
-        students: { select: { id: true } },
-      },
-    });
+    const totalBuses = kpiRow.totalBuses ?? 0;
+    const activeBuses = kpiRow.activeBuses ?? 0;
+    const busesRunning = kpiRow.busesRunning ?? 0;
+    const driversOnDuty = kpiRow.driversOnDuty ?? 0;
+    const offlineDrivers = totalBuses - driversOnDuty;
+    const gpsNotUpdating = kpiRow.gpsNotUpdating ?? 0;
+    const studentsAssigned = kpiRow.studentsAssigned ?? 0;
+    const routesRunning = kpiRow.routesRunning ?? 0;
+
+    const busRows = await this.prisma.$queryRaw<any[]>`
+      SELECT
+        b.id,
+        b."busNumber",
+        b."registrationNo",
+        b."vehicleModel",
+        b.capacity,
+        b."busPhotoUrl",
+        b."pickupTime",
+        b."dropTime",
+        b.status,
+        b."dutyStatus",
+        b."driverId",
+        b."routeId",
+        b."currentLat",
+        b."currentLng",
+        b."currentSpeed",
+        b."currentHeading",
+        b."lastGpsUpdate",
+        b."batteryLevel",
+        b."tenantId",
+        b."createdAt",
+        b."updatedAt",
+        r.id AS "route_id",
+        r."routeName" AS "route_routeName",
+        sp.id AS "driver_id",
+        u.name AS "driver_user_name"
+      FROM "Bus" b
+      LEFT JOIN "BusRoute" r ON b."routeId" = r.id
+      LEFT JOIN "StaffProfile" sp ON b."driverId" = sp.id
+      LEFT JOIN "User" u ON sp."userId" = u.id
+      WHERE b."tenantId" = ${tenantId}
+      ORDER BY b."createdAt" DESC
+    `;
+
+    const buses = busRows.map(b => ({
+      id: b.id,
+      busNumber: b.busNumber,
+      registrationNo: b.registrationNo,
+      vehicleModel: b.vehicleModel,
+      capacity: b.capacity,
+      busPhotoUrl: b.busPhotoUrl,
+      pickupTime: b.pickupTime,
+      dropTime: b.dropTime,
+      status: b.status,
+      dutyStatus: b.dutyStatus,
+      driverId: b.driverId,
+      routeId: b.routeId,
+      currentLat: b.currentLat,
+      currentLng: b.currentLng,
+      currentSpeed: b.currentSpeed,
+      currentHeading: b.currentHeading,
+      lastGpsUpdate: b.lastGpsUpdate,
+      batteryLevel: b.batteryLevel,
+      tenantId: b.tenantId,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+      driver: b.driverId ? {
+        id: b.driver_id,
+        user: b.driver_user_name ? { name: b.driver_user_name } : null,
+      } : null,
+      route: b.routeId ? {
+        id: b.route_id,
+        routeName: b.route_routeName,
+      } : null,
+    }));
 
     return {
       kpis: {

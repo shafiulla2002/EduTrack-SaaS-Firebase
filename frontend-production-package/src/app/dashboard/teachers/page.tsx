@@ -56,6 +56,731 @@ interface ClassSection {
   loadPercent: number;
 }
 
+const getLoadColor = (pct: number) => {
+  if (pct < 50) return '#10b981'; // Green
+  if (pct < 85) return '#f59e0b'; // Amber
+  return '#ef4444'; // Red
+};
+
+const getLoadBg = (pct: number) => {
+  if (pct < 50) return '#ecfdf5';
+  if (pct < 85) return '#fffbeb';
+  return '#fef2f2';
+};
+
+// ── SUB-COMPONENT: TEACHER DETAIL DRAWER ──
+interface TeacherDetailDrawerProps {
+  teacher: Teacher;
+  teacherDetail: any | null;
+  teacherDetailLoading: boolean;
+  timings: any[];
+  onClose: () => void;
+  onDeleteTeacher: (teacherId: string, name: string) => void;
+  onOpenReassign: (e: React.MouseEvent, assignmentId: string, subjectId: string, subjectName: string, teacherId: string, teacherName: string, currentPeriods: number) => void;
+  onDeleteAssignment: (e: React.MouseEvent, assignmentId: string) => void;
+  onPeriodCardClick: (classSectionId: string, yearId: string, start: string, end: string, freq: string) => void;
+}
+
+const TeacherDetailDrawer = React.memo(function TeacherDetailDrawer({
+  teacher,
+  teacherDetail,
+  teacherDetailLoading,
+  timings,
+  onClose,
+  onDeleteTeacher,
+  onOpenReassign,
+  onDeleteAssignment,
+  onPeriodCardClick,
+}: TeacherDetailDrawerProps) {
+  const [isWeeklyExpanded, setIsWeeklyExpanded] = useState(true);
+  const [isTodayExpanded, setIsTodayExpanded] = useState(true);
+
+  return (
+    <div className="detail-drawer inline-detail-drawer p-5 border-b border-slate-200">
+      {teacherDetailLoading ? (
+        <div className="flex items-center gap-3 justify-center py-6">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+          <span className="text-xs text-slate-400 font-semibold">Loading assignments…</span>
+        </div>
+      ) : teacherDetail ? (
+        <div className="space-y-4">
+          <div className="dd-header flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="dd-avatar w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: teacher.gradient }}>
+                {teacher.initials}
+              </div>
+              <div>
+                <h4 className="dd-name font-bold text-slate-800 text-sm">{teacher.name}</h4>
+                <p className="dd-sub text-xs text-slate-400">{teacherDetail.totalAssignments} assignments across {teacherDetail.classCount} class(es)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => onDeleteTeacher(teacher.id, teacher.name)}
+                className="px-2.5 py-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200"
+              >
+                Delete Teacher
+              </button>
+              <button onClick={onClose} className="dd-close w-6 h-6 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 flex items-center justify-center">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Accordion: Weekly Schedule */}
+          <div className="border border-slate-200/60 rounded-xl overflow-hidden bg-white shadow-sm">
+            <div 
+              onClick={() => setIsWeeklyExpanded(!isWeeklyExpanded)}
+              className="flex justify-between items-center px-4 py-3 bg-slate-50 cursor-pointer border-b border-slate-200/60"
+            >
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-blue-500" />
+                <span className="text-xs font-bold text-slate-700">Weekly Schedule</span>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isWeeklyExpanded ? 'rotate-180' : ''}`} />
+            </div>
+            
+            {isWeeklyExpanded && (
+              <div className="p-4 space-y-2">
+                {teacherDetail.subjects.length === 0 ? (
+                  teacherDetail.skills.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Subject Skills</div>
+                      {teacherDetail.skills.map((sk: any) => (
+                        <div key={sk.id} className="flex justify-between items-center p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs">
+                          <span className="font-bold text-slate-700">{sk.subjectName}</span>
+                          <div className="flex gap-2">
+                            <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold">{sk.skillLevel}</span>
+                            <span className="text-slate-400">{sk.yearsOfExperience} yrs exp</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-400 italic py-2 text-center">No assignments or subject skills mapped.</div>
+                  )
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {teacherDetail.subjects.map((sub: any) => (
+                      <div key={sub.uniqueKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 text-xs border-b border-slate-100 dark:border-slate-800 last:border-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0"></span>
+                          <span className="font-bold text-slate-700 dark:text-slate-200">{sub.subjectName}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-[10px] font-semibold whitespace-nowrap flex-shrink-0">
+                            {sub.className}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto pl-3 sm:pl-0">
+                          <span className="text-slate-400 dark:text-slate-400 font-semibold whitespace-nowrap">{sub.periodsPerWeek} periods/wk</span>
+                          <div className="flex gap-1.5">
+                            <button 
+                              onClick={(e) => onOpenReassign(e, sub.assignmentId, sub.subjectId, sub.subjectName, teacher.id, teacher.name, sub.periodsPerWeek)}
+                              className="p-1.5 rounded bg-slate-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/50 text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors"
+                              title="Reassign Teacher"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button 
+                              onClick={(e) => onDeleteAssignment(e, sub.assignmentId)}
+                              className="p-1.5 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/50 text-slate-500 dark:text-slate-400 hover:text-rose-600 transition-colors"
+                              title="Remove Assignment"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Accordion: Today's Schedule Card Deck */}
+          <div className="border border-slate-200/60 rounded-xl overflow-hidden bg-white shadow-sm">
+            <div 
+              onClick={() => setIsTodayExpanded(!isTodayExpanded)}
+              className="flex justify-between items-center px-4 py-3 bg-slate-50 cursor-pointer border-b border-slate-200/60"
+            >
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-500" />
+                <span className="text-xs font-bold text-slate-700">Today&apos;s Schedule ({TODAY_DAY_NAME})</span>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isTodayExpanded ? 'rotate-180' : ''}`} />
+            </div>
+
+            {isTodayExpanded && (
+              <div className="p-4">
+                {!teacherDetail.hasTimetable ? (
+                  <div className="text-xs text-slate-400 italic text-center py-2">No timetable periods scheduled today.</div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {teacherDetail.timetablePeriods.map((dg: any) => 
+                      dg.periods.map((p: any) => (
+                        <div 
+                          key={p.key}
+                          onClick={() => onPeriodCardClick(p.classSectionId, p.academicYearId, p.startDate, p.endDate, p.frequency)}
+                          className={`p-3 rounded-xl border border-slate-100 shadow-sm cursor-pointer hover:border-blue-400 transition-all ${p.isLeaser ? 'bg-amber-50/50 border-amber-200/60' : 'bg-slate-50/60'}`}
+                        >
+                          {p.isLeaser && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wide block w-fit mb-1">{p.leaserType}</span>
+                          )}
+                          <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                            <span>{timings.find(t => (t.num ?? t.periodNumber) === p.periodNumber)?.label || `Period ${p.periodNumber}`}</span>
+                            <span>{p.startTime}</span>
+                          </div>
+                          <div className="text-xs font-extrabold text-slate-800 truncate mt-1">{p.subjectName}</div>
+                          <div className="text-[10px] text-slate-500 font-semibold mt-0.5">{p.className}</div>
+                          {p.substituteTeacher && (
+                            <div className="text-[9px] text-blue-600 font-bold mt-1">Sub: {p.substituteTeacher}</div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
+// ── SUB-COMPONENT: TEACHER WORKLOAD PANEL ──
+interface TeacherWorkloadPanelProps {
+  teachers: Teacher[];
+  expandedTeacherId: string | null;
+  teacherDetail: any | null;
+  teacherDetailLoading: boolean;
+  timings: any[];
+  onAddTeacherClick: () => void;
+  onSelectTeacher: (teacherId: string) => void;
+  onDeleteTeacher: (teacherId: string, name: string) => void;
+  onOpenReassign: (e: React.MouseEvent, assignmentId: string, subjectId: string, subjectName: string, teacherId: string, teacherName: string, currentPeriods: number) => void;
+  onDeleteAssignment: (e: React.MouseEvent, assignmentId: string) => void;
+  onPeriodCardClick: (classSectionId: string, yearId: string, start: string, end: string, freq: string) => void;
+}
+
+const TeacherWorkloadPanel = React.memo(function TeacherWorkloadPanel({
+  teachers,
+  expandedTeacherId,
+  teacherDetail,
+  teacherDetailLoading,
+  timings,
+  onAddTeacherClick,
+  onSelectTeacher,
+  onDeleteTeacher,
+  onOpenReassign,
+  onDeleteAssignment,
+  onPeriodCardClick,
+}: TeacherWorkloadPanelProps) {
+  const [teacherSearch, setTeacherSearch] = useState('');
+
+  const filteredTeachers = React.useMemo(() => {
+    if (!teacherSearch.trim()) return teachers;
+    const lower = teacherSearch.toLowerCase();
+    return teachers.filter(t => t.name.toLowerCase().includes(lower));
+  }, [teachers, teacherSearch]);
+
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <div className="panel-title-row w-full flex items-center">
+          <span className="panel-accent panel-accent-blue"></span>
+          <h3 className="panel-title">Teacher Workload</h3>
+          <span className="panel-badge">{teachers.length}</span>
+          <button 
+            onClick={onAddTeacherClick}
+            className="ml-auto p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg flex items-center justify-center cursor-pointer transition-all border border-blue-100"
+            title="Add Teacher"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+          </button>
+        </div>
+        <div className="panel-searchbox">
+          <Search className="w-3.5 h-3.5 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder="Search teachers…" 
+            value={teacherSearch}
+            onChange={e => setTeacherSearch(e.target.value)}
+            className="panel-search-input"
+          />
+        </div>
+      </div>
+
+      <div className="panel-list max-h-[600px] overflow-y-auto">
+        {filteredTeachers.map((t) => {
+          const isSelected = expandedTeacherId === t.id;
+          const color = getLoadColor(t.loadPercent);
+          const bg = getLoadBg(t.loadPercent);
+          return (
+            <React.Fragment key={t.id}>
+              <div 
+                onClick={() => onSelectTeacher(t.id)}
+                className={`panel-row ${isSelected ? 'panel-row-active' : ''}`}
+              >
+                <div className="tw-avatar" style={{ background: t.gradient }}>
+                  <span className="avatar-initials">{t.initials}</span>
+                </div>
+                <div className="tw-body">
+                  <div className="tw-top">
+                    <span className="tw-name">{t.name}</span>
+                    <span className="tw-load-chip" style={{ background: bg, color }}>{t.loadPercent}%</span>
+                  </div>
+                  <div className="tw-meta">{t.subjects.join(', ') || 'No subjects'} &bull; {t.classCount} class(es)</div>
+                  <div className="tw-bar-track">
+                    <div className="tw-bar-fill" style={{ width: `${t.loadPercent}%`, background: color }} />
+                  </div>
+                </div>
+                <ChevronDown className={`tw-chevron transition-transform duration-250 ${isSelected ? 'rotate-180 text-blue-600' : ''}`} />
+              </div>
+
+              {isSelected && (
+                <TeacherDetailDrawer
+                  teacher={t}
+                  teacherDetail={teacherDetail}
+                  teacherDetailLoading={teacherDetailLoading}
+                  timings={timings}
+                  onClose={() => onSelectTeacher(t.id)}
+                  onDeleteTeacher={onDeleteTeacher}
+                  onOpenReassign={onOpenReassign}
+                  onDeleteAssignment={onDeleteAssignment}
+                  onPeriodCardClick={onPeriodCardClick}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+// ── SUB-COMPONENT: CLASS DETAIL DRAWER ──
+interface ClassDetailDrawerProps {
+  classSection: ClassSection;
+  classDetail: any | null;
+  classDetailLoading: boolean;
+  timings: any[];
+  allSubjects: any[];
+  teachers: Teacher[];
+  onClose: () => void;
+  onDeleteClass: (cs: ClassSection) => void;
+  onAddSubjectToClass: (e: React.FormEvent, subjectId: string) => Promise<void>;
+  onRemoveSubjectFromClass: (subjectId: string) => Promise<void>;
+  onAssignTeacherDirect: (subjectId: string, teacherId: string, assignmentId?: string) => Promise<void>;
+  onOpenReassign: (e: React.MouseEvent, assignmentId: string, subjectId: string, subjectName: string, teacherId: string, teacherName: string, currentPeriods: number) => void;
+  onDeleteAssignment: (e: React.MouseEvent, assignmentId: string) => void;
+  onPeriodCardClick: (classSectionId: string, yearId: string, start: string, end: string, freq: string) => void;
+}
+
+const ClassDetailDrawer = React.memo(function ClassDetailDrawer({
+  classSection,
+  classDetail,
+  classDetailLoading,
+  timings,
+  allSubjects,
+  teachers,
+  onClose,
+  onDeleteClass,
+  onAddSubjectToClass,
+  onRemoveSubjectFromClass,
+  onAssignTeacherDirect,
+  onOpenReassign,
+  onDeleteAssignment,
+  onPeriodCardClick,
+}: ClassDetailDrawerProps) {
+  const [isClassTodayExpanded, setIsClassTodayExpanded] = useState(true);
+  const [isClassSubjectsExpanded, setIsClassSubjectsExpanded] = useState(false);
+  const [assignSubjectId, setAssignSubjectId] = useState('');
+
+  const handleLinkSubjectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignSubjectId) return;
+    await onAddSubjectToClass(e, assignSubjectId);
+    setAssignSubjectId('');
+  };
+
+  return (
+    <div className="detail-drawer detail-drawer-green inline-detail-drawer p-5 border-b border-slate-200">
+      {classDetailLoading ? (
+        <div className="flex items-center gap-3 justify-center py-6">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600"></div>
+          <span className="text-xs text-slate-400 font-semibold">Loading class details…</span>
+        </div>
+      ) : classDetail ? (
+        <div className="space-y-4">
+          <div className="dd-header flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="dd-class-icon w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                <BookOpen className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="dd-name font-bold text-slate-800 text-sm">{classSection.name}</h4>
+                <p className="dd-sub text-xs text-slate-400">{classSection.academicYear} &bull; {classDetail.subjectCount} subjects &bull; {classDetail.teacherCount} teachers</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => onDeleteClass(classSection)}
+                className="px-2.5 py-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200"
+              >
+                Delete Class
+              </button>
+              <button onClick={onClose} className="dd-close w-6 h-6 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 flex items-center justify-center">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Circular SVG Workload Ring & Coverage Progress */}
+          <div className="flex items-center gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-4">
+            <div className="relative w-14 h-14">
+              <svg viewBox="0 0 56 56" className="w-full h-full transform -rotate-90">
+                <circle cx="28" cy="28" r="22" className="fill-none stroke-slate-200 stroke-[5]" />
+                <circle 
+                  cx="28" cy="28" r="22" 
+                  className="fill-none stroke-emerald-500 stroke-[5] stroke-linecap-round transition-all duration-500" 
+                  strokeDasharray={2 * Math.PI * 22}
+                  strokeDashoffset={2 * Math.PI * 22 - (classDetail.loadPercent / 100) * 2 * Math.PI * 22}
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center text-[11px] font-extrabold text-slate-700">
+                {classDetail.loadPercent}%
+              </div>
+            </div>
+            <div className="flex-1">
+              <span className="text-xs font-bold text-slate-700">Staffing Coverage</span>
+              <div className="h-2 bg-slate-200 rounded-full overflow-hidden mt-1.5">
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${classDetail.loadPercent}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Accordion: Class Subjects & Mapped Teachers */}
+          <div className="border border-slate-200/60 dark:border-slate-700/60 rounded-xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
+            <div 
+              onClick={() => setIsClassSubjectsExpanded(!isClassSubjectsExpanded)}
+              className="flex justify-between items-center px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer border-b border-slate-200/60 dark:border-slate-700/60"
+            >
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-emerald-500" />
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Class Subjects &amp; Teachers ({classDetail.subjects.length})</span>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isClassSubjectsExpanded ? 'rotate-180' : ''}`} />
+            </div>
+
+            {isClassSubjectsExpanded && (
+              <div className="p-4 space-y-3">
+                {classDetail.subjects.length === 0 ? (
+                  <div className="text-xs text-slate-400 italic text-center py-2">No subjects linked to this class section yet.</div>
+                ) : (
+                  classDetail.subjects.map((subj: any) => (
+                    <div key={subj.subjectId} className="cd-subj-block border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-850">
+                      <div className="cd-subj-header flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full" style={{ background: getLoadColor(subj.loadPercent) }}></span>
+                          <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">{subj.subjectName}</span>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold border ${subj.hasTeacher ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800' : 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800'}`}>
+                          {subj.hasTeacher ? 'Assigned' : 'Open'}
+                        </span>
+                      </div>
+
+                      <div className="p-3">
+                        {subj.hasTeacher ? (
+                          subj.teachers.map((t: any) => (
+                            <div key={t.id} className="flex items-center justify-between text-xs py-1">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: AVATAR_GRADIENTS[Math.floor(Math.random() * 8)] }}>
+                                  {t.initials}
+                                </div>
+                                <span className="font-semibold text-slate-700 dark:text-slate-200">{t.name}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-semibold text-[10px]">{t.periodsPerWeek} p/wk</span>
+                                <div className="flex gap-1.5">
+                                  <button 
+                                    onClick={(e) => onOpenReassign(e, t.assignmentId, subj.subjectId, subj.subjectName, t.id, t.name, t.periodsPerWeek)}
+                                    className="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-500 hover:text-blue-600"
+                                    title="Reassign Teacher"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button 
+                                    onClick={(e) => onDeleteAssignment(e, t.assignmentId)}
+                                    className="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600"
+                                    title="Remove Assignment"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-400 italic py-1">No teacher assigned yet.</div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Inline Subject & Direct Assignments Manager */}
+          <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 sm:p-4 space-y-3 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">
+              <h4 className="font-extrabold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">Class Subjects &amp; Staff Assignments</h4>
+              <form onSubmit={handleLinkSubjectSubmit} className="flex gap-2 items-center w-full sm:w-auto">
+                <select
+                  value={assignSubjectId}
+                  onChange={e => setAssignSubjectId(e.target.value)}
+                  required
+                  className="flex-1 sm:flex-initial bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs outline-none text-slate-700 dark:text-slate-200 min-w-0"
+                >
+                  <option value="">Link Subject...</option>
+                  {allSubjects
+                    .filter(sub => !classDetail.subjects.some((csSub: any) => csSub.subjectId === sub.id))
+                    .map(sub => (
+                      <option key={sub.id} value={sub.id}>{sub.name}</option>
+                    ))
+                  }
+                </select>
+                <button
+                  type="submit"
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shrink-0"
+                >
+                  + Link
+                </button>
+              </form>
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
+              {classDetail.subjects.map((sub: any) => {
+                const assignedTeacherId = sub.teachers && sub.teachers.length > 0 ? sub.teachers[0].id : '';
+                const assignmentId = sub.teachers && sub.teachers.length > 0 ? sub.teachers[0].assignmentId : '';
+                return (
+                  <div key={sub.subjectId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 text-xs border-b border-slate-100 dark:border-slate-700/60 last:border-0">
+                    <div className="font-bold text-slate-800 dark:text-slate-200 min-w-0 truncate">{sub.subjectName}</div>
+                    <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
+                      <select
+                        value={assignedTeacherId}
+                        onChange={async (e) => {
+                          const newTId = e.target.value;
+                          await onAssignTeacherDirect(sub.subjectId, newTId, assignmentId);
+                        }}
+                        className="flex-1 sm:flex-initial bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-700 dark:text-slate-200 min-w-0"
+                      >
+                        <option value="">Unassigned</option>
+                        {teachers.map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={async () => {
+                          if (confirm(`Remove ${sub.subjectName} from this class section?`)) {
+                            await onRemoveSubjectFromClass(sub.subjectId);
+                          }
+                        }}
+                        type="button"
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer flex items-center justify-center shrink-0"
+                        title="Unlink Subject"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-500" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Accordion: Class Today's Timetable */}
+          <div className="border border-slate-200/60 rounded-xl overflow-hidden bg-white shadow-sm">
+            <div 
+              onClick={() => setIsClassTodayExpanded(!isClassTodayExpanded)}
+              className="flex justify-between items-center px-4 py-3 bg-slate-50 cursor-pointer border-b border-slate-200/60"
+            >
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-blue-500" />
+                <span className="text-xs font-bold text-slate-700">Today&apos;s Timetable Schedule ({TODAY_DAY_NAME})</span>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isClassTodayExpanded ? 'rotate-180' : ''}`} />
+            </div>
+
+            {isClassTodayExpanded && (
+              <div className="p-4">
+                {!classDetail.hasTimetable ? (
+                  <div className="text-xs text-slate-400 italic text-center py-2">No timetable periods scheduled.</div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {classDetail.timetablePeriods.map((dg: any) => 
+                      dg.periods.map((p: any) => (
+                        <div 
+                          key={p.key}
+                          onClick={() => onPeriodCardClick(classSection.id, p.academicYearId, p.startDate, p.endDate, p.frequency)}
+                          className={`p-3 rounded-xl border border-slate-100 shadow-sm cursor-pointer hover:border-emerald-400 transition-all ${p.isSubstitute ? 'bg-emerald-50/50 border-emerald-200/60' : 'bg-slate-50/60'}`}
+                        >
+                          {p.isSubstitute && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wide block w-fit mb-1">SUBSTITUTE</span>
+                          )}
+                          <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                            <span>{timings.find(t => (t.num ?? t.periodNumber) === p.periodNumber)?.label || `Period ${p.periodNumber}`}</span>
+                            <span>{p.startTime}</span>
+                          </div>
+                          <div className="text-xs font-extrabold text-slate-800 truncate mt-1">{p.subjectName}</div>
+                          <div className="text-[10px] text-slate-500 font-semibold mt-0.5">{p.teacherName}</div>
+                          {p.originalTeacher && (
+                            <div className="text-[9px] text-amber-600 font-bold mt-1">Leave: {p.originalTeacher}</div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+        </div>
+      ) : null}
+    </div>
+  );
+});
+
+// ── SUB-COMPONENT: CLASS WORKLOAD PANEL ──
+interface ClassWorkloadPanelProps {
+  classes: ClassSection[];
+  expandedClassId: string | null;
+  classDetail: any | null;
+  classDetailLoading: boolean;
+  timings: any[];
+  allSubjects: any[];
+  teachers: Teacher[];
+  onEnterSetupWizard: () => void;
+  onSelectClass: (classSectionId: string) => void;
+  onDeleteClass: (cs: ClassSection) => void;
+  onAddSubjectToClass: (e: React.FormEvent, subjectId: string) => Promise<void>;
+  onRemoveSubjectFromClass: (subjectId: string) => Promise<void>;
+  onAssignTeacherDirect: (subjectId: string, teacherId: string, assignmentId?: string) => Promise<void>;
+  onOpenReassign: (e: React.MouseEvent, assignmentId: string, subjectId: string, subjectName: string, teacherId: string, teacherName: string, currentPeriods: number) => void;
+  onDeleteAssignment: (e: React.MouseEvent, assignmentId: string) => void;
+  onPeriodCardClick: (classSectionId: string, yearId: string, start: string, end: string, freq: string) => void;
+}
+
+const ClassWorkloadPanel = React.memo(function ClassWorkloadPanel({
+  classes,
+  expandedClassId,
+  classDetail,
+  classDetailLoading,
+  timings,
+  allSubjects,
+  teachers,
+  onEnterSetupWizard,
+  onSelectClass,
+  onDeleteClass,
+  onAddSubjectToClass,
+  onRemoveSubjectFromClass,
+  onAssignTeacherDirect,
+  onOpenReassign,
+  onDeleteAssignment,
+  onPeriodCardClick,
+}: ClassWorkloadPanelProps) {
+  const [classSearch, setClassSearch] = useState('');
+
+  const filteredClasses = React.useMemo(() => {
+    if (!classSearch.trim()) return classes;
+    const lower = classSearch.toLowerCase();
+    return classes.filter(c => c.name.toLowerCase().includes(lower));
+  }, [classes, classSearch]);
+
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <div className="panel-title-row w-full flex items-center">
+          <span className="panel-accent panel-accent-green"></span>
+          <h3 className="panel-title">Class Workload</h3>
+          <span className="panel-badge panel-badge-green">{classes.length}</span>
+          <button 
+            onClick={onEnterSetupWizard}
+            className="ml-auto p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg flex items-center justify-center cursor-pointer transition-all border border-emerald-100"
+            title="Add Class Section"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+          </button>
+        </div>
+        <div className="panel-searchbox">
+          <Search className="w-3.5 h-3.5 text-slate-400" />
+          <input 
+            type="text" 
+            placeholder="Search classes…" 
+            value={classSearch}
+            onChange={e => setClassSearch(e.target.value)}
+            className="panel-search-input"
+          />
+        </div>
+      </div>
+
+      <div className="panel-list max-h-[600px] overflow-y-auto">
+        {filteredClasses.map((c) => {
+          const isSelected = expandedClassId === c.id;
+          const color = getLoadColor(c.loadPercent);
+          const bg = getLoadBg(c.loadPercent);
+          return (
+            <React.Fragment key={c.id}>
+              <div 
+                onClick={() => onSelectClass(c.id)}
+                className={`panel-row ${isSelected ? 'panel-row-active' : ''}`}
+              >
+                <div className="cw-icon-bg">
+                  <BookOpen className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="tw-body">
+                  <div className="tw-top">
+                    <span className="tw-name">{c.name}</span>
+                    <span className="cw-year-tag">{c.academicYear}</span>
+                  </div>
+                  <div className="tw-meta">{c.subjectCount} subjects &bull; {c.staffedCount} staffed &bull; {c.subjectCount - c.staffedCount} open</div>
+                  <div className="tw-bar-track">
+                    <div className="tw-bar-fill" style={{ width: `${c.loadPercent}%`, background: color }} />
+                  </div>
+                </div>
+                <div className="cw-pct-badge font-bold text-xs" style={{ background: bg, color }}>{c.loadPercent}%</div>
+              </div>
+
+              {isSelected && (
+                <ClassDetailDrawer
+                  classSection={c}
+                  classDetail={classDetail}
+                  classDetailLoading={classDetailLoading}
+                  timings={timings}
+                  allSubjects={allSubjects}
+                  teachers={teachers}
+                  onClose={() => onSelectClass(c.id)}
+                  onDeleteClass={onDeleteClass}
+                  onAddSubjectToClass={onAddSubjectToClass}
+                  onRemoveSubjectFromClass={onRemoveSubjectFromClass}
+                  onAssignTeacherDirect={onAssignTeacherDirect}
+                  onOpenReassign={onOpenReassign}
+                  onDeleteAssignment={onDeleteAssignment}
+                  onPeriodCardClick={onPeriodCardClick}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
 export default function TeacherClassManagement() {
   const { showToast } = useToast();
   const [isMounted, setIsMounted] = useState(false);
@@ -75,21 +800,14 @@ export default function TeacherClassManagement() {
   const [availableClasses, setAvailableClasses] = useState<any[]>([]);
   const [availableSections, setAvailableSections] = useState<any[]>([]);
   
-  const [teacherSearch, setTeacherSearch] = useState('');
-  const [classSearch, setClassSearch] = useState('');
-  
   // ── EXPANDED INLINE DRAWER STATE ──
   const [expandedTeacherId, setExpandedTeacherId] = useState<string | null>(null);
   const [teacherDetail, setTeacherDetail] = useState<any | null>(null);
   const [teacherDetailLoading, setTeacherDetailLoading] = useState(false);
-  const [isWeeklyExpanded, setIsWeeklyExpanded] = useState(true);
-  const [isTodayExpanded, setIsTodayExpanded] = useState(true);
   
   const [expandedClassId, setExpandedClassId] = useState<string | null>(null);
   const [classDetail, setClassDetail] = useState<any | null>(null);
   const [classDetailLoading, setClassDetailLoading] = useState(false);
-  const [isClassTodayExpanded, setIsClassTodayExpanded] = useState(true);
-  const [isClassSubjectsExpanded, setIsClassSubjectsExpanded] = useState(false);
   
   // ── WORKLOAD SUMMARY ──
   const [workloadSummary, setWorkloadSummary] = useState({
@@ -98,8 +816,6 @@ export default function TeacherClassManagement() {
     totalAssignments: 0,
     avgLoadPercent: 0
   });
-
-  const [assignSubjectId, setAssignSubjectId] = useState('');
 
   // ── NEW TEACHER FORM STATE ──
   const [showTeacherForm, setShowTeacherForm] = useState(false);
@@ -548,18 +1264,6 @@ export default function TeacherClassManagement() {
     }
   };
 
-  const getLoadColor = (pct: number) => {
-    if (pct < 50) return '#10b981'; // Green
-    if (pct < 85) return '#f59e0b'; // Amber
-    return '#ef4444'; // Red
-  };
-
-  const getLoadBg = (pct: number) => {
-    if (pct < 50) return '#ecfdf5';
-    if (pct < 85) return '#fffbeb';
-    return '#fef2f2';
-  };
-
   // ── LOAD DASHBOARD METRICS & LISTS ──
   const applyDashboardData = useCallback((data: any) => {
     if (!data) return;
@@ -687,14 +1391,14 @@ export default function TeacherClassManagement() {
   const fetchTeacherDetail = useCallback(async (teacherId: string) => {
     setTeacherDetailLoading(true);
     try {
-      const [workloadRes, periodsRes, leasersRes] = await Promise.all([
+      const [workloadRes, periodsRes, leasersRes, skillsRes] = await Promise.all([
         fastGet(`/timetable/workload/teacher/${teacherId}`),
         fastGet(`/timetable/teacher/${teacherId}/periods?gaps=true`),
-        fastGet(`/timetable/teacher/${teacherId}/leaser-periods`)
+        fastGet(`/timetable/teacher/${teacherId}/leaser-periods`),
+        fastGet(`/timetable/teachers/${teacherId}/skills`)
       ]);
       
       const details = workloadRes.data || {};
-      const skillsRes = await fastGet(`/timetable/teachers/${teacherId}/skills`);
 
       // Parse schedule periods — backend returns normalized flat fields
       const allPeriods: any[] = periodsRes.data || [];
@@ -789,7 +1493,7 @@ export default function TeacherClassManagement() {
   }, [showToast]);
 
   // ── INLINE TEACHER EXPANSION ──
-  const handleSelectTeacher = async (teacherId: string) => {
+  const handleSelectTeacher = useCallback(async (teacherId: string) => {
     if (expandedTeacherId === teacherId) {
       setExpandedTeacherId(null);
       setTeacherDetail(null);
@@ -797,7 +1501,7 @@ export default function TeacherClassManagement() {
     }
     setExpandedTeacherId(teacherId);
     await fetchTeacherDetail(teacherId);
-  };
+  }, [expandedTeacherId, fetchTeacherDetail]);
 
   // ── INLINE CLASS DETAILS FETCHING ──
   const fetchClassDetail = useCallback(async (classSectionId: string) => {
@@ -876,7 +1580,7 @@ export default function TeacherClassManagement() {
   }, [showToast]);
 
   // ── INLINE CLASS EXPANSION ──
-  const handleSelectClass = async (classSectionId: string) => {
+  const handleSelectClass = useCallback(async (classSectionId: string) => {
     if (expandedClassId === classSectionId) {
       setExpandedClassId(null);
       setClassDetail(null);
@@ -884,7 +1588,7 @@ export default function TeacherClassManagement() {
     }
     setExpandedClassId(classSectionId);
     await fetchClassDetail(classSectionId);
-  };
+  }, [expandedClassId, fetchClassDetail]);
 
   // ── CENTRALIZED REFERSHER EVENT ──
   const handleRefreshAll = useCallback(async () => {
@@ -900,25 +1604,24 @@ export default function TeacherClassManagement() {
   useSchoolSetupUpdate(handleRefreshAll);
 
   // ── DIRECT SUBJECTS & STAFF ASSOCIATIONS (Class Drawer inside view) ──
-  const handleAddSubjectToClass = async (e: React.FormEvent) => {
+  const handleAddSubjectToClass = useCallback(async (e: React.FormEvent, subjectId: string) => {
     e.preventDefault();
-    if (!expandedClassId || !assignSubjectId) return;
+    if (!expandedClassId || !subjectId) return;
     try {
       await api.post(`/academics/class-sections/${expandedClassId}/subjects`, {
-        subjectId: assignSubjectId,
+        subjectId,
       });
       showToast('Subject linked successfully.', 'success');
-      setAssignSubjectId('');
       // Reload class detail
-      await handleSelectClass(expandedClassId);
+      await fetchClassDetail(expandedClassId);
       await loadWorkloadDashboard();
     } catch (err: any) {
       console.error('Error linking subject:', err);
       showToast(err.response?.data?.message || 'Failed to link subject.', 'error');
     }
-  };
+  }, [expandedClassId, fetchClassDetail, loadWorkloadDashboard, showToast]);
 
-  const handleAssignTeacherDirect = async (subjectId: string, teacherId: string, assignmentId?: string) => {
+  const handleAssignTeacherDirect = useCallback(async (subjectId: string, teacherId: string, assignmentId?: string) => {
     if (!expandedClassId) return;
     try {
       if (!teacherId) {
@@ -934,29 +1637,29 @@ export default function TeacherClassManagement() {
         });
         showToast('Teacher assigned successfully.', 'success');
       }
-      await handleSelectClass(expandedClassId);
+      await fetchClassDetail(expandedClassId);
       await loadWorkloadDashboard();
     } catch (err: any) {
       console.error('Error assigning teacher:', err);
       showToast(err.response?.data?.message || 'Failed to assign teacher.', 'error');
     }
-  };
+  }, [expandedClassId, fetchClassDetail, loadWorkloadDashboard, showToast]);
 
-  const handleRemoveSubjectFromClass = async (subjectId: string) => {
+  const handleRemoveSubjectFromClass = useCallback(async (subjectId: string) => {
     if (!expandedClassId) return;
     try {
       await api.delete(`/academics/class-sections/${expandedClassId}/subjects/${subjectId}`);
       showToast('Subject unlinked successfully.', 'success');
-      await handleSelectClass(expandedClassId);
+      await fetchClassDetail(expandedClassId);
       await loadWorkloadDashboard();
     } catch (err: any) {
       console.error('Error unlinking subject:', err);
       showToast(err.response?.data?.message || 'Failed to unlink subject.', 'error');
     }
-  };
+  }, [expandedClassId, fetchClassDetail, loadWorkloadDashboard, showToast]);
 
   // ── REASSIGN MODAL ──
-  const handleOpenReassign = async (e: React.MouseEvent, assignmentId: string, subjectId: string, subjectName: string, teacherId: string, teacherName: string, currentPeriods: number) => {
+  const handleOpenReassign = useCallback(async (e: React.MouseEvent, assignmentId: string, subjectId: string, subjectName: string, teacherId: string, teacherName: string, currentPeriods: number) => {
     e.stopPropagation();
     setReassignContext({
       assignmentId,
@@ -978,9 +1681,9 @@ export default function TeacherClassManagement() {
       setIsLoading(false);
     }
     setShowReassignModal(true);
-  };
+  }, [expandedClassId, ttSelectedClassSectionId]);
 
-  const handleSaveReassign = async () => {
+  const handleSaveReassign = useCallback(async () => {
     if (!reassignContext.assignmentId) return;
     try {
       setIsLoading(true);
@@ -991,8 +1694,8 @@ export default function TeacherClassManagement() {
       showToast('Assignment updated successfully.', 'success');
       setShowReassignModal(false);
       // Refresh current drawer
-      if (expandedTeacherId) await handleSelectTeacher(expandedTeacherId);
-      if (expandedClassId) await handleSelectClass(expandedClassId);
+      if (expandedTeacherId) await fetchTeacherDetail(expandedTeacherId);
+      if (expandedClassId) await fetchClassDetail(expandedClassId);
       await loadWorkloadDashboard();
     } catch (err: any) {
       console.error('Failed to reassign:', err);
@@ -1000,17 +1703,17 @@ export default function TeacherClassManagement() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [reassignContext.assignmentId, reassignNewTeacherId, reassignPeriodsPerWeek, expandedTeacherId, fetchTeacherDetail, expandedClassId, fetchClassDetail, loadWorkloadDashboard, showToast]);
 
-  const handleDeleteAssignment = async (e: React.MouseEvent, assignmentId: string) => {
+  const handleDeleteAssignment = useCallback(async (e: React.MouseEvent, assignmentId: string) => {
     e.stopPropagation();
     if (!confirm('Are you sure you want to remove this assignment?')) return;
     try {
       setIsLoading(true);
       await api.delete(`/timetable/assignments/${assignmentId}`);
       showToast('Assignment deleted.', 'success');
-      if (expandedTeacherId) await handleSelectTeacher(expandedTeacherId);
-      if (expandedClassId) await handleSelectClass(expandedClassId);
+      if (expandedTeacherId) await fetchTeacherDetail(expandedTeacherId);
+      if (expandedClassId) await fetchClassDetail(expandedClassId);
       await loadWorkloadDashboard();
     } catch (err: any) {
       console.error('Failed to delete assignment:', err);
@@ -1018,10 +1721,10 @@ export default function TeacherClassManagement() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [expandedTeacherId, fetchTeacherDetail, expandedClassId, fetchClassDetail, loadWorkloadDashboard, showToast]);
 
   // ── PERIOD CARD CLICK TIMETABLE NAVIGATION ──
-  const handlePeriodCardClick = async (classSectionId: string, yearId: string, start: string, end: string, freq: string) => {
+  const handlePeriodCardClick = useCallback(async (classSectionId: string, yearId: string, start: string, end: string, freq: string) => {
     setIsTimetableView(true);
     setTtSelectedClassSectionId(classSectionId);
     setTtSelectedAcademicYear(yearId || selectedAcademicYear);
@@ -1031,7 +1734,7 @@ export default function TeacherClassManagement() {
     
     // Auto-trigger grid load
     setShowTimetableGrid(false);
-  };
+  }, [selectedAcademicYear]);
 
   // ── TIMETABLE MATRIX LOADER & SAVE ──
   const loadTimetableGrid = async (overrideClassId?: string, overrideYearId?: string) => {
@@ -1897,529 +2600,38 @@ export default function TeacherClassManagement() {
 
             {/* Dual Panel Rows */}
             <div className="dual-panel mt-6">
-              
-              {/* LEFT: Teacher Workload Panel */}
-              <div className="panel">
-                <div className="panel-header">
-                  <div className="panel-title-row w-full flex items-center">
-                    <span className="panel-accent panel-accent-blue"></span>
-                    <h3 className="panel-title">Teacher Workload</h3>
-                    <span className="panel-badge">{teachers.length}</span>
-                    <button 
-                      onClick={() => setShowTeacherForm(true)}
-                      className="ml-auto p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg flex items-center justify-center cursor-pointer transition-all border border-blue-100"
-                      title="Add Teacher"
-                    >
-                      <Plus className="w-4 h-4 stroke-[2.5]" />
-                    </button>
-                  </div>
-                  <div className="panel-searchbox">
-                    <Search className="w-3.5 h-3.5 text-slate-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Search teachers…" 
-                      value={teacherSearch}
-                      onChange={e => setTeacherSearch(e.target.value)}
-                      className="panel-search-input"
-                    />
-                  </div>
-                </div>
+              <TeacherWorkloadPanel
+                teachers={teachers}
+                expandedTeacherId={expandedTeacherId}
+                teacherDetail={teacherDetail}
+                teacherDetailLoading={teacherDetailLoading}
+                timings={timings}
+                onAddTeacherClick={() => setShowTeacherForm(true)}
+                onSelectTeacher={handleSelectTeacher}
+                onDeleteTeacher={handleDeleteTeacherClick}
+                onOpenReassign={handleOpenReassign}
+                onDeleteAssignment={handleDeleteAssignment}
+                onPeriodCardClick={handlePeriodCardClick}
+              />
 
-                <div className="panel-list max-h-[600px] overflow-y-auto">
-                  {teachers.filter(t => t.name.toLowerCase().includes(teacherSearch.toLowerCase())).map((t, idx) => {
-                    const isSelected = expandedTeacherId === t.id;
-                    const color = getLoadColor(t.loadPercent);
-                    const bg = getLoadBg(t.loadPercent);
-                    return (
-                      <React.Fragment key={t.id}>
-                        <div 
-                          onClick={() => handleSelectTeacher(t.id)}
-                          className={`panel-row ${isSelected ? 'panel-row-active' : ''}`}
-                        >
-                          <div className="tw-avatar" style={{ background: t.gradient }}>
-                            <span className="avatar-initials">{t.initials}</span>
-                          </div>
-                          <div className="tw-body">
-                            <div className="tw-top">
-                              <span className="tw-name">{t.name}</span>
-                              <span className="tw-load-chip" style={{ background: bg, color }}>{t.loadPercent}%</span>
-                            </div>
-                            <div className="tw-meta">{t.subjects.join(', ') || 'No subjects'} &bull; {t.classCount} class(es)</div>
-                            <div className="tw-bar-track">
-                              <div className="tw-bar-fill" style={{ width: `${t.loadPercent}%`, background: color }} />
-                            </div>
-                          </div>
-                          <ChevronDown className={`tw-chevron transition-transform duration-250 ${isSelected ? 'rotate-180 text-blue-600' : ''}`} />
-                        </div>
-
-                        {/* Collapsible Inline Detail Drawer */}
-                        {isSelected && (
-                          <div className="detail-drawer inline-detail-drawer p-5 border-b border-slate-200">
-                            {teacherDetailLoading ? (
-                              <div className="flex items-center gap-3 justify-center py-6">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                                <span className="text-xs text-slate-400 font-semibold">Loading assignments…</span>
-                              </div>
-                            ) : teacherDetail ? (
-                              <div className="space-y-4">
-                                <div className="dd-header flex items-center justify-between border-b border-slate-100 pb-3">
-                                  <div className="flex items-center gap-3">
-                                    <div className="dd-avatar w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: t.gradient }}>
-                                      {t.initials}
-                                    </div>
-                                    <div>
-                                      <h4 className="dd-name font-bold text-slate-800 text-sm">{t.name}</h4>
-                                      <p className="dd-sub text-xs text-slate-400">{teacherDetail.totalAssignments} assignments across {teacherDetail.classCount} class(es)</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    <button 
-                                      onClick={() => handleDeleteTeacherClick(t.id, t.name)}
-                                      className="px-2.5 py-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200"
-                                    >
-                                      Delete Teacher
-                                    </button>
-                                    <button onClick={() => handleSelectTeacher(t.id)} className="dd-close w-6 h-6 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 flex items-center justify-center">
-                                      <X className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Accordion: Weekly Schedule */}
-                                <div className="border border-slate-200/60 rounded-xl overflow-hidden bg-white shadow-sm">
-                                  <div 
-                                    onClick={() => setIsWeeklyExpanded(!isWeeklyExpanded)}
-                                    className="flex justify-between items-center px-4 py-3 bg-slate-50 cursor-pointer border-b border-slate-200/60"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Calendar className="w-4 h-4 text-blue-500" />
-                                      <span className="text-xs font-bold text-slate-700">Weekly Schedule</span>
-                                    </div>
-                                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isWeeklyExpanded ? 'rotate-180' : ''}`} />
-                                  </div>
-                                  
-                                  {isWeeklyExpanded && (
-                                    <div className="p-4 space-y-2">
-                                      {teacherDetail.subjects.length === 0 ? (
-                                        teacherDetail.skills.length > 0 ? (
-                                          <div className="space-y-2">
-                                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Subject Skills</div>
-                                            {teacherDetail.skills.map((sk: any) => (
-                                              <div key={sk.id} className="flex justify-between items-center p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs">
-                                                <span className="font-bold text-slate-700">{sk.subjectName}</span>
-                                                <div className="flex gap-2">
-                                                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold">{sk.skillLevel}</span>
-                                                  <span className="text-slate-400">{sk.yearsOfExperience} yrs exp</span>
-                                                </div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <div className="text-xs text-slate-400 italic py-2 text-center">No assignments or subject skills mapped.</div>
-                                        )
-                                      ) : (
-                                        <div className="divide-y divide-slate-100">
-                                          {teacherDetail.subjects.map((sub: any) => (
-                                            <div key={sub.uniqueKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-3 text-xs border-b border-slate-100 dark:border-slate-800 last:border-0">
-                                              <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0"></span>
-                                                <span className="font-bold text-slate-700 dark:text-slate-200">{sub.subjectName}</span>
-                                                <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 text-blue-600 dark:text-blue-400 text-[10px] font-semibold whitespace-nowrap flex-shrink-0">
-                                                  {sub.className}
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto pl-3 sm:pl-0">
-                                                <span className="text-slate-400 dark:text-slate-400 font-semibold whitespace-nowrap">{sub.periodsPerWeek} periods/wk</span>
-                                                <div className="flex gap-1.5">
-                                                  <button 
-                                                    onClick={(e) => handleOpenReassign(e, sub.assignmentId, sub.subjectId, sub.subjectName, t.id, t.name, sub.periodsPerWeek)}
-                                                    className="p-1.5 rounded bg-slate-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/50 text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors"
-                                                    title="Reassign Teacher"
-                                                  >
-                                                    <Edit2 className="w-3.5 h-3.5" />
-                                                  </button>
-                                                  <button 
-                                                    onClick={(e) => handleDeleteAssignment(e, sub.assignmentId)}
-                                                    className="p-1.5 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-900/50 text-slate-500 dark:text-slate-400 hover:text-rose-600 transition-colors"
-                                                    title="Remove Assignment"
-                                                  >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Accordion: Today's Schedule Card Deck */}
-                                <div className="border border-slate-200/60 rounded-xl overflow-hidden bg-white shadow-sm">
-                                  <div 
-                                    onClick={() => setIsTodayExpanded(!isTodayExpanded)}
-                                    className="flex justify-between items-center px-4 py-3 bg-slate-50 cursor-pointer border-b border-slate-200/60"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Clock className="w-4 h-4 text-emerald-500" />
-                                      <span className="text-xs font-bold text-slate-700">Today&apos;s Schedule ({TODAY_DAY_NAME})</span>
-                                    </div>
-                                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isTodayExpanded ? 'rotate-180' : ''}`} />
-                                  </div>
-
-                                  {isTodayExpanded && (
-                                    <div className="p-4">
-                                      {!teacherDetail.hasTimetable ? (
-                                        <div className="text-xs text-slate-400 italic text-center py-2">No timetable periods scheduled today.</div>
-                                      ) : (
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                          {teacherDetail.timetablePeriods.map((dg: any) => 
-                                            dg.periods.map((p: any) => (
-                                              <div 
-                                                key={p.key}
-                                                onClick={() => handlePeriodCardClick(p.classSectionId, p.academicYearId, p.startDate, p.endDate, p.frequency)}
-                                                className={`p-3 rounded-xl border border-slate-100 shadow-sm cursor-pointer hover:border-blue-400 transition-all ${p.isLeaser ? 'bg-amber-50/50 border-amber-200/60' : 'bg-slate-50/60'}`}
-                                              >
-                                                {p.isLeaser && (
-                                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wide block w-fit mb-1">{p.leaserType}</span>
-                                                )}
-                                                <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                                                  <span>{timings.find(t => (t.num ?? t.periodNumber) === p.periodNumber)?.label || `Period ${p.periodNumber}`}</span>
-                                                  <span>{p.startTime}</span>
-                                                </div>
-                                                <div className="text-xs font-extrabold text-slate-800 truncate mt-1">{p.subjectName}</div>
-                                                <div className="text-[10px] text-slate-500 font-semibold mt-0.5">{p.className}</div>
-                                                {p.substituteTeacher && (
-                                                  <div className="text-[9px] text-blue-600 font-bold mt-1">Sub: {p.substituteTeacher}</div>
-                                                )}
-                                              </div>
-                                            ))
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* RIGHT: Class Workload Panel */}
-              <div className="panel">
-                <div className="panel-header">
-                  <div className="panel-title-row w-full flex items-center">
-                    <span className="panel-accent panel-accent-green"></span>
-                    <h3 className="panel-title">Class Workload</h3>
-                    <span className="panel-badge panel-badge-green">{classes.length}</span>
-                    <button 
-                      onClick={enterSetupWizard}
-                      className="ml-auto p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg flex items-center justify-center cursor-pointer transition-all border border-emerald-100"
-                      title="Add Class Section"
-                    >
-                      <Plus className="w-4 h-4 stroke-[2.5]" />
-                    </button>
-                  </div>
-                  <div className="panel-searchbox">
-                    <Search className="w-3.5 h-3.5 text-slate-400" />
-                    <input 
-                      type="text" 
-                      placeholder="Search classes…" 
-                      value={classSearch}
-                      onChange={e => setClassSearch(e.target.value)}
-                      className="panel-search-input"
-                    />
-                  </div>
-                </div>
-
-                <div className="panel-list max-h-[600px] overflow-y-auto">
-                  {classes.filter(c => c.name.toLowerCase().includes(classSearch.toLowerCase())).map((c, idx) => {
-                    const isSelected = expandedClassId === c.id;
-                    const color = getLoadColor(c.loadPercent);
-                    const bg = getLoadBg(c.loadPercent);
-                    return (
-                      <React.Fragment key={c.id}>
-                        <div 
-                          onClick={() => handleSelectClass(c.id)}
-                          className={`panel-row ${isSelected ? 'panel-row-active' : ''}`}
-                        >
-                          <div className="cw-icon-bg">
-                            <BookOpen className="w-4 h-4 text-emerald-600" />
-                          </div>
-                          <div className="tw-body">
-                            <div className="tw-top">
-                              <span className="tw-name">{c.name}</span>
-                              <span className="cw-year-tag">{c.academicYear}</span>
-                            </div>
-                            <div className="tw-meta">{c.subjectCount} subjects &bull; {c.staffedCount} staffed &bull; {c.subjectCount - c.staffedCount} open</div>
-                            <div className="tw-bar-track">
-                              <div className="tw-bar-fill" style={{ width: `${c.loadPercent}%`, background: color }} />
-                            </div>
-                          </div>
-                          <div className="cw-pct-badge font-bold text-xs" style={{ background: bg, color }}>{c.loadPercent}%</div>
-                        </div>
-
-                        {/* Collapsible Inline Class Detail Drawer */}
-                        {isSelected && (
-                          <div className="detail-drawer detail-drawer-green inline-detail-drawer p-5 border-b border-slate-200">
-                            {classDetailLoading ? (
-                              <div className="flex items-center gap-3 justify-center py-6">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-600"></div>
-                                <span className="text-xs text-slate-400 font-semibold">Loading class details…</span>
-                              </div>
-                            ) : classDetail ? (
-                              <div className="space-y-4">
-                                <div className="dd-header flex items-center justify-between border-b border-slate-100 pb-3">
-                                  <div className="flex items-center gap-3">
-                                    <div className="dd-class-icon w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
-                                      <BookOpen className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                      <h4 className="dd-name font-bold text-slate-800 text-sm">{c.name}</h4>
-                                      <p className="dd-sub text-xs text-slate-400">{c.academicYear} &bull; {classDetail.subjectCount} subjects &bull; {classDetail.teacherCount} teachers</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    <button 
-                                      onClick={() => handleDeleteClassClick(c)}
-                                      className="px-2.5 py-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200"
-                                    >
-                                      Delete Class
-                                    </button>
-                                    <button onClick={() => handleSelectClass(c.id)} className="dd-close w-6 h-6 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 flex items-center justify-center">
-                                      <X className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Circular SVG Workload Ring & Coverage Progress */}
-                                <div className="flex items-center gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-4">
-                                  <div className="relative w-14 h-14">
-                                    <svg viewBox="0 0 56 56" className="w-full h-full transform -rotate-90">
-                                      <circle cx="28" cy="28" r="22" className="fill-none stroke-slate-200 stroke-[5]" />
-                                      <circle 
-                                        cx="28" cy="28" r="22" 
-                                        className="fill-none stroke-emerald-500 stroke-[5] stroke-linecap-round transition-all duration-500" 
-                                        strokeDasharray={2 * Math.PI * 22}
-                                        strokeDashoffset={2 * Math.PI * 22 - (classDetail.loadPercent / 100) * 2 * Math.PI * 22}
-                                      />
-                                    </svg>
-                                    <div className="absolute inset-0 flex items-center justify-center text-[11px] font-extrabold text-slate-700">
-                                      {classDetail.loadPercent}%
-                                    </div>
-                                  </div>
-                                  <div className="flex-1">
-                                    <span className="text-xs font-bold text-slate-700">Staffing Coverage</span>
-                                    <div className="h-2 bg-slate-200 rounded-full overflow-hidden mt-1.5">
-                                      <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${classDetail.loadPercent}%` }} />
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Accordion: Class Subjects & Mapped Teachers */}
-                                <div className="border border-slate-200/60 dark:border-slate-700/60 rounded-xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
-                                  <div 
-                                    onClick={() => setIsClassSubjectsExpanded(!isClassSubjectsExpanded)}
-                                    className="flex justify-between items-center px-4 py-3 bg-slate-50 dark:bg-slate-900 cursor-pointer border-b border-slate-200/60 dark:border-slate-700/60"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <BookOpen className="w-4 h-4 text-emerald-500" />
-                                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Class Subjects &amp; Teachers ({classDetail.subjects.length})</span>
-                                    </div>
-                                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isClassSubjectsExpanded ? 'rotate-180' : ''}`} />
-                                  </div>
-
-                                  {isClassSubjectsExpanded && (
-                                    <div className="p-4 space-y-3">
-                                      {classDetail.subjects.length === 0 ? (
-                                        <div className="text-xs text-slate-400 italic text-center py-2">No subjects linked to this class section yet.</div>
-                                      ) : (
-                                        classDetail.subjects.map((subj: any) => (
-                                          <div key={subj.subjectId} className="cd-subj-block border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-850">
-                                            <div className="cd-subj-header flex items-center justify-between px-3 py-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
-                                              <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full" style={{ background: getLoadColor(subj.loadPercent) }}></span>
-                                                <span className="text-xs font-extrabold text-slate-800 dark:text-slate-200">{subj.subjectName}</span>
-                                              </div>
-                                              <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold border ${subj.hasTeacher ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800' : 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800'}`}>
-                                                {subj.hasTeacher ? 'Assigned' : 'Open'}
-                                              </span>
-                                            </div>
-
-                                            <div className="p-3">
-                                              {subj.hasTeacher ? (
-                                                subj.teachers.map((t: any) => (
-                                                  <div key={t.id} className="flex items-center justify-between text-xs py-1">
-                                                    <div className="flex items-center gap-2">
-                                                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: AVATAR_GRADIENTS[Math.floor(Math.random() * 8)] }}>
-                                                        {t.initials}
-                                                      </div>
-                                                      <span className="font-semibold text-slate-700 dark:text-slate-200">{t.name}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-3">
-                                                      <span className="px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-semibold text-[10px]">{t.periodsPerWeek} p/wk</span>
-                                                      <div className="flex gap-1.5">
-                                                        <button 
-                                                          onClick={(e) => handleOpenReassign(e, t.assignmentId, subj.subjectId, subj.subjectName, t.id, t.name, t.periodsPerWeek)}
-                                                          className="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-500 hover:text-blue-600"
-                                                          title="Reassign Teacher"
-                                                        >
-                                                          <Edit2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                        <button 
-                                                          onClick={(e) => handleDeleteAssignment(e, t.assignmentId)}
-                                                          className="p-1 rounded bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-500 hover:text-rose-600"
-                                                          title="Remove Assignment"
-                                                        >
-                                                          <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                ))
-                                              ) : (
-                                                <div className="text-xs text-slate-400 italic py-1">No teacher assigned yet.</div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Inline Subject & Direct Assignments Manager */}
-                                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3.5 sm:p-4 space-y-3 shadow-sm">
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">
-                                    <h4 className="font-extrabold text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">Class Subjects &amp; Staff Assignments</h4>
-                                    <form onSubmit={handleAddSubjectToClass} className="flex gap-2 items-center w-full sm:w-auto">
-                                      <select
-                                        value={assignSubjectId}
-                                        onChange={e => setAssignSubjectId(e.target.value)}
-                                        required
-                                        className="flex-1 sm:flex-initial bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1 text-xs outline-none text-slate-700 dark:text-slate-200 min-w-0"
-                                      >
-                                        <option value="">Link Subject...</option>
-                                        {allSubjects
-                                          .filter(sub => !classDetail.subjects.some((csSub: any) => csSub.subjectId === sub.id))
-                                          .map(sub => (
-                                            <option key={sub.id} value={sub.id}>{sub.name}</option>
-                                          ))
-                                        }
-                                      </select>
-                                      <button
-                                        type="submit"
-                                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer shrink-0"
-                                      >
-                                        + Link
-                                      </button>
-                                    </form>
-                                  </div>
-
-                                  <div className="divide-y divide-slate-100 dark:divide-slate-700/60">
-                                    {classDetail.subjects.map((sub: any) => {
-                                      const assignedTeacherId = sub.teachers && sub.teachers.length > 0 ? sub.teachers[0].id : '';
-                                      const assignmentId = sub.teachers && sub.teachers.length > 0 ? sub.teachers[0].assignmentId : '';
-                                      return (
-                                        <div key={sub.subjectId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 text-xs border-b border-slate-100 dark:border-slate-700/60 last:border-0">
-                                          <div className="font-bold text-slate-800 dark:text-slate-200 min-w-0 truncate">{sub.subjectName}</div>
-                                          <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
-                                            <select
-                                              value={assignedTeacherId}
-                                              onChange={async (e) => {
-                                                const newTId = e.target.value;
-                                                await handleAssignTeacherDirect(sub.subjectId, newTId, assignmentId);
-                                              }}
-                                              className="flex-1 sm:flex-initial bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-700 dark:text-slate-200 min-w-0"
-                                            >
-                                              <option value="">Unassigned</option>
-                                              {teachers.map(t => (
-                                                <option key={t.id} value={t.id}>{t.name}</option>
-                                              ))}
-                                            </select>
-                                            <button
-                                              onClick={async () => {
-                                                if (confirm(`Remove ${sub.subjectName} from this class section?`)) {
-                                                  await handleRemoveSubjectFromClass(sub.subjectId);
-                                                }
-                                              }}
-                                              type="button"
-                                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer flex items-center justify-center shrink-0"
-                                              title="Unlink Subject"
-                                            >
-                                              <Trash2 className="w-4 h-4 text-rose-500" />
-                                            </button>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-
-                                {/* Accordion: Class Today's Timetable */}
-                                <div className="border border-slate-200/60 rounded-xl overflow-hidden bg-white shadow-sm">
-                                  <div 
-                                    onClick={() => setIsClassTodayExpanded(!isClassTodayExpanded)}
-                                    className="flex justify-between items-center px-4 py-3 bg-slate-50 cursor-pointer border-b border-slate-200/60"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Clock className="w-4 h-4 text-blue-500" />
-                                      <span className="text-xs font-bold text-slate-700">Today&apos;s Timetable Schedule ({TODAY_DAY_NAME})</span>
-                                    </div>
-                                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isClassTodayExpanded ? 'rotate-180' : ''}`} />
-                                  </div>
-
-                                  {isClassTodayExpanded && (
-                                    <div className="p-4">
-                                      {!classDetail.hasTimetable ? (
-                                        <div className="text-xs text-slate-400 italic text-center py-2">No timetable periods scheduled.</div>
-                                      ) : (
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                          {classDetail.timetablePeriods.map((dg: any) => 
-                                            dg.periods.map((p: any) => (
-                                              <div 
-                                                key={p.key}
-                                                onClick={() => handlePeriodCardClick(c.id, p.academicYearId, p.startDate, p.endDate, p.frequency)}
-                                                className={`p-3 rounded-xl border border-slate-100 shadow-sm cursor-pointer hover:border-emerald-400 transition-all ${p.isSubstitute ? 'bg-emerald-50/50 border-emerald-200/60' : 'bg-slate-50/60'}`}
-                                              >
-                                                {p.isSubstitute && (
-                                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase tracking-wide block w-fit mb-1">SUBSTITUTE</span>
-                                                )}
-                                                <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                                                  <span>{timings.find(t => (t.num ?? t.periodNumber) === p.periodNumber)?.label || `Period ${p.periodNumber}`}</span>
-                                                  <span>{p.startTime}</span>
-                                                </div>
-                                                <div className="text-xs font-extrabold text-slate-800 truncate mt-1">{p.subjectName}</div>
-                                                <div className="text-[10px] text-slate-500 font-semibold mt-0.5">{p.teacherName}</div>
-                                                {p.originalTeacher && (
-                                                  <div className="text-[9px] text-amber-600 font-bold mt-1">Leave: {p.originalTeacher}</div>
-                                                )}
-                                              </div>
-                                            ))
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              </div>
-
+              <ClassWorkloadPanel
+                classes={classes}
+                expandedClassId={expandedClassId}
+                classDetail={classDetail}
+                classDetailLoading={classDetailLoading}
+                timings={timings}
+                allSubjects={allSubjects}
+                teachers={teachers}
+                onEnterSetupWizard={enterSetupWizard}
+                onSelectClass={handleSelectClass}
+                onDeleteClass={handleDeleteClassClick}
+                onAddSubjectToClass={handleAddSubjectToClass}
+                onRemoveSubjectFromClass={handleRemoveSubjectFromClass}
+                onAssignTeacherDirect={handleAssignTeacherDirect}
+                onOpenReassign={handleOpenReassign}
+                onDeleteAssignment={handleDeleteAssignment}
+                onPeriodCardClick={handlePeriodCardClick}
+              />
             </div>
           </div>
         </div>

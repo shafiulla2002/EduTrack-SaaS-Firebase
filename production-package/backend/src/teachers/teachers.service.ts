@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
-import { Role } from '@prisma/client';
+import { Role, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { RoleFilterHelper } from '../common/role-filter.helper';
 
@@ -193,7 +193,26 @@ export class TeachersService {
 
     const staffProfiles = await this.prisma.staffProfile.findMany({
       where: whereClause,
-      include: {
+      select: {
+        id: true,
+        userId: true,
+        employeeId: true,
+        designation: true,
+        basicSalary: true,
+        allowances: true,
+        deductions: true,
+        pfDeduction: true,
+        joiningDate: true,
+        status: true,
+        qualification: true,
+        subjectsTaught: true,
+        staffCategory: true,
+        staffRole: true,
+        experienceYears: true,
+        bloodGroup: true,
+        whatsappNumber: true,
+        emergencyContact: true,
+        tenantId: true,
         user: {
           select: {
             id: true,
@@ -205,8 +224,16 @@ export class TeachersService {
           },
         },
         teacherSkills: {
-          include: {
-            subject: { select: { id: true, name: true } },
+          select: {
+            id: true,
+            skillLevel: true,
+            yearsOfExperience: true,
+            subject: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
         _count: {
@@ -263,7 +290,13 @@ export class TeachersService {
           isActive: true,
         },
       },
-      include: {
+      select: {
+        id: true,
+        userId: true,
+        employeeId: true,
+        designation: true,
+        subjectsTaught: true,
+        staffCategory: true,
         user: {
           select: {
             id: true,
@@ -757,28 +790,42 @@ export class TeachersService {
 
   async getTeacherSchedule(teacherId: string, dayOfWeek?: string) {
     const tenantId = this.getTenantId();
-    const whereCondition: any = { tenantId, teacherId };
+    const rows = await this.prisma.$queryRaw<any[]>`
+      SELECT 
+        p.id AS "id",
+        p."dayOfWeek" AS "dayOfWeek",
+        sub.name AS "subjectName",
+        c.name AS "className",
+        sec.name AS "sectionName",
+        pt."startTime" AS "startTime",
+        pt."endTime" AS "endTime",
+        pt."periodNumber" AS "periodNumber"
+      FROM "Period" p
+      LEFT JOIN "Subject" sub ON p."subjectId" = sub.id
+      LEFT JOIN "ClassSection" cs ON p."classSectionId" = cs.id
+      LEFT JOIN "Class" c ON cs."classId" = c.id
+      LEFT JOIN "Section" sec ON cs."sectionId" = sec.id
+      LEFT JOIN "PeriodTiming" pt ON p."periodTimingId" = pt.id
+      WHERE p."tenantId" = ${tenantId} 
+        AND p."teacherId" = ${teacherId}
+        ${dayOfWeek ? Prisma.sql`AND LOWER(p."dayOfWeek") = LOWER(${dayOfWeek})` : Prisma.empty}
+      ORDER BY p."dayOfWeek" ASC, pt."periodNumber" ASC
+    `;
 
-    if (dayOfWeek) {
-      whereCondition.dayOfWeek = { equals: dayOfWeek, mode: 'insensitive' };
-    }
-
-    return this.prisma.period.findMany({
-      where: whereCondition,
-      select: {
-        id: true,
-        dayOfWeek: true,
-        subject: { select: { name: true } },
-        classSection: {
-          select: {
-            class: { select: { name: true } },
-            section: { select: { name: true } },
-          },
-        },
-        periodTiming: { select: { startTime: true, endTime: true, periodNumber: true } },
-      },
-      orderBy: [{ dayOfWeek: 'asc' }, { periodTiming: { periodNumber: 'asc' } }],
-    });
+    return rows.map(r => ({
+      id: r.id,
+      dayOfWeek: r.dayOfWeek,
+      subject: r.subjectName ? { name: r.subjectName } : null,
+      classSection: (r.className || r.sectionName) ? {
+        class: r.className ? { name: r.className } : null,
+        section: r.sectionName ? { name: r.sectionName } : null,
+      } : null,
+      periodTiming: r.periodNumber != null ? {
+        startTime: r.startTime,
+        endTime: r.endTime,
+        periodNumber: r.periodNumber,
+      } : null,
+    }));
   }
 }
 

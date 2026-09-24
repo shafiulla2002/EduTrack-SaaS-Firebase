@@ -639,63 +639,238 @@ export class StudentsService implements OnModuleInit {
     const skip = isPaginated ? (page - 1) * limit : undefined;
     const take = isPaginated ? limit : undefined;
 
-    // If financialStatus filter is applied, we must batch evaluate all matching students
-    // to calculate accurate filtered totals and pagination pages across the entire cohort.
+    // If financialStatus filter is applied, perform database-level aggregation, filtering, and pagination
     if (financialStatus && financialStatus !== 'ALL' && financialStatus !== 'All') {
-      const allStudents = await this.prisma.studentProfile.findMany({
-        where,
-        select: {
-          id: true,
-          rollNo: true,
-          fatherName: true,
-          motherName: true,
-          fatherPhone: true,
-          motherPhone: true,
-          guardianPhone: true,
-          aadharNo: true,
-          profilePhotoUrl: true,
-          classSectionId: true,
-          tenantId: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
+      const sqlQuery = Prisma.sql`
+        WITH student_base AS (
+          SELECT 
+            sp.id AS "studentId",
+            sp."rollNo",
+            sp."fatherName",
+            sp."motherName",
+            sp."fatherPhone",
+            sp."motherPhone",
+            sp."guardianPhone",
+            sp."aadharNo",
+            sp."profilePhotoUrl",
+            sp."classSectionId",
+            sp."tenantId",
+            u.id AS "userId",
+            u.name AS "userName",
+            u.email AS "userEmail",
+            u.phone AS "userPhone",
+            cs."classId",
+            cs."sectionId",
+            c.name AS "className",
+            c."academicYearId" AS "academicYearId",
+            s.name AS "sectionName"
+          FROM "StudentProfile" sp
+          JOIN "User" u ON sp."userId" = u.id
+          LEFT JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+          LEFT JOIN "Class" c ON cs."classId" = c.id
+          LEFT JOIN "Section" s ON cs."sectionId" = s.id
+          WHERE u."tenantId" = ${tenantId}
+            AND u."isActive" = true
+            ${searchTerm && searchTerm.trim() ? Prisma.sql`AND (
+              sp."rollNo" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+              sp."fatherName" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+              sp."motherName" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+              sp."fatherPhone" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+              sp."motherPhone" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+              sp."guardianPhone" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+              u.name ILIKE ${'%' + searchTerm.trim() + '%'} OR
+              u.email ILIKE ${'%' + searchTerm.trim() + '%'} OR
+              u.phone ILIKE ${'%' + searchTerm.trim() + '%'}
+            )` : Prisma.empty}
+            ${classId ? Prisma.sql`AND cs."classId" = ${classId}` : Prisma.empty}
+            ${sectionId ? Prisma.sql`AND cs."sectionId" = ${sectionId}` : Prisma.empty}
+            ${className && !classId ? Prisma.sql`AND c.name ILIKE ${className}` : Prisma.empty}
+            ${sectionName && !sectionId ? Prisma.sql`AND s.name ILIKE ${'%' + sectionName.replace(/^section\s*[-_]?/i, '').trim() + '%'}` : Prisma.empty}
+            ${academicYearId ? Prisma.sql`AND c."academicYearId" = ${academicYearId}` : Prisma.empty}
+        ),
+        student_opps AS (
+          SELECT 
+            o.id,
+            o."studentId",
+            o."stageName",
+            o."academicYearId",
+            o."classId",
+            o."createdAt",
+            ay."startDate" AS "ay_startDate",
+            ay.name AS "ay_name",
+            COALESCE(SUM((oli."unitPrice" * COALESCE(oli.quantity, 1)) - ((oli."unitPrice" * COALESCE(oli.quantity, 1) * COALESCE(oli.discount, 0)) / 100.0)), 0)::float AS "oppFee",
+            COALESCE(inv_agg."paidAmount", 0)::float AS "oppPaid",
+            ROW_NUMBER() OVER (
+              PARTITION BY o."studentId" 
+              ORDER BY 
+                ${academicYearId ? Prisma.sql`CASE WHEN o."academicYearId" = ${academicYearId} THEN 0 ELSE 1 END,` : Prisma.empty}
+                CASE WHEN o."stageName" NOT IN ('Closed Won', 'Closed Lost') THEN 0 ELSE 1 END,
+                o."createdAt" DESC
+            ) AS "rn"
+          FROM "Opportunity" o
+          JOIN student_base sb ON o."studentId" = sb."studentId"
+          LEFT JOIN "AcademicYear" ay ON o."academicYearId" = ay.id
+          LEFT JOIN "OpportunityLineItem" oli ON o.id = oli."opportunityId"
+          LEFT JOIN (
+            SELECT "opportunityId", COALESCE(SUM("paidAmount"), 0)::float AS "paidAmount"
+            FROM "Invoice"
+            WHERE "tenantId" = ${tenantId} AND status::text != 'VOIDED' AND "opportunityId" IS NOT NULL
+            GROUP BY "opportunityId"
+          ) inv_agg ON o.id = inv_agg."opportunityId"
+          WHERE o."tenantId" = ${tenantId}
+          GROUP BY o.id, o."studentId", o."stageName", o."academicYearId", o."classId", o."createdAt", ay."startDate", ay.name, inv_agg."paidAmount"
+        ),
+        active_opps AS (
+          SELECT * FROM student_opps WHERE rn = 1
+        ),
+        prev_opp_dues AS (
+          SELECT 
+            so."studentId",
+            COALESCE(SUM(GREATEST(0, so."oppFee" - so."oppPaid")), 0)::float AS "prevOppDue"
+          FROM student_opps so
+          JOIN active_opps ao ON so."studentId" = ao."studentId"
+          WHERE so."ay_startDate" IS NOT NULL 
+            AND ao."ay_startDate" IS NOT NULL 
+            AND so."ay_startDate" < ao."ay_startDate"
+          GROUP BY so."studentId"
+        ),
+        orphan_inv_dues AS (
+          SELECT 
+            inv."studentId",
+            COALESCE(SUM(inv."remainingBalance"), 0)::float AS "orphanDue"
+          FROM "Invoice" inv
+          JOIN student_base sb ON inv."studentId" = sb."studentId"
+          LEFT JOIN active_opps ao ON inv."studentId" = ao."studentId"
+          WHERE inv."tenantId" = ${tenantId}
+            AND inv."opportunityId" IS NULL
+            AND inv.status::text IN ('UNPAID', 'PARTIALLY_PAID')
+            AND (ao."ay_startDate" IS NULL OR inv."invoiceDate" < ao."ay_startDate")
+          GROUP BY inv."studentId"
+        ),
+        student_financials AS (
+          SELECT 
+            sb.*,
+            COALESCE(ao."oppPaid", 0)::float AS "paidAmount",
+            (
+              GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0)) + 
+              COALESCE(pod."prevOppDue", 0) + 
+              COALESCE(oid."orphanDue", 0)
+            )::float AS "balanceDue",
+            (
+              COALESCE(ao."oppPaid", 0) + 
+              GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0)) + 
+              COALESCE(pod."prevOppDue", 0) + 
+              COALESCE(oid."orphanDue", 0)
+            )::float AS "totalFees",
+            CASE 
+              WHEN (
+                COALESCE(ao."oppPaid", 0) + 
+                GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0)) + 
+                COALESCE(pod."prevOppDue", 0) + 
+                COALESCE(oid."orphanDue", 0)
+              ) > 0 
+              THEN (
+                COALESCE(ao."oppPaid", 0) / 
+                (
+                  COALESCE(ao."oppPaid", 0) + 
+                  GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0)) + 
+                  COALESCE(pod."prevOppDue", 0) + 
+                  COALESCE(oid."orphanDue", 0)
+                )
+              ) * 100.0
+              ELSE (
+                CASE WHEN (
+                  GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0)) + 
+                  COALESCE(pod."prevOppDue", 0) + 
+                  COALESCE(oid."orphanDue", 0)
+                ) <= 0 THEN 100.0 ELSE 0.0 END
+              )
+            END AS "paidPercent"
+          FROM student_base sb
+          LEFT JOIN active_opps ao ON sb."studentId" = ao."studentId"
+          LEFT JOIN prev_opp_dues pod ON sb."studentId" = pod."studentId"
+          LEFT JOIN orphan_inv_dues oid ON sb."studentId" = oid."studentId"
+        ),
+        filtered_students AS (
+          SELECT 
+            sf.*,
+            COUNT(*) OVER()::int AS "totalCount"
+          FROM student_financials sf
+          WHERE 
+            ${financialStatus === 'FULLY_PAID' ? Prisma.sql`sf."balanceDue" <= 0 OR sf."paidPercent" >= 99.99` :
+              financialStatus === 'ABOVE_75' ? Prisma.sql`sf."paidPercent" > 75 AND sf."paidPercent" < 99.99 AND sf."balanceDue" > 0` :
+              financialStatus === 'PAID_50_75' ? Prisma.sql`sf."paidPercent" >= 50 AND sf."paidPercent" <= 75 AND sf."balanceDue" > 0` :
+              financialStatus === 'BELOW_50' ? Prisma.sql`sf."paidPercent" < 50` :
+              financialStatus === 'PENDING_BALANCE' ? Prisma.sql`sf."balanceDue" > 0` :
+              Prisma.sql`TRUE`
             }
-          },
-          classSection: {
-            select: {
-              id: true,
-              classId: true,
-              sectionId: true,
-              class: {
-                select: {
-                  id: true,
-                  name: true,
-                  academicYearId: true,
-                }
-              },
-              section: {
-                select: {
-                  id: true,
-                  name: true,
+          ORDER BY sf."userName" ASC, sf."studentId" ASC
+        )
+        SELECT * FROM filtered_students
+        ${isPaginated ? Prisma.sql`LIMIT ${take} OFFSET ${skip}` : Prisma.empty}
+      `;
+
+      const rows = await this.prisma.$queryRaw<Array<any>>(sqlQuery).catch((err) => {
+        console.error('[PERF ERROR] searchStudents financialStatus query failed:', err?.message || err);
+        return [];
+      });
+
+      const filteredTotal = rows.length > 0 ? rows[0].totalCount : 0;
+      const pagedStudentIds = rows.map(r => r.studentId);
+
+      // Fetch rich details & billing info for ONLY the paginated students (take rows)
+      const [studentsData, billingMap] = await Promise.all([
+        pagedStudentIds.length > 0 ? this.prisma.studentProfile.findMany({
+          where: { id: { in: pagedStudentIds } },
+          select: {
+            id: true,
+            rollNo: true,
+            fatherName: true,
+            motherName: true,
+            fatherPhone: true,
+            motherPhone: true,
+            guardianPhone: true,
+            aadharNo: true,
+            profilePhotoUrl: true,
+            classSectionId: true,
+            tenantId: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+              }
+            },
+            classSection: {
+              select: {
+                id: true,
+                classId: true,
+                sectionId: true,
+                class: {
+                  select: {
+                    id: true,
+                    name: true,
+                    academicYearId: true,
+                  }
+                },
+                section: {
+                  select: {
+                    id: true,
+                    name: true,
+                  }
                 }
               }
             }
           }
-        },
-        orderBy: {
-          user: {
-            name: 'asc'
-          }
-        },
-      });
+        }) : [],
+        this.getStudentsBillingInfoBatch(pagedStudentIds, tenantId, academicYearId)
+      ]);
 
-      const studentIds = allStudents.map(s => s.id);
-      const billingMap = await this.getStudentsBillingInfoBatch(studentIds, tenantId, academicYearId);
-
-      const allData = allStudents.map(s => {
+      const studentMap = new Map<string, any>(studentsData.map((s: any): [string, any] => [s.id, s]));
+      const pagedData = pagedStudentIds.map(id => {
+        const s: any = studentMap.get(id);
+        if (!s) return null;
         const billingInfo = billingMap[s.id] || {
           paidAmount: 0,
           balanceDue: 0,
@@ -705,7 +880,6 @@ export class StudentsService implements OnModuleInit {
           financialStatus: 'Fully Paid (100%)',
           feeSummary: null
         };
-
         return {
           ...s,
           paidAmount: billingInfo.paidAmount,
@@ -716,34 +890,7 @@ export class StudentsService implements OnModuleInit {
           financialStatus: billingInfo.financialStatus,
           feeSummary: billingInfo.feeSummary
         };
-      });
-
-      const filteredData = allData.filter(s => {
-        const due = Number(s.balanceDue) || 0;
-        const total = Number(s.totalFees) || (Number(s.paidAmount) + due);
-        const paid = Number(s.paidAmount) || 0;
-        const paidPercent = total > 0 ? (paid / total) * 100 : (due <= 0 ? 100 : 0);
-
-        switch (financialStatus) {
-          case 'FULLY_PAID':
-            return due <= 0 || paidPercent >= 99.99;
-          case 'ABOVE_75':
-            return paidPercent > 75 && paidPercent < 99.99 && due > 0;
-          case 'PAID_50_75':
-            return paidPercent >= 50 && paidPercent <= 75 && due > 0;
-          case 'BELOW_50':
-            return paidPercent < 50;
-          case 'PENDING_BALANCE':
-            return due > 0;
-          default:
-            return true;
-        }
-      });
-
-      const filteredTotal = filteredData.length;
-      const pagedData = isPaginated
-        ? filteredData.slice(skip, skip! + limit!)
-        : filteredData;
+      }).filter(Boolean);
 
       if (isPaginated) {
         return {

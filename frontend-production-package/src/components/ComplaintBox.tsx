@@ -364,50 +364,15 @@ export default function ComplaintBox({ isEmbedded = false }: ComplaintBoxProps) 
 
   const fetchInitialData = async () => {
     try {
-      const [classesRes, yearsRes, teachersRes, currentTeacherRes, pendingRes, complaintsRes] = await Promise.all([
-        fastGet('/complaint-box/student-classes', undefined, {
-          ttlMs: 60000,
-          onRevalidate: (fresh) => { if (fresh) setClassOptions(fresh.data || fresh); }
-        }).catch(() => null),
-        fastGet('/complaint-box/academic-years', undefined, {
-          ttlMs: 60000,
-          onRevalidate: (fresh) => { if (fresh) setAcademicYears(fresh.data || fresh); }
-        }).catch(() => null),
-        fastGet('/complaint-box/teachers', undefined, {
-          ttlMs: 60000,
-          onRevalidate: (fresh) => { if (fresh) setTeachers(fresh.data || fresh); }
-        }).catch(() => null),
-        fastGet('/complaint-box/current-teacher', undefined, { ttlMs: 60000 }).catch(() => null),
-        fastGet('/complaint-box/pending-cases', {
-          params: filterAcademicYear !== 'All' ? { academicYear: filterAcademicYear } : {}
-        }, {
-          ttlMs: 30000,
-          onRevalidate: (fresh) => { if (fresh) setPendingCases(fresh.data || fresh); }
-        }).catch(() => null),
-        fastGet('/complaint-box/parent-complaints', {
-          params: parentFilterStatus !== 'All' ? { status: parentFilterStatus } : {}
-        }, {
-          ttlMs: 30000,
-          onRevalidate: (fresh) => { if (fresh) setParentComplaints(fresh.data || fresh); }
-        }).catch(() => null),
-      ]);
+      // Fetch only the default active tab data ('parent-complaints') to avoid unnecessary inactive tab queries
+      const complaintsRes = await fastGet('/complaint-box/parent-complaints', {
+        params: parentFilterStatus !== 'All' ? { status: parentFilterStatus } : {}
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => { if (fresh) setParentComplaints(fresh.data || fresh); }
+      }).catch(() => null);
 
-      if (classesRes?.data) setClassOptions(classesRes.data);
-      if (yearsRes?.data) {
-        setAcademicYears(yearsRes.data);
-        if (yearsRes.data.length > 0) {
-          const activeYear = yearsRes.data.find((y: any) => y.isActive) || yearsRes.data[0];
-          setSelectedAcademicYear(activeYear.name);
-        }
-      }
-      if (teachersRes?.data) setTeachers(teachersRes.data);
-      if (pendingRes?.data) setPendingCases(pendingRes.data);
       if (complaintsRes?.data) setParentComplaints(complaintsRes.data);
-
-      if (currentTeacherRes && currentTeacherRes.data) {
-        setCurrentTeacher(currentTeacherRes.data);
-        setSubmittingTeacherId(currentTeacherRes.data.id);
-      }
     } catch (err) {
       console.error('Failed to load initial data:', err);
       if (activeTabRef.current === 'parent-complaints') {

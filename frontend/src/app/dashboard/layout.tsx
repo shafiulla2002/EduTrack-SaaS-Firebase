@@ -728,7 +728,9 @@ export default function DashboardLayout({
       fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/sections', undefined, { ttlMs: 60000 }).catch(() => {});
-    } else if (href.startsWith('/dashboard/staff') || href.startsWith('/dashboard/teachers')) {
+    } else if (href.startsWith('/dashboard/teachers')) {
+      fastGet('/timetable/workload/dashboard', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/staff')) {
       fastGet('/teachers', undefined, { ttlMs: 30000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/attendance-mgmt') || href.startsWith('/dashboard/attendance')) {

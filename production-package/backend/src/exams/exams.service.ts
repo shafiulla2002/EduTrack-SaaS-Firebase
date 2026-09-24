@@ -103,7 +103,24 @@ export class ExamsService {
           tenantId,
           ...(Object.keys(classWhere).length > 0 ? { class: classWhere } : {}),
         },
-        include: { class: true, section: true },
+        select: {
+          id: true,
+          classId: true,
+          sectionId: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+              academicYearId: true,
+            },
+          },
+          section: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
         orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
       });
       result = sections
@@ -113,7 +130,10 @@ export class ExamsService {
           label: `${s.class.name} - ${s.section.name}`,
           displayName: `${s.class.name} - ${s.section.name}`,
           classId: s.classId,
+          className: s.class.name,
           sectionId: s.sectionId,
+          sectionName: s.section.name,
+          academicYearId: s.class.academicYearId,
         }));
     } else {
       // Admin: all class-sections
@@ -122,7 +142,24 @@ export class ExamsService {
           tenantId,
           ...(Object.keys(classWhere).length > 0 ? { class: classWhere } : {}),
         },
-        include: { class: true, section: true },
+        select: {
+          id: true,
+          classId: true,
+          sectionId: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+              academicYearId: true,
+            },
+          },
+          section: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
         orderBy: [{ class: { name: 'asc' } }, { section: { name: 'asc' } }],
       });
       result = sections
@@ -132,7 +169,10 @@ export class ExamsService {
           label: `${s.class.name} - ${s.section.name}`,
           displayName: `${s.class.name} - ${s.section.name}`,
           classId: s.classId,
+          className: s.class.name,
           sectionId: s.sectionId,
+          sectionName: s.section.name,
+          academicYearId: s.class.academicYearId,
         }));
     }
 
@@ -168,6 +208,7 @@ export class ExamsService {
 
       const subjects = await this.prisma.subject.findMany({
         where: { id: { in: targetSubjectIds }, tenantId, isActive: true },
+        select: { id: true, name: true },
         orderBy: { name: 'asc' },
       });
       result = subjects.map(s => ({
@@ -181,7 +222,15 @@ export class ExamsService {
       if (classSectionId) {
         const classSubjects = await this.prisma.classSubject.findMany({
           where: { classSectionId, tenantId },
-          include: { subject: true },
+          select: {
+            subject: {
+              select: {
+                id: true,
+                name: true,
+                isActive: true,
+              },
+            },
+          },
           orderBy: { subject: { name: 'asc' } },
         });
         if (classSubjects.length > 0) {
@@ -199,6 +248,7 @@ export class ExamsService {
       if (result.length === 0) {
         const subjects = await this.prisma.subject.findMany({
           where: { tenantId, isActive: true },
+          select: { id: true, name: true },
           orderBy: { name: 'asc' },
         });
         result = subjects.map(s => ({
@@ -368,7 +418,7 @@ export class ExamsService {
       const exam = await this.prisma.exam.findUnique({
         where: { id: resolvedExamId },
       });
-      if (exam) {
+      if (exam && exam.tenantId === tenantId) {
         resolvedClassSectionId = exam.classSectionId;
       }
     }
@@ -393,75 +443,135 @@ export class ExamsService {
       );
     }
 
-    // Parallelize fetching student roster and classSection context
-    const [students, classSection] = await Promise.all([
-      this.prisma.studentProfile.findMany({
-        where: {
-          classSectionId: resolvedClassSectionId,
-          user: { tenantId, isActive: true },
-        },
-        include: {
-          user: {
-            select: { name: true },
-          },
-        },
-        orderBy: { user: { name: 'asc' } },
-      }),
+    // High-performance single SQL query joining StudentProfile, User, and ExamMark directly + parallel config lookup (100% READ-ONLY)
+    const [rawRoster, classSection, existingExamSubject] = await Promise.all([
+      this.prisma.$queryRaw<Array<{
+        studentId: string;
+        name: string;
+        rollNo: string;
+        hasMarks: boolean;
+        marksObtained: number | null;
+        remarks: string;
+      }>>`
+        SELECT 
+          sp.id AS "studentId",
+          COALESCE(u.name, 'Student') AS "name",
+          COALESCE(sp."rollNo", 'N/A') AS "rollNo",
+          (em.id IS NOT NULL AND em."marksObtained" IS NOT NULL) AS "hasMarks",
+          em."marksObtained"::float AS "marksObtained",
+          COALESCE(em.remarks, '') AS "remarks"
+        FROM "StudentProfile" sp
+        JOIN "User" u ON sp."userId" = u.id
+        LEFT JOIN "ExamMark" em ON em."studentId" = sp.id 
+          AND em."examId" = ${resolvedExamId || '00000000-0000-0000-0000-000000000000'}
+          AND em."subjectId" = ${subjectId}
+          AND LOWER(em."subjectType") = LOWER(${subjectType || 'Theory'})
+        WHERE sp."classSectionId" = ${resolvedClassSectionId}
+          AND sp."tenantId" = ${tenantId}
+          AND u."isActive" = true
+      `,
       this.prisma.classSection.findUnique({
         where: { id: resolvedClassSectionId },
-        include: { class: true },
+        select: {
+          id: true,
+          classId: true,
+          sectionId: true,
+          tenantId: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+              academicYearId: true,
+            },
+          },
+        },
       }),
+      resolvedExamId
+        ? this.prisma.examSubject.findFirst({
+            where: {
+              tenantId,
+              examId: resolvedExamId,
+              subjectId,
+              ...(subjectType ? { subjectType: { equals: subjectType, mode: 'insensitive' } } : {}),
+            },
+            select: {
+              maxMarks: true,
+              passingPercentage: true,
+              passMarks: true,
+            },
+          })
+        : null,
     ]);
+
+    if (classSection && classSection.tenantId !== tenantId) {
+      throw new BadRequestException('Class section does not belong to this school');
+    }
+
+    const parseRollNo = (r?: string | null) => {
+      if (!r) return { num: Infinity, str: '' };
+      const trimmed = r.trim();
+      const match = trimmed.match(/^(\d+)(.*)$/);
+      if (match) {
+        return { num: parseInt(match[1], 10), str: match[2] };
+      }
+      const num = parseInt(trimmed, 10);
+      return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
+    };
+
+    rawRoster.sort((a, b) => {
+      const rollA = parseRollNo(a.rollNo);
+      const rollB = parseRollNo(b.rollNo);
+      if (rollA.num !== rollB.num) return rollA.num - rollB.num;
+      if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
     const classId = classSection?.classId;
     const academicYearId = classSection?.class?.academicYearId;
 
-    const marksMap = new Map<string, any>();
-    // Load config for this exact context
+    // Load config in a 100% read-only manner without mutating the database
     let maxMarks = 100;
     let passingPercentage = 35;
     let passMarks = 35;
-    
-    if (resolvedExamId) {
-      const currentMarks = await this.prisma.examMark.findMany({
-        where: {
-          tenantId,
-          examId: resolvedExamId,
-          subjectId,
-          subjectType,
-        },
-      });
-      for (const m of currentMarks) {
-        marksMap.set(m.studentId, m);
+
+    try {
+      if (existingExamSubject) {
+        maxMarks = Number(existingExamSubject.maxMarks) || 100;
+        passingPercentage = Number(existingExamSubject.passingPercentage) || 35;
+        passMarks = existingExamSubject.passMarks !== null && existingExamSubject.passMarks !== undefined
+          ? Number(existingExamSubject.passMarks)
+          : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
+      } else {
+        // In-memory resolution from template hierarchy without saving to DB
+        const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
+        const subRec = subjectId ? await this.prisma.subject.findUnique({ where: { id: subjectId }, select: { name: true } }) : null;
+        const resolved = this.examConfigService.resolveSubjectConfig(cfg, subjectId, subjectType, subRec?.name);
+        maxMarks = resolved.maxMarks;
+        passingPercentage = resolved.passingPercentage;
+        passMarks = resolved.passMarks;
       }
-      
-      const examSub = await this.examConfigService.getOrInitializeExamSubject(resolvedExamId, subjectId, subjectType, tenantId);
-      maxMarks = examSub?.maxMarks || 100;
-      passingPercentage = Number(examSub?.passingPercentage || 35);
-      passMarks = examSub?.passMarks !== null && examSub?.passMarks !== undefined
-        ? Number(examSub.passMarks)
-        : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
-    } else {
-      const cfg = await this.examConfigService.resolveConfig(examName, classId, academicYearId, tenantId);
-      const subRec = subjectId ? await this.prisma.subject.findUnique({ where: { id: subjectId } }) : null;
-      const resolved = this.examConfigService.resolveSubjectConfig(cfg, subjectId, subjectType, subRec?.name);
-      maxMarks = resolved.maxMarks;
-      passingPercentage = resolved.passingPercentage;
-      passMarks = resolved.passMarks;
+    } catch (configErr) {
+      console.warn('[ExamsService] Error resolving exam subject config, using safe defaults:', configErr);
+      maxMarks = 100;
+      passingPercentage = 35;
+      passMarks = 35;
     }
 
+    // Ensure safe numeric values (never NaN)
+    maxMarks = isNaN(maxMarks) || maxMarks <= 0 ? 100 : maxMarks;
+    passingPercentage = isNaN(passingPercentage) || passingPercentage < 0 ? 35 : passingPercentage;
+    passMarks = isNaN(passMarks) || passMarks < 0 ? Number(((passingPercentage / 100) * maxMarks).toFixed(2)) : passMarks;
+
     return {
-      roster: students.map(s => {
-        const markRecord = marksMap.get(s.id);
-        return {
-          studentId: s.id,
-          name: s.user?.name || 'Student',
-          rollNo: s.rollNo || 'N/A',
-          hasMarks: !!markRecord,
-          marksObtained: markRecord ? Number(markRecord.marksObtained) : null,
-          remarks: markRecord ? markRecord.remarks : '',
-        };
-      }),
-      config: { maxMarks, passingPercentage, passMarks }
+      roster: rawRoster.map(s => ({
+        studentId: s.studentId,
+        name: s.name,
+        rollNo: s.rollNo,
+        hasMarks: Boolean(s.hasMarks),
+        marksObtained: s.marksObtained !== null && s.marksObtained !== undefined ? Number(s.marksObtained) : null,
+        remarks: s.remarks || '',
+      })),
+      config: { maxMarks, passingPercentage, passMarks },
     };
   }
 
@@ -727,5 +837,310 @@ export class ExamsService {
 
     this.examsCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
     return result;
+  }
+
+  // ── GOVERNMENT-STYLE MARKS REPORT EXPORT (100% READ-ONLY) ───────────────────
+
+  async getMarksReport(params: {
+    academicYearId?: string;
+    classId?: string;
+    sectionId?: string;
+    classSectionId?: string;
+    examName: string;
+  }) {
+    const tenantId = this.getTenantId();
+    const { academicYearId, classId, sectionId, classSectionId, examName } = params;
+
+    if (!examName || examName.trim() === '') {
+      throw new BadRequestException('Exam Name / Exam Type is required');
+    }
+
+    // 1. Resolve & Validate ClassSection strictly within the authenticated tenant
+    let targetClassSection: any = null;
+
+    if (classSectionId) {
+      targetClassSection = await this.prisma.classSection.findFirst({
+        where: { id: classSectionId, tenantId },
+        select: {
+          id: true,
+          classId: true,
+          sectionId: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+              academicYearId: true,
+              academicYear: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          section: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+      if (!targetClassSection) {
+        throw new BadRequestException('Invalid Class Section specified for this school');
+      }
+      if (classId && targetClassSection.classId !== classId) {
+        throw new BadRequestException('ClassSection does not match the specified Class');
+      }
+      if (sectionId && targetClassSection.sectionId !== sectionId) {
+        throw new BadRequestException('ClassSection does not match the specified Section');
+      }
+      if (academicYearId && targetClassSection.class?.academicYearId !== academicYearId) {
+        throw new BadRequestException('ClassSection does not match the specified Academic Year');
+      }
+    } else if (classId && sectionId) {
+      targetClassSection = await this.prisma.classSection.findFirst({
+        where: { classId, sectionId, tenantId },
+        select: {
+          id: true,
+          classId: true,
+          sectionId: true,
+          class: {
+            select: {
+              id: true,
+              name: true,
+              academicYearId: true,
+              academicYear: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          section: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+      if (!targetClassSection) {
+        throw new BadRequestException('No matching Class and Section found for this school');
+      }
+      if (academicYearId && targetClassSection.class?.academicYearId !== academicYearId) {
+        throw new BadRequestException('Class does not belong to the selected Academic Year');
+      }
+    } else {
+      throw new BadRequestException('Please select both Class and Section');
+    }
+
+    const resolvedClassSectionId = targetClassSection.id;
+    const resolvedClassName = targetClassSection.class?.name || 'Class';
+    const resolvedSectionName = targetClassSection.section?.name || 'Section';
+    const resolvedAcademicYearName = targetClassSection.class?.academicYear?.name || 'Academic Year';
+    const resolvedAcademicYearId = targetClassSection.class?.academicYearId || academicYearId;
+
+    // 2. Parallel fetch for Tenant, Subjects, Exam, and Students
+    const [tenant, classSubjects, exam, students] = await Promise.all([
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: {
+          id: true,
+          name: true,
+          subDomain: true,
+          schoolSetup: {
+            select: {
+              schoolName: true,
+            },
+          },
+        },
+      }),
+      this.prisma.classSubject.findMany({
+        where: { classSectionId: resolvedClassSectionId, tenantId },
+        select: {
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              isActive: true,
+            },
+          },
+        },
+        orderBy: { subject: { name: 'asc' } },
+      }),
+      this.prisma.exam.findFirst({
+        where: {
+          tenantId,
+          classSectionId: resolvedClassSectionId,
+          name: { equals: examName.trim(), mode: 'insensitive' },
+        },
+        select: { id: true },
+      }),
+      this.prisma.studentProfile.findMany({
+        where: {
+          classSectionId: resolvedClassSectionId,
+          tenantId,
+          user: { isActive: true },
+        },
+        select: {
+          id: true,
+          rollNo: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: [
+          { rollNo: 'asc' },
+          { user: { name: 'asc' } },
+        ],
+      }),
+    ]);
+
+    if (!tenant) {
+      throw new BadRequestException('School tenant context not found');
+    }
+
+    let subjects = classSubjects
+      .map(cs => cs.subject)
+      .filter(s => s && s.isActive);
+
+    if (subjects.length === 0) {
+      subjects = await this.prisma.subject.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true, isActive: true },
+        orderBy: { name: 'asc' },
+      });
+    }
+
+    // Standard deterministic curriculum sequence (Language 1 -> Language 2 -> English -> Maths -> Science -> Social -> Other)
+    const SUBJECT_ORDER: Record<string, number> = {
+      telugu: 1,
+      firstlanguage: 1,
+      hindi: 2,
+      secondlanguage: 2,
+      english: 3,
+      thirdlanguage: 3,
+      mathematics: 4,
+      maths: 4,
+      math: 4,
+      science: 5,
+      generalscience: 5,
+      physicalscience: 5.1,
+      biologicalscience: 5.2,
+      evs: 5.3,
+      social: 6,
+      socialstudies: 6,
+      computerscience: 7,
+      computer: 7,
+      it: 7,
+    };
+
+    subjects.sort((a, b) => {
+      const cleanA = a.name.toLowerCase().replace(/[^a-z]/g, '');
+      const cleanB = b.name.toLowerCase().replace(/[^a-z]/g, '');
+      const orderA = SUBJECT_ORDER[cleanA] ?? 100;
+      const orderB = SUBJECT_ORDER[cleanB] ?? 100;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.name.localeCompare(b.name);
+    });
+
+    // 3. Resolve Marks (if exam exists)
+    const marksMap = new Map<string, { marksObtained: any; remarks: string | null }>();
+    if (exam) {
+      const marks = await this.prisma.examMark.findMany({
+        where: {
+          tenantId,
+          examId: exam.id,
+        },
+        select: {
+          studentId: true,
+          subjectId: true,
+          marksObtained: true,
+          remarks: true,
+        },
+      });
+      for (const m of marks) {
+        marksMap.set(`${m.studentId}_${m.subjectId}`, m);
+      }
+    }
+
+    const parseRollNo = (r?: string | null) => {
+      if (!r) return { num: Infinity, str: '' };
+      const trimmed = r.trim();
+      const match = trimmed.match(/^(\d+)(.*)$/);
+      if (match) {
+        return { num: parseInt(match[1], 10), str: match[2] };
+      }
+      const num = parseInt(trimmed, 10);
+      return isNaN(num) ? { num: Infinity, str: trimmed } : { num, str: '' };
+    };
+
+    students.sort((a, b) => {
+      const rollA = parseRollNo(a.rollNo);
+      const rollB = parseRollNo(b.rollNo);
+      if (rollA.num !== rollB.num) return rollA.num - rollB.num;
+      if (rollA.str !== rollB.str) return rollA.str.localeCompare(rollB.str);
+      return (a.user?.name || '').localeCompare(b.user?.name || '');
+    });
+
+    // 6. Compile Normalized Student Mark Rows
+    const studentRows = students.map(s => {
+      const marksObj: Record<string, number | 'AB' | '—'> = {};
+      let totalObtained = 0;
+      let hasAnyMark = false;
+
+      for (const sub of subjects) {
+        const markRecord = marksMap.get(`${s.id}_${sub.id}`);
+        if (!markRecord) {
+          marksObj[sub.name] = '—';
+        } else {
+          const rem = markRecord.remarks?.trim().toUpperCase() || '';
+          const isAbsent = rem === 'AB' || rem === 'ABSENT' || rem.startsWith('AB-') || rem.includes('ABSENT');
+          if (isAbsent) {
+            marksObj[sub.name] = 'AB';
+          } else if (markRecord.marksObtained !== null && markRecord.marksObtained !== undefined) {
+            const numVal = Number(markRecord.marksObtained);
+            marksObj[sub.name] = numVal;
+            totalObtained += numVal;
+            hasAnyMark = true;
+          } else {
+            marksObj[sub.name] = '—';
+          }
+        }
+      }
+
+      return {
+        studentId: s.id,
+        admissionNo: s.rollNo || s.id.substring(0, 8).toUpperCase(),
+        rollNo: s.rollNo || 'N/A',
+        studentName: s.user?.name || 'Student',
+        marks: marksObj,
+        totalMarks: hasAnyMark ? totalObtained : null,
+      };
+    });
+
+    const resolvedSchoolName = tenant.schoolSetup?.schoolName?.trim() || tenant.name?.trim() || 'CS EduTrack Institute';
+    const resolvedSchoolCode = tenant.subDomain?.trim() || tenant.id.substring(0, 8).toUpperCase();
+
+    return {
+      schoolName: resolvedSchoolName,
+      schoolCode: resolvedSchoolCode,
+      academicYear: resolvedAcademicYearName,
+      academicYearId: resolvedAcademicYearId,
+      className: resolvedClassName,
+      classId: targetClassSection.classId,
+      sectionName: resolvedSectionName,
+      sectionId: targetClassSection.sectionId,
+      classSectionId: resolvedClassSectionId,
+      examType: examName.trim(),
+      subjects: subjects.map(s => ({ id: s.id, name: s.name })),
+      totalStudents: studentRows.length,
+      students: studentRows,
+    };
   }
 }
