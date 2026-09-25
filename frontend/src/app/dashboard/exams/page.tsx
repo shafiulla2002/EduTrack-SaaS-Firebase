@@ -82,10 +82,19 @@ export default function ExamsAndMarksPage() {
   const ENTER_MARKS_FILTER_KEY = 'cs-edutrack-enter-marks-filter';
 
   // Metadata state loaded once on mount
-  const [academicYears, setAcademicYears] = useState<AcademicYearOption[]>([]);
-  const [classes, setClasses] = useState<ClassSectionOption[]>([]);
-  const [examTypes, setExamTypes] = useState<string[]>([]);
-  const [components, setComponents] = useState<any[]>([]);
+  const [academicYears, setAcademicYears] = useState<AcademicYearOption[]>(() => {
+    return getCachedData<AcademicYearOption[]>('/academics/academic-years') || 
+           getCachedData<AcademicYearOption[]>('/academic-years') || [];
+  });
+  const [classes, setClasses] = useState<ClassSectionOption[]>(() => {
+    return getCachedData<ClassSectionOption[]>('/exams/classes') || [];
+  });
+  const [examTypes, setExamTypes] = useState<string[]>(() => {
+    return getCachedData<string[]>('/exams/exam-types') || [];
+  });
+  const [components, setComponents] = useState<any[]>(() => {
+    return getCachedData<any[]>('/exam-config/components') || [];
+  });
   const [availableSubjects, setAvailableSubjects] = useState<SubjectOption[]>([]);
   const [isLoadingSubjects, setIsLoadingSubjects] = useState(false);
 
@@ -131,7 +140,10 @@ export default function ExamsAndMarksPage() {
     passMarks: 35,
   });
 
-  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(() => {
+    const cachedClasses = getCachedData<ClassSectionOption[]>('/exams/classes');
+    return !Array.isArray(cachedClasses) || cachedClasses.length === 0;
+  });
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);

@@ -106,10 +106,12 @@ export class ExpensesService {
     startOfYear.setMonth(0, 1);
     startOfYear.setHours(0, 0, 0, 0);
 
+    const earliestDate = startOfYear < startOfPrevMonth ? startOfYear : startOfPrevMonth;
+
     const expenses = await this.prisma.expense.findMany({
       where: {
         tenantId,
-        date: { gte: startOfPrevMonth },
+        date: { gte: earliestDate },
       },
     });
 

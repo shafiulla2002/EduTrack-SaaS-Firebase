@@ -51,7 +51,7 @@ interface StaffMember {
   avatarUrl?: string;
 }
 
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { resizeAndCompressImage } from '@/lib/image';
@@ -63,9 +63,61 @@ import {
   LoadingButton,
 } from '@/components/loading';
 
+function mapStaffData(data: any[]): StaffMember[] {
+  if (!Array.isArray(data)) return [];
+  return data.map((t: any, idx: number) => {
+    const nameParts = t.user?.name ? t.user.name.split(' ') : ['Teacher'];
+    const firstName = nameParts[0] || 'Teacher';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    return {
+      id: t.id,
+      firstName,
+      lastName,
+      name: t.user?.name || 'Unknown Teacher',
+      initials: (firstName[0] || '') + (lastName[0] || ''),
+      email: t.user?.email || '',
+      phone: t.user?.phone || '',
+      avatarUrl: t.user?.avatarUrl || null,
+      employeeId: t.employeeId || `EMP-T-${t.id.substring(0, 4).toUpperCase()}`,
+      designation: t.designation || 'Teacher',
+      department: (t.subjectsTaught && t.subjectsTaught.length > 0) ? t.subjectsTaught[0] : (
+                  t.designation?.toLowerCase().includes('teacher') ? 'Science' : 
+                  t.designation?.toLowerCase().includes('driver') ? 'Transport' : 
+                  t.designation?.toLowerCase().includes('librarian') ? 'Library' :
+                  t.designation?.toLowerCase().includes('account') ? 'Finance' : 
+                  t.designation?.toLowerCase().includes('security') ? 'Security' : 'Administration'
+      ),
+      staffType: (t.user?.role === 'STAFF' || t.user?.role === 'DRIVER') ? 'Non-Teaching' : 'Teaching',
+      subject: t.subjectsTaught?.[0] || 'General',
+      basicSalary: Number(t.basicSalary) || 25000,
+      hra: Number(t.allowances) || 0,
+      da: 0,
+      pf: Number(t.pfDeduction) || 0,
+      joiningDate: t.joiningDate ? new Date(t.joiningDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      qualification: t.qualification || '',
+      gender: 'General',
+      dob: '',
+      address: '',
+      status: t.status || 'Active',
+      accountNumber: '',
+      ifsc: '',
+      skills: t.teacherSkills?.length > 0
+        ? t.teacherSkills.map((sk: any) => ({
+            subject: sk.subject?.name || sk.subjectId || 'Unknown',
+            level: sk.skillLevel || 'Expert',
+            exp: sk.yearsOfExperience ?? 0,
+          }))
+        : (t.subjectsTaught?.map((sub: string) => ({ subject: sub, level: 'Expert', exp: 5 })) || []),
+      salaryStatus: 'Pending',
+      gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
+    };
+  });
+}
+
 export default function SchoolStaffPage() {
   const { showToast } = useToast();
-  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const initialStaff = getCachedData<any[]>('/teachers') || [];
+  const [staff, setStaff] = useState<StaffMember[]>(() => mapStaffData(initialStaff));
   const [deleteConfirm, setDeleteConfirm] = useState<{
     show: boolean;
     id: string;
@@ -90,7 +142,7 @@ export default function SchoolStaffPage() {
       showToast(err.response?.data?.message || 'Failed to delete staff member.', 'error');
     }
   };
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => initialStaff.length === 0);
   const [activeTab, setActiveTab] = useState<'all' | 'teaching' | 'non-teaching' | 'salary'>('all');
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
@@ -156,9 +208,9 @@ export default function SchoolStaffPage() {
     setStaffCases([]);
     try {
       const [invoicesRes, casesRes, scheduleRes] = await Promise.allSettled([
-        api.get(`/teachers/${staffId}/salary-invoices`),
-        api.get(`/teachers/${staffId}/cases`),
-        isTeaching ? api.get(`/teachers/${staffId}/schedule`) : Promise.resolve({ data: [] }),
+        fastGet(`/teachers/${staffId}/salary-invoices`, undefined, { ttlMs: 60000 }),
+        fastGet(`/teachers/${staffId}/cases`, undefined, { ttlMs: 60000 }),
+        isTeaching ? fastGet(`/teachers/${staffId}/schedule`, undefined, { ttlMs: 60000 }) : Promise.resolve({ data: [] }),
       ]);
       setStaffSalaryInvoices(invoicesRes.status === 'fulfilled' ? (invoicesRes.value.data || []) : []);
       setStaffCases(casesRes.status === 'fulfilled' ? (casesRes.value.data || []) : []);

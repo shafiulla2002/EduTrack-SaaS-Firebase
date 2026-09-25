@@ -8,7 +8,7 @@ import {
   MapPin, Calendar as CalendarIcon, DollarSign, BookOpen, ShieldAlert,
   Percent, Trash2, FileText, Download
 } from 'lucide-react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
 import { useSchoolSetupUpdate } from '@/lib/events';
 import { useToast } from '@/components/Toast';
@@ -44,6 +44,44 @@ interface Student {
   profilePhotoUrl?: string | null;
 }
 
+// ── Unified Student Data Mapper (Requirement 16) ──────────────────────────
+function mapStudentRecord(s: any): Student {
+  const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
+  const due = s.balanceDue !== undefined ? Number(s.balanceDue) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
+  const totalFees = s.totalFees !== undefined ? Number(s.totalFees) : (paid + due);
+  const pendingPercentage = s.pendingPercentage !== undefined ? Number(s.pendingPercentage) : (totalFees > 0 ? Math.round((due / totalFees) * 100) : 0);
+  const paidPercentage = s.paidPercentage !== undefined ? Number(s.paidPercentage) : (totalFees > 0 ? Math.round((paid / totalFees) * 100) : 100);
+
+  const financialStatus = s.financialStatus || (due > 0 ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
+
+  const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
+  const cleanPhone = !rawPhone ? 'N/A' : (rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone);
+
+  return {
+    id: s.id,
+    rollNo: s.rollNo || 'N/A',
+    name: s.user?.name || s.name || 'Unknown Student',
+    email: s.user?.email || 'N/A',
+    phone: cleanPhone,
+    fatherPhone: s.fatherPhone || 'N/A',
+    motherPhone: s.motherPhone || 'N/A',
+    guardianPhone: s.guardianPhone || 'N/A',
+    class: s.classSection?.class?.name || s.class || 'N/A',
+    section: s.classSection?.section?.name || s.section || 'N/A',
+    fatherName: s.fatherName || s.parentName || 'N/A',
+    motherName: s.motherName || 'N/A',
+    aadharNo: s.aadharNo || 'N/A',
+    paidAmount: paid,
+    balanceDue: due,
+    totalFees,
+    pendingPercentage,
+    paidPercentage,
+    financialStatus,
+    academicYearId: s.classSection?.class?.academicYearId || '',
+    profilePhotoUrl: s.profilePhotoUrl || null,
+  };
+}
+
 export default function StudentsDirectory() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -56,14 +94,14 @@ export default function StudentsDirectory() {
   const [selectedSection, setSelectedSection] = useState('All');
   const [selectedFinancialStatus, setSelectedFinancialStatus] = useState('All');
 
-  // Metadata dropdown options
-  const [academicYears, setAcademicYears] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [sections, setSections] = useState<any[]>([]);
+  // Metadata dropdown options initialized from SWR cache
+  const [academicYears, setAcademicYears] = useState<any[]>(() => getCachedData<any[]>('/academics/academic-years') || []);
+  const [classes, setClasses] = useState<any[]>(() => getCachedData<any[]>('/academics/classes') || []);
+  const [sections, setSections] = useState<any[]>(() => getCachedData<any[]>('/academics/sections') || []);
 
   // Refs to prevent dropdown option loading from invalidating buildStudentQueryParams callback
-  const classesRef = useRef<any[]>([]);
-  const sectionsRef = useRef<any[]>([]);
+  const classesRef = useRef<any[]>(classes);
+  const sectionsRef = useRef<any[]>(sections);
 
   useEffect(() => {
     classesRef.current = classes;
@@ -73,13 +111,17 @@ export default function StudentsDirectory() {
     sectionsRef.current = sections;
   }, [sections]);
 
+  // Initial cached dataset for instant 0ms render
+  const initialCached = getCachedData<any>('/students', { page: 1, limit: 20 });
+  const initialRawData = initialCached?.data || (Array.isArray(initialCached) ? initialCached : []);
+
   // Request-specific loading states (Requirement 13)
-  const [loadingStudents, setLoadingStudents] = useState(true);
+  const [loadingStudents, setLoadingStudents] = useState(() => initialRawData.length === 0);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
-  // Student dataset
-  const [students, setStudents] = useState<Student[]>([]);
+  // Student dataset initialized synchronously from cache
+  const [students, setStudents] = useState<Student[]>(() => initialRawData.map(mapStudentRecord));
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   // Delete modal state
@@ -102,143 +144,69 @@ export default function StudentsDirectory() {
   // Pagination States
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
+  const [total, setTotal] = useState(() => initialCached?.total !== undefined ? initialCached.total : initialRawData.length);
+  const [totalPages, setTotalPages] = useState(() => initialCached?.totalPages !== undefined ? initialCached.totalPages : Math.ceil((initialCached?.total || initialRawData.length || 1) / 20));
+
+  const availableClassNames = useMemo(() => {
+    const names = classes.map((c: any) => c.name).filter(Boolean);
+    return Array.from(new Set(names));
+  }, [classes]);
+
+  const availableSectionNames = useMemo(() => {
+    const names = sections.map((s: any) => s.name).filter(Boolean);
+    return Array.from(new Set(names));
+  }, [sections]);
+
+  const buildStudentQueryParams = useCallback((pageNumber: number, limitCount: number) => {
+    const params: any = {
+      page: pageNumber,
+      limit: limitCount,
+    };
+    if (search.trim()) {
+      params.search = search.trim();
+    }
+    if (selectedYear !== 'All') {
+      params.academicYearId = selectedYear;
+    }
+    if (selectedClass !== 'All') {
+      const cls = classesRef.current.find((c: any) => c.name === selectedClass || c.id === selectedClass);
+      if (cls) {
+        params.classId = cls.id;
+      }
+      params.className = selectedClass;
+    }
+    if (selectedSection !== 'All') {
+      const sec = sectionsRef.current.find((s: any) => s.name === selectedSection || s.id === selectedSection);
+      if (sec) {
+        params.sectionId = sec.id;
+      }
+      params.sectionName = selectedSection;
+    }
+    if (selectedFinancialStatus !== 'All') {
+      params.financialStatus = selectedFinancialStatus;
+    }
+    return params;
+  }, [search, selectedYear, selectedClass, selectedSection, selectedFinancialStatus]);
+
+  const loadFilterOptions = useCallback(async () => {
+    try {
+      const [yearsRes, classesRes, sectionsRes] = await Promise.all([
+        fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
+        fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
+      ]);
+      if (yearsRes.data) setAcademicYears(yearsRes.data);
+      if (classesRes.data) setClasses(classesRes.data);
+      if (sectionsRes.data) setSections(sectionsRes.data);
+    } catch (err) {
+      console.error('Failed to load filter options:', err);
+    }
+  }, []);
 
   // Race Condition & Abort Guards (Requirement 4 & 15)
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef<number>(0);
   const isInitialMountRef = useRef<boolean>(false);
-
-  // ── Unified Student Data Mapper (Requirement 16) ──────────────────────────
-  const mapStudentRecord = useCallback((s: any): Student => {
-    const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
-    const due = s.balanceDue !== undefined ? Number(s.balanceDue) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
-    const totalFees = s.totalFees !== undefined ? Number(s.totalFees) : (paid + due);
-    const pendingPercentage = s.pendingPercentage !== undefined ? Number(s.pendingPercentage) : (totalFees > 0 ? Math.round((due / totalFees) * 100) : 0);
-    const paidPercentage = s.paidPercentage !== undefined ? Number(s.paidPercentage) : (totalFees > 0 ? Math.round((paid / totalFees) * 100) : 100);
-
-    const financialStatus = s.financialStatus || (due > 0 ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
-
-    const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
-    const cleanPhone = !rawPhone ? 'N/A' : (rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone);
-
-    return {
-      id: s.id,
-      rollNo: s.rollNo || 'N/A',
-      name: s.user?.name || s.name || 'Unknown Student',
-      email: s.user?.email || 'N/A',
-      phone: cleanPhone,
-      fatherPhone: s.fatherPhone || 'N/A',
-      motherPhone: s.motherPhone || 'N/A',
-      guardianPhone: s.guardianPhone || 'N/A',
-      class: s.classSection?.class?.name || s.class || 'N/A',
-      section: s.classSection?.section?.name || s.section || 'N/A',
-      fatherName: s.fatherName || s.parentName || 'N/A',
-      motherName: s.motherName || 'N/A',
-      aadharNo: s.aadharNo || 'N/A',
-      paidAmount: paid,
-      balanceDue: due,
-      totalFees,
-      pendingPercentage,
-      paidPercentage,
-      financialStatus,
-      academicYearId: s.classSection?.class?.academicYearId || '',
-      profilePhotoUrl: s.profilePhotoUrl || null,
-    };
-  }, []);
-
-  // ── Canonical Query Builder (Requirements 9, 10, 11) ──────────────────────
-  const buildStudentQueryParams = useCallback((pageNumber?: number, customLimit?: number) => {
-    const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
-
-    const currentClasses = classesRef.current.length > 0 ? classesRef.current : classes;
-    const currentSections = sectionsRef.current.length > 0 ? sectionsRef.current : sections;
-
-    // Requirement 10: Scope class resolution to the currently selected academicYearId
-    let classId: string | undefined;
-    let className: string | undefined;
-
-    if (selectedClass !== 'All' && selectedClass.trim()) {
-      className = selectedClass.trim();
-      if (academicYearId) {
-        const matchingClass = currentClasses.find(c => c.name === selectedClass && c.academicYearId === academicYearId);
-        if (matchingClass) {
-          classId = matchingClass.id;
-        }
-      } else {
-        const matchingClass = currentClasses.find(c => c.name === selectedClass);
-        if (matchingClass) {
-          classId = matchingClass.id;
-        }
-      }
-    }
-
-    // Requirement 11: Canonical section filter
-    let sectionId: string | undefined;
-    let sectionName: string | undefined;
-
-    if (selectedSection !== 'All' && selectedSection.trim()) {
-      sectionName = selectedSection.trim();
-      const cleanSecFilter = selectedSection.replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
-      const matchingSection = currentSections.find(s => {
-        if (s.name === selectedSection) return true;
-        const sClean = (s.name || '').replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
-        return sClean === cleanSecFilter;
-      });
-      if (matchingSection) {
-        sectionId = matchingSection.id;
-      }
-    }
-
-    const trimmedSearch = search.trim();
-
-    return {
-      ...(pageNumber !== undefined ? { page: pageNumber } : {}),
-      ...(customLimit !== undefined ? { limit: customLimit } : {}),
-      search: trimmedSearch || undefined,
-      classId,
-      className: !classId ? className : undefined,
-      sectionId,
-      sectionName: !sectionId ? sectionName : undefined,
-      academicYearId,
-      financialStatus: selectedFinancialStatus === 'All' ? undefined : selectedFinancialStatus,
-    };
-  }, [selectedYear, selectedClass, selectedSection, selectedFinancialStatus, search]);
-
-  // ── Scoped Class & Section Dropdown Lists ─────────────────────────────────
-  const filteredClassesForYear = useMemo(() => {
-    if (selectedYear === 'All' || !selectedYear) return classes;
-    return classes.filter(c => c.academicYearId === selectedYear);
-  }, [classes, selectedYear]);
-
-  const availableClassNames = useMemo(() => {
-    const names = Array.from(new Set(filteredClassesForYear.map(c => c.name))).filter(Boolean);
-    return names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [filteredClassesForYear]);
-
-  const availableSectionNames = useMemo(() => {
-    const names = Array.from(new Set(sections.map(s => s.name))).filter(Boolean);
-    return names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [sections]);
-
-  // ── Load Filter Options (Years, Classes, Sections) ────────────────────────
-  const loadFilterOptions = async () => {
-    try {
-      const [ayRes, classRes, secRes] = await Promise.all([
-        fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
-        fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
-        fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
-      ]);
-      setAcademicYears(ayRes.data || []);
-      setClasses(classRes.data || []);
-      classesRef.current = classRes.data || [];
-      setSections(secRes.data || []);
-      sectionsRef.current = secRes.data || [];
-    } catch (err) {
-      console.error('Failed to load filter options:', err);
-    }
-  };
 
   // ── Load Students with Race-Condition & Abort Controller Guard ────────────
   const loadStudents = useCallback(async (pageNumber = 1) => {
@@ -253,16 +221,33 @@ export default function StudentsDirectory() {
     requestIdRef.current += 1;
     const currentRequestId = requestIdRef.current;
 
-    // 3. Mark loading immediately (Requirements 2, 3, 14, 15) & reset error
-    setLoadingStudents(true);
+    const queryParams = buildStudentQueryParams(pageNumber, limit);
+    const cached = getCachedData<any>('/students', queryParams);
+    
+    // Only show full loading spinner if no cached data is available for these query params
+    if (!cached) {
+      setLoadingStudents(true);
+    }
     setFetchError(null);
 
     try {
-      const queryParams = buildStudentQueryParams(pageNumber, limit);
-
-      const res = await api.get('/students', {
+      const res = await fastGet('/students', {
         params: queryParams,
         signal: controller.signal,
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (currentRequestId !== requestIdRef.current) return;
+          const freshData = fresh?.data || (Array.isArray(fresh) ? fresh : []);
+          const freshTotal = fresh?.total !== undefined ? fresh.total : (Array.isArray(fresh) ? fresh.length : 0);
+          const freshTotalPages = fresh?.totalPages !== undefined ? fresh.totalPages : Math.ceil(freshTotal / limit);
+          const freshPage = fresh?.page !== undefined ? fresh.page : pageNumber;
+          setStudents(freshData.map(mapStudentRecord));
+          setTotal(freshTotal);
+          setTotalPages(freshTotalPages);
+          setPage(freshPage);
+          setLoadingStudents(false);
+        }
       });
 
       // 4. Ignore superseded response if newer filter request was initiated
@@ -293,7 +278,7 @@ export default function StudentsDirectory() {
         setLoadingStudents(false);
       }
     }
-  }, [buildStudentQueryParams, limit, mapStudentRecord, showToast]);
+  }, [buildStudentQueryParams, limit, showToast]);
 
   // Initial load
   useEffect(() => {

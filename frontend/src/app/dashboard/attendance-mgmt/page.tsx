@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { Calendar, Search, Users, Check, X, ShieldAlert, Sparkles, RefreshCw, Save } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
@@ -74,7 +74,10 @@ StudentCard.displayName = 'StudentCard';
 
 export default function AttendanceMgmtPage() {
   const { showToast } = useToast();
-  const [classes, setClasses] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>(() => {
+    const cached = getCachedData<any[]>('/teacher-portal/attendance/classes');
+    return Array.isArray(cached) ? cached : [];
+  });
   const [sections, setSections] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
 
@@ -87,7 +90,10 @@ export default function AttendanceMgmtPage() {
   });
 
   // UI state
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    const cached = getCachedData<any[]>('/teacher-portal/attendance/classes');
+    return !(Array.isArray(cached) && cached.length > 0);
+  });
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -222,8 +228,8 @@ export default function AttendanceMgmtPage() {
     try {
       // Fetch students list and existing session data concurrently in parallel
       const [rosterRes, sessionRes] = await Promise.all([
-        api.get(`/teacher-portal/attendance/students?classVal=${encodeURIComponent(selectedClass)}&sectionVal=${encodeURIComponent(selectedSection)}`),
-        api.get(`/attendance/session-data?classVal=${encodeURIComponent(selectedClass)}&sectionVal=${encodeURIComponent(selectedSection)}&dateVal=${selectedDate}`)
+        fastGet<any[]>(`/teacher-portal/attendance/students?classVal=${encodeURIComponent(selectedClass)}&sectionVal=${encodeURIComponent(selectedSection)}`, undefined, { ttlMs: 30000 }),
+        fastGet<any>(`/attendance/session-data?classVal=${encodeURIComponent(selectedClass)}&sectionVal=${encodeURIComponent(selectedSection)}&dateVal=${selectedDate}`, undefined, { ttlMs: 15000 })
       ]);
       
       setStudents(rosterRes.data || []);

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search, Users, Clock, Download, CheckSquare } from 'lucide-react';
 import Drawer from '@/components/Drawer';
 import DatePickerInput from '@/components/DatePickerInput';
@@ -12,9 +12,16 @@ import { useTenant } from '@/app/providers/TenantContext';
 export default function HomeworkPage() {
   const { schoolName } = useTenant();
   const [isMounted, setIsMounted] = useState(false);
-  const [homeworks, setHomeworks] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [homeworks, setHomeworks] = useState<any[]>(() => {
+    return getCachedData<any[]>('/teacher-portal/homework') || [];
+  });
+  const [classes, setClasses] = useState<any[]>(() => {
+    return getCachedData<any[]>('/teacher-portal/classes') || [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cachedHw = getCachedData<any[]>('/teacher-portal/homework');
+    return !Array.isArray(cachedHw) || cachedHw.length === 0;
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Form modal visibility
@@ -58,12 +65,13 @@ export default function HomeworkPage() {
 
   async function loadData() {
     try {
+      if (homeworks.length === 0) setLoading(true);
       const [hwRes, clsRes] = await Promise.all([
         fastGet('/teacher-portal/homework', undefined, { ttlMs: 15000 }),
         fastGet('/teacher-portal/classes', undefined, { ttlMs: 60000 }),
       ]);
-      setHomeworks(hwRes.data);
-      setClasses(clsRes.data);
+      if (hwRes.data) setHomeworks(hwRes.data);
+      if (clsRes.data) setClasses(clsRes.data);
     } catch (err) {
       console.error('Failed to load homework data:', err);
     } finally {

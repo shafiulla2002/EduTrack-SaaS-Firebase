@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import PhotoUpload from '@/components/PhotoUpload';
 import { PencilSpinner } from '@/components/loading';
@@ -22,8 +22,12 @@ export default function AdmissionsPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   
   // Options
-  const [academicYears, setAcademicYears] = useState<{ label: string; value: string }[]>([]);
-  const [classes, setClasses] = useState<{ label: string; value: string }[]>([]);
+  const [academicYears, setAcademicYears] = useState<{ label: string; value: string }[]>(() => {
+    return getCachedData<{ label: string; value: string }[]>('/billing/options/years') || [];
+  });
+  const [classes, setClasses] = useState<{ label: string; value: string }[]>(() => {
+    return getCachedData<{ label: string; value: string }[]>('/billing/options/classes') || [];
+  });
   const [sections, setSections] = useState<{ label: string; value: string }[]>([]);
   const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
 
@@ -51,36 +55,40 @@ export default function AdmissionsPage() {
     selectedSection: string;
     academicYear: string;
     profilePhotoUrl: string | null;
-  }>({
-    firstName: '',
-    lastName: '',
-    fatherName: '',
-    motherName: '',
-    dob: '',
-    phone: '',
-    emergencyContact: '',
-    email: '',
-    aadharNo: '',
-    village: '',
-    city: '',
-    pincode: '',
-    state: '',
-    country: '',
-    selectedClass: '',
-    selectedSection: '',
-    academicYear: '',
-    profilePhotoUrl: null,
+  }>(() => {
+    const cachedYears = getCachedData<{ label: string; value: string; isActive?: boolean }[]>('/billing/options/years') || [];
+    const activeYr = cachedYears.find(y => y.isActive) || (cachedYears.length > 0 ? cachedYears[0] : null);
+    return {
+      firstName: '',
+      lastName: '',
+      fatherName: '',
+      motherName: '',
+      dob: '',
+      phone: '',
+      emergencyContact: '',
+      email: '',
+      aadharNo: '',
+      village: '',
+      city: '',
+      pincode: '',
+      state: '',
+      country: '',
+      selectedClass: '',
+      selectedSection: '',
+      academicYear: activeYr ? activeYr.value : '',
+      profilePhotoUrl: null,
+    };
   });
 
   useEffect(() => {
     const fetchOptions = async () => {
       try {
         const [yRes, cRes] = await Promise.all([
-          api.get('/billing/options/years'),
-          api.get('/billing/options/classes')
+          fastGet('/billing/options/years', undefined, { ttlMs: 60000 }),
+          fastGet('/billing/options/classes', undefined, { ttlMs: 60000 })
         ]);
-        setAcademicYears(yRes.data);
-        setClasses(cRes.data);
+        if (yRes.data) setAcademicYears(yRes.data);
+        if (cRes.data) setClasses(cRes.data);
         
         let initialYear = '';
         if (yRes.data && yRes.data.length > 0) {
@@ -90,9 +98,7 @@ export default function AdmissionsPage() {
 
         setTempStudent(prev => ({
           ...prev,
-          academicYear: initialYear,
-          selectedClass: '',
-          selectedSection: ''
+          academicYear: prev.academicYear || initialYear,
         }));
       } catch (err) {
         console.error('Failed to fetch options', err);
@@ -105,7 +111,7 @@ export default function AdmissionsPage() {
     if (tempStudent.selectedClass) {
       const fetchSections = async () => {
         try {
-          const res = await api.get(`/billing/options/sections?classId=${tempStudent.selectedClass}`);
+          const res = await fastGet(`/billing/options/sections?classId=${tempStudent.selectedClass}`, undefined, { ttlMs: 60000 });
           setSections(res.data || []);
           setTempStudent(prev => ({ ...prev, selectedSection: '' }));
         } catch (err) {

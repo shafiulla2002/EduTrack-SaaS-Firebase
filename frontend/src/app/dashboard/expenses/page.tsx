@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, X, Search, Edit2, Trash2 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { PencilSpinner, EmptyState } from '@/components/loading';
 
 interface Expense {
@@ -45,9 +45,32 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState({ currentMonth: 0, prevMonth: 0, yearly: 0 });
+  const [expenses, setExpenses] = useState<Expense[]>(() => {
+    const cached = getCachedData<any[]>('/expenses');
+    if (Array.isArray(cached) && cached.length > 0) {
+      return cached.map((e: any) => ({
+        id: e.id,
+        category: e.category,
+        amount: Number(e.amount),
+        date: typeof e.date === 'string' ? e.date.split('T')[0] : new Date(e.date).toISOString().split('T')[0],
+        status: e.status,
+        paymentMode: e.paymentMode,
+        description: e.description || ''
+      }));
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = getCachedData<any[]>('/expenses');
+    return !(Array.isArray(cached) && cached.length > 0);
+  });
+  const [summary, setSummary] = useState<{ currentMonth: number; prevMonth: number; yearly: number }>(() => {
+    const cached = getCachedData<any>('/expenses/summary');
+    if (cached && typeof cached.currentMonth === 'number') {
+      return cached;
+    }
+    return { currentMonth: 0, prevMonth: 0, yearly: 0 };
+  });
   const [showModal, setShowModal] = useState(false);
 
   // Filters
@@ -67,21 +90,27 @@ export default function ExpensesPage() {
 
   const loadExpenses = async () => {
     try {
-      setLoading(true);
+      if (expenses.length === 0) {
+        setLoading(true);
+      }
       const [expRes, sumRes] = await Promise.all([
-        api.get('/expenses'),
-        api.get('/expenses/summary')
+        fastGet<any[]>('/expenses', { ttlMs: 45000 }),
+        fastGet<any>('/expenses/summary', { ttlMs: 45000 })
       ]);
-      setExpenses(expRes.data.map((e: any) => ({
-        id: e.id,
-        category: e.category,
-        amount: Number(e.amount),
-        date: new Date(e.date).toISOString().split('T')[0],
-        status: e.status,
-        paymentMode: e.paymentMode,
-        description: e.description || ''
-      })));
-      setSummary(sumRes.data);
+      if (expRes.data && Array.isArray(expRes.data)) {
+        setExpenses(expRes.data.map((e: any) => ({
+          id: e.id,
+          category: e.category,
+          amount: Number(e.amount),
+          date: typeof e.date === 'string' ? e.date.split('T')[0] : new Date(e.date).toISOString().split('T')[0],
+          status: e.status,
+          paymentMode: e.paymentMode,
+          description: e.description || ''
+        })));
+      }
+      if (sumRes.data) {
+        setSummary(sumRes.data);
+      }
     } catch (err) {
       console.error('Failed to load expenses:', err);
     } finally {

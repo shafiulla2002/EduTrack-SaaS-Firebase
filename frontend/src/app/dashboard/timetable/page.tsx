@@ -8,7 +8,7 @@ import {
   ArrowLeftRight, UserCheck, RefreshCw, Upload,
   Users, BarChart3, Layers, Settings, X
 } from 'lucide-react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 
 type ClassSection = {
@@ -59,17 +59,34 @@ type ClassWorkload = {
 
 export default function TimetablePage() {
   const [activeTab, setActiveTab] = useState<'grid' | 'sections' | 'teachers' | 'subjects'>('grid');
-  const [academicYears, setAcademicYears] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [sections, setSections] = useState<any[]>([]);
-  const [classSections, setClassSections] = useState<ClassSection[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [timings, setTimings] = useState<Timing[]>([]);
+  const [academicYears, setAcademicYears] = useState<any[]>(() => {
+    return getCachedData<any[]>('/timetable/academic-years') || [];
+  });
+  const [classes, setClasses] = useState<any[]>(() => {
+    return getCachedData<any[]>('/timetable/classes') || [];
+  });
+  const [sections, setSections] = useState<any[]>(() => {
+    return getCachedData<any[]>('/timetable/sections') || [];
+  });
+  const [classSections, setClassSections] = useState<ClassSection[]>(() => {
+    return getCachedData<ClassSection[]>('/timetable/class-sections') || [];
+  });
+  const [teachers, setTeachers] = useState<Teacher[]>(() => {
+    return getCachedData<Teacher[]>('/timetable/teachers') || [];
+  });
+  const [subjects, setSubjects] = useState<Subject[]>(() => {
+    return getCachedData<Subject[]>('/timetable/subjects') || [];
+  });
+  const [timings, setTimings] = useState<Timing[]>(() => {
+    return getCachedData<Timing[]>('/timetable/period-timings') || [];
+  });
 
   // Selected filters for grid
   const [selectedClassSectionId, setSelectedClassSectionId] = useState('');
-  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState('');
+  const [selectedAcademicYearId, setSelectedAcademicYearId] = useState(() => {
+    const cachedAY = getCachedData<any[]>('/timetable/academic-years');
+    return Array.isArray(cachedAY) && cachedAY.length > 0 ? cachedAY[0].id : '';
+  });
   const [timetableData, setTimetableData] = useState<Record<string, any>>({});
   const [classSectionSubjects, setClassSectionSubjects] = useState<Subject[]>([]);
 
@@ -78,7 +95,7 @@ export default function TimetablePage() {
     if (selectedClassSectionId) {
       const loadSubjects = async () => {
         try {
-          const res = await api.get(`/timetable/class-sections/${selectedClassSectionId}/subjects`);
+          const res = await fastGet(`/timetable/class-sections/${selectedClassSectionId}/subjects`, undefined, { ttlMs: 60000 });
           const mapped = (res.data || []).map((s: any) => ({
             id: s.subjectId,
             name: s.subjectName,

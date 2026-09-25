@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { Megaphone, Plus, Trash2, X, AlertTriangle, Pin, Calendar, Users, Eye, Check, BookOpen, Clock } from 'lucide-react';
 import { useTenant } from '@/app/providers/TenantContext';
 import Drawer from '@/components/Drawer';
@@ -47,9 +47,16 @@ function parseExamScheduleContent(content: string) {
 
 export default function AnnouncementsMgmtPage() {
   const { currentUser } = useTenant();
-  const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [announcements, setAnnouncements] = useState<any[]>(() => {
+    return getCachedData<any[]>('/teacher-portal/announcements') || [];
+  });
+  const [classes, setClasses] = useState<any[]>(() => {
+    return getCachedData<any[]>('/teacher-portal/classes') || [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cachedAnn = getCachedData<any[]>('/teacher-portal/announcements');
+    return !Array.isArray(cachedAnn) || cachedAnn.length === 0;
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Form modal visibility

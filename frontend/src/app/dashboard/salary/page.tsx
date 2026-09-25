@@ -13,7 +13,7 @@ import {
   Download, 
   Printer
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 
 interface SalaryDetails {
   basicSalary: number;
@@ -46,21 +46,28 @@ interface SalaryHistoryItem {
 
 export default function TeacherSalaryPage() {
   const router = useRouter();
-  const [details, setDetails] = useState<SalaryDetails | null>(null);
-  const [history, setHistory] = useState<SalaryHistoryItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [details, setDetails] = useState<SalaryDetails | null>(() => {
+    return getCachedData<SalaryDetails>('/teacher-portal/salary/details');
+  });
+  const [history, setHistory] = useState<SalaryHistoryItem[]>(() => {
+    return getCachedData<SalaryHistoryItem[]>('/teacher-portal/salary/history') || [];
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    const cached = getCachedData<SalaryDetails>('/teacher-portal/salary/details');
+    return !cached;
+  });
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchSalaryData = async () => {
       try {
-        setIsLoading(true);
+        if (!details) setIsLoading(true);
         const [detailsRes, historyRes] = await Promise.all([
-          api.get('/teacher-portal/salary/details'),
-          api.get('/teacher-portal/salary/history')
+          fastGet<SalaryDetails>('/teacher-portal/salary/details', undefined, { ttlMs: 60000 }),
+          fastGet<SalaryHistoryItem[]>('/teacher-portal/salary/history', undefined, { ttlMs: 60000 })
         ]);
-        setDetails(detailsRes.data);
-        setHistory(historyRes.data);
+        if (detailsRes.data) setDetails(detailsRes.data);
+        if (historyRes.data) setHistory(historyRes.data);
       } catch (err: any) {
         console.error('Failed to load salary/payroll data', err);
         setError(err.response?.data?.message || err.message || 'Failed to fetch payroll records.');

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '@/app/providers/TenantContext';
 import { formatDateDDMMYYYY } from '@/lib/date';
@@ -179,8 +179,12 @@ export default function FeesBillingPage() {
   const { setupStats, currentUser, schoolName } = useTenant();
   const [search, setSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [selectedYear, setSelectedYear] = useState('');
-  const [academicYears, setAcademicYears] = useState<{ label: string; value: string }[]>([]);
+  
+  const initialYears = getCachedData<{ label: string; value: string }[]>('/billing/options/years') || [];
+  const initialInvoices = getCachedData<StagedInvoice[]>('/billing/invoices/recent') || [];
+
+  const [selectedYear, setSelectedYear] = useState(() => initialYears.length > 0 ? initialYears[0].value : '');
+  const [academicYears, setAcademicYears] = useState<{ label: string; value: string }[]>(initialYears);
 
   // Fee particulars checklist states
   const [feeItems, setFeeItems] = useState<any[]>([]);
@@ -200,8 +204,8 @@ export default function FeesBillingPage() {
   const [accountNo, setAccountNo] = useState('50100239485729');
 
   // History logs
-  const [transactions, setTransactions] = useState<StagedInvoice[]>([]);
-  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactions, setTransactions] = useState<StagedInvoice[]>(initialInvoices);
+  const [transactionsLoading, setTransactionsLoading] = useState(() => initialInvoices.length === 0);
   const [matchingStudents, setMatchingStudents] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isStudentLoading, setIsStudentLoading] = useState(false);
@@ -226,7 +230,6 @@ export default function FeesBillingPage() {
   // Load initial options & recent invoices
   useEffect(() => {
     const fetchInit = async () => {
-      setTransactionsLoading(true);
       try {
         const [yRes, txRes] = await Promise.all([
           fastGet('/billing/options/years', undefined, { ttlMs: 60000 }),
@@ -235,6 +238,7 @@ export default function FeesBillingPage() {
             onRevalidate: (fresh) => {
               if (fresh && Array.isArray(fresh)) {
                 setTransactions(fresh);
+                setTransactionsLoading(false);
               }
             }
           })
@@ -242,7 +246,7 @@ export default function FeesBillingPage() {
         if (yRes?.data) {
           setAcademicYears(yRes.data);
           if (yRes.data.length > 0) {
-            setSelectedYear(yRes.data[0].value);
+            setSelectedYear(prev => prev || yRes.data[0].value);
           }
         }
         if (txRes?.data) {

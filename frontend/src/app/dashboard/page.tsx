@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import BulkImportModal from '@/components/BulkImportModal';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { useSchoolSetupUpdate, dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '../providers/TenantContext';
 import { BookOpen } from 'lucide-react';
@@ -23,39 +23,66 @@ function AdminDashboardOverview() {
   const [showBanner, setShowBanner] = useState(true);
   const setupStatus = setupStats;
   
-  const [stats, setStats] = useState({
-    studentsCount: 0,
-    teachersCount: 0,
-    classesCount: 0,
-    totalRevenue: 0,
-    totalExpenses: 0,
-    netIncome: 0,
-    attendanceRate: 0,
-    academicAverage: 0,
-    pendingLeaveRequests: 0,
-    approvedToday: 0,
-    rejectedToday: 0,
-    trends: {
-      students: { value: '0%', isUp: true },
-      revenue: { value: '0%', isUp: true },
-      attendance: { value: '1.5%', isUp: true },
-      academic: { value: '0.8%', isUp: false }
+  const [stats, setStats] = useState(() => {
+    const cached = getCachedData<any>('/dashboard/summary');
+    if (cached && cached.stats) {
+      return cached.stats;
     }
+    return {
+      studentsCount: 0,
+      teachersCount: 0,
+      classesCount: 0,
+      totalRevenue: 0,
+      totalExpenses: 0,
+      netIncome: 0,
+      attendanceRate: 0,
+      academicAverage: 0,
+      pendingLeaveRequests: 0,
+      approvedToday: 0,
+      rejectedToday: 0,
+      trends: {
+        students: { value: '0%', isUp: true },
+        revenue: { value: '0%', isUp: true },
+        attendance: { value: '1.5%', isUp: true },
+        academic: { value: '0.8%', isUp: false }
+      }
+    };
   });
-  const [recentAdmissions, setRecentAdmissions] = useState<any[]>([]);
-  const [recentPayments, setRecentPayments] = useState<any[]>([]);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [recentAdmissions, setRecentAdmissions] = useState<any[]>(() => {
+    const cached = getCachedData<any>('/dashboard/summary');
+    return cached && Array.isArray(cached.recentAdmissions) ? cached.recentAdmissions : [];
+  });
+  const [recentPayments, setRecentPayments] = useState<any[]>(() => {
+    const cached = getCachedData<any>('/dashboard/summary');
+    return cached && Array.isArray(cached.recentPayments) ? cached.recentPayments : [];
+  });
+  const [chartData, setChartData] = useState<any[]>(() => {
+    const cached = getCachedData<any>('/dashboard/summary');
+    return cached && Array.isArray(cached.chartData) ? cached.chartData : [];
+  });
   // Per-section loading and error states — avoids blank white sections
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [admissionsLoading, setAdmissionsLoading] = useState(true);
-  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(() => {
+    const cached = getCachedData<any>('/dashboard/summary');
+    return !(cached && cached.stats);
+  });
+  const [admissionsLoading, setAdmissionsLoading] = useState(() => {
+    const cached = getCachedData<any>('/dashboard/summary');
+    return !(cached && Array.isArray(cached.recentAdmissions));
+  });
+  const [transactionsLoading, setTransactionsLoading] = useState(() => {
+    const cached = getCachedData<any>('/dashboard/summary');
+    return !(cached && Array.isArray(cached.recentPayments));
+  });
   const [admissionsError, setAdmissionsError] = useState(false);
   const [transactionsError, setTransactionsError] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
-    setStatsLoading(true);
-    setAdmissionsLoading(true);
-    setTransactionsLoading(true);
+    const cached = getCachedData<any>('/dashboard/summary');
+    if (!cached || !cached.stats) {
+      setStatsLoading(true);
+      setAdmissionsLoading(true);
+      setTransactionsLoading(true);
+    }
     setAdmissionsError(false);
     setTransactionsError(false);
     try {
@@ -768,14 +795,21 @@ function AdminDashboardOverview() {
 }
 
 function TeacherDashboardView() {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<any>(() => getCachedData<any>('/teacher-portal/dashboard'));
+  const [loading, setLoading] = useState(() => !getCachedData<any>('/teacher-portal/dashboard'));
 
   useEffect(() => {
     async function loadStats() {
       try {
-        const res = await api.get('/teacher-portal/dashboard');
-        setData(res.data);
+        const res = await fastGet('/teacher-portal/dashboard', undefined, {
+          ttlMs: 30000,
+          onRevalidate: (fresh) => {
+            if (fresh) setData(fresh);
+          }
+        });
+        if (res.data) {
+          setData(res.data);
+        }
       } catch (err) {
         console.error('Failed to load teacher stats:', err);
       } finally {

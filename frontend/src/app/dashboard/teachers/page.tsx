@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { useSchoolSetupUpdate } from '@/lib/events';
 import { 
   Plus, X, Search, ChevronDown, ChevronUp, Users, 
@@ -786,19 +786,45 @@ export default function TeacherClassManagement() {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => setIsMounted(true), []);
   
-  // ── CORE STATE ──
+  // ── CORE STATE INITIALIZED SYNCHRONOUSLY FROM SWR CACHE ──
   const [currentStep, setCurrentStep] = useState(0); // 0: Dashboard, 1: Step1, 2: Step2, 3: Step3
   const [isTimetableView, setIsTimetableView] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  
+  const initialData = getCachedData<any>('/timetable/workload/dashboard');
+  const [isLoading, setIsLoading] = useState(() => !initialData);
   const [isTimetableLoading, setIsTimetableLoading] = useState(false);
   const [timetableError, setTimetableError] = useState<string | null>(null);
   
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [classes, setClasses] = useState<ClassSection[]>([]);
-  const [allSubjects, setAllSubjects] = useState<any[]>([]);
-  const [academicYears, setAcademicYears] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>(() => {
+    if (!initialData?.teachers) return [];
+    return initialData.teachers.map((t: any, idx: number) => ({
+      id: t.teacherId,
+      name: t.teacherName || 'Unknown Teacher',
+      initials: (t.teacherName || 'TT').split(' ').map((n: string) => n[0] || '').join('').substring(0, 2).toUpperCase(),
+      subjects: t.subjectsTaught || [],
+      classCount: t.classCount || 0,
+      loadPercent: Math.min(100, t.loadPercent || 0),
+      gradient: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length]
+    }));
+  });
+
+  const [classes, setClasses] = useState<ClassSection[]>(() => {
+    if (!initialData?.classes) return [];
+    return initialData.classes.map((c: any) => ({
+      id: c.classSectionId,
+      classId: c.classId,
+      name: c.name || 'Unknown Class',
+      academicYear: c.academicYear || '2026-2027',
+      subjectCount: c.subjectCount || 0,
+      staffedCount: c.staffedCount || 0,
+      loadPercent: c.loadPercent || 0
+    }));
+  });
+
+  const [allSubjects, setAllSubjects] = useState<any[]>(() => initialData?.subjects || []);
+  const [academicYears, setAcademicYears] = useState<any[]>(() => initialData?.academicYears || []);
   const [availableClasses, setAvailableClasses] = useState<any[]>([]);
-  const [availableSections, setAvailableSections] = useState<any[]>([]);
+  const [availableSections, setAvailableSections] = useState<any[]>(() => initialData?.sections || []);
   
   // ── EXPANDED INLINE DRAWER STATE ──
   const [expandedTeacherId, setExpandedTeacherId] = useState<string | null>(null);
@@ -810,9 +836,9 @@ export default function TeacherClassManagement() {
   const [classDetailLoading, setClassDetailLoading] = useState(false);
   
   // ── WORKLOAD SUMMARY ──
-  const [workloadSummary, setWorkloadSummary] = useState({
-    totalTeachers: 0,
-    totalClasses: 0,
+  const [workloadSummary, setWorkloadSummary] = useState(() => initialData?.summary || {
+    totalTeachers: initialData?.teachers?.length || 0,
+    totalClasses: initialData?.classes?.length || 0,
     totalAssignments: 0,
     avgLoadPercent: 0
   });
@@ -1508,8 +1534,8 @@ export default function TeacherClassManagement() {
     setClassDetailLoading(true);
     try {
       const [workloadRes, periodsRes] = await Promise.all([
-        api.get(`/timetable/workload/class-section/${classSectionId}`),
-        api.get(`/timetable/class/${classSectionId}/periods`)
+        fastGet(`/timetable/workload/class-section/${classSectionId}`, undefined, { ttlMs: 60000 }),
+        fastGet(`/timetable/class/${classSectionId}/periods`, undefined, { ttlMs: 60000 })
       ]);
       
       const workload = workloadRes.data;
