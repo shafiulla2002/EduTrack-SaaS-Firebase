@@ -597,71 +597,14 @@ export class StudentsService implements OnModuleInit {
     sectionName?: string,
   ) {
     const tenantId = this.getTenantId();
-
-    const where: any = {
-      tenantId,
-      user: {
-        isActive: true
-      },
-    };
-
-    if (searchTerm && searchTerm.trim()) {
-      const term = searchTerm.trim();
-      where.OR = [
-        { rollNo: { contains: term, mode: 'insensitive' } },
-        { fatherName: { contains: term, mode: 'insensitive' } },
-        { motherName: { contains: term, mode: 'insensitive' } },
-        { fatherPhone: { contains: term, mode: 'insensitive' } },
-        { motherPhone: { contains: term, mode: 'insensitive' } },
-        { guardianPhone: { contains: term, mode: 'insensitive' } },
-        {
-          user: {
-            OR: [
-              { name: { contains: term, mode: 'insensitive' } },
-              { email: { contains: term, mode: 'insensitive' } },
-              { phone: { contains: term, mode: 'insensitive' } },
-            ]
-          }
-        }
-      ];
-    }
-
-    const classSectionFilter: any = {};
-    if (classId) {
-      classSectionFilter.classId = classId;
-    }
-    if (sectionId) {
-      classSectionFilter.sectionId = sectionId;
-    }
-
-    const classFilter: any = {};
-    if (academicYearId) {
-      classFilter.academicYearId = academicYearId;
-    }
-    if (className && !classId) {
-      classFilter.name = { equals: className, mode: 'insensitive' };
-    }
-    if (Object.keys(classFilter).length > 0) {
-      classSectionFilter.class = classFilter;
-    }
-
-    if (sectionName && !sectionId) {
-      const cleanSec = sectionName.replace(/^section\s*[-_]?/i, '').trim();
-      classSectionFilter.section = {
-        name: { contains: cleanSec, mode: 'insensitive' }
-      };
-    }
-
-    if (Object.keys(classSectionFilter).length > 0) {
-      where.classSection = classSectionFilter;
-    }
-
     const isPaginated = page !== undefined && limit !== undefined;
-    const skip = isPaginated ? (page - 1) * limit : undefined;
-    const take = isPaginated ? limit : undefined;
+    const skip = isPaginated ? (page - 1) * limit : 0;
+    const take = isPaginated ? limit : 20;
 
-    // If financialStatus filter is applied, perform database-level aggregation, filtering, and pagination
-    if (financialStatus && financialStatus !== 'ALL' && financialStatus !== 'All') {
+    const isFinancialFiltered = financialStatus && financialStatus !== 'ALL' && financialStatus !== 'All';
+
+    // ── Branch A: Financial-Status Filtered Path (Consolidated 1-Roundtrip Query) ──
+    if (isFinancialFiltered) {
       const sqlQuery = Prisma.sql`
         WITH student_base AS (
           SELECT 
@@ -839,87 +782,284 @@ export class StudentsService implements OnModuleInit {
         return [];
       });
 
-      const filteredTotal = rows.length > 0 ? rows[0].totalCount : 0;
-      const pagedStudentIds = rows.map(r => r.studentId);
+      const filteredTotal = rows.length > 0 ? Number(rows[0].totalCount) : 0;
 
-      // Fetch rich details for ONLY the paginated students (take rows) without repeating billing calculations
-      const studentsData = pagedStudentIds.length > 0 ? await this.prisma.studentProfile.findMany({
-        where: { id: { in: pagedStudentIds } },
-        select: {
-          id: true,
-          rollNo: true,
-          fatherName: true,
-          motherName: true,
-          fatherPhone: true,
-          motherPhone: true,
-          guardianPhone: true,
-          aadharNo: true,
-          profilePhotoUrl: true,
-          classSectionId: true,
-          tenantId: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-            }
-          },
-          classSection: {
-            select: {
-              id: true,
-              classId: true,
-              sectionId: true,
-              class: {
-                select: {
-                  id: true,
-                  name: true,
-                  academicYearId: true,
-                }
-              },
-              section: {
-                select: {
-                  id: true,
-                  name: true,
-                }
-              }
-            }
-          }
-        }
-      }) : [];
-
-      const studentMap = new Map<string, any>(studentsData.map((s: any): [string, any] => [s.id, s]));
-      const rowMap = new Map<string, any>(rows.map((r: any): [string, any] => [r.studentId, r]));
-
-      const pagedData = pagedStudentIds.map(id => {
-        const s: any = studentMap.get(id);
-        if (!s) return null;
-        const r: any = rowMap.get(id);
-
-        const totalFee = Number(r?.oppFee || 0);
-        const totalPaid = Number(r?.paidAmount || 0);
+      const pagedData = rows.map(r => {
+        const totalFee = Number(r.oppFee || 0);
+        const totalPaid = Number(r.paidAmount || 0);
         const currentYearPending = Math.max(0, totalFee - totalPaid);
-        const totalPreviousYearDue = Number(r?.prevOppDue || 0) + Number(r?.orphanDue || 0);
-        const grandTotalBalanceDue = Number(r?.balanceDue !== undefined ? r.balanceDue : (currentYearPending + totalPreviousYearDue));
-        const totalFees = Number(r?.totalFees !== undefined ? r.totalFees : (totalPaid + grandTotalBalanceDue));
+        const totalPreviousYearDue = Number(r.prevOppDue || 0) + Number(r.orphanDue || 0);
+        const grandTotalBalanceDue = Number(r.balanceDue !== undefined ? r.balanceDue : (currentYearPending + totalPreviousYearDue));
+        const totalFees = Number(r.totalFees !== undefined ? r.totalFees : (totalPaid + grandTotalBalanceDue));
 
-        const pendingPercentage = totalFees > 0
-          ? Math.round((grandTotalBalanceDue / totalFees) * 100)
-          : 0;
-
-        const paidPercentage = totalFees > 0
-          ? Math.round((totalPaid / totalFees) * 100)
-          : 100;
-
-        const financialStatus = grandTotalBalanceDue > 0
-          ? `Pending Due (${pendingPercentage}%)`
-          : 'Fully Paid (100%)';
+        const pendingPercentage = totalFees > 0 ? Math.round((grandTotalBalanceDue / totalFees) * 100) : 0;
+        const paidPercentage = totalFees > 0 ? Math.round((totalPaid / totalFees) * 100) : 100;
+        const finStatus = grandTotalBalanceDue > 0 ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)';
 
         const previousYears = totalPreviousYearDue > 0
           ? [{ academicYearName: 'Previous Years', outstandingBalance: totalPreviousYearDue }]
           : [];
 
-        const feeSummary = {
+        return {
+          id: r.studentId,
+          rollNo: r.rollNo,
+          fatherName: r.fatherName,
+          motherName: r.motherName,
+          fatherPhone: r.fatherPhone,
+          motherPhone: r.motherPhone,
+          guardianPhone: r.guardianPhone,
+          aadharNo: r.aadharNo,
+          profilePhotoUrl: r.profilePhotoUrl,
+          classSectionId: r.classSectionId,
+          tenantId: r.tenantId,
+          user: {
+            id: r.userId,
+            name: r.userName,
+            email: r.userEmail,
+            phone: r.userPhone,
+          },
+          classSection: r.classSectionId ? {
+            id: r.classSectionId,
+            classId: r.classId,
+            sectionId: r.sectionId,
+            class: r.classId ? {
+              id: r.classId,
+              name: r.className,
+              academicYearId: r.academicYearId,
+            } : null,
+            section: r.sectionId ? {
+              id: r.sectionId,
+              name: r.sectionName,
+            } : null,
+          } : null,
+          paidAmount: totalPaid,
+          balanceDue: grandTotalBalanceDue,
+          totalFees,
+          pendingPercentage,
+          paidPercentage,
+          financialStatus: finStatus,
+          feeSummary: {
+            currentYear: {
+              feeProductsAmount: totalFee,
+              paidAmount: totalPaid,
+              pendingAmount: currentYearPending
+            },
+            previousYears,
+            overall: {
+              totalCurrentYearDue: currentYearPending,
+              totalPreviousYearDue,
+              grandTotalBalanceDue
+            }
+          }
+        };
+      });
+
+      if (isPaginated) {
+        return {
+          data: pagedData,
+          total: filteredTotal,
+          page,
+          limit,
+          totalPages: limit > 0 ? Math.ceil(filteredTotal / limit) : 1
+        };
+      }
+
+      return pagedData;
+    }
+
+    // ── Branch B: Standard Search/Pagination Path (Consolidated 1-Roundtrip Query) ──
+    const sqlQuery = Prisma.sql`
+      WITH student_base AS (
+        SELECT 
+          sp.id AS "studentId",
+          sp."rollNo",
+          sp."fatherName",
+          sp."motherName",
+          sp."fatherPhone",
+          sp."motherPhone",
+          sp."guardianPhone",
+          sp."aadharNo",
+          sp."profilePhotoUrl",
+          sp."classSectionId",
+          sp."tenantId",
+          u.id AS "userId",
+          u.name AS "userName",
+          u.email AS "userEmail",
+          u.phone AS "userPhone",
+          cs."classId",
+          cs."sectionId",
+          c.name AS "className",
+          c."academicYearId" AS "academicYearId",
+          s.name AS "sectionName",
+          COUNT(*) OVER()::int AS "totalCount",
+          ROW_NUMBER() OVER(ORDER BY u.name ASC) AS "seq"
+        FROM "StudentProfile" sp
+        JOIN "User" u ON sp."userId" = u.id
+        LEFT JOIN "ClassSection" cs ON sp."classSectionId" = cs.id
+        LEFT JOIN "Class" c ON cs."classId" = c.id
+        LEFT JOIN "Section" s ON cs."sectionId" = s.id
+        WHERE u."tenantId" = ${tenantId}
+          AND u."isActive" = true
+          ${searchTerm && searchTerm.trim() ? Prisma.sql`AND (
+            sp."rollNo" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+            sp."fatherName" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+            sp."motherName" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+            sp."fatherPhone" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+            sp."motherPhone" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+            sp."guardianPhone" ILIKE ${'%' + searchTerm.trim() + '%'} OR
+            u.name ILIKE ${'%' + searchTerm.trim() + '%'} OR
+            u.email ILIKE ${'%' + searchTerm.trim() + '%'} OR
+            u.phone ILIKE ${'%' + searchTerm.trim() + '%'}
+          )` : Prisma.empty}
+          ${classId ? Prisma.sql`AND cs."classId" = ${classId}` : Prisma.empty}
+          ${sectionId ? Prisma.sql`AND cs."sectionId" = ${sectionId}` : Prisma.empty}
+          ${className && !classId ? Prisma.sql`AND c.name ILIKE ${className}` : Prisma.empty}
+          ${sectionName && !sectionId ? Prisma.sql`AND s.name ILIKE ${'%' + sectionName.replace(/^section\s*[-_]?/i, '').trim() + '%'}` : Prisma.empty}
+          ${academicYearId ? Prisma.sql`AND c."academicYearId" = ${academicYearId}` : Prisma.empty}
+        ORDER BY u.name ASC
+        LIMIT ${take} OFFSET ${skip}
+      ),
+      student_opps AS (
+        SELECT 
+          o.id,
+          o."studentId",
+          o."stageName",
+          o."academicYearId",
+          o."classId",
+          o."createdAt",
+          ay."startDate" AS "ay_startDate",
+          ay.name AS "ay_name",
+          COALESCE(SUM((oli."unitPrice" * COALESCE(oli.quantity, 1)) - ((oli."unitPrice" * COALESCE(oli.quantity, 1) * COALESCE(oli.discount, 0)) / 100.0)), 0)::float AS "oppFee",
+          COALESCE(inv_agg."paidAmount", 0)::float AS "oppPaid",
+          ROW_NUMBER() OVER (
+            PARTITION BY o."studentId" 
+            ORDER BY 
+              ${academicYearId ? Prisma.sql`CASE WHEN o."academicYearId" = ${academicYearId} THEN 0 ELSE 1 END,` : Prisma.empty}
+              CASE WHEN o."stageName" NOT IN ('Closed Won', 'Closed Lost') THEN 0 ELSE 1 END,
+              o."createdAt" DESC
+          ) AS "rn"
+        FROM "Opportunity" o
+        JOIN student_base sb ON o."studentId" = sb."studentId"
+        LEFT JOIN "AcademicYear" ay ON o."academicYearId" = ay.id
+        LEFT JOIN "OpportunityLineItem" oli ON o.id = oli."opportunityId"
+        LEFT JOIN (
+          SELECT inv."opportunityId", COALESCE(SUM(inv."paidAmount"), 0)::float AS "paidAmount"
+          FROM "Invoice" inv
+          WHERE inv."tenantId" = ${tenantId} 
+            AND inv.status::text != 'VOIDED' 
+            AND inv."studentId" IN (SELECT "studentId" FROM student_base)
+            AND inv."opportunityId" IS NOT NULL
+          GROUP BY inv."opportunityId"
+        ) inv_agg ON o.id = inv_agg."opportunityId"
+        WHERE o."tenantId" = ${tenantId} AND o."studentId" IN (SELECT "studentId" FROM student_base)
+        GROUP BY o.id, o."studentId", o."stageName", o."academicYearId", o."classId", o."createdAt", ay."startDate", ay.name, inv_agg."paidAmount"
+      ),
+      active_opps AS (
+        SELECT * FROM student_opps WHERE rn = 1
+      ),
+      prev_opp_dues AS (
+        SELECT 
+          so."studentId",
+          COALESCE(SUM(GREATEST(0, so."oppFee" - so."oppPaid")), 0)::float AS "prevOppDue"
+        FROM student_opps so
+        JOIN active_opps ao ON so."studentId" = ao."studentId"
+        WHERE so."ay_startDate" IS NOT NULL 
+          AND ao."ay_startDate" IS NOT NULL 
+          AND so."ay_startDate" < ao."ay_startDate"
+        GROUP BY so."studentId"
+      ),
+      orphan_inv_dues AS (
+        SELECT 
+          inv."studentId",
+          COALESCE(SUM(inv."remainingBalance"), 0)::float AS "orphanDue"
+        FROM "Invoice" inv
+        JOIN student_base sb ON inv."studentId" = sb."studentId"
+        LEFT JOIN active_opps ao ON inv."studentId" = ao."studentId"
+        WHERE inv."tenantId" = ${tenantId}
+          AND inv."opportunityId" IS NULL
+          AND inv.status::text IN ('UNPAID', 'PARTIALLY_PAID')
+          AND (ao."ay_startDate" IS NULL OR inv."invoiceDate" < ao."ay_startDate")
+        GROUP BY inv."studentId"
+      )
+      SELECT 
+        sb.*,
+        COALESCE(ao."oppFee", 0)::float AS "oppFee",
+        COALESCE(ao."oppPaid", 0)::float AS "paidAmount",
+        COALESCE(pod."prevOppDue", 0)::float AS "prevOppDue",
+        COALESCE(oid."orphanDue", 0)::float AS "orphanDue",
+        GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0))::float AS "currentYearPending",
+        (COALESCE(pod."prevOppDue", 0) + COALESCE(oid."orphanDue", 0))::float AS "totalPreviousYearDue",
+        (GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0)) + COALESCE(pod."prevOppDue", 0) + COALESCE(oid."orphanDue", 0))::float AS "balanceDue",
+        (COALESCE(ao."oppPaid", 0) + GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0)) + COALESCE(pod."prevOppDue", 0) + COALESCE(oid."orphanDue", 0))::float AS "totalFees"
+      FROM student_base sb
+      LEFT JOIN active_opps ao ON sb."studentId" = ao."studentId"
+      LEFT JOIN prev_opp_dues pod ON sb."studentId" = pod."studentId"
+      LEFT JOIN orphan_inv_dues oid ON sb."studentId" = oid."studentId"
+      ORDER BY sb."seq" ASC
+    `;
+
+    const rawRows = await this.prisma.$queryRaw<Array<any>>(sqlQuery).catch((err) => {
+      console.error('[PERF ERROR] searchStudents unified query failed:', err?.message || err);
+      return [];
+    });
+
+    const total = rawRows.length > 0 ? Number(rawRows[0].totalCount) : 0;
+
+    const pagedData = rawRows.map(r => {
+      const totalFee = Number(r.oppFee || 0);
+      const totalPaid = Number(r.paidAmount || 0);
+      const currentYearPending = Number(r.currentYearPending || 0);
+      const totalPreviousYearDue = Number(r.totalPreviousYearDue || 0);
+      const grandTotalBalanceDue = Number(r.balanceDue || 0);
+      const totalFees = Number(r.totalFees || 0);
+
+      const pendingPercentage = totalFees > 0 ? Math.round((grandTotalBalanceDue / totalFees) * 100) : 0;
+      const paidPercentage = totalFees > 0 ? Math.round((totalPaid / totalFees) * 100) : 100;
+      const financialStatus = grandTotalBalanceDue > 0 ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)';
+
+      const previousYears = totalPreviousYearDue > 0
+        ? [{ academicYearName: 'Previous Years', outstandingBalance: totalPreviousYearDue }]
+        : [];
+
+      return {
+        id: r.studentId,
+        rollNo: r.rollNo,
+        fatherName: r.fatherName,
+        motherName: r.motherName,
+        fatherPhone: r.fatherPhone,
+        motherPhone: r.motherPhone,
+        guardianPhone: r.guardianPhone,
+        aadharNo: r.aadharNo,
+        profilePhotoUrl: r.profilePhotoUrl,
+        classSectionId: r.classSectionId,
+        tenantId: r.tenantId,
+        user: {
+          id: r.userId,
+          name: r.userName,
+          email: r.userEmail,
+          phone: r.userPhone,
+        },
+        classSection: r.classSectionId ? {
+          id: r.classSectionId,
+          classId: r.classId,
+          sectionId: r.sectionId,
+          class: r.classId ? {
+            id: r.classId,
+            name: r.className,
+            academicYearId: r.academicYearId,
+          } : null,
+          section: r.sectionId ? {
+            id: r.sectionId,
+            name: r.sectionName,
+          } : null,
+        } : null,
+        paidAmount: totalPaid,
+        balanceDue: grandTotalBalanceDue,
+        totalFees,
+        pendingPercentage,
+        paidPercentage,
+        financialStatus,
+        feeSummary: {
           currentYear: {
             feeProductsAmount: totalFee,
             paidAmount: totalPaid,
@@ -931,128 +1071,21 @@ export class StudentsService implements OnModuleInit {
             totalPreviousYearDue,
             grandTotalBalanceDue
           }
-        };
-
-        return {
-          ...s,
-          paidAmount: totalPaid,
-          balanceDue: grandTotalBalanceDue,
-          totalFees,
-          pendingPercentage,
-          paidPercentage,
-          financialStatus,
-          feeSummary
-        };
-      }).filter(Boolean);
-
-      if (isPaginated) {
-        return {
-          data: pagedData,
-          total: filteredTotal,
-          page,
-          limit,
-          totalPages: Math.ceil(filteredTotal / limit!)
-        };
-      }
-
-      return pagedData;
-    }
-
-    const [total, students] = await Promise.all([
-      isPaginated
-        ? this.prisma.studentProfile.count({ where })
-        : Promise.resolve(0),
-      this.prisma.studentProfile.findMany({
-        where,
-        select: {
-          id: true,
-          rollNo: true,
-          fatherName: true,
-          motherName: true,
-          fatherPhone: true,
-          motherPhone: true,
-          guardianPhone: true,
-          aadharNo: true,
-          profilePhotoUrl: true,
-          classSectionId: true,
-          tenantId: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-            }
-          },
-          classSection: {
-            select: {
-              id: true,
-              classId: true,
-              sectionId: true,
-              class: {
-                select: {
-                  id: true,
-                  name: true,
-                  academicYearId: true,
-                }
-              },
-              section: {
-                select: {
-                  id: true,
-                  name: true,
-                }
-              }
-            }
-          }
-        },
-        orderBy: {
-          user: {
-            name: 'asc'
-          }
-        },
-        skip,
-        take,
-      }),
-    ]);
-
-    const studentIds = students.map(s => s.id);
-    const billingMap = await this.getStudentsBillingInfoBatch(studentIds, tenantId, academicYearId);
-
-    const data = students.map(s => {
-      const billingInfo = billingMap[s.id] || {
-        paidAmount: 0,
-        balanceDue: 0,
-        totalPendingBalance: 0,
-        totalFees: 0,
-        pendingPercentage: 0,
-        paidPercentage: 100,
-        financialStatus: 'Fully Paid (100%)',
-        feeSummary: null
-      };
-
-      return {
-        ...s,
-        paidAmount: billingInfo.paidAmount || 0,
-        balanceDue: billingInfo.totalPendingBalance !== undefined ? billingInfo.totalPendingBalance : (billingInfo.balanceDue || 0),
-        totalFees: billingInfo.totalFees || 0,
-        pendingPercentage: billingInfo.pendingPercentage || 0,
-        paidPercentage: billingInfo.paidPercentage !== undefined ? billingInfo.paidPercentage : 100,
-        financialStatus: billingInfo.financialStatus || 'Fully Paid (100%)',
-        feeSummary: billingInfo.feeSummary || null
+        }
       };
     });
 
     if (isPaginated) {
       return {
-        data,
+        data: pagedData,
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit)
+        totalPages: limit > 0 ? Math.ceil(total / limit) : 1
       };
     }
 
-    return data;
+    return pagedData;
   }
 
   async getStudentDetails(studentId: string, academicYearId?: string) {
