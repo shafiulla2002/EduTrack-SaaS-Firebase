@@ -1,6 +1,22 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
+function formatDatabaseUrl(rawUrl: string, connLimit: string, poolTimeout: string): string {
+  try {
+    const urlObj = new URL(rawUrl);
+    urlObj.searchParams.set('connection_limit', connLimit);
+    urlObj.searchParams.set('pool_timeout', poolTimeout);
+    return urlObj.toString();
+  } catch {
+    let cleaned = rawUrl
+      .replace(/([?&])connection_limit=\d+(&|$)/g, '$1')
+      .replace(/([?&])pool_timeout=\d+(&|$)/g, '$1')
+      .replace(/[?&]$/, '');
+    const sep = cleaned.includes('?') ? '&' : '?';
+    return `${cleaned}${sep}connection_limit=${connLimit}&pool_timeout=${poolTimeout}`;
+  }
+}
+
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private static instance: PrismaService;
@@ -8,13 +24,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   constructor() {
     let dbUrl = process.env.DATABASE_URL;
     if (dbUrl) {
-      const connLimit = process.env.DB_CONNECTION_LIMIT || '10';
-      if (dbUrl.includes('connection_limit=')) {
-        dbUrl = dbUrl.replace(/connection_limit=\d+/, `connection_limit=${connLimit}`);
-      } else {
-        const sep = dbUrl.includes('?') ? '&' : '?';
-        dbUrl += `${sep}connection_limit=${connLimit}&pool_timeout=15`;
-      }
+      const connLimit = process.env.DB_CONNECTION_LIMIT || '2';
+      const poolTimeout = process.env.DB_POOL_TIMEOUT || '20';
+      dbUrl = formatDatabaseUrl(dbUrl, connLimit, poolTimeout);
     }
 
     if ((globalThis as any).prismaInstance) {
@@ -32,13 +44,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       log: ['error'],
     });
 
-    console.log('[PrismaService] Initialized database client singleton');
+    console.log(`[PrismaService] Initialized database client singleton (connection_limit: ${process.env.DB_CONNECTION_LIMIT || '2'}, pool_timeout: ${process.env.DB_POOL_TIMEOUT || '20'}s)`);
     (globalThis as any).prismaInstance = this;
   }
 
   async onModuleInit() {
     try {
-      await this.$connect();
+      await this.withRetry(() => this.$connect(), 3, 200);
       console.log('[PrismaService] Database connection pool established successfully');
     } catch (err: any) {
       console.warn('[PrismaService] Database lazy connection fallback:', err?.message || err);
@@ -67,6 +79,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       msg.includes("can't reach database server") ||
       msg.includes('engine is not connected') ||
       msg.includes('server has closed the connection') ||
+      msg.includes('connection pool timeout') ||
+      msg.includes('timed out fetching a new connection') ||
+      msg.includes('sorry, too many clients already') ||
+      msg.includes('too many clients') ||
       msg.includes('econnreset') ||
       msg.includes('etimedout') ||
       msg.includes('epipe') ||
@@ -75,6 +91,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       code === 'P1001' ||
       code === 'P1002' ||
       code === 'P1017' ||
+      code === 'P2024' ||
+      code === '53300' ||
       code === '57P01' ||
       code === '57P02' ||
       code === '57P03' ||
@@ -87,7 +105,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     );
   }
 
-  async withRetry<T>(operation: () => Promise<T>, maxRetries = 3, initialDelayMs = 1000): Promise<T> {
+  async withRetry<T>(operation: () => Promise<T>, maxRetries = 3, initialDelayMs = 200): Promise<T> {
     let attempt = 0;
     while (true) {
       try {
@@ -98,13 +116,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         if (attempt >= maxRetries || !isTransient) {
           throw error;
         }
-        console.warn(`[PrismaService] Transient database connection issue detected. Retrying attempt ${attempt}/${maxRetries} after ${initialDelayMs * attempt}ms...`);
+        const delayMs = initialDelayMs * Math.pow(2, attempt - 1); // 200ms, 400ms, 800ms
+        console.warn(`[PrismaService] Transient connection issue (${error.code || 'transient'}). Retrying attempt ${attempt}/${maxRetries} after ${delayMs}ms...`);
 
         try {
           await this.$disconnect();
         } catch (_) {}
 
-        await new Promise((resolve) => setTimeout(resolve, initialDelayMs * attempt));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
 
         try {
           await this.$connect();
@@ -115,7 +134,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async ensureConnection(): Promise<boolean> {
     try {
-      await this.withRetry(() => this.$queryRaw`SELECT 1`, 2, 500);
+      await this.withRetry(() => this.$queryRaw`SELECT 1`, 3, 200);
       return true;
     } catch (err: any) {
       console.error('[PrismaService] Database connection check failed:', err?.message || err);
