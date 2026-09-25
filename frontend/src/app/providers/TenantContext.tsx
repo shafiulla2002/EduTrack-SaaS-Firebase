@@ -49,58 +49,53 @@ function getInitialTenantCache() {
 }
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
-  const [initialData] = useState(() => getInitialTenantCache());
-
-  const [schoolName, setSchoolName] = useState<string>(() => {
-    return initialData?.setup?.schoolName || 
-           initialData?.tenantName || 
-           initialData?.tenant?.schoolName || 
-           (typeof window !== 'undefined' ? (sessionStorage.getItem('otp_schoolName') || localStorage.getItem('stored_school_name') || '') : '');
-  });
-
-  const [schoolType, setSchoolType] = useState<string>(() => {
-    return initialData?.setup?.schoolType || 
-           initialData?.tenant?.schoolType || 
-           (typeof window !== 'undefined' ? (localStorage.getItem('stored_school_type') || 'School') : 'School');
-  });
-
-  const [adminName, setAdminName] = useState<string>(() => {
-    return initialData?.setup?.adminName || 
-           initialData?.currentUser?.name || 
-           (typeof window !== 'undefined' ? (
-             localStorage.getItem('admin_userName') || 
-             localStorage.getItem('teacher_userName') || 
-             localStorage.getItem('parent_userName') || ''
-           ) : '');
-  });
-
-  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
-    return initialData?.setup?.schoolLogo || 
-           initialData?.tenantLogo || 
-           (typeof window !== 'undefined' ? (sessionStorage.getItem('otp_logoUrl') || localStorage.getItem('stored_school_logo') || null) : null);
-  });
-
+  const [schoolName, setSchoolName] = useState<string>('');
+  const [schoolType, setSchoolType] = useState<string>('School');
+  const [adminName, setAdminName] = useState<string>('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [setupStats, setSetupStats] = useState<any>(() => initialData || null);
-  const [currentUser, setCurrentUser] = useState<any>(() => {
-    if (initialData?.currentUser) return initialData.currentUser;
-    if (typeof window !== 'undefined') {
-      const rawUser = localStorage.getItem('stored_current_user');
-      if (rawUser) {
-        try { return JSON.parse(rawUser); } catch {}
-      }
-    }
-    return null;
-  });
-  const [subscription, setSubscription] = useState<any>(() => initialData?.subscription || null);
-  const [token, setToken] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return getStoredToken();
-    }
-    return null;
-  });
+  const [setupStats, setSetupStats] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [subscription, setSubscription] = useState<any>(null);
+  const [token, setToken] = useState<string | null>(null);
   const pathname = usePathname();
   const [showLockPopup, setShowLockPopup] = useState(false);
+
+  // Safe client hydration: hydrate stored authentication & tenant cache post-mount
+  useEffect(() => {
+    const currentToken = getStoredToken();
+    if (currentToken) {
+      setToken(currentToken);
+    }
+
+    const cachedData = getInitialTenantCache();
+    if (cachedData) {
+      applyTenantData(cachedData);
+    } else {
+      const storedSchool = typeof window !== 'undefined' ? (sessionStorage.getItem('otp_schoolName') || localStorage.getItem('stored_school_name')) : '';
+      if (storedSchool) setSchoolName(storedSchool);
+
+      const storedType = typeof window !== 'undefined' ? (localStorage.getItem('stored_school_type') || 'School') : 'School';
+      if (storedType) setSchoolType(storedType);
+
+      const storedAdmin = typeof window !== 'undefined' ? (
+        localStorage.getItem('admin_userName') || 
+        localStorage.getItem('teacher_userName') || 
+        localStorage.getItem('parent_userName') || ''
+      ) : '';
+      if (storedAdmin) setAdminName(storedAdmin);
+
+      const storedLogo = typeof window !== 'undefined' ? (sessionStorage.getItem('otp_logoUrl') || localStorage.getItem('stored_school_logo') || null) : null;
+      if (storedLogo) setLogoUrl(storedLogo);
+
+      if (typeof window !== 'undefined') {
+        const rawUser = localStorage.getItem('stored_current_user');
+        if (rawUser) {
+          try { setCurrentUser(JSON.parse(rawUser)); } catch {}
+        }
+      }
+    }
+  }, []);
 
   const isSubscriptionActive = !token || loading || !subscription || (
     subscription.status === 'ACTIVE' &&

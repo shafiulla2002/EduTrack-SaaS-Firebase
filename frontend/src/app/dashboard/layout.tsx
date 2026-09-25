@@ -22,8 +22,21 @@ export default function DashboardLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const { schoolName, schoolType, adminName, logoUrl, currentUser, loading, subscription, isSubscriptionActive, showLockPopup, setShowLockPopup } = useTenant();
-  const isImpersonating = typeof window !== 'undefined' && sessionStorage.getItem('impersonating_from_platform') === 'true';
-  const impersonatedSchool = typeof window !== 'undefined' ? (sessionStorage.getItem('impersonated_school_name') || schoolName) : schoolName;
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  const [impersonatedSchool, setImpersonatedSchool] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isImp = sessionStorage.getItem('impersonating_from_platform') === 'true';
+      setIsImpersonating(isImp);
+      const impSchool = sessionStorage.getItem('impersonated_school_name');
+      setImpersonatedSchool(impSchool || schoolName);
+    } else {
+      setImpersonatedSchool(schoolName);
+    }
+  }, [schoolName]);
+
+  const activeSchoolDisplayName = impersonatedSchool || schoolName;
 
   const desktopSidebarRef = useRef<HTMLElement>(null);
   const mobileSidebarRef = useRef<HTMLElement>(null);

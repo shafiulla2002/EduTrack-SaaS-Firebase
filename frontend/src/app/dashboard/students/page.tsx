@@ -75,6 +75,7 @@ export default function StudentsDirectory() {
 
   // Request-specific loading states (Requirement 13)
   const [loadingStudents, setLoadingStudents] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
   // Student dataset
@@ -107,6 +108,7 @@ export default function StudentsDirectory() {
   // Race Condition & Abort Guards (Requirement 4 & 15)
   const abortControllerRef = useRef<AbortController | null>(null);
   const requestIdRef = useRef<number>(0);
+  const isInitialMountRef = useRef<boolean>(false);
 
   // ── Unified Student Data Mapper (Requirement 16) ──────────────────────────
   const mapStudentRecord = useCallback((s: any): Student => {
@@ -251,8 +253,9 @@ export default function StudentsDirectory() {
     requestIdRef.current += 1;
     const currentRequestId = requestIdRef.current;
 
-    // 3. Mark loading immediately (Requirements 2, 3, 14, 15)
+    // 3. Mark loading immediately (Requirements 2, 3, 14, 15) & reset error
     setLoadingStudents(true);
+    setFetchError(null);
 
     try {
       const queryParams = buildStudentQueryParams(pageNumber, limit);
@@ -277,11 +280,13 @@ export default function StudentsDirectory() {
       setTotal(serverTotal);
       setTotalPages(serverTotalPages);
       setPage(serverPage);
+      setFetchError(null);
     } catch (err: any) {
       if (axios.isCancel(err) || err?.name === 'CanceledError' || currentRequestId !== requestIdRef.current) {
         return; // Request was cancelled by a newer filter action; silently discard
       }
       console.error('Failed to load students:', err);
+      setFetchError(err?.response?.data?.message || err?.message || 'Unable to load student records. Please try again.');
       showToast('Failed to load students directory records.', 'error');
     } finally {
       if (currentRequestId === requestIdRef.current) {
@@ -299,7 +304,16 @@ export default function StudentsDirectory() {
     loadStudents(1);
   }, [loadStudents]);
 
+  // Suppress duplicate initial mount refetch from setup status event, while preserving legitimate downstream updates
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      isInitialMountRef.current = true;
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleSchoolSetupUpdate = useCallback(() => {
+    if (!isInitialMountRef.current) return;
     loadFilterOptions();
     loadStudents(1);
   }, [loadStudents]);
@@ -792,13 +806,34 @@ export default function StudentsDirectory() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
-              {/* Requirements 2 & 14: Strict 3-state rendering */}
+              {/* Requirements 2, 4 & 14: Strict 4-state rendering */}
               {loadingStudents ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <LoadingSpinner size="lg" variant="brand" />
                       <p className="text-xs font-semibold text-slate-500">Loading student directory records...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : fetchError ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3 max-w-md mx-auto">
+                      <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
+                        <AlertTriangle className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-800">Unable to load student records</h3>
+                        <p className="text-xs text-slate-500 font-medium mt-1">{fetchError}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => loadStudents(page)}
+                        className="mt-2 px-4 py-2 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-2"
+                      >
+                        Retry
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -920,6 +955,23 @@ export default function StudentsDirectory() {
             <div className="py-20 flex flex-col items-center justify-center gap-3">
               <LoadingSpinner size="lg" variant="brand" />
               <p className="text-xs font-semibold text-slate-500">Loading student directory records...</p>
+            </div>
+          ) : fetchError ? (
+            <div className="p-8 text-center flex flex-col items-center justify-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Unable to load student records</h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">{fetchError}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadStudents(page)}
+                className="mt-2 px-4 py-2 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-2"
+              >
+                Retry
+              </button>
             </div>
           ) : students.length === 0 ? (
             <div className="p-8 text-center">

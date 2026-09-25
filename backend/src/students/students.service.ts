@@ -50,6 +50,20 @@ export class StudentsService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
+    // In serverless environments, do not block request startup with heavy unindexed database sweeps.
+    // Startup maintenance is executed non-blocking in background or on demand.
+    if (process.env.RUN_STARTUP_MAINTENANCE === 'true') {
+      await this.autoAssignMissingRollNumbers();
+    } else {
+      setImmediate(() => {
+        this.autoAssignMissingRollNumbers().catch((err) => {
+          console.warn('[RollNo Bootstrapper] Background maintenance notice:', err?.message || err);
+        });
+      });
+    }
+  }
+
+  async autoAssignMissingRollNumbers() {
     try {
       // Find all students with missing or invalid roll numbers
       const students = await this.prisma.studentProfile.findMany({
@@ -66,7 +80,7 @@ export class StudentsService implements OnModuleInit {
         }
       });
 
-      if (students.length === 0) return;
+      if (students.length === 0) return { updatedCount: 0 };
 
       console.log(`[RollNo Bootstrapper] Auto-assigning roll numbers for ${students.length} students...`);
 
@@ -80,6 +94,7 @@ export class StudentsService implements OnModuleInit {
         groups[s.classSectionId].push(s);
       }
 
+      let totalUpdated = 0;
       for (const [classSectionId, list] of Object.entries(groups)) {
         // Get all current valid roll numbers for this class section
         const existing = await this.prisma.studentProfile.findMany({
@@ -107,11 +122,14 @@ export class StudentsService implements OnModuleInit {
             data: { rollNo: String(currentNext) }
           });
           currentNext++;
+          totalUpdated++;
         }
       }
-      console.log('[RollNo Bootstrapper] Successfully completed roll number auto-generation bootup hook.');
+      console.log(`[RollNo Bootstrapper] Successfully auto-assigned roll numbers for ${totalUpdated} students.`);
+      return { updatedCount: totalUpdated };
     } catch (err) {
       console.error('[RollNo Bootstrapper] Failed to run roll number bootstrapping hook:', err);
+      return { updatedCount: 0 };
     }
   }
 
@@ -1004,6 +1022,7 @@ export class StudentsService implements OnModuleInit {
       const billingInfo = billingMap[s.id] || {
         paidAmount: 0,
         balanceDue: 0,
+        totalPendingBalance: 0,
         totalFees: 0,
         pendingPercentage: 0,
         paidPercentage: 100,
@@ -1013,13 +1032,13 @@ export class StudentsService implements OnModuleInit {
 
       return {
         ...s,
-        paidAmount: billingInfo.paidAmount,
-        balanceDue: billingInfo.totalPendingBalance,
-        totalFees: billingInfo.totalFees,
-        pendingPercentage: billingInfo.pendingPercentage,
-        paidPercentage: billingInfo.paidPercentage,
-        financialStatus: billingInfo.financialStatus,
-        feeSummary: billingInfo.feeSummary
+        paidAmount: billingInfo.paidAmount || 0,
+        balanceDue: billingInfo.totalPendingBalance !== undefined ? billingInfo.totalPendingBalance : (billingInfo.balanceDue || 0),
+        totalFees: billingInfo.totalFees || 0,
+        pendingPercentage: billingInfo.pendingPercentage || 0,
+        paidPercentage: billingInfo.paidPercentage !== undefined ? billingInfo.paidPercentage : 100,
+        financialStatus: billingInfo.financialStatus || 'Fully Paid (100%)',
+        feeSummary: billingInfo.feeSummary || null
       };
     });
 
