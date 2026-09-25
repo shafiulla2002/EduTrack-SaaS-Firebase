@@ -337,10 +337,13 @@ export class StudentsService implements OnModuleInit {
         LEFT JOIN "AcademicYear" ay ON o."academicYearId" = ay.id
         LEFT JOIN "OpportunityLineItem" oli ON o.id = oli."opportunityId"
         LEFT JOIN (
-          SELECT "opportunityId", COALESCE(SUM("paidAmount"), 0)::float AS "paidAmount"
-          FROM "Invoice"
-          WHERE "tenantId" = ${tenantId} AND status::text != 'VOIDED' AND "opportunityId" IS NOT NULL
-          GROUP BY "opportunityId"
+          SELECT inv."opportunityId", COALESCE(SUM(inv."paidAmount"), 0)::float AS "paidAmount"
+          FROM "Invoice" inv
+          WHERE inv."tenantId" = ${tenantId} 
+            AND inv.status::text != 'VOIDED' 
+            AND inv."studentId" IN (${Prisma.join(studentIds)})
+            AND inv."opportunityId" IS NOT NULL
+          GROUP BY inv."opportunityId"
         ) inv_agg ON o.id = inv_agg."opportunityId"
         WHERE o."tenantId" = ${tenantId} AND o."studentId" IN (${Prisma.join(studentIds)})
         GROUP BY o.id, o."studentId", o."stageName", o."academicYearId", o."classId", o."createdAt", ay.id, ay.name, ay."startDate", inv_agg."paidAmount"
@@ -751,6 +754,9 @@ export class StudentsService implements OnModuleInit {
           SELECT 
             sb.*,
             COALESCE(ao."oppPaid", 0)::float AS "paidAmount",
+            COALESCE(ao."oppFee", 0)::float AS "oppFee",
+            COALESCE(pod."prevOppDue", 0)::float AS "prevOppDue",
+            COALESCE(oid."orphanDue", 0)::float AS "orphanDue",
             (
               GREATEST(0, COALESCE(ao."oppFee", 0) - COALESCE(ao."oppPaid", 0)) + 
               COALESCE(pod."prevOppDue", 0) + 
@@ -818,77 +824,106 @@ export class StudentsService implements OnModuleInit {
       const filteredTotal = rows.length > 0 ? rows[0].totalCount : 0;
       const pagedStudentIds = rows.map(r => r.studentId);
 
-      // Fetch rich details & billing info for ONLY the paginated students (take rows)
-      const [studentsData, billingMap] = await Promise.all([
-        pagedStudentIds.length > 0 ? this.prisma.studentProfile.findMany({
-          where: { id: { in: pagedStudentIds } },
-          select: {
-            id: true,
-            rollNo: true,
-            fatherName: true,
-            motherName: true,
-            fatherPhone: true,
-            motherPhone: true,
-            guardianPhone: true,
-            aadharNo: true,
-            profilePhotoUrl: true,
-            classSectionId: true,
-            tenantId: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                phone: true,
-              }
-            },
-            classSection: {
-              select: {
-                id: true,
-                classId: true,
-                sectionId: true,
-                class: {
-                  select: {
-                    id: true,
-                    name: true,
-                    academicYearId: true,
-                  }
-                },
-                section: {
-                  select: {
-                    id: true,
-                    name: true,
-                  }
+      // Fetch rich details for ONLY the paginated students (take rows) without repeating billing calculations
+      const studentsData = pagedStudentIds.length > 0 ? await this.prisma.studentProfile.findMany({
+        where: { id: { in: pagedStudentIds } },
+        select: {
+          id: true,
+          rollNo: true,
+          fatherName: true,
+          motherName: true,
+          fatherPhone: true,
+          motherPhone: true,
+          guardianPhone: true,
+          aadharNo: true,
+          profilePhotoUrl: true,
+          classSectionId: true,
+          tenantId: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+            }
+          },
+          classSection: {
+            select: {
+              id: true,
+              classId: true,
+              sectionId: true,
+              class: {
+                select: {
+                  id: true,
+                  name: true,
+                  academicYearId: true,
+                }
+              },
+              section: {
+                select: {
+                  id: true,
+                  name: true,
                 }
               }
             }
           }
-        }) : [],
-        this.getStudentsBillingInfoBatch(pagedStudentIds, tenantId, academicYearId)
-      ]);
+        }
+      }) : [];
 
       const studentMap = new Map<string, any>(studentsData.map((s: any): [string, any] => [s.id, s]));
+      const rowMap = new Map<string, any>(rows.map((r: any): [string, any] => [r.studentId, r]));
+
       const pagedData = pagedStudentIds.map(id => {
         const s: any = studentMap.get(id);
         if (!s) return null;
-        const billingInfo = billingMap[s.id] || {
-          paidAmount: 0,
-          balanceDue: 0,
-          totalFees: 0,
-          pendingPercentage: 0,
-          paidPercentage: 100,
-          financialStatus: 'Fully Paid (100%)',
-          feeSummary: null
+        const r: any = rowMap.get(id);
+
+        const totalFee = Number(r?.oppFee || 0);
+        const totalPaid = Number(r?.paidAmount || 0);
+        const currentYearPending = Math.max(0, totalFee - totalPaid);
+        const totalPreviousYearDue = Number(r?.prevOppDue || 0) + Number(r?.orphanDue || 0);
+        const grandTotalBalanceDue = Number(r?.balanceDue !== undefined ? r.balanceDue : (currentYearPending + totalPreviousYearDue));
+        const totalFees = Number(r?.totalFees !== undefined ? r.totalFees : (totalPaid + grandTotalBalanceDue));
+
+        const pendingPercentage = totalFees > 0
+          ? Math.round((grandTotalBalanceDue / totalFees) * 100)
+          : 0;
+
+        const paidPercentage = totalFees > 0
+          ? Math.round((totalPaid / totalFees) * 100)
+          : 100;
+
+        const financialStatus = grandTotalBalanceDue > 0
+          ? `Pending Due (${pendingPercentage}%)`
+          : 'Fully Paid (100%)';
+
+        const previousYears = totalPreviousYearDue > 0
+          ? [{ academicYearName: 'Previous Years', outstandingBalance: totalPreviousYearDue }]
+          : [];
+
+        const feeSummary = {
+          currentYear: {
+            feeProductsAmount: totalFee,
+            paidAmount: totalPaid,
+            pendingAmount: currentYearPending
+          },
+          previousYears,
+          overall: {
+            totalCurrentYearDue: currentYearPending,
+            totalPreviousYearDue,
+            grandTotalBalanceDue
+          }
         };
+
         return {
           ...s,
-          paidAmount: billingInfo.paidAmount,
-          balanceDue: billingInfo.totalPendingBalance,
-          totalFees: billingInfo.totalFees,
-          pendingPercentage: billingInfo.pendingPercentage,
-          paidPercentage: billingInfo.paidPercentage,
-          financialStatus: billingInfo.financialStatus,
-          feeSummary: billingInfo.feeSummary
+          paidAmount: totalPaid,
+          balanceDue: grandTotalBalanceDue,
+          totalFees,
+          pendingPercentage,
+          paidPercentage,
+          financialStatus,
+          feeSummary
         };
       }).filter(Boolean);
 

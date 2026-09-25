@@ -1711,19 +1711,22 @@ function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (force = false) => {
     if (!currentUser?.id) return;
+    if (!force && typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return;
+    }
     try {
       const res = await api.get(`/communications/user/${currentUser.id}`);
       setNotifications(res.data || []);
     } catch (err) {
-      console.error('Failed to fetch notifications:', err);
+      // Non-critical background polling - fail quietly
     }
   };
 
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000);
+    fetchNotifications(true);
+    const interval = setInterval(() => fetchNotifications(false), 60000);
     return () => clearInterval(interval);
   }, [currentUser?.id]);
 

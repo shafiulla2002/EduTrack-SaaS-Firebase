@@ -1712,10 +1712,14 @@ function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = async (force = false) => {
     if (!currentUser?.id) return;
+    // Don't poll in background tabs to avoid unnecessary network and server load
+    if (!force && typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+      return;
+    }
     try {
-      const res = await fastGet('/communications/user-notifications', undefined, { ttlMs: 15000 });
+      const res = await fastGet('/communications/user-notifications', undefined, { ttlMs: 60000, forceRefresh: force });
       setNotifications(res.data || []);
     } catch {
       // Non-critical background polling - fail quietly
@@ -1723,8 +1727,8 @@ function NotificationBell() {
   };
 
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 15000);
+    fetchNotifications(true);
+    const interval = setInterval(() => fetchNotifications(false), 60000);
     return () => clearInterval(interval);
   }, [currentUser?.id]);
 
