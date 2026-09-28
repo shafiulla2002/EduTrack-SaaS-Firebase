@@ -6,31 +6,31 @@ import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+@Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
 @Controller('teacher-portal')
 export class TeacherPortalController {
   constructor(private portalService: TeacherPortalService) {}
 
   @Get('dashboard')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getDashboard(@Req() req: any) {
     return this.portalService.getDashboardStats(req.user.sub, req.user.tenantId);
   }
 
   @Get('profile')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getProfile(@Req() req: any) {
     return this.portalService.getProfile(req.user.sub, req.user.tenantId);
   }
 
   @Put('profile')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async updateProfile(@Req() req: any, @Body() data: any) {
     return this.portalService.updateProfile(req.user.sub, req.user.tenantId, data);
   }
 
   @Post('profile/change-password')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async changePassword(@Req() req: any, @Body() data: any) {
     return this.portalService.changePassword(req.user.sub, req.user.tenantId, data);
   }
@@ -41,25 +41,25 @@ export class TeacherPortalController {
   }
 
   @Get('classes/:classSectionId/students')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getStudents(@Req() req: any, @Param('classSectionId') classSectionId: string) {
     return this.portalService.getStudentsForClassSection(req.user.sub, req.user.tenantId, classSectionId);
   }
 
   @Get('attendance/classes')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getAttendanceClasses(@Req() req: any) {
     return this.portalService.getClassesForAttendance(req.user.sub, req.user.tenantId);
   }
 
   @Get('attendance/sections')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getAttendanceSections(@Req() req: any, @Query('classVal') classVal: string) {
     return this.portalService.getSectionsForAttendance(req.user.sub, req.user.tenantId, classVal);
   }
 
   @Get('attendance/students')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getAttendanceStudents(
     @Req() req: any,
     @Query('classVal') classVal: string,
@@ -69,19 +69,19 @@ export class TeacherPortalController {
   }
 
   @Post('attendance/save')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async saveAttendance(@Req() req: any, @Body() data: any) {
     return this.portalService.saveAttendanceSheet(req.user.sub, req.user.tenantId, data);
   }
 
   @Get('attendance/history')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getAttendanceHistory(@Req() req: any) {
     return this.portalService.getAttendanceHistory(req.user.sub, req.user.tenantId);
   }
 
   @Get('marks/entry')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getMarksEntryList(
     @Req() req: any,
     @Query('subjectId') subjectId: string,
@@ -93,49 +93,49 @@ export class TeacherPortalController {
   }
 
   @Post('marks/save')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async saveMarks(@Req() req: any, @Body() data: any) {
     return this.portalService.saveExamMarksList(req.user.sub, req.user.tenantId, data);
   }
 
   @Get('timetable')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getTimetable(@Req() req: any) {
     return this.portalService.getTeacherWeeklySchedule(req.user.sub, req.user.tenantId);
   }
 
   @Get('homework')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getHomeworks(@Req() req: any) {
     return this.portalService.getHomeworks(req.user.sub, req.user.tenantId);
   }
 
   @Post('homework')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async createHomework(@Req() req: any, @Body() data: any) {
     return this.portalService.createHomework(req.user.sub, req.user.tenantId, data);
   }
 
   @Put('homework/:id')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async updateHomework(@Req() req: any, @Param('id') id: string, @Body() data: any) {
     return this.portalService.updateHomework(req.user.sub, req.user.tenantId, id, data);
   }
 
   @Delete('homework/:id')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async deleteHomework(@Req() req: any, @Param('id') id: string) {
     return this.portalService.deleteHomework(req.user.sub, req.user.tenantId, id);
   }
 
   @Get('homework/:id/submissions')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getHomeworkSubmissions(@Req() req: any, @Param('id') id: string) {
     return this.portalService.getHomeworkSubmissions(req.user.sub, req.user.tenantId, id);
   }
 
   @Post('homework/:id/send-to-parents')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async sendHomeworkToParents(@Req() req: any, @Param('id') id: string) {
     return this.portalService.sendHomeworkToParents(req.user.sub, req.user.tenantId, id);
   }
@@ -166,37 +166,37 @@ export class TeacherPortalController {
   }
 
   @Post('leave')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async applyLeave(@Req() req: any, @Body() data: any) {
     return this.portalService.applyLeave(req.user.sub, req.user.tenantId, data);
   }
 
   @Delete('leave/:id')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async cancelLeave(@Req() req: any, @Param('id') id: string) {
     return this.portalService.cancelLeave(req.user.sub, req.user.tenantId, id);
   }
 
   @Patch('leave/:id/status')
-  @Roles(Role.SCHOOL_ADMIN)
+  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async updateLeaveStatus(@Req() req: any, @Param('id') id: string, @Body() data: any) {
     return this.portalService.updateLeaveStatus(req.user.sub, req.user.tenantId, id, data);
   }
 
   @Get('communication/audience')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getCommAudience(@Req() req: any) {
     return this.portalService.getCommunicationAudience(req.user.sub, req.user.tenantId);
   }
 
   @Post('communication/send')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async sendBroadcast(@Req() req: any, @Body() data: any) {
     return this.portalService.sendBroadcastMessage(req.user.sub, req.user.tenantId, data);
   }
 
   @Get('calendar')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getCalendar(
     @Req() req: any,
     @Query('month') month: string,
@@ -211,25 +211,25 @@ export class TeacherPortalController {
   }
 
   @Get('student-progress/:studentId')
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getStudentProgress(@Req() req: any, @Param('studentId') studentId: string) {
     return this.portalService.getStudentProgressDetails(req.user.sub, req.user.tenantId, studentId);
   }
 
   @Get('salary/details')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getSalaryDetails(@Req() req: any) {
     return this.portalService.getMySalaryDetails(req.user.sub, req.user.tenantId);
   }
 
   @Get('salary/history')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getSalaryHistory(@Req() req: any) {
     return this.portalService.getMySalaryHistory(req.user.sub, req.user.tenantId);
   }
 
   @Get('salary/payslip/:expenseId')
-  @Roles(Role.TEACHER)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   async getPayslipData(@Req() req: any, @Param('expenseId') expenseId: string) {
     return this.portalService.getPayslipPDFData(req.user.sub, req.user.tenantId, expenseId);
   }

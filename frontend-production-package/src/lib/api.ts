@@ -17,6 +17,32 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL
 export function getActiveRole(): 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' {
   if (typeof window === 'undefined') return 'SCHOOL_ADMIN';
 
+  // 1. If stored_current_user exists, determine role directly from authentic login session
+  try {
+    const rawUser = localStorage.getItem('stored_current_user');
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      const roleStr = String(u.role || '').toUpperCase();
+      if (roleStr === 'PARENT') {
+        sessionStorage.setItem('active_role', 'PARENT');
+        return 'PARENT';
+      }
+      if (roleStr === 'DRIVER') {
+        sessionStorage.setItem('active_role', 'DRIVER');
+        return 'DRIVER';
+      }
+      if (roleStr === 'TEACHER' || roleStr === 'STAFF') {
+        sessionStorage.setItem('active_role', 'TEACHER');
+        return 'TEACHER';
+      }
+      if (roleStr === 'SCHOOL_ADMIN' || roleStr === 'SUPER_ADMIN') {
+        sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+        return 'SCHOOL_ADMIN';
+      }
+    }
+  } catch {}
+
+  // 2. Check explicit route hints
   const pathname = window.location.pathname || '';
   if (pathname.startsWith('/parent')) {
     if (localStorage.getItem('parent_token')) {
@@ -28,31 +54,26 @@ export function getActiveRole(): 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER
       sessionStorage.setItem('active_role', 'TEACHER');
       return 'TEACHER';
     }
-  } else if (
-    pathname.startsWith('/dashboard') ||
-    pathname.startsWith('/academics') ||
-    pathname.startsWith('/students') ||
-    pathname.startsWith('/billing') ||
-    pathname.startsWith('/settings')
-  ) {
-    if (localStorage.getItem('admin_token')) {
-      sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
-      return 'SCHOOL_ADMIN';
-    }
   }
 
-  let role = sessionStorage.getItem('active_role') as 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' | null;
-  if (!role) {
-    if (localStorage.getItem('parent_token')) {
-      role = 'PARENT';
-    } else if (localStorage.getItem('teacher_token') && !localStorage.getItem('admin_token')) {
-      role = 'TEACHER';
-    } else {
-      role = 'SCHOOL_ADMIN';
-    }
-    sessionStorage.setItem('active_role', role);
+  // 3. Check sessionStorage active_role
+  const sessionRole = sessionStorage.getItem('active_role') as 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' | null;
+  if (sessionRole) {
+    return sessionRole;
   }
-  return role;
+
+  // 4. Token presence fallback
+  if (localStorage.getItem('teacher_token') && !localStorage.getItem('admin_token')) {
+    sessionStorage.setItem('active_role', 'TEACHER');
+    return 'TEACHER';
+  }
+  if (localStorage.getItem('parent_token') && !localStorage.getItem('admin_token')) {
+    sessionStorage.setItem('active_role', 'PARENT');
+    return 'PARENT';
+  }
+
+  sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+  return 'SCHOOL_ADMIN';
 }
 
 export function setStoredAuth(
@@ -76,16 +97,22 @@ export function setStoredAuth(
     if (tenantId) localStorage.setItem('parent_tenantId', tenantId);
     if (phone) localStorage.setItem('parent_userPhone', phone);
     if (userProfile?.name) localStorage.setItem('parent_userName', userProfile.name);
+    localStorage.removeItem('teacher_token');
+    localStorage.removeItem('admin_token');
   } else if (normalizedRole === 'TEACHER' || normalizedRole === 'DRIVER') {
     localStorage.setItem('teacher_token', token);
     if (tenantId) localStorage.setItem('teacher_tenantId', tenantId);
     if (phone) localStorage.setItem('teacher_userPhone', phone);
     if (userProfile?.name) localStorage.setItem('teacher_userName', userProfile.name);
+    localStorage.removeItem('parent_token');
+    localStorage.removeItem('admin_token');
   } else {
     localStorage.setItem('admin_token', token);
     if (tenantId) localStorage.setItem('admin_tenantId', tenantId);
     if (phone) localStorage.setItem('admin_userPhone', phone);
     if (userProfile?.name) localStorage.setItem('admin_userName', userProfile.name);
+    localStorage.removeItem('teacher_token');
+    localStorage.removeItem('parent_token');
   }
 
   if (userProfile) {

@@ -1073,26 +1073,115 @@ export class TeacherPortalService {
   }
 
   async createHomework(userId: string, tenantId: string, data: any) {
+    if (!data.title || !data.title.trim()) {
+      throw new BadRequestException('Assignment title is required.');
+    }
+    if (!data.classSectionId) {
+      throw new BadRequestException('Target class section is required.');
+    }
+    if (!data.dueDate) {
+      throw new BadRequestException('Due date is required.');
+    }
+
+    let parsedDueDate: Date;
+    try {
+      parsedDueDate = new Date(data.dueDate);
+      if (isNaN(parsedDueDate.getTime())) {
+        throw new Error('Invalid Date');
+      }
+    } catch {
+      throw new BadRequestException('Invalid due date format.');
+    }
+
     const staff = await this.getStaffProfile(userId, tenantId);
-    await this.verifyTeacherAssignment(staff.id, data.classSectionId, data.subjectId);
+
+    // Verify classSection belongs to this tenant
+    const classSection = await this.prisma.classSection.findFirst({
+      where: { id: data.classSectionId, tenantId },
+      include: { class: true, section: true },
+    });
+    if (!classSection) {
+      throw new BadRequestException('Selected class section not found or unauthorized.');
+    }
+
+    // Resolve subjectId if empty or missing
+    let finalSubjectId = data.subjectId;
+    if (!finalSubjectId || typeof finalSubjectId !== 'string' || finalSubjectId.trim() === '') {
+      // 1. Try ClassSubject
+      const csSub = await this.prisma.classSubject.findFirst({
+        where: { classSectionId: data.classSectionId, subject: { isActive: true } },
+        select: { subjectId: true },
+      });
+      if (csSub) {
+        finalSubjectId = csSub.subjectId;
+      } else {
+        // 2. Try TeacherAssignment
+        const ta = await this.prisma.teacherAssignment.findFirst({
+          where: { classSectionId: data.classSectionId, teacherId: staff.id },
+          select: { subjectId: true },
+        });
+        if (ta) {
+          finalSubjectId = ta.subjectId;
+        } else {
+          // 3. Try Period
+          const p = await this.prisma.period.findFirst({
+            where: { classSectionId: data.classSectionId, OR: [{ teacherId: staff.id }, { substituteTeacherId: staff.id }] },
+            select: { subjectId: true },
+          });
+          if (p && p.subjectId) {
+            finalSubjectId = p.subjectId;
+          } else {
+            // 4. Try any active subject in this tenant
+            const anySub = await this.prisma.subject.findFirst({
+              where: { tenantId, isActive: true },
+              orderBy: { name: 'asc' },
+              select: { id: true },
+            });
+            if (anySub) {
+              finalSubjectId = anySub.id;
+            } else {
+              throw new BadRequestException('No subject found for this class. Please configure subjects first in Subject Management.');
+            }
+          }
+        }
+      }
+    }
+
+    // Validate subject exists in tenant
+    const subjectRecord = await this.prisma.subject.findFirst({
+      where: { id: finalSubjectId, tenantId },
+    });
+    if (!subjectRecord) {
+      const fallbackSub = await this.prisma.subject.findFirst({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true },
+      });
+      if (fallbackSub) {
+        finalSubjectId = fallbackSub.id;
+      } else {
+        throw new BadRequestException('Selected subject not found in this school.');
+      }
+    }
+
+    await this.verifyTeacherAssignment(staff.id, data.classSectionId, finalSubjectId);
 
     const homework = await this.prisma.homework.create({
       data: {
-        title: data.title,
-        description: data.description,
-        dueDate: new Date(data.dueDate),
-        allowLateSubmission: data.allowLateSubmission || false,
-        maxMarks: data.maxMarks || 100,
+        title: data.title.trim(),
+        description: data.description || '',
+        dueDate: parsedDueDate,
+        allowLateSubmission: Boolean(data.allowLateSubmission),
+        maxMarks: Number(data.maxMarks) || 100,
         assignmentType: data.assignmentType || 'Homework',
         status: data.status || 'Published',
         visibleFrom: data.visibleFrom ? new Date(data.visibleFrom) : new Date(),
-        attachments: data.attachments || [],
+        attachments: Array.isArray(data.attachments) ? data.attachments : [],
         classSectionId: data.classSectionId,
-        subjectId: data.subjectId,
+        subjectId: finalSubjectId,
         teacherId: staff.id,
         tenantId,
-        createdBy: staff.user.name,
-        updatedBy: staff.user.name,
+        createdBy: staff.user?.name || 'Teacher',
+        updatedBy: staff.user?.name || 'Teacher',
       },
     });
 
@@ -1104,8 +1193,8 @@ export class TeacherPortalService {
     if (students.length > 0) {
       await this.prisma.notification.createMany({
         data: students.map(s => ({
-          title: `New Assignment: ${data.title}`,
-          message: `Subject: ${data.subjectName || 'Assignment'}. Due date: ${data.dueDate}. Max Marks: ${data.maxMarks || 100}.`,
+          title: `New Assignment: ${data.title.trim()}`,
+          message: `Subject: ${data.subjectName || subjectRecord?.name || 'Assignment'}. Due date: ${data.dueDate}. Max Marks: ${data.maxMarks || 100}.`,
           type: 'IN_APP',
           recipientId: s.userId,
         })),
@@ -1125,19 +1214,31 @@ export class TeacherPortalService {
       throw new NotFoundException('Homework not found or permissions denied.');
     }
 
+    let parsedDueDate: Date | undefined = undefined;
+    if (data.dueDate !== undefined) {
+      try {
+        parsedDueDate = new Date(data.dueDate);
+        if (isNaN(parsedDueDate.getTime())) {
+          throw new Error('Invalid Date');
+        }
+      } catch {
+        throw new BadRequestException('Invalid due date format.');
+      }
+    }
+
     const homework = await this.prisma.homework.update({
       where: { id },
       data: {
-        title: data.title !== undefined ? data.title : undefined,
+        title: data.title !== undefined ? data.title.trim() : undefined,
         description: data.description !== undefined ? data.description : undefined,
-        dueDate: data.dueDate !== undefined ? new Date(data.dueDate) : undefined,
-        allowLateSubmission: data.allowLateSubmission !== undefined ? data.allowLateSubmission : undefined,
-        maxMarks: data.maxMarks !== undefined ? data.maxMarks : undefined,
+        dueDate: parsedDueDate !== undefined ? parsedDueDate : undefined,
+        allowLateSubmission: data.allowLateSubmission !== undefined ? Boolean(data.allowLateSubmission) : undefined,
+        maxMarks: data.maxMarks !== undefined ? Number(data.maxMarks) : undefined,
         assignmentType: data.assignmentType !== undefined ? data.assignmentType : undefined,
         status: data.status !== undefined ? data.status : undefined,
         visibleFrom: data.visibleFrom !== undefined ? new Date(data.visibleFrom) : undefined,
-        attachments: data.attachments !== undefined ? data.attachments : undefined,
-        updatedBy: staff.user.name,
+        attachments: data.attachments !== undefined ? (Array.isArray(data.attachments) ? data.attachments : []) : undefined,
+        updatedBy: staff.user?.name || 'Teacher',
       },
     });
 

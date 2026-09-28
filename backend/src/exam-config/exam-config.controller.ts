@@ -20,7 +20,7 @@ export class ExamConfigController {
   }
 
   /** Everyone (teachers, parents via parent-portal service): resolve config for a specific exam type */
-  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.PARENT)
+  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STAFF, Role.PARENT)
   @Get('resolve')
   async resolveConfig(
     @Query('examType') examType?: string,
@@ -108,7 +108,7 @@ export class ExamConfigController {
   }
 
   // ── Subject Component Endpoints ───────────────────────────────────────────
-  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
+  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STAFF)
   @Get('components')
   async listComponents() {
     return this.examConfigService.listComponents();
@@ -127,14 +127,14 @@ export class ExamConfigController {
   }
 
   // ── ExamSubject Endpoints ─────────────────────────────────────────────────
-  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
+  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STAFF)
   @Get('exam-subjects')
   async getExamSubjects(@Query('examId') examId: string) {
     if (!examId) return [];
     return this.examConfigService.getExamSubjects(examId);
   }
 
-  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
+  @Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STAFF)
   @Post('exam-subjects/:id')
   async updateExamSubject(
     @Param('id') id: string,

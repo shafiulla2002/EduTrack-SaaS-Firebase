@@ -1092,13 +1092,14 @@ export class StudentsService implements OnModuleInit {
     const tenantId = this.getTenantId();
     const cacheKey = `${tenantId}:${studentId}:${academicYearId || ''}`;
 
-    // Check in-memory cache (60s TTL)
+    // High-speed in-memory cache (30s TTL)
     const cached = studentDetailsMemoryCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
 
-    const [profile, billingInfo] = await Promise.all([
+    // Concurrently fetch profile, opportunities, invoices, and exam marks in parallel
+    const [profile, opportunities, invoices, examMarks] = await Promise.all([
       this.prisma.studentProfile.findUnique({
         where: { id: studentId },
         include: {
@@ -1107,87 +1108,246 @@ export class StudentsService implements OnModuleInit {
             include: {
               class: true,
               section: true,
-            }
+            },
           },
           parentProfile: {
             include: {
               user: true,
-            }
-          },
-          invoices: {
-            where: { tenantId },
-            include: { 
-              invoiceItems: true,
-              opportunity: {
-                include: {
-                  academicYear: true
-                }
-              }
             },
-            orderBy: { invoiceDate: 'desc' }
           },
-          opportunities: {
-            where: {
-              tenantId,
-            },
-            include: {
-              opportunityLineItems: {
-                include: { product: true }
-              }
-            }
-          },
-          examMarks: {
-            where: { tenantId },
-            include: { exam: true, subject: true },
-            orderBy: { exam: { date: 'desc' } }
-          }
-        }
+        },
       }),
-      this.billingService.getStudentById(studentId, academicYearId).catch((err) => {
-        console.error(`[getStudentDetails] Billing lookup error for ${studentId}:`, err?.message || err);
-        return {
-          paidAmount: 0,
-          totalPendingBalance: 0,
-          totalFees: 0,
-          pendingPercentage: 0,
-          paidPercentage: 0,
-          financialStatus: 'Pending',
-          feeSummary: null,
-        };
-      })
+      this.prisma.opportunity.findMany({
+        where: { studentId, tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          academicYear: true,
+          opportunityLineItems: {
+            include: { product: true },
+          },
+        },
+      }),
+      this.prisma.invoice.findMany({
+        where: { studentId, tenantId },
+        orderBy: { invoiceDate: 'desc' },
+        include: {
+          invoiceItems: true,
+          opportunity: {
+            include: {
+              academicYear: true,
+            },
+          },
+        },
+      }),
+      this.prisma.examMark.findMany({
+        where: { studentId, tenantId },
+        orderBy: { exam: { date: 'desc' } },
+        include: {
+          exam: true,
+          subject: true,
+        },
+      }),
     ]);
 
     if (!profile || profile.user.tenantId !== tenantId) {
       throw new NotFoundException('Student profile not found');
     }
 
-    const selectedYear = academicYearId || profile.classSection?.class.academicYearId;
-    const refOpp = profile.opportunities.find(opp => opp.academicYearId === selectedYear);
+    // Resolve Active Opportunity & Academic Year
+    const selectedYear = academicYearId || profile.classSection?.class?.academicYearId;
+    let openOpp = opportunities.find((o) =>
+      academicYearId ? o.academicYearId === academicYearId : o.stageName !== 'Closed Won' && o.stageName !== 'Closed Lost',
+    ) || opportunities[0];
 
-    let unpaidFees = [];
-    if (refOpp) {
+    // Fallback: If opportunity has no line items, auto-sync with class pricebook
+    const targetClassId = profile.classSection?.classId;
+    const targetAyId = selectedYear;
+    if ((!openOpp || !openOpp.opportunityLineItems || openOpp.opportunityLineItems.length === 0) && targetClassId && targetAyId) {
       try {
-        unpaidFees = await this.billingService.getUnpaidFees(refOpp.id);
+        await this.billingService.syncPriceBookToStudents(targetClassId, targetAyId, undefined, tenantId);
+        const syncedOpp = await this.prisma.opportunity.findFirst({
+          where: { studentId, tenantId, academicYearId: targetAyId },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            academicYear: true,
+            opportunityLineItems: { include: { product: true } },
+          },
+        });
+        if (syncedOpp) {
+          openOpp = syncedOpp;
+          const idx = opportunities.findIndex((o) => o.id === syncedOpp.id);
+          if (idx >= 0) opportunities[idx] = syncedOpp;
+          else opportunities.unshift(syncedOpp);
+        }
       } catch (err: any) {
-        console.error(`[getStudentDetails] Unpaid fees lookup error for opp ${refOpp.id}:`, err?.message || err);
+        console.error(`[getStudentDetails] Auto-sync pricebook fallback error for ${studentId}:`, err?.message || err);
       }
     }
 
+    const currentYearStart = openOpp?.academicYear?.startDate || new Date(0);
+
+    // Group invoices by opportunityId
+    const invoicesByOpp = new Map<string, any[]>();
+    for (const inv of invoices) {
+      if (inv.opportunityId) {
+        if (!invoicesByOpp.has(inv.opportunityId)) {
+          invoicesByOpp.set(inv.opportunityId, []);
+        }
+        invoicesByOpp.get(inv.opportunityId)!.push(inv);
+      }
+    }
+
+    // 1. Calculate previous year dues from preceding opportunities
+    const prevYearDuesMap = new Map<string, number>();
+    for (const opp of opportunities) {
+      if (opp.academicYear?.startDate && opp.academicYear.startDate < currentYearStart) {
+        const yearName = opp.academicYear.name || 'Previous Years';
+        const oppFee = (opp.opportunityLineItems || []).reduce((sum, oli) => {
+          const itemTotal = Number(oli.unitPrice) * Number(oli.quantity);
+          const itemDiscount = (itemTotal * Number(oli.discount)) / 100;
+          return sum + (itemTotal - itemDiscount);
+        }, 0);
+        const oppInvoices = invoicesByOpp.get(opp.id) || [];
+        const oppPaid = oppInvoices
+          .filter((i) => i.status !== PaymentStatus.VOIDED)
+          .reduce((sum, inv) => sum + Number(inv.paidAmount), 0);
+        const balance = Math.max(0, oppFee - oppPaid);
+        if (balance > 0) {
+          prevYearDuesMap.set(yearName, (prevYearDuesMap.get(yearName) || 0) + balance);
+        }
+      }
+    }
+
+    // 2. Standalone orphan invoices starting BEFORE currentYearStart
+    for (const inv of invoices) {
+      if (!inv.opportunityId && inv.invoiceDate && new Date(inv.invoiceDate) < currentYearStart) {
+        if (inv.status === PaymentStatus.UNPAID || inv.status === PaymentStatus.PARTIALLY_PAID) {
+          const yearName = 'Previous Years';
+          const balance = Number(inv.remainingBalance || 0);
+          if (balance > 0) {
+            prevYearDuesMap.set(yearName, (prevYearDuesMap.get(yearName) || 0) + balance);
+          }
+        }
+      }
+    }
+
+    // 3. Current year fee and paid calculation
+    let totalFee = 0;
+    let totalPaid = 0;
+    const feeItems: any[] = [];
+
+    if (openOpp) {
+      const oppInvoices = (invoicesByOpp.get(openOpp.id) || []).filter(
+        (inv) => inv.status === PaymentStatus.PAID || inv.status === PaymentStatus.PARTIALLY_PAID,
+      );
+      const oliPaidMap = new Map<string, number>();
+      const namePaidMap = new Map<string, number>();
+
+      for (const inv of oppInvoices) {
+        const invTotal = Number(inv.totalAmount || 0);
+        const invPaid = Number(inv.paidAmount || 0);
+        for (const item of inv.invoiceItems || []) {
+          const itemPaid = invTotal > 0 ? Number(item.amount) * (invPaid / invTotal) : Number(item.amount);
+          if (item.opportunityLineItemId) {
+            oliPaidMap.set(item.opportunityLineItemId, (oliPaidMap.get(item.opportunityLineItemId) || 0) + itemPaid);
+          }
+          if (item.name) {
+            namePaidMap.set(item.name.toLowerCase(), (namePaidMap.get(item.name.toLowerCase()) || 0) + itemPaid);
+          }
+        }
+      }
+
+      for (const oli of openOpp.opportunityLineItems || []) {
+        const totalAmount = Number(oli.unitPrice) * Number(oli.quantity);
+        const discountPercent = Number(oli.discount || 0);
+        const discountAmount = (totalAmount * discountPercent) / 100;
+        const netAmount = totalAmount - discountAmount;
+        const paidByOli = oliPaidMap.get(oli.id) || 0;
+        const paidByName = oli.product?.name ? namePaidMap.get(oli.product.name.toLowerCase()) || 0 : 0;
+        const paidAmount = Math.max(paidByOli, paidByName);
+        const balanceDue = Math.max(0, netAmount - paidAmount);
+
+        totalFee += netAmount;
+        totalPaid += paidAmount;
+
+        feeItems.push({
+          oliId: oli.id,
+          productName: oli.product?.name || 'Fee Product',
+          totalAmount,
+          netAmount,
+          paidAmount,
+          balanceDue,
+          productId: oli.productId,
+          discountPercent,
+          discountAmount,
+        });
+      }
+
+      // Prepend previous year balance brought forward if exists
+      let prevBalanceDue = 0;
+      for (const [, balance] of prevYearDuesMap) {
+        prevBalanceDue += balance;
+      }
+      if (prevBalanceDue > 0) {
+        feeItems.unshift({
+          oliId: 'PREV_YEAR_DUE_CF',
+          productName: 'Previous Year Balance Brought Forward',
+          totalAmount: prevBalanceDue,
+          netAmount: prevBalanceDue,
+          paidAmount: 0,
+          balanceDue: prevBalanceDue,
+          productId: 'PREV_YEAR_DUE_CF',
+          discountPercent: 0,
+          discountAmount: 0,
+        });
+      }
+    }
+
+    const previousYears = Array.from(prevYearDuesMap.entries()).map(([academicYearName, outstandingBalance]) => ({
+      academicYearName,
+      outstandingBalance,
+    }));
+    const totalPreviousYearDue = previousYears.reduce((sum, item) => sum + item.outstandingBalance, 0);
+    const currentYearPending = Math.max(0, totalFee - totalPaid);
+    const grandTotalBalanceDue = currentYearPending + totalPreviousYearDue;
+    const totalFees = totalPaid + grandTotalBalanceDue;
+    const pendingPercentage = totalFees > 0 ? Math.round((grandTotalBalanceDue / totalFees) * 100) : 0;
+    const paidPercentage = totalFees > 0 ? Math.round((totalPaid / totalFees) * 100) : 100;
+    const financialStatus =
+      grandTotalBalanceDue > 0 ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)';
+
+    const feeSummary = {
+      currentYear: {
+        feeProductsAmount: totalFee,
+        paidAmount: totalPaid,
+        pendingAmount: currentYearPending,
+      },
+      previousYears,
+      overall: {
+        totalCurrentYearDue: currentYearPending,
+        totalPreviousYearDue,
+        grandTotalBalanceDue,
+      },
+    };
+
     const result = {
       ...profile,
-      paidAmount: billingInfo.paidAmount,
-      balanceDue: billingInfo.totalPendingBalance,
-      totalFees: billingInfo.totalFees,
-      pendingPercentage: billingInfo.pendingPercentage,
-      paidPercentage: billingInfo.paidPercentage,
-      financialStatus: billingInfo.financialStatus,
-      feeSummary: billingInfo.feeSummary,
-      feeItems: unpaidFees
+      invoices,
+      opportunities,
+      examMarks,
+      paidAmount: totalPaid,
+      balanceDue: grandTotalBalanceDue,
+      totalFees,
+      pendingPercentage,
+      paidPercentage,
+      financialStatus,
+      feeSummary,
+      feeItems,
     };
 
     studentDetailsMemoryCache.set(cacheKey, {
       data: result,
-      expiresAt: Date.now() + 60000,
+      expiresAt: Date.now() + 30000,
     });
 
     return result;

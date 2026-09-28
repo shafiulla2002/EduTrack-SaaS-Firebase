@@ -264,7 +264,7 @@ export class TimetableController {
     return this.timetableService.getSkillLevelOptions();
   }
 
-  @Roles(Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   @Get('my-schedule')
   async getMySchedule(@Req() req: any) {
     // Delegates to service method — no inline prisma queries in controllers

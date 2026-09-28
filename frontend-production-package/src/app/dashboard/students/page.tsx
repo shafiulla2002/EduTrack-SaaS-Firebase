@@ -832,9 +832,25 @@ export default function StudentsDirectory() {
                       <td className="px-3 py-3 font-mono text-xs text-blue-600 font-bold">{student.rollNo}</td>
                       <td className="px-3.5 py-3">
                         <div className="flex items-center gap-2.5">
-                          <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
+                          <button
+                            type="button"
+                            onClick={() => navigateToProfile(student)}
+                            onMouseEnter={() => prefetchProfile(student)}
+                            className="cursor-pointer transition-transform hover:scale-105"
+                            title={`View profile of ${student.name}`}
+                          >
+                            <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
+                          </button>
                           <div className="min-w-0">
-                            <div className="font-bold text-slate-800 text-[13px] truncate">{student.name}</div>
+                            <button
+                              type="button"
+                              onClick={() => navigateToProfile(student)}
+                              onMouseEnter={() => prefetchProfile(student)}
+                              className="font-bold text-slate-800 text-[13px] truncate text-left hover:text-blue-600 transition-colors cursor-pointer block max-w-full"
+                              title={`View profile of ${student.name}`}
+                            >
+                              {student.name}
+                            </button>
                             <div className="text-[11px] text-slate-400 font-medium truncate mt-0.5">{student.email}</div>
                           </div>
                         </div>
@@ -935,12 +951,27 @@ export default function StudentsDirectory() {
                 <div key={student.id} className="p-4 space-y-3">
                   <div className="flex justify-between items-start gap-2">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
+                      <button
+                        type="button"
+                        onClick={() => navigateToProfile(student)}
+                        onMouseEnter={() => prefetchProfile(student)}
+                        className="cursor-pointer transition-transform hover:scale-105"
+                        title={`View profile of ${student.name}`}
+                      >
+                        <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
+                      </button>
                       <div className="min-w-0 flex-1">
                         <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold font-mono">
                           Roll: {student.rollNo}
                         </span>
-                        <h4 className="text-sm font-bold text-slate-800 mt-1 truncate">{student.name}</h4>
+                        <h4 
+                          onClick={() => navigateToProfile(student)}
+                          onMouseEnter={() => prefetchProfile(student)}
+                          className="text-sm font-bold text-slate-800 mt-1 truncate hover:text-blue-600 transition-colors cursor-pointer"
+                          title={`View profile of ${student.name}`}
+                        >
+                          {student.name}
+                        </h4>
                         <p className="text-xs text-slate-400 font-medium mt-0.5 truncate">{student.email}</p>
                       </div>
                     </div>

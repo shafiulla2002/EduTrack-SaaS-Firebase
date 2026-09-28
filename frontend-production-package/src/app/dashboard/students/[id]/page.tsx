@@ -18,12 +18,13 @@ import {
   Calendar as CalendarIcon,
   Phone,
   Mail,
+  RefreshCw,
 } from 'lucide-react';
 import { api, fastGet, getCachedData } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
 import { useToast } from '@/components/Toast';
 import StudentAvatar from '@/components/StudentAvatar';
-import { PencilSpinner, EmptyState, ErrorState } from '@/components/loading';
+import { PencilSpinner, LoadingSpinner, EmptyState, ErrorState } from '@/components/loading';
 
 interface Student {
   id: string;
@@ -66,7 +67,7 @@ function parseStudentFromData(data: any): Student | null {
       ? data.user.phone.includes('-')
         ? data.user.phone.split('-').pop() || data.user.phone
         : data.user.phone
-      : (data.phone || 'N/A'),
+      : data.phone || data.fatherPhone || 'N/A',
     class: data.classSection?.class?.name || data.class || 'N/A',
     section: data.classSection?.section?.name || data.section || 'N/A',
     fatherName: data.fatherName || 'N/A',
@@ -199,7 +200,8 @@ export default function StudentProfilePage() {
   });
   const [selectedYear, setSelectedYear] = useState<string>('All');
   const [loading, setLoading] = useState<boolean>(() => !initialData && !preseededStudent);
-  const [detailsLoading, setDetailsLoading] = useState<boolean>(false);
+  const [detailsLoading, setDetailsLoading] = useState<boolean>(() => !initialData);
+  const [casesLoading, setCasesLoading] = useState<boolean>(() => !initialData && initialCases.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState<boolean>(false);
 
@@ -215,15 +217,19 @@ export default function StudentProfilePage() {
   const [deleteConfirm, setDeleteConfirm] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-  // Fetch full student profile data with SWR
+  // Fetch full student profile data with SWR and independent async section loading
   const fetchStudentData = useCallback(async (yearId?: string) => {
     if (!studentId) return;
 
     try {
       if (yearId !== undefined) {
         setDetailsLoading(true);
-      } else if (!student) {
-        setLoading(true);
+      } else {
+        if (!student) setLoading(true);
+        if (!studentDetails) {
+          setDetailsLoading(true);
+          setCasesLoading(true);
+        }
       }
       setError(null);
       setNotFound(false);
@@ -232,8 +238,71 @@ export default function StudentProfilePage() {
       const studentUrl = `/students/${studentId}`;
       const studentParams = targetYear && targetYear !== 'All' ? { academicYearId: targetYear } : undefined;
 
-      const [detailsRes, casesRes, yearsRes] = await Promise.all([
-        fastGet(studentUrl, { params: studentParams }, {
+      // 1. Concurrently fetch academic years (cached lookup)
+      fastGet('/academics/academic-years', undefined, {
+        ttlMs: 60000,
+        onRevalidate: (fresh) => {
+          if (Array.isArray(fresh)) setAcademicYears(fresh);
+        },
+      })
+        .then((res) => {
+          if (Array.isArray(res.data)) setAcademicYears(res.data);
+        })
+        .catch(() => {});
+
+      // 2. Concurrently fetch behavior cases independently
+      fastGet(`/complaint-box/student-cases/${studentId}`, undefined, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (Array.isArray(fresh)) {
+            setStudentDetails((prev: any) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                cases: fresh.map((c: any) => ({
+                  id: c.id,
+                  type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
+                  typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
+                  subject: c.category || 'Discipline',
+                  priority: c.priority || 'Normal',
+                  status: c.status || 'Active',
+                  date: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
+                  description: c.description || '',
+                })),
+              };
+            });
+          }
+        },
+      })
+        .then((res) => {
+          const fresh = res.data;
+          if (Array.isArray(fresh)) {
+            const formattedCases = fresh.map((c: any) => ({
+              id: c.id,
+              type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
+              typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
+              subject: c.category || 'Discipline',
+              priority: c.priority || 'Normal',
+              status: c.status || 'Active',
+              date: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
+              description: c.description || '',
+            }));
+            setStudentDetails((prev: any) => {
+              if (!prev) return { cases: formattedCases, products: [], invoices: [], exams: [] };
+              return { ...prev, cases: formattedCases };
+            });
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setCasesLoading(false);
+        });
+
+      // 3. Fetch primary student profile, fees, invoices, exams in single parallel pass
+      const detailsRes = await fastGet(
+        studentUrl,
+        { params: studentParams },
+        {
           ttlMs: 30000,
           onRevalidate: (fresh) => {
             if (fresh && fresh.id) {
@@ -241,33 +310,9 @@ export default function StudentProfilePage() {
               if (fullSt) setStudent(fullSt);
               setStudentDetails((prev: any) => parseDetailsFromData(fresh, prev?.cases || []));
             }
-          }
-        }),
-        fastGet(`/complaint-box/student-cases/${studentId}`, undefined, {
-          ttlMs: 30000,
-          onRevalidate: (fresh) => {
-            if (Array.isArray(fresh)) {
-              setStudentDetails((prev: any) => {
-                if (!prev) return prev;
-                return {
-                  ...prev,
-                  cases: fresh.map((c: any) => ({
-                    id: c.id,
-                    type: c.behaviorType === 'Praise' ? 'Positive' : 'Negative',
-                    typeIcon: c.behaviorType === 'Praise' ? '⭐' : '⚠️',
-                    subject: c.category || 'Discipline',
-                    priority: c.priority || 'Normal',
-                    status: c.status || 'Active',
-                    date: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '',
-                    description: c.description || '',
-                  }))
-                };
-              });
-            }
-          }
-        }).catch(() => ({ data: [] })),
-        fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => ({ data: [] })),
-      ]);
+          },
+        },
+      );
 
       const data = detailsRes.data;
       if (!data || !data.id) {
@@ -277,20 +322,15 @@ export default function StudentProfilePage() {
         return;
       }
 
-      const casesData = casesRes.data || [];
-      const yearsData = yearsRes.data || [];
-      setAcademicYears(Array.isArray(yearsData) ? yearsData : []);
-
       const fullStudent = parseStudentFromData(data);
       if (fullStudent) {
         setStudent(fullStudent);
       }
-      
-      const parsedDetails = parseDetailsFromData(data, casesData);
-      setStudentDetails(parsedDetails);
 
-      if (parsedDetails?.exams?.length > 0) {
-        setSelectedExamTab(prev => prev || parsedDetails.exams[0].type || 'Unit Test');
+      setStudentDetails((prev: any) => parseDetailsFromData(data, prev?.cases || []));
+
+      if (data.examMarks?.length > 0) {
+        setSelectedExamTab((prev) => prev || data.examMarks[0]?.exam?.type || 'Unit Test');
       }
     } catch (err: any) {
       console.error('Failed to load student profile:', err);
@@ -409,19 +449,46 @@ export default function StudentProfilePage() {
     };
   }, [student, studentDetails, appliedDiscountPercent]);
 
-  // Loading State - only when no cached/pre-seeded student data is available
+  // Loading State - only when no cached/pre-seeded student data is available (cold start / hard refresh)
   if (loading && !student) {
     return (
-      <div className="space-y-6 animate-pulse pb-12">
+      <div className="space-y-6 pb-12 animate-in fade-in">
+        {/* Header Skeleton */}
         <div className="flex justify-between items-center pb-5 border-b border-slate-200">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-slate-200"></div>
-            <div className="w-48 h-8 rounded-lg bg-slate-200"></div>
+            <div className="w-10 h-10 rounded-xl bg-slate-200 animate-pulse" />
+            <div className="space-y-2">
+              <div className="w-48 h-6 rounded-lg bg-slate-200 animate-pulse" />
+              <div className="w-32 h-3.5 rounded-md bg-slate-100 animate-pulse" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-blue-600 text-xs font-bold">
+              <LoadingSpinner size="xs" variant="brand" />
+              <span>Loading Student Profile...</span>
+            </div>
           </div>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 h-96"></div>
-          <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 h-96"></div>
+
+        {/* Central Loading Indicator Banner */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-xs flex flex-col items-center justify-center min-h-[260px]">
+          <PencilSpinner size="lg" />
+          <h4 className="text-slate-800 font-extrabold text-base mt-4">Loading Student Profile</h4>
+          <p className="text-slate-400 text-xs font-medium mt-1">
+            Fetching demographics, fee structures, invoices, and academic records...
+          </p>
+        </div>
+
+        {/* Skeleton Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 h-64" />
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 h-80" />
+          </div>
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 h-56" />
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 h-80" />
+          </div>
         </div>
       </div>
     );
@@ -494,11 +561,19 @@ export default function StudentProfilePage() {
           <div className="flex items-center gap-3">
             <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="md" />
             <div>
-              <h2 className="text-[24px] font-extrabold text-slate-900 leading-none">
-                {student.name}
-              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-[24px] font-extrabold text-slate-900 leading-none">
+                  {student.name}
+                </h2>
+                {detailsLoading && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-200 animate-in fade-in">
+                    <LoadingSpinner size="xs" variant="brand" />
+                    <span>Syncing Live Data</span>
+                  </span>
+                )}
+              </div>
               <p className="text-slate-500 text-xs font-semibold mt-2">
-                Class: {student.class} | Section: {student.section}
+                Roll No: <span className="font-mono text-blue-600">{student.rollNo}</span> | Class: {student.class} | Section: {student.section}
               </p>
             </div>
           </div>
@@ -587,9 +662,17 @@ export default function StudentProfilePage() {
 
             return (
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-                  <DollarSign className="w-5 h-5 text-blue-500" />
-                  <h3 className="text-base font-bold text-slate-800">Fee Information Summary</h3>
+                <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-blue-500" />
+                    <h3 className="text-base font-bold text-slate-800">Fee Information Summary</h3>
+                  </div>
+                  {detailsLoading && !studentDetails?.feeSummary && (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600">
+                      <LoadingSpinner size="xs" variant="brand" />
+                      <span>Updating...</span>
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
@@ -629,8 +712,8 @@ export default function StudentProfilePage() {
                 <h3 className="text-base font-bold text-slate-800">Current Academic Year Fees</h3>
                 {detailsLoading && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    Updating
+                    <LoadingSpinner size="xs" variant="brand" />
+                    <span>Updating</span>
                   </span>
                 )}
               </div>
@@ -667,6 +750,14 @@ export default function StudentProfilePage() {
                 </select>
               </div>
             </div>
+
+            {/* Section Loading Spinner State */}
+            {detailsLoading && !studentDetails && (
+              <div className="flex items-center justify-center gap-2.5 py-4 px-4 rounded-xl bg-blue-50/60 border border-blue-100 text-xs font-semibold text-blue-700">
+                <LoadingSpinner size="sm" variant="brand" />
+                <span>Loading fee items and fee breakdown...</span>
+              </div>
+            )}
 
             {/* Table */}
             <div className="overflow-x-auto border border-slate-100 rounded-xl w-full">
@@ -793,10 +884,26 @@ export default function StudentProfilePage() {
                 <Receipt className="w-5 h-5 text-blue-500" />
                 <h3 className="text-base font-bold text-slate-800">Invoice Details</h3>
               </div>
-              <span className="text-xs text-slate-500 font-bold bg-slate-50 border border-slate-100 px-2.5 py-0.5 rounded-lg">
-                {studentDetails?.invoices?.length || 0} Invoices
-              </span>
+              <div className="flex items-center gap-2">
+                {detailsLoading && !studentDetails && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600">
+                    <LoadingSpinner size="xs" variant="brand" />
+                    <span>Loading...</span>
+                  </span>
+                )}
+                <span className="text-xs text-slate-500 font-bold bg-slate-50 border border-slate-100 px-2.5 py-0.5 rounded-lg">
+                  {studentDetails?.invoices?.length || 0} Invoices
+                </span>
+              </div>
             </div>
+
+            {/* Section Loading Spinner State */}
+            {detailsLoading && !studentDetails && (
+              <div className="flex items-center justify-center gap-2.5 py-4 px-4 rounded-xl bg-blue-50/60 border border-blue-100 text-xs font-semibold text-blue-700">
+                <LoadingSpinner size="sm" variant="brand" />
+                <span>Loading invoice billing history...</span>
+              </div>
+            )}
 
             <div className="overflow-x-auto border border-slate-100 rounded-xl w-full">
               <table className="w-full text-left border-collapse min-w-[650px]">
@@ -930,9 +1037,17 @@ export default function StudentProfilePage() {
 
           {/* Performance Report */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <Award className="w-5 h-5 text-blue-500" />
-              <h3 className="text-base font-bold text-slate-800">Performance Report</h3>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-blue-500" />
+                <h3 className="text-base font-bold text-slate-800">Performance Report</h3>
+              </div>
+              {detailsLoading && !studentDetails && (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600">
+                  <LoadingSpinner size="xs" variant="brand" />
+                  <span>Loading...</span>
+                </span>
+              )}
             </div>
 
             {/* Exam Category Tabs */}
@@ -952,6 +1067,14 @@ export default function StudentProfilePage() {
               ))}
             </div>
 
+            {/* Section Loading Spinner */}
+            {detailsLoading && !studentDetails && (
+              <div className="flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-blue-50/60 border border-blue-100 text-xs font-semibold text-blue-700">
+                <LoadingSpinner size="xs" variant="brand" />
+                <span>Loading exam performance...</span>
+              </div>
+            )}
+
             {/* Exam Cards */}
             <div className="space-y-3 pt-2 max-h-[380px] overflow-y-auto pr-1">
               {!studentDetails ? (
@@ -964,7 +1087,7 @@ export default function StudentProfilePage() {
                   </div>
                 ))
               ) : !studentDetails.exams ||
-              studentDetails.exams.filter((ex: any) => ex.type === selectedExamTab).length === 0 ? (
+                studentDetails.exams.filter((ex: any) => ex.type === selectedExamTab).length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-4">No exam scores available for {selectedExamTab}.</p>
               ) : (
                 studentDetails.exams
@@ -1020,14 +1143,27 @@ export default function StudentProfilePage() {
                 <ShieldAlert className="w-5 h-5 text-blue-500" />
                 <h3 className="text-base font-bold text-slate-800">Student Behaviour</h3>
               </div>
-              {studentDetails?.cases && (
+              {casesLoading ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600">
+                  <LoadingSpinner size="xs" variant="brand" />
+                  <span>Loading...</span>
+                </span>
+              ) : studentDetails?.cases ? (
                 <span className="text-xs text-slate-500 font-bold bg-slate-50 border border-slate-100 px-2.5 py-0.5 rounded-lg">
                   {studentDetails.cases.length} {studentDetails.cases.length === 1 ? 'Record' : 'Records'}
                 </span>
-              )}
+              ) : null}
             </div>
 
-            {!studentDetails ? (
+            {/* Section Loading Spinner */}
+            {casesLoading && (
+              <div className="flex items-center justify-center gap-2 py-3 px-3 rounded-xl bg-blue-50/60 border border-blue-100 text-xs font-semibold text-blue-700">
+                <LoadingSpinner size="xs" variant="brand" />
+                <span>Loading behaviour records...</span>
+              </div>
+            )}
+
+            {casesLoading ? (
               <div className="space-y-3">
                 {Array.from({ length: 2 }).map((_, i) => (
                   <div key={i} className="border border-slate-100 rounded-xl p-3 bg-slate-50/40 animate-pulse space-y-2">
@@ -1043,7 +1179,7 @@ export default function StudentProfilePage() {
                   </div>
                 ))}
               </div>
-            ) : studentDetails.cases && studentDetails.cases.length > 0 ? (
+            ) : studentDetails?.cases && studentDetails.cases.length > 0 ? (
               <div className="max-h-[380px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-200 hover:scrollbar-thumb-slate-300">
                 {studentDetails.cases.map((c: any) => (
                   <div key={c.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/30 space-y-2 text-xs">

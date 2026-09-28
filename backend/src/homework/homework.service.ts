@@ -140,28 +140,70 @@ export class HomeworkService {
   async createHomework(userId: string, role: string, data: any) {
     const tenantId = this.getTenantId();
 
+    if (!data.title || !data.title.trim()) {
+      throw new BadRequestException('Assignment title is required.');
+    }
+    if (!data.classSectionId) {
+      throw new BadRequestException('Target class section is required.');
+    }
+    if (!data.dueDate) {
+      throw new BadRequestException('Due date is required.');
+    }
+
+    let parsedDueDate: Date;
+    try {
+      parsedDueDate = new Date(data.dueDate);
+      if (isNaN(parsedDueDate.getTime())) {
+        throw new Error('Invalid Date');
+      }
+    } catch {
+      throw new BadRequestException('Invalid due date format.');
+    }
+
+    // Resolve subjectId if empty
+    let finalSubjectId = data.subjectId;
+    if (!finalSubjectId || typeof finalSubjectId !== 'string' || finalSubjectId.trim() === '') {
+      const csSub = await this.prisma.classSubject.findFirst({
+        where: { classSectionId: data.classSectionId, subject: { isActive: true } },
+        select: { subjectId: true },
+      });
+      if (csSub) {
+        finalSubjectId = csSub.subjectId;
+      } else {
+        const anySub = await this.prisma.subject.findFirst({
+          where: { tenantId, isActive: true },
+          select: { id: true },
+        });
+        if (anySub) {
+          finalSubjectId = anySub.id;
+        } else {
+          throw new BadRequestException('No valid subject found for this class section.');
+        }
+      }
+    }
+
     if (this.roleFilterHelper.isTeacher(role)) {
       const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
       await this.roleFilterHelper.validateTeacherAssignment(
         scope.staff.id,
         data.classSectionId,
-        data.subjectId,
+        finalSubjectId,
         tenantId,
       );
 
       const homework = await this.prisma.homework.create({
         data: {
-          title: data.title,
-          description: data.description,
-          dueDate: new Date(data.dueDate),
-          allowLateSubmission: data.allowLateSubmission || false,
-          maxMarks: data.maxMarks || 100,
+          title: data.title.trim(),
+          description: data.description || '',
+          dueDate: parsedDueDate,
+          allowLateSubmission: Boolean(data.allowLateSubmission),
+          maxMarks: Number(data.maxMarks) || 100,
           assignmentType: data.assignmentType || 'Homework',
           status: data.status || 'Published',
           visibleFrom: data.visibleFrom ? new Date(data.visibleFrom) : new Date(),
-          attachments: data.attachments || [],
+          attachments: Array.isArray(data.attachments) ? data.attachments : [],
           classSectionId: data.classSectionId,
-          subjectId: data.subjectId,
+          subjectId: finalSubjectId,
           teacherId: scope.staff.id,
           tenantId,
           createdBy: scope.staff['user']?.name || 'Teacher',
@@ -177,7 +219,7 @@ export class HomeworkService {
       if (students.length > 0) {
         await this.prisma.notification.createMany({
           data: students.map(s => ({
-            title: `New Assignment: ${data.title}`,
+            title: `New Assignment: ${data.title.trim()}`,
             message: `Subject: ${data.subjectName || 'Assignment'}. Due date: ${data.dueDate}. Max Marks: ${data.maxMarks || 100}.`,
             type: 'IN_APP',
             recipientId: s.userId,
@@ -201,17 +243,17 @@ export class HomeworkService {
 
     const homework = await this.prisma.homework.create({
       data: {
-        title: data.title,
-        description: data.description,
-        dueDate: new Date(data.dueDate),
-        allowLateSubmission: data.allowLateSubmission || false,
-        maxMarks: data.maxMarks || 100,
+        title: data.title.trim(),
+        description: data.description || '',
+        dueDate: parsedDueDate,
+        allowLateSubmission: Boolean(data.allowLateSubmission),
+        maxMarks: Number(data.maxMarks) || 100,
         assignmentType: data.assignmentType || 'Homework',
         status: data.status || 'Published',
         visibleFrom: data.visibleFrom ? new Date(data.visibleFrom) : new Date(),
-        attachments: data.attachments || [],
+        attachments: Array.isArray(data.attachments) ? data.attachments : [],
         classSectionId: data.classSectionId,
-        subjectId: data.subjectId,
+        subjectId: finalSubjectId,
         teacherId: finalTeacherId,
         tenantId,
         createdBy: 'Admin',

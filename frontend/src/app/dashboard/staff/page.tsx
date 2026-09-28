@@ -187,7 +187,15 @@ export default function SchoolStaffPage() {
   const [staffSalaryInvoices, setStaffSalaryInvoices] = useState<any[]>([]);
   const [staffSchedule, setStaffSchedule] = useState<any[]>([]);
   const [staffCases, setStaffCases] = useState<any[]>([]);
+  const [staffAssignments, setStaffAssignments] = useState<any[]>([]);
   const [staffDetailLoading, setStaffDetailLoading] = useState(false);
+  const [selectedScheduleDay, setSelectedScheduleDay] = useState<string>(() => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const today = days[new Date().getDay()];
+    return today === 'Sunday' ? 'Monday' : today;
+  });
+
+  const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   useEffect(() => {
     const isModalOpen = selectedStaff !== null || showAddModal || editingStaff !== null || deleteConfirm.show;
@@ -206,15 +214,18 @@ export default function SchoolStaffPage() {
     setStaffSalaryInvoices([]);
     setStaffSchedule([]);
     setStaffCases([]);
+    setStaffAssignments([]);
     try {
-      const [invoicesRes, casesRes, scheduleRes] = await Promise.allSettled([
+      const [invoicesRes, casesRes, scheduleRes, assignmentsRes] = await Promise.allSettled([
         fastGet(`/teachers/${staffId}/salary-invoices`, undefined, { ttlMs: 60000 }),
         fastGet(`/teachers/${staffId}/cases`, undefined, { ttlMs: 60000 }),
         isTeaching ? fastGet(`/teachers/${staffId}/schedule`, undefined, { ttlMs: 60000 }) : Promise.resolve({ data: [] }),
+        isTeaching ? fastGet(`/teachers/${staffId}/assignments`, undefined, { ttlMs: 60000 }) : Promise.resolve({ data: [] }),
       ]);
       setStaffSalaryInvoices(invoicesRes.status === 'fulfilled' ? (invoicesRes.value.data || []) : []);
       setStaffCases(casesRes.status === 'fulfilled' ? (casesRes.value.data || []) : []);
       setStaffSchedule(scheduleRes.status === 'fulfilled' ? (scheduleRes.value.data || []) : []);
+      setStaffAssignments(assignmentsRes.status === 'fulfilled' ? (assignmentsRes.value.data || []) : []);
     } catch {
       // silently ignore — empty state shown
     } finally {
@@ -635,7 +646,13 @@ export default function SchoolStaffPage() {
               return (
                 <div
                   key={member.id}
-                  onClick={() => { setSelectedStaff(member); loadStaffDetail(member.id, member.staffType === 'Teaching'); }}
+                  onClick={() => {
+                    setSelectedStaff(member);
+                    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+                    const today = days[new Date().getDay()];
+                    setSelectedScheduleDay(today === 'Sunday' ? 'Monday' : today);
+                    loadStaffDetail(member.id, member.staffType === 'Teaching');
+                  }}
                   className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md hover:border-slate-300 cursor-pointer transition-all group"
                 >
                   {/* Color Band */}
@@ -962,10 +979,10 @@ export default function SchoolStaffPage() {
       {/* ── STAFF PROFILE MODAL ── */}
       {selectedStaff && (
         <>
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50" onClick={() => setSelectedStaff(null)} />
-          <div className="fixed top-4 sm:top-1/2 bottom-20 sm:bottom-auto left-1/2 -translate-x-1/2 translate-y-0 sm:-translate-y-1/2 w-[92%] sm:w-full max-w-2xl bg-white rounded-2xl shadow-2xl z-50 overflow-y-auto max-h-none sm:max-h-[90vh] flex flex-col">
-            {/* Modal Header Banner */}
-            <div className="p-5" style={{ background: selectedStaff.gradient }}>
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 transition-opacity" onClick={() => setSelectedStaff(null)} />
+          <div className="fixed inset-x-3 top-[4%] bottom-[4%] sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 w-auto sm:w-full max-w-2xl max-h-[92vh] sm:max-h-[90vh] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header Banner (Sticky) */}
+            <div className="p-5 shrink-0 select-none" style={{ background: selectedStaff.gradient }}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   {selectedStaff.avatarUrl ? (
@@ -980,20 +997,26 @@ export default function SchoolStaffPage() {
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] font-bold bg-white/20 text-white px-2 py-0.5 rounded-full">{selectedStaff.staffType}</span>
                       <span className="text-[10px] font-bold bg-emerald-500/30 text-emerald-100 px-2 py-0.5 rounded-full">{selectedStaff.status}</span>
+                      <span className="text-[10px] text-white/80 font-mono">{selectedStaff.employeeId}</span>
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setSelectedStaff(null)} className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 cursor-pointer">
+                <button 
+                  onClick={() => setSelectedStaff(null)} 
+                  className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-colors cursor-pointer"
+                  title="Close Modal"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            <div className="p-6 space-y-5">
+            {/* Modal Body (Independently Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 overscroll-contain">
               {/* Info grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
                 {/* Personal Info */}
-                <div className="bg-slate-50 rounded-xl p-4 space-y-2.5">
+                <div className="bg-slate-50 rounded-xl p-4 space-y-2.5 border border-slate-100">
                   <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                     👤 Personal Info
                   </h4>
@@ -1006,7 +1029,7 @@ export default function SchoolStaffPage() {
                 </div>
 
                 {/* Contact */}
-                <div className="bg-slate-50 rounded-xl p-4 space-y-2.5">
+                <div className="bg-slate-50 rounded-xl p-4 space-y-2.5 border border-slate-100">
                   <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                     📞 Contact
                   </h4>
@@ -1018,7 +1041,7 @@ export default function SchoolStaffPage() {
                 </div>
 
                 {/* Salary */}
-                <div className="bg-slate-50 rounded-xl p-4 space-y-2.5">
+                <div className="bg-slate-50 rounded-xl p-4 space-y-2.5 border border-slate-100">
                   <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                     💰 Salary
                   </h4>
@@ -1037,30 +1060,39 @@ export default function SchoolStaffPage() {
               {/* Subject Skills */}
               {selectedStaff.staffType === 'Teaching' && (
                 <div>
-                  <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
                     <BookOpen className="w-4 h-4 text-blue-500" /> Subject Skills
                   </h4>
                   {selectedStaff.skills.length > 0 ? (
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2.5">
                       {selectedStaff.skills.map((sk, idx) => (
                         <div key={idx} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-                          <span className="text-sm font-bold text-slate-800">{sk.subject}</span>
+                          <span className="text-xs font-bold text-slate-800">{sk.subject}</span>
                           <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 uppercase">{sk.level}</span>
                           <span className="text-[10px] text-slate-400">{sk.exp} yrs</span>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs text-slate-400 italic">No subject skills registered</p>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center text-xs text-slate-400 italic">
+                      No subject skills registered
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* Salary Invoices */}
+              {/* Salary Invoices (Scrollable table with sticky header) */}
               <div>
-                <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  📄 Salary Invoices
-                </h4>
+                <div className="flex items-center justify-between mb-2.5">
+                  <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    📄 Salary Invoices
+                    {staffSalaryInvoices.length > 0 && (
+                      <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.2 rounded-full font-bold">
+                        {staffSalaryInvoices.length}
+                      </span>
+                    )}
+                  </h4>
+                </div>
                 {staffDetailLoading ? (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
                     <PencilSpinner size="sm" />
@@ -1071,10 +1103,10 @@ export default function SchoolStaffPage() {
                     No salary invoices found. Pay the salary to generate an invoice.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <div className="max-h-[260px] overflow-y-auto overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <table className="w-full min-w-[500px] text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider z-10">
+                        <tr>
                           <th className="px-4 py-2.5">Month / Description</th>
                           <th className="px-4 py-2.5 text-right">Net Salary</th>
                           <th className="px-4 py-2.5">Status</th>
@@ -1105,56 +1137,165 @@ export default function SchoolStaffPage() {
                 )}
               </div>
 
-              {/* Schedule */}
-              <div>
-                <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-blue-500" /> Schedule
-                </h4>
-                {staffDetailLoading ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
-                    <PencilSpinner size="sm" />
-                    <span className="text-xs text-slate-500 font-medium">Loading schedule...</span>
+              {/* Student Classes (Assigned Classes for Teaching staff) */}
+              {selectedStaff.staffType === 'Teaching' && (
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-blue-500" /> Student Classes
+                      {staffAssignments.length > 0 && (
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.2 rounded-full font-bold">
+                          {staffAssignments.length}
+                        </span>
+                      )}
+                    </h4>
                   </div>
-                ) : selectedStaff.staffType !== 'Teaching' ? (
+                  {staffDetailLoading ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
+                      <PencilSpinner size="sm" />
+                      <span className="text-xs text-slate-500 font-medium">Loading student classes...</span>
+                    </div>
+                  ) : staffAssignments.length === 0 ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
+                      No classes currently assigned to this teacher.
+                    </div>
+                  ) : (
+                    <div className="max-h-[220px] overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white">
+                      {staffAssignments.map((a: any, idx: number) => (
+                        <div key={idx} className="p-3 hover:bg-slate-50 flex items-center justify-between transition-colors">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#2E5BFF] font-bold text-xs flex items-center justify-center shrink-0">
+                              <Users className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-slate-800">
+                                {a.classSection?.class?.name} - {a.classSection?.section?.name}
+                              </div>
+                              <div className="text-[11px] text-slate-400 font-medium">
+                                Subject: <span className="text-slate-600 font-semibold">{a.subject?.name || 'General'}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs font-bold text-slate-700 block">
+                              {a.classSection?._count?.students ?? a.strength ?? 0} Students
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {a.periodsPerWeek ? `${a.periodsPerWeek} periods/wk` : 'Assigned'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Schedule (with Monday–Sunday Day Selector) */}
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-blue-500" /> Schedule
+                  </h4>
+                </div>
+
+                {selectedStaff.staffType !== 'Teaching' ? (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
                     Schedule not applicable for non-teaching staff.
                   </div>
-                ) : staffSchedule.length === 0 ? (
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
-                    No timetable periods assigned yet.
-                  </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
-                    <table className="w-full min-w-[600px] text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                          <th className="px-4 py-2.5">Day</th>
-                          <th className="px-4 py-2.5">Period</th>
-                          <th className="px-4 py-2.5">Subject</th>
-                          <th className="px-4 py-2.5">Class</th>
-                          <th className="px-4 py-2.5">Time</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs">
-                        {staffSchedule.map((p: any) => (
-                          <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-2.5 font-semibold text-slate-700">{p.dayOfWeek}</td>
-                            <td className="px-4 py-2.5 text-slate-500">Period {p.periodTiming?.periodNumber}</td>
-                            <td className="px-4 py-2.5 font-bold text-blue-700">{p.subject?.name || '—'}</td>
-                            <td className="px-4 py-2.5 text-slate-600">{p.classSection?.class?.name} {p.classSection?.section?.name}</td>
-                            <td className="px-4 py-2.5 text-slate-400">{p.periodTiming?.startTime} – {p.periodTiming?.endTime}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="space-y-3">
+                    {/* Monday–Sunday Day Selector Pills */}
+                    <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto select-none">
+                      {DAYS_OF_WEEK.map((day) => {
+                        const isActive = selectedScheduleDay.toLowerCase() === day.toLowerCase();
+                        const count = staffSchedule.filter((p: any) => p.dayOfWeek?.toLowerCase() === day.toLowerCase()).length;
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => setSelectedScheduleDay(day)}
+                            className={`flex-1 min-w-[70px] py-1.5 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center whitespace-nowrap ${
+                              isActive
+                                ? 'bg-[#2E5BFF] text-white shadow-xs'
+                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                            }`}
+                          >
+                            <span>{day.slice(0, 3)}</span>
+                            {count > 0 && (
+                              <span className={`ml-1 text-[10px] px-1.5 py-0.2 rounded-full font-mono ${isActive ? 'bg-white/25 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                                {count}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Schedule Content for Selected Day */}
+                    {staffDetailLoading ? (
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
+                        <PencilSpinner size="sm" />
+                        <span className="text-xs text-slate-500 font-medium">Loading schedule...</span>
+                      </div>
+                    ) : (() => {
+                      const dayPeriods = staffSchedule.filter((p: any) => p.dayOfWeek?.toLowerCase() === selectedScheduleDay.toLowerCase());
+                      if (dayPeriods.length === 0) {
+                        return (
+                          <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center space-y-1">
+                            <Clock className="w-6 h-6 text-slate-300 mx-auto" />
+                            <p className="text-xs font-semibold text-slate-600">No schedule available for {selectedScheduleDay}.</p>
+                            <p className="text-[11px] text-slate-400">No periods are assigned on this day.</p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="max-h-[260px] overflow-y-auto overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                          <table className="w-full min-w-[500px] text-left border-collapse">
+                            <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider z-10">
+                              <tr>
+                                <th className="px-4 py-2.5">Period</th>
+                                <th className="px-4 py-2.5">Time</th>
+                                <th className="px-4 py-2.5">Subject</th>
+                                <th className="px-4 py-2.5">Class</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-xs">
+                              {dayPeriods.map((p: any) => (
+                                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                                  <td className="px-4 py-2.5 font-bold text-slate-700">
+                                    Period {p.periodTiming?.periodNumber ?? '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-slate-500 font-mono text-[11px]">
+                                    {p.periodTiming?.startTime ? `${p.periodTiming.startTime} – ${p.periodTiming.endTime}` : '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5 font-bold text-[#2E5BFF]">
+                                    {p.subject?.name || '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-slate-600 font-medium">
+                                    {p.classSection?.class?.name} {p.classSection?.section?.name}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
 
               {/* Student Cases */}
               <div>
-                <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
                   📝 Student Cases
+                  {staffCases.length > 0 && (
+                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.2 rounded-full font-bold">
+                      {staffCases.length}
+                    </span>
+                  )}
                 </h4>
                 {staffDetailLoading ? (
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
@@ -1165,10 +1306,10 @@ export default function SchoolStaffPage() {
                     No cases submitted by this staff member.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <div className="max-h-[220px] overflow-y-auto overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <table className="w-full min-w-[500px] text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider z-10">
+                        <tr>
                           <th className="px-4 py-2.5">Type</th>
                           <th className="px-4 py-2.5">Category</th>
                           <th className="px-4 py-2.5">Student</th>

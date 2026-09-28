@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { api, fastGet, getCachedData } from '@/lib/api';
-import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search, Users, Clock, Download, CheckSquare } from 'lucide-react';
+import { BookOpen, Calendar, Plus, Trash2, Edit3, X, CheckCircle2, ChevronRight, FileText, Loader2, Search, Users, Clock, Download, CheckSquare, AlertCircle } from 'lucide-react';
 import Drawer from '@/components/Drawer';
 import DatePickerInput from '@/components/DatePickerInput';
 import { formatDateDDMMYYYY } from '@/lib/date';
 import { useTenant } from '@/app/providers/TenantContext';
+import { useToast } from '@/components/Toast';
 
 export default function HomeworkPage() {
   const { schoolName } = useTenant();
+  const { showToast } = useToast();
   const [isMounted, setIsMounted] = useState(false);
   const [homeworks, setHomeworks] = useState<any[]>(() => {
     return getCachedData<any[]>('/teacher-portal/homework') || [];
@@ -23,6 +25,7 @@ export default function HomeworkPage() {
     return !Array.isArray(cachedHw) || cachedHw.length === 0;
   });
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Form modal visibility
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -147,13 +150,30 @@ export default function HomeworkPage() {
     }
   }, [showShareModal, previewAttachmentUrl]);
 
+  const uniqueClassSections = useMemo(() => {
+    const map = new Map<string, any>();
+    classes.forEach((c: any) => {
+      if (c.classSectionId && !map.has(c.classSectionId)) {
+        map.set(c.classSectionId, c);
+      }
+    });
+    return Array.from(map.values());
+  }, [classes]);
+
+  const classSubjects = useMemo(() => {
+    if (!classSectionId) return [];
+    return classes.filter((c: any) => c.classSectionId === classSectionId && c.subjectId && c.subjectName);
+  }, [classes, classSectionId]);
+
   const openCreateModal = () => {
+    setFormError(null);
     setEditingHomework(null);
     setTitle('');
     setDescription('');
     setDueDate('');
-    setClassSectionId('');
-    setSubjectId('');
+    const defaultCls = classes.length > 0 ? classes[0] : null;
+    setClassSectionId(defaultCls?.classSectionId || '');
+    setSubjectId(defaultCls?.subjectId || '');
     setMaxMarks('100');
     setAllowLateSubmission(false);
     setAssignmentType('Homework');
@@ -161,42 +181,64 @@ export default function HomeworkPage() {
   };
 
   const openEditModal = (hw: any) => {
+    setFormError(null);
     setEditingHomework(hw);
-    setTitle(hw.title);
-    setDescription(hw.description);
-    setDueDate(hw.dueDate.split('T')[0]);
-    setClassSectionId(hw.classSectionId);
-    setSubjectId(hw.subjectId);
-    setMaxMarks(String(hw.maxMarks));
-    setAllowLateSubmission(hw.allowLateSubmission);
-    setAssignmentType(hw.assignmentType);
+    setTitle(hw.title || '');
+    setDescription(hw.description || '');
+    setDueDate(hw.dueDate ? hw.dueDate.split('T')[0] : '');
+    setClassSectionId(hw.classSectionId || '');
+    setSubjectId(hw.subjectId || '');
+    setMaxMarks(String(hw.maxMarks || 100));
+    setAllowLateSubmission(Boolean(hw.allowLateSubmission));
+    setAssignmentType(hw.assignmentType || 'Homework');
     setIsModalOpen(true);
   };
 
   const handleClassChange = (val: string) => {
     setClassSectionId(val);
-    const cls = classes.find(c => c.classSectionId === val);
-    if (cls) {
-      setSubjectId(cls.subjectId);
+    setFormError(null);
+    const matching = classes.filter((c: any) => c.classSectionId === val);
+    if (matching.length > 0) {
+      setSubjectId(matching[0].subjectId || '');
+    } else {
+      setSubjectId('');
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+
+    if (!title.trim()) {
+      setFormError('Please enter an assignment title.');
+      return;
+    }
+    if (!classSectionId) {
+      setFormError('Please select a target class section.');
+      return;
+    }
+    if (!dueDate) {
+      setFormError('Please select a due date.');
+      return;
+    }
+
     setSubmitting(true);
+    setFormError(null);
     
     // Find subject name for payload notification template
-    const cls = classes.find(c => c.classSectionId === classSectionId);
-    const subjectName = cls ? cls.subjectName : 'Assignment';
+    const cls = classes.find((c: any) => c.classSectionId === classSectionId && (c.subjectId === subjectId || !subjectId)) 
+      || classes.find((c: any) => c.classSectionId === classSectionId);
+    const resolvedSubjectId = subjectId || cls?.subjectId || undefined;
+    const subjectName = cls ? (cls.subjectName || 'Assignment') : 'Assignment';
 
     const payload = {
-      title,
-      description,
+      title: title.trim(),
+      description: description.trim(),
       dueDate,
       classSectionId,
-      subjectId,
+      subjectId: resolvedSubjectId,
       subjectName,
-      maxMarks: parseFloat(maxMarks),
+      maxMarks: parseFloat(maxMarks) || 100,
       allowLateSubmission,
       assignmentType,
       status: 'Published',
@@ -205,14 +247,20 @@ export default function HomeworkPage() {
     try {
       if (editingHomework) {
         await api.put(`/teacher-portal/homework/${editingHomework.id}`, payload);
+        showToast('Assignment updated successfully!', 'success');
       } else {
         await api.post('/teacher-portal/homework', payload);
+        showToast('Assignment created and published successfully!', 'success');
       }
       setIsModalOpen(false);
       await loadData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to save homework:', err);
-      alert('Failed to save assignment. Verify input details.');
+      const errMsg = err.response?.data?.message 
+        ? (Array.isArray(err.response.data.message) ? err.response.data.message.join(', ') : err.response.data.message)
+        : (err.message || 'Failed to save assignment. Verify input details.');
+      setFormError(errMsg);
+      showToast(errMsg, 'error');
     } finally {
       setSubmitting(false);
     }
@@ -222,9 +270,11 @@ export default function HomeworkPage() {
     if (!confirm('Are you sure you want to delete this homework?')) return;
     try {
       await api.delete(`/teacher-portal/homework/${id}`);
+      showToast('Assignment deleted successfully.', 'success');
       await loadData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to delete homework:', err);
+      showToast(err.response?.data?.message || 'Failed to delete assignment.', 'error');
     }
   };
 
@@ -449,17 +499,32 @@ Thank you.`;
       {/* Create / Edit Form Modal */}
       <Drawer
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          if (!submitting) {
+            setIsModalOpen(false);
+            setFormError(null);
+          }
+        }}
         title={editingHomework ? 'Modify Assignment' : 'Create Assignment'}
         size="md"
       >
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 bg-white dark:bg-slate-800">
+          {formError && (
+            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-semibold text-rose-700 dark:text-rose-300 flex items-start gap-2.5 animate-in fade-in duration-200">
+              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+              <div className="flex-1 leading-relaxed">{formError}</div>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Title</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Title *</label>
             <input
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (formError) setFormError(null);
+              }}
               placeholder="e.g. Chapter 4 Calculus exercises"
               className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
               required
@@ -467,10 +532,13 @@ Thank you.`;
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Description</label>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Description *</label>
             <textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                if (formError) setFormError(null);
+              }}
               placeholder="Draft details and instructions..."
               rows={4}
               className="block w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
@@ -478,17 +546,45 @@ Thank you.`;
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Target Class Section</label>
-            <select
-              value={classSectionId}
-              onChange={(e) => handleClassChange(e.target.value)}
-              className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
-              required
-            >
-              <option value="" className="dark:bg-slate-800">Select Class Section...</option>
-              {classes.map(c => <option key={c.classSectionId} value={c.classSectionId} className="dark:bg-slate-800">{c.className} ({c.subjectName})</option>)}
-            </select>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Target Class Section *</label>
+              <select
+                value={classSectionId}
+                onChange={(e) => handleClassChange(e.target.value)}
+                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                required
+              >
+                <option value="" className="dark:bg-slate-800">Select Class Section...</option>
+                {uniqueClassSections.map((c: any) => (
+                  <option key={c.classSectionId} value={c.classSectionId} className="dark:bg-slate-800">
+                    {c.className} {c.subjectName ? `(${c.subjectName})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {classSubjects.length > 1 && (
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Subject *</label>
+                <select
+                  value={subjectId}
+                  onChange={(e) => {
+                    setSubjectId(e.target.value);
+                    if (formError) setFormError(null);
+                  }}
+                  className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                  required
+                >
+                  <option value="" className="dark:bg-slate-800">Select Subject...</option>
+                  {classSubjects.map((s: any) => (
+                    <option key={`${s.classSectionId}_${s.subjectId}`} value={s.subjectId} className="dark:bg-slate-800">
+                      {s.subjectName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -519,10 +615,13 @@ Thank you.`;
 
           <div className="grid grid-cols-1 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Due Date</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Due Date *</label>
               <DatePickerInput
                 value={dueDate}
-                onChange={setDueDate}
+                onChange={(val) => {
+                  setDueDate(val);
+                  if (formError) setFormError(null);
+                }}
                 required
               />
             </div>
@@ -542,9 +641,16 @@ Thank you.`;
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 mt-4 transition-all"
+            className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 mt-4 transition-all flex items-center justify-center gap-2"
           >
-            {submitting ? 'Saving...' : 'Publish Assignment'}
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              editingHomework ? 'Update Assignment' : 'Publish Assignment'
+            )}
           </button>
         </form>
       </Drawer>

@@ -398,6 +398,9 @@ export class TeachersService {
           include: {
             class: true,
             section: true,
+            _count: {
+              select: { students: true },
+            },
           },
         },
         subject: true,

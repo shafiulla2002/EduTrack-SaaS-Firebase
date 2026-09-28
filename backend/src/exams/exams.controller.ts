@@ -6,7 +6,7 @@ import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
+@Roles(Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER, Role.STAFF)
 @Controller('exams')
 export class ExamsController {
   constructor(private examsService: ExamsService) {}

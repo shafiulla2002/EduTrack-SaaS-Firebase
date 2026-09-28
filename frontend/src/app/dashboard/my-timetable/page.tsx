@@ -14,13 +14,15 @@ export default function MyTimetablePage() {
   useEffect(() => {
     async function loadTimetable() {
       try {
-        const res = await fastGet('/teacher-portal/timetable', {
+        const res = await fastGet('/teacher-portal/timetable', undefined, {
           ttlMs: 60000,
           onRevalidate: (fresh: any) => {
-            if (fresh) setPeriods(fresh?.data || fresh);
+            const freshList = Array.isArray(fresh?.data) ? fresh.data : (Array.isArray(fresh) ? fresh : []);
+            if (freshList.length > 0) setPeriods(freshList);
           },
         });
-        if (res?.data) setPeriods(res.data);
+        const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+        setPeriods(list);
       } catch (err) {
         console.error('Failed to load timetable:', err);
       } finally {
@@ -30,7 +32,8 @@ export default function MyTimetablePage() {
     loadTimetable();
   }, []);
 
-  const filteredPeriods = periods.filter(p => p.dayOfWeek === activeDay);
+  const periodsList = Array.isArray(periods) ? periods : [];
+  const filteredPeriods = periodsList.filter(p => p && p.dayOfWeek === activeDay);
 
   return (
     <div className="space-y-6 max-w-md mx-auto sm:max-w-none">

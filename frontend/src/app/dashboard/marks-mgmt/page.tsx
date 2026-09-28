@@ -32,6 +32,7 @@ export default function MarksMgmtPage() {
   
   // Local marks state
   const [marksSheet, setMarksSheet] = useState<{ [studentId: string]: { score: string; remarks: string } }>({});
+  const [classSpecificSubjects, setClassSpecificSubjects] = useState<any[]>([]);
 
   // Reference to debounce timer
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -45,11 +46,16 @@ export default function MarksMgmtPage() {
           fastGet('/exams/exam-types', undefined, { ttlMs: 60000 }),
           fastGet('/exam-config/components', undefined, { ttlMs: 60000 }),
         ]);
-        setClasses(clsRes.data);
-        setSubjects(subRes.data);
-        setExamTypes(examRes.data);
-        setComponents(compRes.data);
-        if (compRes.data.length > 0) setSelectedSubjectType(compRes.data[0].name);
+        const classList = Array.isArray(clsRes?.data) ? clsRes.data : (Array.isArray(clsRes) ? clsRes : []);
+        const subjectList = Array.isArray(subRes?.data) ? subRes.data : (Array.isArray(subRes) ? subRes : []);
+        const examTypeList = Array.isArray(examRes?.data) ? examRes.data : (Array.isArray(examRes) ? examRes : []);
+        const compList = Array.isArray(compRes?.data) ? compRes.data : (Array.isArray(compRes) ? compRes : []);
+
+        setClasses(classList);
+        setSubjects(subjectList);
+        setExamTypes(examTypeList);
+        setComponents(compList);
+        if (compList.length > 0) setSelectedSubjectType(compList[0].name);
         else setSelectedSubjectType('Theory');
       } catch (err) {
         console.error('Failed to load initial data:', err);
@@ -59,6 +65,36 @@ export default function MarksMgmtPage() {
     }
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!selectedClass) {
+      setClassSpecificSubjects([]);
+      return;
+    }
+    const mapped = classes.filter(c => c.classSectionId === selectedClass && c.subjectId);
+    if (mapped.length > 0) {
+      const unique = Array.from(
+        new Map(mapped.map(m => [m.subjectId, { id: m.subjectId, name: m.subjectName || 'Subject' }])).values()
+      );
+      setClassSpecificSubjects(unique);
+    } else {
+      api.get(`/exams/subjects?classSectionId=${encodeURIComponent(selectedClass)}`)
+        .then(res => {
+          if (Array.isArray(res.data) && res.data.length > 0) {
+            setClassSpecificSubjects(res.data);
+          } else if (subjects.length > 0) {
+            setClassSpecificSubjects(subjects);
+          }
+        })
+        .catch(() => {
+          if (subjects.length > 0) setClassSpecificSubjects(subjects);
+        });
+    }
+  }, [selectedClass, classes, subjects]);
+
+  const finalSubjects = classSpecificSubjects.length > 0 ? classSpecificSubjects : subjects;
+  const defaultExamTypes = ['Unit Test', 'Monthly Test', 'Quarterly Exam', 'Half-Yearly Exam', 'Annual Exam', 'Pre-Final Exam'];
+  const availableExamTypes = examTypes.length > 0 ? examTypes : defaultExamTypes;
 
   const handleLoadRoster = async () => {
     if (!selectedClass || !selectedSubject || !selectedExam) return;
@@ -282,13 +318,11 @@ export default function MarksMgmtPage() {
                 className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">Select...</option>
-                {classes
-                  .filter(c => c.classSectionId === selectedClass)
-                  .map(c => (
-                    <option key={c.subjectId} value={c.subjectId}>
-                      {c.subjectName}
-                    </option>
-                  ))}
+                {finalSubjects.map((sub: any) => (
+                  <option key={sub.id || sub.subjectId} value={sub.id || sub.subjectId}>
+                    {sub.name || sub.subjectName}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -302,7 +336,7 @@ export default function MarksMgmtPage() {
                 className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm"
               >
                 <option value="">Select...</option>
-                {examTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                {availableExamTypes.map((t: string) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>

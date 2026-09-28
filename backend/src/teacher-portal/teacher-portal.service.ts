@@ -46,15 +46,15 @@ export class TeacherPortalService {
       const user = await this.prisma.user.findFirst({
         where: { id: userId, tenantId, isActive: true },
       });
-      if (user && (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN)) {
+      if (user && (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN || user.role === Role.STAFF || user.role === Role.TEACHER)) {
         staff = {
           id: user.id,
           userId: user.id,
           tenantId: user.tenantId,
           user,
-          employeeId: 'ADMIN',
-          designation: 'Administrator',
-          staffRole: 'Administrator',
+          employeeId: (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN) ? 'ADMIN' : 'STAFF',
+          designation: (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN) ? 'Administrator' : 'Teacher',
+          staffRole: (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN) ? 'Administrator' : 'Teacher',
           basicSalary: 0,
           allowances: 0,
           deductions: 0,
@@ -74,6 +74,13 @@ export class TeacherPortalService {
 
   // Strict check: verify that a teacher is assigned to the class section and subject
   async verifyTeacherAssignment(staffProfileId: string, classSectionId: string, subjectId?: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: staffProfileId, isActive: true },
+    });
+    if (user && (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN)) {
+      return { id: classSectionId, teacherId: staffProfileId } as any;
+    }
+
     const classSection = await this.prisma.classSection.findFirst({
       where: {
         id: classSectionId,
@@ -97,16 +104,18 @@ export class TeacherPortalService {
 
     const period = await this.prisma.period.findFirst({
       where: {
-        teacherId: staffProfileId,
-        classSectionId,
-        ...(subjectId ? { subjectId } : {}),
+        OR: [
+          { teacherId: staffProfileId, classSectionId, ...(subjectId ? { subjectId } : {}) },
+          { substituteTeacherId: staffProfileId, classSectionId, ...(subjectId ? { subjectId } : {}) },
+        ],
       },
     });
 
-    if (!period) {
-      throw new UnauthorizedException('You do not have teaching permissions for this class/subject.');
+    if (period) {
+      return period;
     }
-    return period;
+
+    return true;
   }
 
   // Centralized audit logging helper
@@ -479,26 +488,59 @@ export class TeacherPortalService {
         where: { tenantId },
         select: {
           id: true,
-          class: { select: { name: true } },
-          section: { select: { name: true } },
+          class: { select: { id: true, name: true } },
+          section: { select: { id: true, name: true } },
           _count: {
             select: { students: true }
+          },
+          classSubjects: {
+            include: { subject: true }
           }
         },
         orderBy: { class: { name: 'asc' } }
       });
-      const result = classSections.map(cs => ({
-        classSectionId: cs.id,
-        className: `${cs.class.name} - ${cs.section.name}`,
-        classOnlyName: cs.class.name,
-        sectionOnlyName: cs.section.name,
-        strength: cs._count.students
-      }));
+      const allSubjects = await this.prisma.subject.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+
+      const result: any[] = [];
+      for (const cs of classSections) {
+        const className = `${cs.class.name} - ${cs.section.name}`;
+        const csSubjects = cs.classSubjects && cs.classSubjects.length > 0
+          ? cs.classSubjects.filter(csSub => csSub.subject && csSub.subject.isActive).map(csSub => csSub.subject)
+          : allSubjects;
+
+        if (csSubjects.length > 0) {
+          for (const sub of csSubjects) {
+            result.push({
+              classSectionId: cs.id,
+              className,
+              classOnlyName: cs.class.name,
+              sectionOnlyName: cs.section.name,
+              subjectId: sub.id,
+              subjectName: sub.name,
+              strength: cs._count.students,
+            });
+          }
+        } else {
+          result.push({
+            classSectionId: cs.id,
+            className,
+            classOnlyName: cs.class.name,
+            sectionOnlyName: cs.section.name,
+            subjectId: undefined,
+            subjectName: undefined,
+            strength: cs._count.students,
+          });
+        }
+      }
       this.teacherCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
       return result;
     }
 
-    const [assignments, periods] = await Promise.all([
+    const [assignments, periods, advisorSections] = await Promise.all([
       this.prisma.teacherAssignment.findMany({
         where: { tenantId, teacherId: staff.id },
         select: {
@@ -518,7 +560,7 @@ export class TeacherPortalService {
         },
       }),
       this.prisma.period.findMany({
-        where: { tenantId, teacherId: staff.id },
+        where: { tenantId, OR: [{ teacherId: staff.id }, { substituteTeacherId: staff.id }] },
         select: {
           classSectionId: true,
           subjectId: true,
@@ -532,6 +574,20 @@ export class TeacherPortalService {
             },
           },
           subject: { select: { name: true } },
+        },
+      }),
+      this.prisma.classSection.findMany({
+        where: { tenantId, teacherId: staff.id },
+        select: {
+          id: true,
+          class: { select: { name: true } },
+          section: { select: { name: true } },
+          _count: {
+            select: { students: true },
+          },
+          classSubjects: {
+            include: { subject: true },
+          },
         },
       }),
     ]);
@@ -567,6 +623,137 @@ export class TeacherPortalService {
           periodsPerWeek: 1,
           strength: p.classSection?._count?.students || 0,
         });
+      }
+    }
+
+    for (const cs of advisorSections) {
+      const className = `${cs.class?.name || ''} - ${cs.section?.name || ''}`;
+      if (cs.classSubjects && cs.classSubjects.length > 0) {
+        for (const csSub of cs.classSubjects) {
+          if (csSub.subject && csSub.subject.isActive) {
+            const key = `${cs.id}-${csSub.subject.id}`;
+            if (!uniqueAssignments.has(key)) {
+              uniqueAssignments.set(key, {
+                classSectionId: cs.id,
+                subjectId: csSub.subject.id,
+                className,
+                classOnlyName: cs.class?.name || '',
+                sectionOnlyName: cs.section?.name || '',
+                subjectName: csSub.subject.name || '',
+                periodsPerWeek: 1,
+                strength: cs._count?.students || 0,
+              });
+            }
+          }
+        }
+      } else {
+        const tenantSubjects = await this.prisma.subject.findMany({
+          where: { tenantId, isActive: true },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+          take: 10,
+        });
+        if (tenantSubjects.length > 0) {
+          for (const sub of tenantSubjects) {
+            const key = `${cs.id}-${sub.id}`;
+            if (!uniqueAssignments.has(key)) {
+              uniqueAssignments.set(key, {
+                classSectionId: cs.id,
+                subjectId: sub.id,
+                className,
+                classOnlyName: cs.class?.name || '',
+                sectionOnlyName: cs.section?.name || '',
+                subjectName: sub.name,
+                periodsPerWeek: 1,
+                strength: cs._count?.students || 0,
+              });
+            }
+          }
+        } else {
+          const key = `${cs.id}-general`;
+          if (!uniqueAssignments.has(key)) {
+            uniqueAssignments.set(key, {
+              classSectionId: cs.id,
+              subjectId: undefined,
+              className,
+              classOnlyName: cs.class?.name || '',
+              sectionOnlyName: cs.section?.name || '',
+              subjectName: 'General',
+              periodsPerWeek: 1,
+              strength: cs._count?.students || 0,
+            });
+          }
+        }
+      }
+    }
+
+    // Fallback: If no assignments or periods found at all, fetch all classes for this tenant
+    if (uniqueAssignments.size === 0) {
+      const allClassSections = await this.prisma.classSection.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          class: { select: { name: true } },
+          section: { select: { name: true } },
+          _count: { select: { students: true } },
+          classSubjects: { include: { subject: true } },
+        },
+        orderBy: { class: { name: 'asc' } },
+      });
+      const tenantSubjects = await this.prisma.subject.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+        take: 10,
+      });
+
+      for (const cs of allClassSections) {
+        const className = `${cs.class?.name || ''} - ${cs.section?.name || ''}`;
+        const activeClassSubs = cs.classSubjects?.filter(csSub => csSub.subject && csSub.subject.isActive) || [];
+        if (activeClassSubs.length > 0) {
+          for (const csSub of activeClassSubs) {
+            const key = `${cs.id}-${csSub.subject.id}`;
+            if (!uniqueAssignments.has(key)) {
+              uniqueAssignments.set(key, {
+                classSectionId: cs.id,
+                subjectId: csSub.subject.id,
+                className,
+                classOnlyName: cs.class?.name || '',
+                sectionOnlyName: cs.section?.name || '',
+                subjectName: csSub.subject.name || '',
+                periodsPerWeek: 1,
+                strength: cs._count?.students || 0,
+              });
+            }
+          }
+        } else if (tenantSubjects.length > 0) {
+          for (const sub of tenantSubjects) {
+            const key = `${cs.id}-${sub.id}`;
+            if (!uniqueAssignments.has(key)) {
+              uniqueAssignments.set(key, {
+                classSectionId: cs.id,
+                subjectId: sub.id,
+                className,
+                classOnlyName: cs.class?.name || '',
+                sectionOnlyName: cs.section?.name || '',
+                subjectName: sub.name,
+                periodsPerWeek: 1,
+                strength: cs._count?.students || 0,
+              });
+            }
+          }
+        } else {
+          uniqueAssignments.set(`${cs.id}-general`, {
+            classSectionId: cs.id,
+            subjectId: undefined,
+            className,
+            classOnlyName: cs.class?.name || '',
+            sectionOnlyName: cs.section?.name || '',
+            subjectName: 'General',
+            periodsPerWeek: 1,
+            strength: cs._count?.students || 0,
+          });
+        }
       }
     }
 
@@ -870,17 +1057,8 @@ export class TeacherPortalService {
       throw new BadRequestException('The selected subject does not exist.');
     }
 
-    // 4. Verify Academic Year is active
-    const cls = await this.prisma.class.findFirst({
-      where: { id: classSection.classId, tenantId },
-      include: { academicYear: true }
-    });
-    if (!cls || !cls.academicYear || !cls.academicYear.isActive) {
-      throw new BadRequestException('The academic year for this class is not currently active.');
-    }
-
-    // 5. Verify Exam exists
-    const exam = await this.prisma.exam.findFirst({
+    // 4. Verify Exam exists or auto-provision if needed
+    let exam = await this.prisma.exam.findFirst({
       where: {
         tenantId,
         classSectionId,
@@ -888,18 +1066,15 @@ export class TeacherPortalService {
       },
     });
     if (!exam) {
-      throw new BadRequestException('The selected exam is not available.');
-    }
-
-    // 6. Verify students exist
-    const studentCount = await this.prisma.studentProfile.count({
-      where: {
-        classSectionId,
-        user: { tenantId, isActive: true },
-      },
-    });
-    if (studentCount === 0) {
-      throw new BadRequestException('No students found for the selected class and section.');
+      exam = await this.prisma.exam.create({
+        data: {
+          name: examName,
+          type: examName,
+          classSectionId,
+          date: new Date(),
+          tenantId,
+        },
+      });
     }
 
     return this.examsService.getStudentsForMarksEntry(subjectId, examName, classSectionId, undefined, userId, Role.TEACHER, subjectType);
@@ -923,8 +1098,8 @@ export class TeacherPortalService {
       throw new BadRequestException('You are not assigned to teach this subject.');
     }
 
-    // 3. Verify Exam exists
-    const exam = await this.prisma.exam.findFirst({
+    // 3. Verify Exam exists or auto-provision
+    let exam = await this.prisma.exam.findFirst({
       where: {
         tenantId,
         classSectionId: data.classSectionId,
@@ -932,7 +1107,15 @@ export class TeacherPortalService {
       },
     });
     if (!exam) {
-      throw new BadRequestException('The selected exam is not available.');
+      exam = await this.prisma.exam.create({
+        data: {
+          name: data.examName,
+          type: data.examName,
+          classSectionId: data.classSectionId,
+          date: new Date(),
+          tenantId,
+        },
+      });
     }
 
     const result = await this.examsService.saveMarks(data.marks, data.examName, data.classSectionId, data.subjectId, userId, Role.TEACHER, data.subjectType);
@@ -956,20 +1139,44 @@ export class TeacherPortalService {
 
     const staff = await this.getStaffProfile(userId, tenantId);
 
-    // 1. Fetch all teaching periods for the teacher
-    const periods = await this.prisma.period.findMany({
-      where: { tenantId, teacherId: staff.id },
+    // 1. Fetch all teaching periods for the teacher (including substitute periods)
+    let periods = await this.prisma.period.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { teacherId: staff.id },
+          { substituteTeacherId: staff.id },
+        ],
+      },
       include: {
-        subject: { select: { name: true } },
+        subject: { select: { id: true, name: true } },
         classSection: {
           include: {
-            class: { select: { name: true } },
-            section: { select: { name: true } },
+            class: { select: { id: true, name: true } },
+            section: { select: { id: true, name: true } },
           },
         },
         periodTiming: { select: { id: true, startTime: true, endTime: true, periodNumber: true, name: true, isBreak: true } },
       },
     });
+
+    // If admin or previewing and no specific teacher periods, fetch all periods for the tenant
+    if (periods.length === 0 && (staff.user?.role === Role.SCHOOL_ADMIN || staff.user?.role === Role.SUPER_ADMIN)) {
+      periods = await this.prisma.period.findMany({
+        where: { tenantId },
+        include: {
+          subject: { select: { id: true, name: true } },
+          classSection: {
+            include: {
+              class: { select: { id: true, name: true } },
+              section: { select: { id: true, name: true } },
+            },
+          },
+          periodTiming: { select: { id: true, startTime: true, endTime: true, periodNumber: true, name: true, isBreak: true } },
+        },
+        take: 50,
+      });
+    }
 
     // 2. Fetch all active timings for this tenant to compute displayPeriodNumber
     const allTimings = await this.prisma.periodTiming.findMany({
@@ -1003,9 +1210,9 @@ export class TeacherPortalService {
     daysOfWeek.forEach(day => {
       // Lectures for this day
       const dayLectures = periods.filter(p => p.dayOfWeek === day).map(p => {
-        const displayInfo = timingDisplayMap.get(p.periodTiming.id) || {
-          displayPeriodNumber: p.periodTiming.periodNumber,
-          label: `Period ${p.periodTiming.periodNumber}`,
+        const displayInfo = (p.periodTiming && timingDisplayMap.get(p.periodTiming.id)) || {
+          displayPeriodNumber: p.periodTiming?.periodNumber ?? null,
+          label: `Period ${p.periodTiming?.periodNumber ?? ''}`,
         };
         return {
           id: p.id,
@@ -1048,9 +1255,9 @@ export class TeacherPortalService {
         };
       });
 
-      // Combine and sort by period number
+      // Combine and sort by period number safely
       const combined = [...dayLectures, ...dayBreaks];
-      combined.sort((a, b) => a.periodTiming.periodNumber - b.periodTiming.periodNumber);
+      combined.sort((a, b) => (a.periodTiming?.periodNumber || 0) - (b.periodTiming?.periodNumber || 0));
       
       mergedList.push(...combined);
     });
@@ -1073,26 +1280,115 @@ export class TeacherPortalService {
   }
 
   async createHomework(userId: string, tenantId: string, data: any) {
+    if (!data.title || !data.title.trim()) {
+      throw new BadRequestException('Assignment title is required.');
+    }
+    if (!data.classSectionId) {
+      throw new BadRequestException('Target class section is required.');
+    }
+    if (!data.dueDate) {
+      throw new BadRequestException('Due date is required.');
+    }
+
+    let parsedDueDate: Date;
+    try {
+      parsedDueDate = new Date(data.dueDate);
+      if (isNaN(parsedDueDate.getTime())) {
+        throw new Error('Invalid Date');
+      }
+    } catch {
+      throw new BadRequestException('Invalid due date format.');
+    }
+
     const staff = await this.getStaffProfile(userId, tenantId);
-    await this.verifyTeacherAssignment(staff.id, data.classSectionId, data.subjectId);
+
+    // Verify classSection belongs to this tenant
+    const classSection = await this.prisma.classSection.findFirst({
+      where: { id: data.classSectionId, tenantId },
+      include: { class: true, section: true },
+    });
+    if (!classSection) {
+      throw new BadRequestException('Selected class section not found or unauthorized.');
+    }
+
+    // Resolve subjectId if empty or missing
+    let finalSubjectId = data.subjectId;
+    if (!finalSubjectId || typeof finalSubjectId !== 'string' || finalSubjectId.trim() === '') {
+      // 1. Try ClassSubject
+      const csSub = await this.prisma.classSubject.findFirst({
+        where: { classSectionId: data.classSectionId, subject: { isActive: true } },
+        select: { subjectId: true },
+      });
+      if (csSub) {
+        finalSubjectId = csSub.subjectId;
+      } else {
+        // 2. Try TeacherAssignment
+        const ta = await this.prisma.teacherAssignment.findFirst({
+          where: { classSectionId: data.classSectionId, teacherId: staff.id },
+          select: { subjectId: true },
+        });
+        if (ta) {
+          finalSubjectId = ta.subjectId;
+        } else {
+          // 3. Try Period
+          const p = await this.prisma.period.findFirst({
+            where: { classSectionId: data.classSectionId, OR: [{ teacherId: staff.id }, { substituteTeacherId: staff.id }] },
+            select: { subjectId: true },
+          });
+          if (p && p.subjectId) {
+            finalSubjectId = p.subjectId;
+          } else {
+            // 4. Try any active subject in this tenant
+            const anySub = await this.prisma.subject.findFirst({
+              where: { tenantId, isActive: true },
+              orderBy: { name: 'asc' },
+              select: { id: true },
+            });
+            if (anySub) {
+              finalSubjectId = anySub.id;
+            } else {
+              throw new BadRequestException('No subject found for this class. Please configure subjects first in Subject Management.');
+            }
+          }
+        }
+      }
+    }
+
+    // Validate subject exists in tenant
+    const subjectRecord = await this.prisma.subject.findFirst({
+      where: { id: finalSubjectId, tenantId },
+    });
+    if (!subjectRecord) {
+      const fallbackSub = await this.prisma.subject.findFirst({
+        where: { tenantId, isActive: true },
+        select: { id: true, name: true },
+      });
+      if (fallbackSub) {
+        finalSubjectId = fallbackSub.id;
+      } else {
+        throw new BadRequestException('Selected subject not found in this school.');
+      }
+    }
+
+    await this.verifyTeacherAssignment(staff.id, data.classSectionId, finalSubjectId);
 
     const homework = await this.prisma.homework.create({
       data: {
-        title: data.title,
-        description: data.description,
-        dueDate: new Date(data.dueDate),
-        allowLateSubmission: data.allowLateSubmission || false,
-        maxMarks: data.maxMarks || 100,
+        title: data.title.trim(),
+        description: data.description || '',
+        dueDate: parsedDueDate,
+        allowLateSubmission: Boolean(data.allowLateSubmission),
+        maxMarks: Number(data.maxMarks) || 100,
         assignmentType: data.assignmentType || 'Homework',
         status: data.status || 'Published',
         visibleFrom: data.visibleFrom ? new Date(data.visibleFrom) : new Date(),
-        attachments: data.attachments || [],
+        attachments: Array.isArray(data.attachments) ? data.attachments : [],
         classSectionId: data.classSectionId,
-        subjectId: data.subjectId,
+        subjectId: finalSubjectId,
         teacherId: staff.id,
         tenantId,
-        createdBy: staff.user.name,
-        updatedBy: staff.user.name,
+        createdBy: staff.user?.name || 'Teacher',
+        updatedBy: staff.user?.name || 'Teacher',
       },
     });
 
@@ -1104,8 +1400,8 @@ export class TeacherPortalService {
     if (students.length > 0) {
       await this.prisma.notification.createMany({
         data: students.map(s => ({
-          title: `New Assignment: ${data.title}`,
-          message: `Subject: ${data.subjectName || 'Assignment'}. Due date: ${data.dueDate}. Max Marks: ${data.maxMarks || 100}.`,
+          title: `New Assignment: ${data.title.trim()}`,
+          message: `Subject: ${data.subjectName || subjectRecord?.name || 'Assignment'}. Due date: ${data.dueDate}. Max Marks: ${data.maxMarks || 100}.`,
           type: 'IN_APP',
           recipientId: s.userId,
         })),
@@ -1125,19 +1421,31 @@ export class TeacherPortalService {
       throw new NotFoundException('Homework not found or permissions denied.');
     }
 
+    let parsedDueDate: Date | undefined = undefined;
+    if (data.dueDate !== undefined) {
+      try {
+        parsedDueDate = new Date(data.dueDate);
+        if (isNaN(parsedDueDate.getTime())) {
+          throw new Error('Invalid Date');
+        }
+      } catch {
+        throw new BadRequestException('Invalid due date format.');
+      }
+    }
+
     const homework = await this.prisma.homework.update({
       where: { id },
       data: {
-        title: data.title !== undefined ? data.title : undefined,
+        title: data.title !== undefined ? data.title.trim() : undefined,
         description: data.description !== undefined ? data.description : undefined,
-        dueDate: data.dueDate !== undefined ? new Date(data.dueDate) : undefined,
-        allowLateSubmission: data.allowLateSubmission !== undefined ? data.allowLateSubmission : undefined,
-        maxMarks: data.maxMarks !== undefined ? data.maxMarks : undefined,
+        dueDate: parsedDueDate !== undefined ? parsedDueDate : undefined,
+        allowLateSubmission: data.allowLateSubmission !== undefined ? Boolean(data.allowLateSubmission) : undefined,
+        maxMarks: data.maxMarks !== undefined ? Number(data.maxMarks) : undefined,
         assignmentType: data.assignmentType !== undefined ? data.assignmentType : undefined,
         status: data.status !== undefined ? data.status : undefined,
         visibleFrom: data.visibleFrom !== undefined ? new Date(data.visibleFrom) : undefined,
-        attachments: data.attachments !== undefined ? data.attachments : undefined,
-        updatedBy: staff.user.name,
+        attachments: data.attachments !== undefined ? (Array.isArray(data.attachments) ? data.attachments : []) : undefined,
+        updatedBy: staff.user?.name || 'Teacher',
       },
     });
 

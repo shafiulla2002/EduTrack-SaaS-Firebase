@@ -193,10 +193,19 @@ export class ExamsService {
     let result: any[] = [];
     if (isTeacher) {
       const scope = await this.roleFilterHelper.buildTeacherScope(userId, tenantId);
-      if (scope.assignedSubjectIds.length === 0) return [];
-
       let targetSubjectIds = scope.assignedSubjectIds;
-      if (classSectionId) {
+
+      if (targetSubjectIds.length === 0) {
+        if (classSectionId) {
+          const classMappings = await this.prisma.classSubject.findMany({
+            where: { classSectionId, tenantId },
+            select: { subjectId: true },
+          });
+          if (classMappings.length > 0) {
+            targetSubjectIds = classMappings.map(cm => cm.subjectId);
+          }
+        }
+      } else if (classSectionId) {
         const classMappings = await this.prisma.classSubject.findMany({
           where: { classSectionId, tenantId, subjectId: { in: targetSubjectIds } },
           select: { subjectId: true },
@@ -206,11 +215,18 @@ export class ExamsService {
         }
       }
 
-      const subjects = await this.prisma.subject.findMany({
-        where: { id: { in: targetSubjectIds }, tenantId, isActive: true },
-        select: { id: true, name: true },
-        orderBy: { name: 'asc' },
-      });
+      let subjects = targetSubjectIds.length > 0
+        ? await this.prisma.subject.findMany({
+            where: { id: { in: targetSubjectIds }, tenantId, isActive: true },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+          })
+        : await this.prisma.subject.findMany({
+            where: { tenantId, isActive: true },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+          });
+
       result = subjects.map(s => ({
         id: s.id,
         name: s.name,
@@ -404,13 +420,24 @@ export class ExamsService {
     let resolvedClassSectionId = classSectionId;
 
     if (!resolvedExamId && resolvedClassSectionId && examName) {
-      const exam = await this.prisma.exam.findFirst({
+      let exam = await this.prisma.exam.findFirst({
         where: {
           tenantId,
           classSectionId: resolvedClassSectionId,
-          name: examName,
+          name: { equals: examName, mode: 'insensitive' },
         },
       });
+      if (!exam) {
+        exam = await this.prisma.exam.create({
+          data: {
+            name: examName,
+            type: examName,
+            classSectionId: resolvedClassSectionId,
+            date: new Date(),
+            tenantId,
+          },
+        });
+      }
       if (exam) {
         resolvedExamId = exam.id;
       }
