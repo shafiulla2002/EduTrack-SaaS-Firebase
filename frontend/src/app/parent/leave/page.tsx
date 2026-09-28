@@ -5,10 +5,40 @@ import { useParent } from '../ParentContext';
 import { api, fastGet, invalidateCachePrefix } from '@/lib/api';
 import {
   FileText, CheckCircle, Clock, Upload, X, ShieldAlert, Loader2,
-  Paperclip, Eye, User, Calendar, Download
+  Paperclip, Eye, Download, ZoomIn, ZoomOut, RotateCcw, AlertCircle
 } from 'lucide-react';
 import DatePickerInput from '@/components/DatePickerInput';
-import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '@/lib/date';
+import { formatDateDDMMYYYY } from '@/lib/date';
+
+interface LeavePreviewState {
+  isOpen: boolean;
+  loading: boolean;
+  error: boolean;
+  errorMessage?: string;
+  leaveType: string;
+  fileName: string;
+  fileSizeStr: string;
+  category: 'pdf' | 'image' | 'text' | 'unsupported';
+  blobUrl: string | null;
+  rawUrl: string | null;
+}
+
+function getFormattedFileSize(strOrBytes: string | number): string {
+  if (!strOrBytes) return '';
+  let bytes = 0;
+  if (typeof strOrBytes === 'number') {
+    bytes = strOrBytes;
+  } else if (strOrBytes.startsWith('data:')) {
+    const commaIdx = strOrBytes.indexOf(',');
+    const base64Str = commaIdx !== -1 ? strOrBytes.substring(commaIdx + 1) : '';
+    bytes = Math.floor((base64Str.length * 3) / 4);
+  } else {
+    return '';
+  }
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default function LeavePage() {
   const { selectedChild } = useParent();
@@ -27,20 +57,31 @@ export default function LeavePage() {
   // Audit modal state
   const [selectedAuditLeave, setSelectedAuditLeave] = useState<any | null>(null);
 
-  // Preview attachment modal state (in-page preview)
-  const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
-  const [previewTitle, setPreviewTitle] = useState<string>('Medical Certificate / Attachment');
+  // Preview attachment modal state (in-app preview)
+  const [previewState, setPreviewState] = useState<LeavePreviewState>({
+    isOpen: false,
+    loading: false,
+    error: false,
+    leaveType: '',
+    fileName: '',
+    fileSizeStr: '',
+    category: 'unsupported',
+    blobUrl: null,
+    rawUrl: null,
+  });
   const [imageZoom, setImageZoom] = useState<number>(1);
 
   const fetchLeaves = async (childId: string) => {
     try {
       const res = await fastGet(`/parent-portal/children/${childId}/leave`, {
-        ttlMs: 60000,
+        ttlMs: 30000,
         onRevalidate: (fresh: any) => {
-          if (fresh) setLeavesList(fresh?.data || fresh);
+          if (fresh) setLeavesList(Array.isArray(fresh) ? fresh : (fresh?.data || []));
         },
       });
-      if (res?.data) setLeavesList(res.data);
+      if (res) {
+        setLeavesList(Array.isArray(res) ? res : (res?.data || []));
+      }
     } catch (err) {
       console.error('Failed to fetch leaves:', err);
     } finally {
@@ -56,9 +97,152 @@ export default function LeavePage() {
     }
   }, [selectedChild?.id]);
 
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewState.blobUrl && previewState.blobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewState.blobUrl);
+      }
+    };
+  }, [previewState.blobUrl]);
+
+  const handleOpenAttachmentPreview = async (leave: any) => {
+    if (!leave.attachmentUrl) return;
+
+    if (previewState.blobUrl && previewState.blobUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewState.blobUrl);
+    }
+
+    setImageZoom(1);
+    const initialFileName = `leave_${(leave.leaveType || 'attachment').toLowerCase()}_${leave.id ? leave.id.substring(0, 8) : 'file'}`;
+
+    setPreviewState({
+      isOpen: true,
+      loading: true,
+      error: false,
+      errorMessage: '',
+      leaveType: leave.leaveType || 'Leave',
+      fileName: initialFileName,
+      fileSizeStr: '',
+      category: 'unsupported',
+      blobUrl: null,
+      rawUrl: leave.attachmentUrl,
+    });
+
+    try {
+      let rawContent = leave.attachmentUrl;
+      let finalFileName = initialFileName;
+
+      // If it's a backend API endpoint, fetch the payload with auth
+      if (rawContent.includes('/attachment')) {
+        const res = await api.get(rawContent);
+        rawContent = res.data?.attachment || res.data?.url || rawContent;
+        if (res.data?.fileName) {
+          finalFileName = res.data.fileName;
+        }
+      }
+
+      let category: 'pdf' | 'image' | 'text' | 'unsupported' = 'unsupported';
+      let blobUrl: string | null = null;
+      let fileSizeStr = '';
+
+      if (rawContent.startsWith('data:')) {
+        fileSizeStr = getFormattedFileSize(rawContent);
+        const commaIdx = rawContent.indexOf(',');
+        const header = rawContent.substring(0, commaIdx);
+        const mime = header.replace(/^data:/, '').split(';')[0].toLowerCase() || 'application/octet-stream';
+        const base64Data = rawContent.substring(commaIdx + 1).replace(/\s+/g, '');
+
+        // Convert base64 to binary Uint8Array and Blob
+        const binaryStr = window.atob(base64Data);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: mime });
+        blobUrl = URL.createObjectURL(blob);
+
+        if (mime.includes('pdf')) {
+          category = 'pdf';
+          if (!finalFileName.toLowerCase().endsWith('.pdf')) finalFileName += '.pdf';
+        } else if (mime.includes('image')) {
+          category = 'image';
+          const ext = mime.split('/')[1] || 'jpg';
+          if (!finalFileName.includes('.')) finalFileName += `.${ext}`;
+        } else if (mime.includes('text') || mime.includes('json') || mime.includes('xml')) {
+          category = 'text';
+        }
+      } else if (rawContent.startsWith('http://') || rawContent.startsWith('https://')) {
+        const clean = rawContent.split('?')[0].toLowerCase();
+        if (clean.endsWith('.pdf')) {
+          category = 'pdf';
+          if (!finalFileName.toLowerCase().endsWith('.pdf')) finalFileName += '.pdf';
+        } else if (/\.(jpg|jpeg|png|webp|gif|svg)$/i.test(clean)) {
+          category = 'image';
+        }
+        blobUrl = rawContent;
+      } else if (rawContent.startsWith('/uploads/')) {
+        // Fetch local upload via api with blob response
+        try {
+          const res = await api.get(rawContent, { responseType: 'blob' });
+          const blob = new Blob([res.data]);
+          blobUrl = URL.createObjectURL(blob);
+          const clean = rawContent.split('?')[0].toLowerCase();
+          if (clean.endsWith('.pdf')) category = 'pdf';
+          else if (/\.(jpg|jpeg|png|webp|gif|svg)$/i.test(clean)) category = 'image';
+        } catch {
+          blobUrl = rawContent;
+        }
+      }
+
+      setPreviewState({
+        isOpen: true,
+        loading: false,
+        error: false,
+        leaveType: leave.leaveType || 'Leave',
+        fileName: finalFileName,
+        fileSizeStr,
+        category,
+        blobUrl,
+        rawUrl: rawContent,
+      });
+    } catch (err: any) {
+      console.error('Failed to load leave attachment:', err);
+      setPreviewState(prev => ({
+        ...prev,
+        loading: false,
+        error: true,
+        errorMessage: 'Unable to open attachment. Please try downloading the file.',
+      }));
+    }
+  };
+
+  const handleClosePreview = () => {
+    if (previewState.blobUrl && previewState.blobUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewState.blobUrl);
+    }
+    setPreviewState({
+      isOpen: false,
+      loading: false,
+      error: false,
+      leaveType: '',
+      fileName: '',
+      fileSizeStr: '',
+      category: 'unsupported',
+      blobUrl: null,
+      rawUrl: null,
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChild) return;
+
+    if (uploadFile && uploadFile.size > 10 * 1024 * 1024) {
+      setMessage('File size exceeds the 10MB limit. Please upload a smaller file.');
+      return;
+    }
 
     setLoading(true);
     setMessage('');
@@ -74,6 +258,7 @@ export default function LeavePage() {
           });
 
           setMessage('Leave application submitted successfully!');
+          invalidateCachePrefix(`/parent-portal/children/${selectedChild.id}/leave`);
           fetchLeaves(selectedChild.id);
 
           // Reset form
@@ -83,9 +268,10 @@ export default function LeavePage() {
           setUploadFile(null);
 
           setTimeout(() => setMessage(''), 4000);
-        } catch (err) {
-          console.error(err);
-          setMessage('Failed to submit leave request. Please try again.');
+        } catch (err: any) {
+          console.error('Submit leave error:', err);
+          const errorMsg = err?.response?.data?.message || err?.message || 'Failed to submit leave request. Please try again.';
+          setMessage(Array.isArray(errorMsg) ? errorMsg.join(', ') : errorMsg);
         } finally {
           setLoading(false);
         }
@@ -96,13 +282,13 @@ export default function LeavePage() {
         reader.readAsDataURL(uploadFile);
         reader.onload = () => processSubmit(reader.result as string);
         reader.onerror = () => {
-          setMessage('Failed to process certificate file.');
+          setMessage('Failed to process attachment file. Please choose another file.');
           setLoading(false);
         };
       } else {
         await processSubmit(null);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       setMessage('Failed to submit leave. Please try again.');
       setLoading(false);
@@ -193,19 +379,37 @@ export default function LeavePage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Attachment (Optional, e.g. Doctor's Note)</label>
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Attachment (Medical Certificate, Doctor Note, etc.)</label>
+                {uploadFile && (
+                  <button
+                    type="button"
+                    onClick={() => setUploadFile(null)}
+                    className="text-[10px] text-rose-500 font-bold hover:underline cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
               <div className="border border-dashed border-slate-200 bg-slate-50 hover:border-slate-350 rounded-2xl p-4 text-center cursor-pointer transition-all relative flex items-center justify-center gap-2">
                 <input
                   type="file"
+                  accept=".pdf,image/*,.doc,.docx"
                   className="absolute inset-0 opacity-0 cursor-pointer"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) setUploadFile(file);
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        setMessage('Selected file exceeds 10MB limit. Please choose a smaller file.');
+                        return;
+                      }
+                      setUploadFile(file);
+                    }
                   }}
                 />
-                <Upload className="w-4.5 h-4.5 text-slate-400" />
-                <span className="text-xs text-slate-500 font-semibold block truncate max-w-[200px]">
-                  {uploadFile ? uploadFile.name : 'Choose file to upload'}
+                <Upload className="w-4.5 h-4.5 text-slate-400 shrink-0" />
+                <span className="text-xs text-slate-500 font-semibold block truncate max-w-[220px]">
+                  {uploadFile ? uploadFile.name : 'Choose PDF, Image or Document to upload (Max 10MB)'}
                 </span>
               </div>
             </div>
@@ -303,12 +507,8 @@ export default function LeavePage() {
                         {leave.attachmentUrl ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              setPreviewAttachmentUrl(leave.attachmentUrl);
-                              setPreviewTitle(`${leave.leaveType} Leave Attachment`);
-                              setImageZoom(1);
-                            }}
-                            className="text-[11px] text-[#2E5BFF] hover:underline flex items-center gap-1 font-bold cursor-pointer bg-transparent border-0 p-0"
+                            onClick={() => handleOpenAttachmentPreview(leave)}
+                            className="text-[11px] text-[#2E5BFF] hover:underline flex items-center gap-1.5 font-bold cursor-pointer bg-transparent border-0 p-0"
                           >
                             <Paperclip className="w-3.5 h-3.5" /> Medical Certificate / File
                           </button>
@@ -317,6 +517,7 @@ export default function LeavePage() {
                         )}
 
                         <button
+                          type="button"
                           onClick={() => setSelectedAuditLeave(leave)}
                           className="px-3 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all"
                         >
@@ -343,6 +544,7 @@ export default function LeavePage() {
                 <p className="text-slate-400 text-[10px] mt-1">Ref ID: {selectedAuditLeave.id}</p>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedAuditLeave(null)}
                 className="text-slate-400 hover:text-white p-1 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
               >
@@ -374,99 +576,127 @@ export default function LeavePage() {
         </div>
       )}
 
-      {/* In-App Attachment Preview Modal (opens in the same page) */}
-      {previewAttachmentUrl && (
+      {/* In-App Attachment Preview Modal (opens in the same application page) */}
+      {previewState.isOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[999] p-4 animate-in fade-in">
-          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
             <div className="p-4 bg-slate-900 text-white flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-[#2E5BFF]" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-[#2E5BFF] flex items-center justify-center border border-blue-500/30">
+                  <Paperclip className="w-4 h-4" />
+                </div>
                 <div>
-                  <h3 className="font-extrabold text-sm leading-none">{previewTitle}</h3>
-                  <p className="text-slate-400 text-[10px] mt-0.5">In-Page Attachment Preview</p>
+                  <h3 className="font-extrabold text-sm leading-none text-white">{previewState.leaveType} Leave Attachment</h3>
+                  <p className="text-slate-400 text-[10px] mt-0.5 font-mono truncate max-w-[280px] sm:max-w-md">
+                    {previewState.fileName} {previewState.fileSizeStr ? `• ${previewState.fileSizeStr}` : ''}
+                  </p>
                 </div>
               </div>
+
               <div className="flex items-center gap-2">
-                <a
-                  href={previewAttachmentUrl}
-                  download="leave_attachment"
-                  className="px-3 py-1.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" /> Download
-                </a>
+                {previewState.blobUrl && (
+                  <a
+                    href={previewState.blobUrl}
+                    download={previewState.fileName || 'leave_attachment'}
+                    className="px-3.5 py-1.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download
+                  </a>
+                )}
                 <button
                   type="button"
-                  onClick={() => setPreviewAttachmentUrl(null)}
-                  className="text-slate-400 hover:text-white p-1 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                  onClick={handleClosePreview}
+                  className="text-slate-400 hover:text-white p-1.5 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            <div className="p-4 flex-1 overflow-auto flex flex-col items-center justify-center bg-slate-50 min-h-[300px]">
-              {previewAttachmentUrl.startsWith('data:image/') || previewAttachmentUrl.match(/\.(jpeg|jpg|gif|png|webp)($|\?)/i) ? (
+            <div className="p-4 flex-1 overflow-auto flex flex-col items-center justify-center bg-slate-50 min-h-[350px]">
+              {previewState.loading ? (
+                <div className="flex flex-col items-center justify-center py-16 space-y-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#2E5BFF]" />
+                  <p className="text-xs font-bold text-slate-500">Loading attachment preview...</p>
+                </div>
+              ) : previewState.error ? (
+                <div className="flex flex-col items-center justify-center space-y-3 p-8 bg-white rounded-2xl border border-rose-200 text-center max-w-md">
+                  <AlertCircle className="w-10 h-10 text-rose-500" />
+                  <p className="text-xs font-bold text-slate-700">{previewState.errorMessage || 'Could not preview file in browser.'}</p>
+                  {previewState.blobUrl && (
+                    <a
+                      href={previewState.blobUrl}
+                      download={previewState.fileName || 'leave_attachment'}
+                      className="px-4 py-2 bg-[#2E5BFF] text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition-all flex items-center gap-2"
+                    >
+                      <Download className="w-4 h-4" /> Download File
+                    </a>
+                  )}
+                </div>
+              ) : previewState.category === 'pdf' && previewState.blobUrl ? (
+                <iframe
+                  src={`${previewState.blobUrl}#toolbar=1`}
+                  title="PDF Attachment Viewer"
+                  className="w-full h-[68vh] rounded-2xl border border-slate-200 bg-white shadow-inner"
+                />
+              ) : previewState.category === 'image' && previewState.blobUrl ? (
                 <div className="flex flex-col items-center justify-center w-full space-y-3">
                   <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs">
                     <button
                       type="button"
-                      onClick={() => setImageZoom(z => Math.max(0.5, z - 0.2))}
-                      className="px-2 py-0.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                      onClick={() => setImageZoom(z => Math.max(0.4, Number((z - 0.2).toFixed(1))))}
+                      className="p-1 hover:bg-slate-100 rounded-lg cursor-pointer text-slate-600"
+                      title="Zoom Out"
                     >
-                      - Zoom
+                      <ZoomOut className="w-4 h-4" />
                     </button>
-                    <span className="text-xs font-mono font-bold text-slate-500">{Math.round(imageZoom * 100)}%</span>
+                    <span className="text-xs font-mono font-bold text-slate-600 px-1">{Math.round(imageZoom * 100)}%</span>
                     <button
                       type="button"
-                      onClick={() => setImageZoom(z => Math.min(3, z + 0.2))}
-                      className="px-2 py-0.5 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                      onClick={() => setImageZoom(z => Math.min(3, Number((z + 0.2).toFixed(1))))}
+                      className="p-1 hover:bg-slate-100 rounded-lg cursor-pointer text-slate-600"
+                      title="Zoom In"
                     >
-                      + Zoom
+                      <ZoomIn className="w-4 h-4" />
                     </button>
                     <button
                       type="button"
                       onClick={() => setImageZoom(1)}
-                      className="px-2 py-0.5 text-xs text-blue-600 font-bold hover:bg-blue-50 rounded-lg cursor-pointer"
+                      className="px-2 py-0.5 text-xs text-[#2E5BFF] font-bold hover:bg-blue-50 rounded-lg cursor-pointer flex items-center gap-1"
+                      title="Reset Zoom"
                     >
-                      Reset
+                      <RotateCcw className="w-3 h-3" /> Reset
                     </button>
                   </div>
-                  <div className="max-h-[60vh] overflow-auto flex items-center justify-center p-2">
+                  <div className="max-h-[60vh] overflow-auto flex items-center justify-center p-2 w-full">
                     <img
-                      src={previewAttachmentUrl}
-                      alt="Attachment Preview"
+                      src={previewState.blobUrl}
+                      alt="Leave Attachment Preview"
                       style={{ transform: `scale(${imageZoom})`, transformOrigin: 'center center', transition: 'transform 0.15s ease-out' }}
                       className="max-h-[55vh] max-w-full rounded-xl object-contain shadow-md border border-slate-200"
                     />
                   </div>
                 </div>
-              ) : previewAttachmentUrl.startsWith('data:application/pdf') || previewAttachmentUrl.endsWith('.pdf') ? (
-                <iframe
-                  src={previewAttachmentUrl}
-                  title="PDF Attachment"
-                  className="w-full h-[65vh] rounded-xl border border-slate-200 bg-white"
-                />
               ) : (
-                <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-white rounded-2xl border border-slate-200">
-                  <FileText className="w-12 h-12 text-[#2E5BFF]" />
-                  <p className="text-xs text-slate-600 font-semibold text-center">
-                    Attachment loaded. Preview or download below:
-                  </p>
-                  <img
-                    src={previewAttachmentUrl}
-                    alt="Attachment Preview"
-                    className="max-h-[50vh] max-w-full rounded-xl object-contain shadow-sm border border-slate-200"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                  <a
-                    href={previewAttachmentUrl}
-                    download="leave_attachment"
-                    className="px-4 py-2 bg-[#2E5BFF] text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition-all flex items-center gap-2"
-                  >
-                    <Download className="w-4 h-4" /> Download File
-                  </a>
+                <div className="flex flex-col items-center justify-center space-y-4 p-8 bg-white rounded-2xl border border-slate-200 max-w-md text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#2E5BFF]">
+                    <FileText className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-sm text-slate-800">{previewState.fileName}</h4>
+                    <p className="text-xs text-slate-500 font-medium mt-1">
+                      This document format can be downloaded and opened with your system viewer.
+                    </p>
+                  </div>
+                  {previewState.blobUrl && (
+                    <a
+                      href={previewState.blobUrl}
+                      download={previewState.fileName || 'leave_attachment'}
+                      className="px-5 py-2.5 bg-[#2E5BFF] text-white rounded-xl text-xs font-bold hover:bg-blue-600 transition-all flex items-center gap-2 shadow-xs"
+                    >
+                      <Download className="w-4 h-4" /> Download Attachment
+                    </a>
+                  )}
                 </div>
               )}
             </div>

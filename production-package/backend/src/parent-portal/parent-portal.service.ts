@@ -2192,24 +2192,89 @@ export class ParentPortalService {
       historyMap.get(h.entityId)!.push(h);
     }
 
-    const result = leaves.map(l => ({
-      id: l.id,
-      leaveType: l.leaveType,
-      startDate: l.startDate ? l.startDate.toISOString().split('T')[0] : '',
-      endDate: l.endDate ? l.endDate.toISOString().split('T')[0] : '',
-      reason: l.reason,
-      status: l.status,
-      attachmentUrl: l.attachment,
-      comments: l.comments,
-      approvedBy: l.approvedBy ? l.approvedBy.name : l.approver,
-      approvedRole: l.approvedRole || (l.approvedBy ? (l.approvedBy.role === Role.SCHOOL_ADMIN ? 'Admin' : 'Teacher') : null),
-      approvedDate: l.approvedDate ? l.approvedDate.toISOString().split('T')[0] : (l.rejectedDate ? l.rejectedDate.toISOString().split('T')[0] : null),
-      createdAt: l.createdAt,
-      updatedAt: l.updatedAt,
-      statusHistories: historyMap.get(l.id) || [],
-    }));
+    const result = leaves.map(l => {
+      let attachmentUrl = l.attachment;
+      if (attachmentUrl) {
+        if (attachmentUrl.startsWith('data:')) {
+          let ext = 'file';
+          const match = attachmentUrl.match(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-+.]+);base64,/);
+          if (match) {
+            const mime = match[1].toLowerCase();
+            ext = mime.split('/')[1] || 'file';
+            if (ext.includes('pdf')) ext = 'pdf';
+            else if (ext.includes('png')) ext = 'png';
+            else if (ext.includes('jpeg') || ext.includes('jpg')) ext = 'jpg';
+            else if (ext.includes('webp')) ext = 'webp';
+            else if (ext.includes('gif')) ext = 'gif';
+            else if (ext.includes('svg')) ext = 'svg';
+            else if (ext.includes('vnd.openxmlformats-officedocument')) ext = 'docx';
+            else if (ext.includes('msword')) ext = 'doc';
+          }
+          attachmentUrl = `/parent-portal/children/${studentId}/leave/${l.id}/attachment?ext=${ext}`;
+        }
+      }
+
+      return {
+        id: l.id,
+        leaveType: l.leaveType,
+        startDate: l.startDate ? l.startDate.toISOString().split('T')[0] : '',
+        endDate: l.endDate ? l.endDate.toISOString().split('T')[0] : '',
+        reason: l.reason,
+        status: l.status,
+        attachmentUrl,
+        comments: l.comments,
+        approvedBy: l.approvedBy ? l.approvedBy.name : l.approver,
+        approvedRole: l.approvedRole || (l.approvedBy ? (l.approvedBy.role === Role.SCHOOL_ADMIN ? 'Admin' : 'Teacher') : null),
+        approvedDate: l.approvedDate ? l.approvedDate.toISOString().split('T')[0] : (l.rejectedDate ? l.rejectedDate.toISOString().split('T')[0] : null),
+        createdAt: l.createdAt,
+        updatedAt: l.updatedAt,
+        statusHistories: historyMap.get(l.id) || [],
+      };
+    });
 
     this.parentCache.set(cacheKey, { data: result, expiresAt: now + 30000 });
     return result;
+  }
+
+  async getLeaveAttachment(userId: string, studentId: string, leaveId: string) {
+    const student = await this.verifyOwnership(userId, studentId);
+
+    const leave = await this.prisma.leaveRequest.findFirst({
+      where: {
+        id: leaveId,
+        tenantId: student.tenantId,
+        studentId: student.id,
+      },
+    });
+
+    if (!leave || !leave.attachment) {
+      throw new NotFoundException('Leave attachment record not found');
+    }
+
+    let ext = 'file';
+    if (leave.attachment.startsWith('data:')) {
+      const match = leave.attachment.match(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-+.]+);base64,/);
+      if (match) {
+        const mime = match[1].toLowerCase();
+        ext = mime.split('/')[1] || 'file';
+        if (ext.includes('pdf')) ext = 'pdf';
+        else if (ext.includes('png')) ext = 'png';
+        else if (ext.includes('jpeg') || ext.includes('jpg')) ext = 'jpg';
+        else if (ext.includes('webp')) ext = 'webp';
+        else if (ext.includes('gif')) ext = 'gif';
+        else if (ext.includes('svg')) ext = 'svg';
+        else if (ext.includes('vnd.openxmlformats-officedocument')) ext = 'docx';
+        else if (ext.includes('msword')) ext = 'doc';
+      }
+    } else if (leave.attachment.includes('.')) {
+      ext = leave.attachment.split('.').pop()?.split('?')[0] || 'file';
+    }
+
+    return {
+      url: leave.attachment,
+      attachment: leave.attachment,
+      leaveType: leave.leaveType,
+      fileName: `leave_${leave.leaveType.toLowerCase()}_${leave.id.substring(0, 8)}.${ext}`,
+    };
   }
 }

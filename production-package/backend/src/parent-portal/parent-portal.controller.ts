@@ -146,6 +146,15 @@ export class ParentPortalController {
     return this.portalService.getLeavesHistory(req.user.sub, studentId);
   }
 
+  @Get('children/:studentId/leave/:leaveId/attachment')
+  async getLeaveAttachment(
+    @Req() req: any,
+    @Param('studentId') studentId: string,
+    @Param('leaveId') leaveId: string,
+  ) {
+    return this.portalService.getLeaveAttachment(req.user.sub, studentId, leaveId);
+  }
+
   @Post('children/:studentId/leave')
   async submitLeaveRequest(
     @Req() req: any,

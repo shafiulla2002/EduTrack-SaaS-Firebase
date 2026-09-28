@@ -31,27 +31,49 @@ export class StorageService {
   }
 
   async uploadImage(base64Data: string, tenantId: string, studentId: string, filenamePrefix: string): Promise<string> {
-    // Determine type, validate size
-    const match = base64Data.match(/^data:([a-zA-Z0-9-]+\/[a-zA-Z0-9-+.]+);base64,(.+)$/);
-    if (!match) {
-      if (base64Data.startsWith('http') || base64Data.startsWith('/uploads')) {
-        return base64Data;
+    if (!base64Data || typeof base64Data !== 'string') {
+      throw new BadRequestException('Missing file data.');
+    }
+
+    if (base64Data.startsWith('http://') || base64Data.startsWith('https://') || base64Data.startsWith('/uploads/')) {
+      return base64Data;
+    }
+
+    let mimeType = 'application/octet-stream';
+    let base64Content = base64Data;
+
+    const commaIdx = base64Data.indexOf(',');
+    if (base64Data.startsWith('data:') && commaIdx !== -1) {
+      const header = base64Data.substring(5, commaIdx);
+      const rawMime = header.split(';')[0].trim();
+      if (rawMime) {
+        mimeType = rawMime.toLowerCase();
       }
-      throw new BadRequestException('Invalid file format. Expected a base64 Data URL.');
+      base64Content = base64Data.substring(commaIdx + 1);
     }
 
-    const mimeType = match[1].toLowerCase();
-    const base64Content = match[2];
-    const buffer = Buffer.from(base64Content, 'base64');
+    // Remove all whitespace/newlines that may be present in base64
+    const sanitizedBase64 = base64Content.replace(/\s+/g, '');
+    const buffer = Buffer.from(sanitizedBase64, 'base64');
 
-    // 5 MB validation (5 * 1024 * 1024 bytes)
-    if (buffer.length > 5 * 1024 * 1024) {
-      throw new BadRequestException('File size exceeds the maximum 5 MB limit.');
+    // 10 MB validation (10 * 1024 * 1024 bytes)
+    if (buffer.length > 10 * 1024 * 1024) {
+      throw new BadRequestException('File size exceeds the maximum 10 MB limit.');
     }
 
-    let mimeExtension = mimeType.split('/')[1] || 'bin';
-    if (mimeExtension.includes('vnd.openxmlformats-officedocument')) mimeExtension = 'docx';
-    if (mimeExtension.includes('msword')) mimeExtension = 'doc';
+    let mimeExtension = 'bin';
+    if (mimeType.includes('pdf')) mimeExtension = 'pdf';
+    else if (mimeType.includes('png')) mimeExtension = 'png';
+    else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) mimeExtension = 'jpg';
+    else if (mimeType.includes('webp')) mimeExtension = 'webp';
+    else if (mimeType.includes('gif')) mimeExtension = 'gif';
+    else if (mimeType.includes('svg')) mimeExtension = 'svg';
+    else if (mimeType.includes('vnd.openxmlformats-officedocument.wordprocessingml')) mimeExtension = 'docx';
+    else if (mimeType.includes('msword')) mimeExtension = 'doc';
+    else {
+      const sub = mimeType.split('/')[1];
+      if (sub) mimeExtension = sub.split('+')[0];
+    }
 
     const uniqueFilename = `${filenamePrefix}-${randomBytes(8).toString('hex')}.${mimeExtension}`;
     const storageKey = `students/${tenantId}/${studentId}/${uniqueFilename}`;
@@ -64,21 +86,24 @@ export class StorageService {
             Bucket: this.bucketName,
             Key: storageKey,
             Body: buffer,
-            ContentType: `image/${mimeExtension}`,
+            ContentType: mimeType,
             ACL: 'public-read',
           })
           .promise();
         return uploadResult.Location;
       } catch (err: any) {
-        console.warn('[StorageService] S3 upload failed, falling back to local storage:', err.message);
+        console.warn('[StorageService] S3 upload failed, falling back to local/data storage:', err.message);
       }
     }
+
+    // Standardized base64 data URL
+    const cleanDataUrl = `data:${mimeType};base64,${sanitizedBase64}`;
 
     // 2. Local fallback storage
     try {
       if (process.env.VERCEL) {
-        // On Vercel, return the base64 data URL directly to save in the database
-        return base64Data;
+        // On Vercel, return the sanitized base64 data URL directly to save in the database
+        return cleanDataUrl;
       }
       const relativePath = `/uploads/${storageKey}`;
       const absolutePath = join(__dirname, '..', '..', 'uploads', storageKey);
@@ -91,8 +116,8 @@ export class StorageService {
 
     } catch (err) {
       console.error('[StorageService] Local storage write failed:', err);
-      // Fallback: If local storage write fails, return the base64 data URL directly
-      return base64Data;
+      // Fallback: If local storage write fails, return the sanitized base64 data URL directly
+      return cleanDataUrl;
     }
   }
 
