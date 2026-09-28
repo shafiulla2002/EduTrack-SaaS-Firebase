@@ -15,9 +15,9 @@ export default function PrivacyPolicyPage() {
       <header className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex justify-between items-center z-10 border-b border-slate-900/60">
         <Link href="/" className="flex items-center gap-3 group">
           <img 
-            src="/cs-edutrack-logo.jpg" 
+            src="/cs-edutrack-logo.png" 
             alt="CS EduTrack Logo" 
-            className="h-10 sm:h-12 w-auto object-contain rounded-lg group-hover:scale-105 transition-transform" 
+            className="h-10 sm:h-12 w-auto object-contain group-hover:scale-105 transition-transform" 
           />
           <div className="flex flex-col text-left">
             <span className="font-extrabold text-base sm:text-lg text-white tracking-tight">

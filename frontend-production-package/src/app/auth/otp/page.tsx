@@ -258,9 +258,9 @@ function OtpContent() {
           ) : (
             <Link href="/" className="inline-block transition-transform hover:scale-105 mb-2">
               <img 
-                src="/cs-edutrack-logo.jpg" 
+                src="/cs-edutrack-logo.png" 
                 alt="CS EduTrack - Smarter Institute Management" 
-                className="h-14 sm:h-16 w-auto object-contain mx-auto rounded-xl" 
+                className="h-16 sm:h-20 w-auto object-contain mx-auto" 
               />
             </Link>
           )}
