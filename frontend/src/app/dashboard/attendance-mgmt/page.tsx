@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
 import DatePickerInput from '@/components/DatePickerInput';
 import { formatDateDDMMYYYY, formatDateTimeDDMMYYYY } from '@/lib/date';
+import { PencilSpinner } from '@/components/loading';
 
 const formatLocalTime = (isoString: string) => {
   try {
@@ -492,15 +493,43 @@ export default function AttendanceMgmtPage() {
           <button
             onClick={handleLoadRoster}
             disabled={!selectedClass || !selectedSection || loadingStudents}
-            className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 transition-all"
+            className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 transition-all flex items-center justify-center gap-2"
           >
-            {loadingStudents ? 'Loading Roster...' : '🔍 Load Roster'}
+            {loadingStudents ? (
+              <>
+                <PencilSpinner size="xs" />
+                <span>Loading Roster...</span>
+              </>
+            ) : (
+              <span>🔍 Load Roster</span>
+            )}
           </button>
         </div>
       )}
 
+      {/* Loading state with spinner and skeleton */}
+      {loadingStudents && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-center py-8 gap-2.5">
+            <PencilSpinner size="md" />
+            <p className="text-xs font-semibold text-slate-500 animate-pulse">Loading class roster & attendance records...</p>
+          </div>
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex justify-between items-center min-h-[72px] animate-pulse">
+                <div className="space-y-2 w-1/3">
+                  <div className="h-4 bg-slate-200 rounded w-full"></div>
+                  <div className="h-3 bg-slate-200 rounded w-2/3"></div>
+                </div>
+                <div className="h-8 bg-slate-200 rounded-xl w-24"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Roster & marking section */}
-      {students.length > 0 && (
+      {!loadingStudents && students.length > 0 && (
         <div className="space-y-4 animate-in fade-in duration-200">
           
           {/* Green success banner & summary card when attendance is already submitted and we are in read-only mode */}

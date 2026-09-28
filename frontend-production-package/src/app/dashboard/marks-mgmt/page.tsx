@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api, fastGet } from '@/lib/api';
 import { Award, FileText, CheckCircle2, AlertTriangle, RefreshCcw, Save } from 'lucide-react';
 import { useFloatingBarPadding } from '@/hooks/useFloatingBarPadding';
+import { PencilSpinner } from '@/components/loading';
 
 export default function MarksMgmtPage() {
   const [classes, setClasses] = useState<any[]>([]);
@@ -358,14 +359,47 @@ export default function MarksMgmtPage() {
         <button
           onClick={handleLoadRoster}
           disabled={!selectedClass || !selectedSubject || !selectedExam || loadingStudents}
-          className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50"
+          className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold rounded-xl text-xs shadow-md shadow-blue-500/10 cursor-pointer disabled:opacity-50 transition-all flex items-center justify-center gap-2"
         >
-          {loadingStudents ? 'Loading Students...' : '🔍 Load Students'}
+          {loadingStudents ? (
+            <>
+              <PencilSpinner size="xs" />
+              <span>Loading Students...</span>
+            </>
+          ) : (
+            <span>🔍 Load Students</span>
+          )}
         </button>
       </div>
 
+      {/* Loading state with spinner and skeleton */}
+      {loadingStudents && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col items-center justify-center py-8 gap-2.5">
+            <PencilSpinner size="md" />
+            <p className="text-xs font-semibold text-slate-500 animate-pulse">Fetching student marks roster...</p>
+          </div>
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-3 animate-pulse">
+                <div className="flex justify-between">
+                  <div className="space-y-2">
+                    <div className="h-4 bg-slate-200 rounded w-36"></div>
+                    <div className="h-3 bg-slate-200 rounded w-20"></div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="h-10 bg-slate-200 rounded-xl"></div>
+                  <div className="col-span-2 h-10 bg-slate-200 rounded-xl"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Roster list */}
-      {students.length > 0 && (
+      {!loadingStudents && students.length > 0 && (
         <div className="space-y-4">
           
           {/* Status Indicator */}
@@ -442,7 +476,7 @@ export default function MarksMgmtPage() {
         </div>
       )}
 
-      {students.length === 0 && (
+      {!loadingStudents && students.length === 0 && (
         <div className="bg-white py-12 text-center text-slate-400 text-xs font-semibold rounded-3xl border border-slate-200 shadow-sm px-6">
           {!selectedClass || !selectedSubject || !selectedExam ? (
             <p className="text-slate-500">Please select a Class Section and Subject to continue.</p>
