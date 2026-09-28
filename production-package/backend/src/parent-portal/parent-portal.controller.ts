@@ -6,7 +6,7 @@ import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.PARENT)
+@Roles(Role.PARENT, Role.STUDENT, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN, Role.TEACHER)
 @Controller('parent-portal')
 export class ParentPortalController {
   constructor(private portalService: ParentPortalService) {}

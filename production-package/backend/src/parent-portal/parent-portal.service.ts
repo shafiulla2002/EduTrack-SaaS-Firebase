@@ -56,64 +56,72 @@ export class ParentPortalService {
       return cached.data;
     }
 
-    const parent = await this.getParentProfile(userId);
-    let targetStudent: any = null;
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new ForbiddenException('User not authenticated');
+    }
 
-    const link = await this.prisma.parentStudent.findUnique({
+    // Direct student check
+    const directStudent = await this.prisma.studentProfile.findFirst({
       where: {
-        parentId_studentId: {
-          parentId: parent.id,
-          studentId: studentId,
-        },
+        id: studentId,
+        tenantId: user.tenantId,
       },
       include: {
-        student: {
+        user: true,
+        classSection: {
           include: {
-            user: true,
-            classSection: {
-              include: {
-                class: true,
-                section: true,
-              },
-            },
+            class: true,
+            section: true,
           },
         },
       },
     });
 
-    if (link?.student) {
-      targetStudent = link.student;
-    } else {
-      // Fallback check on StudentProfile directly
-      const directStudent = await this.prisma.studentProfile.findFirst({
+    if (!directStudent) {
+      throw new NotFoundException('Student profile not found');
+    }
+
+    // 1. If admin, super-admin, or teacher in same tenant, allow
+    if (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN || user.role === Role.TEACHER) {
+      this.parentCache.set(cacheKey, { data: directStudent, expiresAt: now + 60000 });
+      return directStudent;
+    }
+
+    // 2. If student themselves
+    if (directStudent.userId === userId) {
+      this.parentCache.set(cacheKey, { data: directStudent, expiresAt: now + 60000 });
+      return directStudent;
+    }
+
+    // 3. Parent profile link
+    const parent = await this.prisma.parentProfile.findUnique({
+      where: { userId },
+    });
+
+    if (parent) {
+      const link = await this.prisma.parentStudent.findUnique({
         where: {
-          id: studentId,
-          OR: [
-            { parentProfileId: parent.id },
-            { user: { tenantId: parent.user.tenantId } }
-          ],
-        },
-        include: {
-          user: true,
-          classSection: {
-            include: {
-              class: true,
-              section: true,
-            },
+          parentId_studentId: {
+            parentId: parent.id,
+            studentId: studentId,
           },
         },
       });
-      if (directStudent && (directStudent.parentProfileId === parent.id || directStudent.tenantId === parent.user.tenantId)) {
-        targetStudent = directStudent;
+
+      if (link || directStudent.parentProfileId === parent.id || directStudent.tenantId === user.tenantId) {
+        this.parentCache.set(cacheKey, { data: directStudent, expiresAt: now + 60000 });
+        return directStudent;
       }
     }
 
-    if (!targetStudent) {
-      throw new ForbiddenException('You do not have permission to access records for this student');
+    // Fallback within same tenant
+    if (directStudent.tenantId === user.tenantId) {
+      this.parentCache.set(cacheKey, { data: directStudent, expiresAt: now + 60000 });
+      return directStudent;
     }
 
-    this.parentCache.set(cacheKey, { data: targetStudent, expiresAt: now + 60000 });
-    return targetStudent;
+    throw new ForbiddenException('You do not have permission to access records for this student');
   }
 
   private async logAction(userId: string, tenantId: string, action: string, entityName: string, entityId?: string, details?: any) {
@@ -148,13 +156,30 @@ export class ParentPortalService {
       return cached.data;
     }
 
-    const parent = await this.prisma.parentProfile.findUnique({
+    let parent = await this.prisma.parentProfile.findUnique({
       where: { userId },
       include: { user: true },
     });
+
     if (!parent) {
-      throw new NotFoundException('Parent profile not found');
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        throw new NotFoundException('User profile not found');
+      }
+
+      const studentProfile = await this.prisma.studentProfile.findUnique({
+        where: { userId },
+        include: { user: true },
+      });
+
+      parent = {
+        id: studentProfile?.id || user.id,
+        userId: user.id,
+        user: user,
+        tenantId: user.tenantId,
+      } as any;
     }
+
     this.parentCache.set(cacheKey, { data: parent, expiresAt: now + 60000 });
     return parent;
   }
@@ -167,11 +192,81 @@ export class ParentPortalService {
       return cached.data;
     }
 
-    const parent = await this.getParentProfile(userId);
-    const links = await this.prisma.parentStudent.findMany({
-      where: { parentId: parent.id },
-      include: {
-        student: {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return [];
+
+    let result: any[] = [];
+
+    const parent = await this.prisma.parentProfile.findUnique({
+      where: { userId },
+    });
+
+    if (parent) {
+      const links = await this.prisma.parentStudent.findMany({
+        where: { parentId: parent.id },
+        include: {
+          student: {
+            include: {
+              user: true,
+              classSection: {
+                include: {
+                  class: true,
+                  section: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      result = links.map(l => ({
+        id: l.student.id,
+        name: l.student.user.name,
+        rollNo: l.student.rollNo || 'N/A',
+        avatarUrl: l.student.user.avatarUrl || l.student.profilePhotoUrl,
+        class: l.student.classSection?.class.name || 'N/A',
+        section: l.student.classSection?.section.name || 'N/A',
+        classSectionId: l.student.classSectionId,
+        relationship: l.relationship,
+        isPrimary: l.isPrimary,
+        fatherName: l.student.fatherName || 'N/A',
+        motherName: l.student.motherName || 'N/A',
+      }));
+    }
+
+    // Fallback: If no parent links found or user is a student/admin
+    if (result.length === 0) {
+      const selfStudent = await this.prisma.studentProfile.findUnique({
+        where: { userId },
+        include: {
+          user: true,
+          classSection: {
+            include: {
+              class: true,
+              section: true,
+            },
+          },
+        },
+      });
+
+      if (selfStudent) {
+        result = [{
+          id: selfStudent.id,
+          name: selfStudent.user.name,
+          rollNo: selfStudent.rollNo || 'N/A',
+          avatarUrl: selfStudent.user.avatarUrl || selfStudent.profilePhotoUrl,
+          class: selfStudent.classSection?.class.name || 'N/A',
+          section: selfStudent.classSection?.section.name || 'N/A',
+          classSectionId: selfStudent.classSectionId,
+          relationship: 'Self',
+          isPrimary: true,
+          fatherName: selfStudent.fatherName || 'N/A',
+          motherName: selfStudent.motherName || 'N/A',
+        }];
+      } else if (user.role === Role.SCHOOL_ADMIN || user.role === Role.SUPER_ADMIN) {
+        const students = await this.prisma.studentProfile.findMany({
+          where: { tenantId: user.tenantId },
+          take: 10,
           include: {
             user: true,
             classSection: {
@@ -181,23 +276,22 @@ export class ParentPortalService {
               },
             },
           },
-        },
-      },
-    });
-
-    const result = links.map(l => ({
-      id: l.student.id,
-      name: l.student.user.name,
-      rollNo: l.student.rollNo || 'N/A',
-      avatarUrl: l.student.user.avatarUrl || l.student.profilePhotoUrl,
-      class: l.student.classSection?.class.name || 'N/A',
-      section: l.student.classSection?.section.name || 'N/A',
-      classSectionId: l.student.classSectionId,
-      relationship: l.relationship,
-      isPrimary: l.isPrimary,
-      fatherName: l.student.fatherName || 'N/A',
-      motherName: l.student.motherName || 'N/A',
-    }));
+        });
+        result = students.map(s => ({
+          id: s.id,
+          name: s.user.name,
+          rollNo: s.rollNo || 'N/A',
+          avatarUrl: s.user.avatarUrl || s.profilePhotoUrl,
+          class: s.classSection?.class.name || 'N/A',
+          section: s.classSection?.section.name || 'N/A',
+          classSectionId: s.classSectionId,
+          relationship: 'Admin View',
+          isPrimary: true,
+          fatherName: s.fatherName || 'N/A',
+          motherName: s.motherName || 'N/A',
+        }));
+      }
+    }
 
     this.parentCache.set(cacheKey, { data: result, expiresAt: now + 60000 });
     return result;
