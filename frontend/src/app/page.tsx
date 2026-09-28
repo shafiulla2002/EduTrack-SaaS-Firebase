@@ -49,9 +49,9 @@ export default function LandingPage() {
       <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-3.5 sm:py-6 flex justify-between items-center z-10">
         <div className="flex items-center gap-3">
           <img 
-            src="/cs-edutrack-logo.png" 
+            src="/cs-edutrack-logo.jpg" 
             alt="CS EduTrack Logo" 
-            className="h-10 sm:h-12 w-auto object-contain" 
+            className="h-10 sm:h-12 w-auto object-contain rounded-xl shadow-md" 
           />
           <div className="flex flex-col text-left">
             <span className="font-extrabold text-base sm:text-lg text-white tracking-tight">

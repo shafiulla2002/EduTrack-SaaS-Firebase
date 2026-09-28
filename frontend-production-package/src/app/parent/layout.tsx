@@ -88,11 +88,9 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
       <aside className="hidden lg:block w-[260px] bg-white border-r border-slate-200 h-screen fixed top-0 left-0 overflow-y-auto z-50 py-6 px-4 select-none shadow-sm print:hidden">
         {/* Sidebar Brand Logo and Name */}
         <div className="flex items-center gap-2.5 px-3 mb-5">
-          <img
-            src="/icon.png"
-            alt="CS EduTrack Logo"
-            className="w-9 h-9 rounded-xl object-contain shrink-0"
-          />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/10">
+            <span className="font-extrabold text-white text-base tracking-tight">ET</span>
+          </div>
           <div className="text-left">
             <h1 className="font-extrabold text-[13px] text-indigo-900 uppercase tracking-wider leading-none">CS EduTrack</h1>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Parent Portal</p>
@@ -167,11 +165,9 @@ function ParentLayoutContent({ children }: { children: React.ReactNode }) {
         {/* Sidebar Brand Logo and Name */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
-            <img
-              src="/icon.png"
-              alt="CS EduTrack Logo"
-              className="w-9 h-9 rounded-xl object-contain shrink-0"
-            />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/10">
+              <span className="font-extrabold text-white text-base tracking-tight">ET</span>
+            </div>
             <div className="text-left">
               <h1 className="font-extrabold text-[13px] text-indigo-900 uppercase tracking-wider leading-none">CS EduTrack</h1>
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Parent Portal</p>

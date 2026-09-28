@@ -111,9 +111,9 @@ function RegisterSchoolContent() {
           <div className="flex flex-col items-center text-center">
             <Link href="/" className="inline-block transition-transform hover:scale-105 mb-2">
               <img 
-                src="/cs-edutrack-logo.png" 
+                src="/cs-edutrack-logo.jpg" 
                 alt="CS EduTrack Logo" 
-                className="h-16 sm:h-20 w-auto object-contain mx-auto" 
+                className="h-16 sm:h-20 w-auto object-contain mx-auto rounded-xl shadow-lg shadow-brand-500/10" 
               />
             </Link>
             <p className="text-xs text-slate-400 font-medium tracking-wide">

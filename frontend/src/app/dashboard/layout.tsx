@@ -831,11 +831,9 @@ export default function DashboardLayout({
       >
         {/* Sidebar Brand Header */}
         <div className="flex items-center gap-2.5 px-6 mb-5">
-          <img
-            src="/icon.png"
-            alt="CS EduTrack Logo"
-            className="w-9 h-9 rounded-xl object-contain shrink-0"
-          />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+            <span className="font-extrabold text-white text-base tracking-tight">ET</span>
+          </div>
           <div className="text-left">
             <h1 className="font-extrabold text-[15px] text-slate-900 tracking-tight leading-none">CS EduTrack</h1>
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-1">Institute Platform</p>
