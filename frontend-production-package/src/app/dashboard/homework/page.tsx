@@ -9,6 +9,7 @@ import DatePickerInput from '@/components/DatePickerInput';
 import { formatDateDDMMYYYY } from '@/lib/date';
 import { useTenant } from '@/app/providers/TenantContext';
 import { useToast } from '@/components/Toast';
+import { PencilSpinner } from '@/components/loading';
 
 export default function HomeworkPage() {
   const { schoolName } = useTenant();
@@ -392,23 +393,42 @@ Thank you.`;
     }
   };
 
-  if (loading) {
-  return (
-    <div className="space-y-4 max-w-md mx-auto sm:max-w-none">
-      {/* Skeleton cards */}
-      {[...Array(3)].map((_, i) => (
-        <div key={i} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col space-y-3 animate-pulse">
-          <div className="h-4 bg-slate-200 rounded w-1/3"></div>
-          <div className="h-3 bg-slate-200 rounded w-2/3"></div>
-          <div className="h-3 bg-slate-200 rounded w-1/2"></div>
-          <div className="flex justify-between items-center pt-3 border-t border-slate-100">
-            <div className="h-3 bg-slate-200 rounded w-20"></div>
-            <div className="h-3 bg-slate-200 rounded w-24"></div>
-          </div>
+  if (loading && homeworks.length === 0) {
+    return (
+      <div className="space-y-6 max-w-md mx-auto sm:max-w-none pb-20">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <BookOpen className="w-6 h-6 text-[#2E5BFF]" />
+            Homework & Assignments
+          </h2>
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+            <PencilSpinner size="xs" /> Loading...
+          </span>
         </div>
-      ))}
-    </div>
-  );
+
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center justify-center gap-2 py-8">
+          <PencilSpinner size="md" />
+          <p className="text-xs font-semibold text-slate-500 animate-pulse">Loading homework assignments...</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex flex-col space-y-3 animate-pulse">
+              <div className="flex justify-between items-center">
+                <div className="h-4 bg-slate-200 rounded w-1/4"></div>
+                <div className="h-3 bg-slate-200 rounded w-16"></div>
+              </div>
+              <div className="h-4 bg-slate-200 rounded w-2/3"></div>
+              <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+              <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                <div className="h-3 bg-slate-200 rounded w-20"></div>
+                <div className="h-3 bg-slate-200 rounded w-24"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (

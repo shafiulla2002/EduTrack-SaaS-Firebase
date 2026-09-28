@@ -1,13 +1,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { Users, Search, BookOpen, GraduationCap, X, ChevronRight } from 'lucide-react';
 import Drawer from '@/components/Drawer';
+import { PencilSpinner } from '@/components/loading';
 
 export default function MyClassesPage() {
-  const [classes, setClasses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [classes, setClasses] = useState<any[]>(() => {
+    return getCachedData<any[]>('/teacher-portal/classes') || [];
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = getCachedData<any[]>('/teacher-portal/classes');
+    return !Array.isArray(cached) || cached.length === 0;
+  });
   const [selectedClass, setSelectedClass] = useState<any | null>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(false);
@@ -16,7 +22,7 @@ export default function MyClassesPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await fastGet('/teacher-portal/classes', {
+        const res = await fastGet('/teacher-portal/classes', undefined, {
           ttlMs: 60000,
           onRevalidate: (fresh: any) => {
             if (fresh) setClasses(fresh?.data || fresh);
@@ -37,7 +43,7 @@ export default function MyClassesPage() {
     setLoadingStudents(true);
     setSearchTerm('');
     try {
-      const res = await fastGet(`/teacher-portal/classes/${cls.classSectionId}/students`, {
+      const res = await fastGet(`/teacher-portal/classes/${cls.classSectionId}/students`, undefined, {
         ttlMs: 60000,
         onRevalidate: (fresh: any) => {
           if (fresh) setStudents(fresh?.data || fresh);
@@ -53,7 +59,7 @@ export default function MyClassesPage() {
   };
 
   const filteredStudents = students.filter(s =>
-    s.user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.user?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.rollNo && s.rollNo.toLowerCase().includes(searchTerm.toLowerCase())),
   );
 
@@ -64,23 +70,35 @@ export default function MyClassesPage() {
           <GraduationCap className="w-6 h-6 text-[#2E5BFF]" />
           My Assigned Classes
         </h2>
-        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2.5 py-1 rounded-lg">
-          {loading && classes.length === 0 ? 'Loading...' : `${classes.length} Total`}
+        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-100 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+          {loading && classes.length === 0 ? (
+            <>
+              <PencilSpinner size="xs" /> Loading...
+            </>
+          ) : (
+            `${classes.length} Total`
+          )}
         </span>
       </div>
 
       {loading && classes.length === 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <div key={idx} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs flex justify-between items-center animate-pulse">
-              <div className="space-y-3 w-full">
-                <div className="bg-slate-200 w-10 h-10 rounded-xl"></div>
-                <div className="h-4 bg-slate-200 rounded w-3/4"></div>
-                <div className="h-3 bg-slate-200 rounded w-1/2"></div>
-                <div className="h-3 bg-slate-200 rounded w-2/3"></div>
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-xs flex flex-col items-center justify-center gap-2 py-8">
+            <PencilSpinner size="md" />
+            <p className="text-xs font-semibold text-slate-500 animate-pulse">Loading assigned classes...</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div key={idx} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs flex justify-between items-center animate-pulse">
+                <div className="space-y-3 w-full">
+                  <div className="bg-slate-200 w-10 h-10 rounded-xl"></div>
+                  <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                  <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                  <div className="h-3 bg-slate-200 rounded w-2/3"></div>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       ) : classes.length === 0 ? (
         <div className="bg-white p-8 text-center rounded-3xl border border-slate-200 shadow-sm text-slate-500 italic text-sm">
@@ -96,7 +114,7 @@ export default function MyClassesPage() {
             >
               <div className="space-y-3">
                 <div className="bg-blue-50 text-[#2E5BFF] w-10 h-10 rounded-xl flex items-center justify-center font-bold">
-                  {cls.className.substring(0, 2).toUpperCase()}
+                  {cls.className?.substring(0, 2).toUpperCase() || 'CL'}
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-800 text-[15px]">{cls.className}</h3>
@@ -141,24 +159,37 @@ export default function MyClassesPage() {
         {/* Student List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 dark:bg-slate-900/50">
           {loadingStudents ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3">
-              <div className="w-8 h-8 border-3 border-t-[#2E5BFF] border-slate-200 rounded-full animate-spin"></div>
-              <p className="text-xs text-slate-400 font-semibold">Loading student list...</p>
+            <div className="space-y-4 py-4">
+              <div className="flex flex-col items-center justify-center gap-2 py-4">
+                <PencilSpinner size="md" />
+                <p className="text-xs text-slate-500 font-semibold animate-pulse">Loading student roster...</p>
+              </div>
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs flex items-center gap-3 animate-pulse">
+                    <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-700 shrink-0" />
+                    <div className="space-y-2 flex-1">
+                      <div className="h-3.5 bg-slate-200 dark:bg-slate-700 rounded w-36" />
+                      <div className="h-2.5 bg-slate-100 dark:bg-slate-700/60 rounded w-20" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : filteredStudents.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs italic">No students match your query.</div>
           ) : (
             filteredStudents.map((s, idx) => (
               <div key={idx} className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs flex items-center gap-3">
-                {s.user.avatarUrl ? (
+                {s.user?.avatarUrl ? (
                   <img src={s.user.avatarUrl} alt={s.user.name} className="w-10 h-10 rounded-xl object-cover" />
                 ) : (
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex items-center justify-center font-bold text-sm">
-                    {s.user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                    {s.user?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() || 'ST'}
                   </div>
                 )}
                 <div>
-                  <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{s.user.name}</h4>
+                  <h4 className="font-bold text-slate-800 dark:text-slate-200 text-sm">{s.user?.name}</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-450 font-medium mt-0.5">Roll No: {s.rollNo || 'N/A'}</p>
                 </div>
               </div>
