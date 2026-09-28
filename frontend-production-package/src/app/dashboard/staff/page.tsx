@@ -135,7 +135,6 @@ export default function SchoolStaffPage() {
   const [staffSalaryInvoices, setStaffSalaryInvoices] = useState<any[]>([]);
   const [staffSchedule, setStaffSchedule] = useState<any[]>([]);
   const [staffCases, setStaffCases] = useState<any[]>([]);
-  const [staffAssignments, setStaffAssignments] = useState<any[]>([]);
   const [staffDetailLoading, setStaffDetailLoading] = useState(false);
   const [selectedScheduleDay, setSelectedScheduleDay] = useState<string>(() => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -162,18 +161,15 @@ export default function SchoolStaffPage() {
     setStaffSalaryInvoices([]);
     setStaffSchedule([]);
     setStaffCases([]);
-    setStaffAssignments([]);
     try {
-      const [invoicesRes, casesRes, scheduleRes, assignmentsRes] = await Promise.allSettled([
+      const [invoicesRes, casesRes, scheduleRes] = await Promise.allSettled([
         fastGet(`/teachers/${staffId}/salary-invoices`, undefined, { ttlMs: 60000 }),
         fastGet(`/teachers/${staffId}/cases`, undefined, { ttlMs: 60000 }),
         isTeaching ? fastGet(`/teachers/${staffId}/schedule`, undefined, { ttlMs: 60000 }) : Promise.resolve({ data: [] }),
-        isTeaching ? fastGet(`/teachers/${staffId}/assignments`, undefined, { ttlMs: 60000 }) : Promise.resolve({ data: [] }),
       ]);
       setStaffSalaryInvoices(invoicesRes.status === 'fulfilled' ? (invoicesRes.value.data || []) : []);
       setStaffCases(casesRes.status === 'fulfilled' ? (casesRes.value.data || []) : []);
       setStaffSchedule(scheduleRes.status === 'fulfilled' ? (scheduleRes.value.data || []) : []);
-      setStaffAssignments(assignmentsRes.status === 'fulfilled' ? (assignmentsRes.value.data || []) : []);
     } catch {
       // silently ignore — empty state shown
     } finally {
@@ -1085,59 +1081,6 @@ export default function SchoolStaffPage() {
                 )}
               </div>
 
-              {/* Student Classes (Assigned Classes for Teaching staff) */}
-              {selectedStaff.staffType === 'Teaching' && (
-                <div>
-                  <div className="flex items-center justify-between mb-2.5">
-                    <h4 className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <Users className="w-4 h-4 text-blue-500" /> Student Classes
-                      {staffAssignments.length > 0 && (
-                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.2 rounded-full font-bold">
-                          {staffAssignments.length}
-                        </span>
-                      )}
-                    </h4>
-                  </div>
-                  {staffDetailLoading ? (
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center flex flex-col items-center justify-center gap-2">
-                      <PencilSpinner size="sm" />
-                      <span className="text-xs text-slate-500 font-medium">Loading student classes...</span>
-                    </div>
-                  ) : staffAssignments.length === 0 ? (
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center text-xs text-slate-400 italic">
-                      No classes currently assigned to this teacher.
-                    </div>
-                  ) : (
-                    <div className="max-h-[220px] overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100 bg-white">
-                      {staffAssignments.map((a: any, idx: number) => (
-                        <div key={idx} className="p-3 hover:bg-slate-50 flex items-center justify-between transition-colors">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#2E5BFF] font-bold text-xs flex items-center justify-center shrink-0">
-                              <Users className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="text-xs font-bold text-slate-800">
-                                {a.classSection?.class?.name} - {a.classSection?.section?.name}
-                              </div>
-                              <div className="text-[11px] text-slate-400 font-medium">
-                                Subject: <span className="text-slate-600 font-semibold">{a.subject?.name || 'General'}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-xs font-bold text-slate-700 block">
-                              {a.classSection?._count?.students ?? a.strength ?? 0} Students
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              {a.periodsPerWeek ? `${a.periodsPerWeek} periods/wk` : 'Assigned'}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Schedule (with Monday–Sunday Day Selector) */}
               <div>
