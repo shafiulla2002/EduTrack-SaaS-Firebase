@@ -790,42 +790,89 @@ export class TeachersService {
 
   async getTeacherSchedule(teacherId: string, dayOfWeek?: string) {
     const tenantId = this.getTenantId();
-    const rows = await this.prisma.$queryRaw<any[]>`
-      SELECT 
-        p.id AS "id",
-        p."dayOfWeek" AS "dayOfWeek",
-        sub.name AS "subjectName",
-        c.name AS "className",
-        sec.name AS "sectionName",
-        pt."startTime" AS "startTime",
-        pt."endTime" AS "endTime",
-        pt."periodNumber" AS "periodNumber"
-      FROM "Period" p
-      LEFT JOIN "Subject" sub ON p."subjectId" = sub.id
-      LEFT JOIN "ClassSection" cs ON p."classSectionId" = cs.id
-      LEFT JOIN "Class" c ON cs."classId" = c.id
-      LEFT JOIN "Section" sec ON cs."sectionId" = sec.id
-      LEFT JOIN "PeriodTiming" pt ON p."periodTimingId" = pt.id
-      WHERE p."tenantId" = ${tenantId} 
-        AND p."teacherId" = ${teacherId}
-        ${dayOfWeek ? Prisma.sql`AND LOWER(p."dayOfWeek") = LOWER(${dayOfWeek})` : Prisma.empty}
-      ORDER BY p."dayOfWeek" ASC, pt."periodNumber" ASC
-    `;
+    const periods = await this.prisma.period.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { teacherId },
+          { substituteTeacherId: teacherId },
+        ],
+        ...(dayOfWeek ? { dayOfWeek: { equals: dayOfWeek, mode: 'insensitive' } } : {}),
+      },
+      include: {
+        subject: { select: { id: true, name: true } },
+        classSection: {
+          select: {
+            id: true,
+            class: { select: { name: true } },
+            section: { select: { name: true } },
+          },
+        },
+        periodTiming: {
+          select: {
+            id: true,
+            periodNumber: true,
+            startTime: true,
+            endTime: true,
+            name: true,
+            isBreak: true,
+          },
+        },
+      },
+      orderBy: [
+        { dayOfWeek: 'asc' },
+      ],
+    });
 
-    return rows.map(r => ({
-      id: r.id,
-      dayOfWeek: r.dayOfWeek,
-      subject: r.subjectName ? { name: r.subjectName } : null,
-      classSection: (r.className || r.sectionName) ? {
-        class: r.className ? { name: r.className } : null,
-        section: r.sectionName ? { name: r.sectionName } : null,
-      } : null,
-      periodTiming: r.periodNumber != null ? {
-        startTime: r.startTime,
-        endTime: r.endTime,
-        periodNumber: r.periodNumber,
-      } : null,
-    }));
+    // Deduplicate by dayOfWeek + periodNumber to prevent duplicate period slots showing up
+    const seenSlots = new Map<string, any>();
+    for (const p of periods) {
+      const pNum = p.periodTiming?.periodNumber ?? 0;
+      const day = p.dayOfWeek || '';
+      const slotKey = `${day.toLowerCase()}-${pNum}`;
+      
+      const formatted = {
+        id: p.id,
+        dayOfWeek: p.dayOfWeek,
+        subject: p.subject ? { name: p.subject.name } : null,
+        classSection: p.classSection ? {
+          class: p.classSection.class ? { name: p.classSection.class.name } : null,
+          section: p.classSection.section ? { name: p.classSection.section.name } : null,
+        } : null,
+        periodTiming: p.periodTiming ? {
+          startTime: p.periodTiming.startTime,
+          endTime: p.periodTiming.endTime,
+          periodNumber: p.periodTiming.periodNumber,
+          isBreak: p.periodTiming.isBreak,
+        } : null,
+        isSubstitute: !!p.substituteTeacherId && p.substituteTeacherId === teacherId,
+      };
+
+      if (!seenSlots.has(slotKey)) {
+        seenSlots.set(slotKey, formatted);
+      } else {
+        // If assigned to multiple sections in the same period, merge the class names
+        const existing = seenSlots.get(slotKey);
+        const currentClassStr = formatted.classSection?.class?.name ? `${formatted.classSection.class.name} ${formatted.classSection.section?.name || ''}`.trim() : '';
+        const existingClassStr = existing.classSection?.class?.name ? `${existing.classSection.class.name} ${existing.classSection.section?.name || ''}`.trim() : '';
+        if (currentClassStr && existingClassStr && !existingClassStr.includes(currentClassStr)) {
+          existing.classSection = {
+            class: { name: `${existingClassStr} / ${currentClassStr}` },
+            section: { name: '' },
+          };
+        }
+      }
+    }
+
+    const uniquePeriods = Array.from(seenSlots.values());
+    const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    uniquePeriods.sort((a, b) => {
+      const dayDiff = dayOrder.indexOf((a.dayOfWeek || '').toLowerCase()) - dayOrder.indexOf((b.dayOfWeek || '').toLowerCase());
+      if (dayDiff !== 0) return dayDiff;
+      return (a.periodTiming?.periodNumber || 0) - (b.periodTiming?.periodNumber || 0);
+    });
+
+    return uniquePeriods;
   }
 }
 

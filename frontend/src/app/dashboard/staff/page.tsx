@@ -217,7 +217,7 @@ export default function SchoolStaffPage() {
       const [invoicesRes, casesRes, scheduleRes] = await Promise.allSettled([
         fastGet(`/teachers/${staffId}/salary-invoices`, undefined, { ttlMs: 60000 }),
         fastGet(`/teachers/${staffId}/cases`, undefined, { ttlMs: 60000 }),
-        isTeaching ? fastGet(`/teachers/${staffId}/schedule`, undefined, { ttlMs: 60000 }) : Promise.resolve({ data: [] }),
+        isTeaching ? fastGet(`/teachers/${staffId}/schedule`, undefined, { ttlMs: 0 }) : Promise.resolve({ data: [] }),
       ]);
       setStaffSalaryInvoices(invoicesRes.status === 'fulfilled' ? (invoicesRes.value.data || []) : []);
       setStaffCases(casesRes.status === 'fulfilled' ? (casesRes.value.data || []) : []);

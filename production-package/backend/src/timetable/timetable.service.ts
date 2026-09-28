@@ -1399,46 +1399,92 @@ export class TimetableService {
 
   async getPeriodsForTeacher(teacherId: string) {
     const tenantId = this.getTenantId();
-    const rows = await this.prisma.$queryRaw<any[]>`
-      SELECT 
-        p.id AS "periodId",
-        p."dayOfWeek" AS "day",
-        p."classSectionId" AS "classSectionId",
-        sub.name AS "subjectName",
-        c.name AS "classNameOnly",
-        sec.name AS "sectionNameOnly",
-        pt."periodNumber" AS "periodNumber",
-        pt."startTime" AS "startTime",
-        pt."endTime" AS "endTime",
-        u.name AS "substituteTeacherName"
-      FROM "Period" p
-      LEFT JOIN "Subject" sub ON p."subjectId" = sub.id
-      LEFT JOIN "ClassSection" cs ON p."classSectionId" = cs.id
-      LEFT JOIN "Class" c ON cs."classId" = c.id
-      LEFT JOIN "Section" sec ON cs."sectionId" = sec.id
-      LEFT JOIN "PeriodTiming" pt ON p."periodTimingId" = pt.id
-      LEFT JOIN "StaffProfile" sp ON p."substituteTeacherId" = sp.id
-      LEFT JOIN "User" u ON sp."userId" = u.id
-      WHERE p."teacherId" = ${teacherId} AND p."tenantId" = ${tenantId}
-    `;
+    const periods = await this.prisma.period.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { teacherId },
+          { substituteTeacherId: teacherId },
+        ],
+      },
+      include: {
+        subject: { select: { id: true, name: true } },
+        classSection: {
+          select: {
+            id: true,
+            class: { select: { name: true } },
+            section: { select: { name: true } },
+          },
+        },
+        periodTiming: {
+          select: {
+            id: true,
+            periodNumber: true,
+            startTime: true,
+            endTime: true,
+            name: true,
+            isBreak: true,
+          },
+        },
+        substituteTeacher: {
+          select: {
+            user: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [
+        { dayOfWeek: 'asc' },
+      ],
+    });
 
-    // Normalize to the exact shape the frontend expects
-    return rows.map(p => ({
-      periodId: p.periodId,
-      day: p.day,                                                   // frontend reads p.day
-      periodNumber: p.periodNumber ?? 0,
-      subjectName: p.subjectName ?? '—',
-      className: p.classNameOnly && p.sectionNameOnly
-        ? `${p.classNameOnly} - ${p.sectionNameOnly}`
-        : '—',
-      classSectionId: p.classSectionId ?? '',
-      academicYearId: '',                                           // Period model has no academicYearId; keep empty string
-      startTime: p.startTime ?? '',
-      endTime: p.endTime ?? '',
-      frequency: 'Weekly',
-      isFreePeriod: false,
-      substituteTeacherName: p.substituteTeacherName ?? null,
-    }));
+    const seenSlots = new Map<string, any>();
+    for (const p of periods) {
+      const pNum = p.periodTiming?.periodNumber ?? 0;
+      const day = p.dayOfWeek || 'Monday';
+      const slotKey = `${day.toLowerCase()}-${pNum}`;
+
+      const className = p.classSection?.class?.name && p.classSection?.section?.name
+        ? `${p.classSection.class.name} - ${p.classSection.section.name}`
+        : (p.classSection?.class?.name || '—');
+
+      const formatted = {
+        periodId: p.id,
+        day: p.dayOfWeek,
+        periodNumber: pNum,
+        subjectName: p.subject?.name ?? '—',
+        className,
+        classSectionId: p.classSectionId ?? '',
+        academicYearId: '',
+        startTime: p.periodTiming?.startTime ?? '',
+        endTime: p.periodTiming?.endTime ?? '',
+        frequency: 'Weekly',
+        isFreePeriod: false,
+        substituteTeacherName: p.substituteTeacher?.user?.name ?? null,
+      };
+
+      if (!seenSlots.has(slotKey)) {
+        seenSlots.set(slotKey, formatted);
+      } else {
+        const existing = seenSlots.get(slotKey);
+        if (formatted.className && existing.className && !existing.className.includes(formatted.className)) {
+          existing.className = `${existing.className} / ${formatted.className}`;
+        }
+      }
+    }
+
+    const uniquePeriods = Array.from(seenSlots.values());
+    const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    uniquePeriods.sort((a, b) => {
+      const dayDiff = dayOrder.indexOf((a.day || '').toLowerCase()) - dayOrder.indexOf((b.day || '').toLowerCase());
+      if (dayDiff !== 0) return dayDiff;
+      return (a.periodNumber || 0) - (b.periodNumber || 0);
+    });
+
+    return uniquePeriods;
   }
 
   async getPeriodsForTeacherWithGaps(teacherId: string) {
