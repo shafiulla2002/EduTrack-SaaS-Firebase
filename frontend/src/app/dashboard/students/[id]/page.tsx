@@ -19,6 +19,7 @@ import {
   Phone,
   Mail,
   RefreshCw,
+  Save,
 } from 'lucide-react';
 import { api, fastGet, getCachedData } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
@@ -118,6 +119,7 @@ function parseDetailsFromData(data: any, casesData: any[] = []): any {
       data.feeItems?.map((item: any) => ({
         id: item.oliId || item.id,
         name: item.productName || item.name,
+        unitPrice: Number(item.unitPrice || item.totalAmount || item.price || 0),
         price: Number(item.totalAmount || item.unitPrice || 0),
         grossTotal: Number(item.totalAmount || 0),
         discountPercent: Number(item.discountPercent || 0),
@@ -209,8 +211,8 @@ export default function StudentProfilePage() {
   const [selectedExamTab, setSelectedExamTab] = useState<string>('Unit Test');
   const [expandedInvoices, setExpandedInvoices] = useState<Record<string, boolean>>({});
   const [expandedExams, setExpandedExams] = useState<Record<string, boolean>>({});
-  const [tempDiscount, setTempDiscount] = useState<number>(0);
-  const [appliedDiscountPercent, setAppliedDiscountPercent] = useState<number>(0);
+  const [itemDiscounts, setItemDiscounts] = useState<Record<string, number>>({});
+  const [isSavingDiscounts, setIsSavingDiscounts] = useState<boolean>(false);
 
   // Edit & Delete Modals
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
@@ -351,16 +353,70 @@ export default function StudentProfilePage() {
 
   const handleYearChange = (newYear: string) => {
     setSelectedYear(newYear);
+    setItemDiscounts({});
     fetchStudentData(newYear);
   };
 
-  const handleApplyDiscount = () => {
-    if (tempDiscount < 0 || tempDiscount > 100) {
-      showToast('Please enter a valid percentage between 0 and 100.', 'warning');
-      return;
+  // Sync existing product discount percentages from server data into local editable state
+  useEffect(() => {
+    if (studentDetails?.products?.length) {
+      setItemDiscounts((prev) => {
+        const next = { ...prev };
+        let hasChanges = false;
+        studentDetails.products.forEach((p: any) => {
+          if (next[p.id] === undefined) {
+            next[p.id] = Number(p.discountPercent || 0);
+            hasChanges = true;
+          }
+        });
+        return hasChanges ? next : prev;
+      });
     }
-    setAppliedDiscountPercent(tempDiscount);
-    showToast(`Success: Discount of ${tempDiscount}% applied to current academic session fee.`, 'success');
+  }, [studentDetails?.products]);
+
+  const handleSaveDiscounts = async () => {
+    if (!student || isSavingDiscounts) return;
+
+    try {
+      setIsSavingDiscounts(true);
+
+      const itemsToSave = recFees.list
+        .filter((p: any) => p.id !== 'PREV_YEAR_DUE_CF')
+        .map((p: any) => ({
+          oliId: p.id,
+          discountPercent: p.discountPercent ?? 0,
+        }));
+
+      const payload = {
+        academicYearId: selectedYear && selectedYear !== 'All' ? selectedYear : undefined,
+        feeItems: itemsToSave,
+      };
+
+      const res = await api.put(`/students/${student.id}/fee-discounts`, payload);
+
+      showToast('Fee discounts saved successfully!', 'success');
+
+      if (res.data?.studentDetails) {
+        const fresh = res.data.studentDetails;
+        const fullSt = parseStudentFromData(fresh);
+        if (fullSt) setStudent(fullSt);
+        const details = parseDetailsFromData(fresh, studentDetails?.cases || []);
+        setStudentDetails(details);
+        const updatedDiscounts: Record<string, number> = {};
+        details.products?.forEach((p: any) => {
+          updatedDiscounts[p.id] = Number(p.discountPercent || 0);
+        });
+        setItemDiscounts(updatedDiscounts);
+      } else {
+        await fetchStudentData();
+      }
+    } catch (err: any) {
+      console.error('Failed to save fee discounts:', err);
+      const errMsg = err.response?.data?.message || err.message || 'Failed to update fee discounts.';
+      showToast(errMsg, 'error');
+    } finally {
+      setIsSavingDiscounts(false);
+    }
   };
 
   const toggleInvoice = (id: string) => {
@@ -402,7 +458,7 @@ export default function StudentProfilePage() {
 
   const isPaidClear = student ? student.balanceDue <= 0 : false;
 
-  // Recalculated values based on discount
+  // Recalculated values based on per-product discount
   const recFees = useMemo(() => {
     if (!student || !studentDetails) {
       return {
@@ -416,20 +472,36 @@ export default function StudentProfilePage() {
     }
 
     const productsList = studentDetails.products || [];
-    const subtotal = productsList.reduce((sum: number, p: any) => sum + p.price, 0);
-    const discVal = subtotal * (appliedDiscountPercent / 100);
-    const finalVal = subtotal - discVal;
+    let subtotal = 0;
+    let totalDiscountAmount = 0;
 
     const list = productsList.map((p: any) => {
-      const price = p.price;
-      const discountAmount = price * (appliedDiscountPercent / 100);
-      const netTotal = price - discountAmount;
+      const isVirtual = p.id === 'PREV_YEAR_DUE_CF';
+      const grossTotal = Number(p.grossTotal ?? p.price ?? 0);
+      const unitPrice = Number(p.unitPrice ?? grossTotal);
+      const discountPercent = isVirtual
+        ? 0
+        : itemDiscounts[p.id] !== undefined
+        ? itemDiscounts[p.id]
+        : Number(p.discountPercent || 0);
+
+      const discountAmount = isVirtual ? 0 : (grossTotal * discountPercent) / 100;
+      const netTotal = Math.max(0, grossTotal - discountAmount);
+
+      subtotal += grossTotal;
+      totalDiscountAmount += discountAmount;
+
       return {
         ...p,
+        unitPrice,
+        grossTotal,
+        discountPercent,
         discountAmount,
         netTotal,
       };
     });
+
+    const finalVal = Math.max(0, subtotal - totalDiscountAmount);
 
     const previousYearsDues =
       studentDetails.feeSummary?.previousYears?.map((py: any) => ({
@@ -442,12 +514,12 @@ export default function StudentProfilePage() {
     return {
       list,
       subtotal,
-      discVal,
+      discVal: totalDiscountAmount,
       final: finalVal,
       previousYearsDues,
       totalPreviousYearDue,
     };
-  }, [student, studentDetails, appliedDiscountPercent]);
+  }, [student, studentDetails, itemDiscounts]);
 
   // Loading State - only when no cached/pre-seeded student data is available (cold start / hard refresh)
   if (loading && !student) {
@@ -653,12 +725,10 @@ export default function StudentProfilePage() {
             const overallPaid = studentDetails?.feeSummary
               ? studentDetails.feeSummary.currentYear.paidAmount
               : student.paidAmount;
-            const overallPending = studentDetails?.feeSummary
-              ? studentDetails.feeSummary.currentYear.pendingAmount
-              : student.balanceDue;
-            const overallAllocated = studentDetails?.feeSummary
-              ? studentDetails.feeSummary.currentYear.feeProductsAmount
-              : overallPaid + overallPending;
+            const overallAllocated = recFees.subtotal;
+            const overallDiscount = recFees.discVal;
+            const finalPayable = recFees.final;
+            const overallPending = Math.max(0, finalPayable - overallPaid) + recFees.totalPreviousYearDue;
 
             return (
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
@@ -678,25 +748,25 @@ export default function StudentProfilePage() {
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                     <span className="text-slate-500 text-[10px] font-bold uppercase tracking-wider block">Allocated Amt</span>
                     <span className="text-slate-850 text-lg font-extrabold block mt-1">
-                      ₹{overallAllocated.toLocaleString('en-IN')}
+                      ₹{overallAllocated.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </span>
                   </div>
                   <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
                     <span className="text-emerald-700 text-[10px] font-bold uppercase tracking-wider block">Total Paid</span>
                     <span className="text-emerald-800 text-lg font-extrabold block mt-1">
-                      ₹{overallPaid.toLocaleString('en-IN')}
+                      ₹{overallPaid.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </span>
                   </div>
                   <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
                     <span className="text-amber-700 text-[10px] font-bold uppercase tracking-wider block">Pending Bal</span>
                     <span className="text-amber-800 text-lg font-extrabold block mt-1">
-                      ₹{overallPending.toLocaleString('en-IN')}
+                      ₹{overallPending.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </span>
                   </div>
                   <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl">
                     <span className="text-purple-700 text-[10px] font-bold uppercase tracking-wider block">Discount Given</span>
                     <span className="text-purple-800 text-lg font-extrabold block mt-1">
-                      ₹{recFees.discVal.toLocaleString('en-IN')}
+                      ₹{overallDiscount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                     </span>
                   </div>
                 </div>
@@ -717,24 +787,24 @@ export default function StudentProfilePage() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 text-xs">
-                  <span className="text-slate-500 mr-2">Disc %</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    placeholder="0"
-                    value={tempDiscount}
-                    onChange={(e) => setTempDiscount(Number(e.target.value))}
-                    className="w-12 bg-transparent text-slate-800 font-bold outline-none text-right"
-                  />
-                </div>
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <button
-                  onClick={handleApplyDiscount}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer shadow-xs"
+                  type="button"
+                  onClick={handleSaveDiscounts}
+                  disabled={isSavingDiscounts || recFees.list.length === 0}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs cursor-pointer shadow-xs transition-colors"
                 >
-                  Save
+                  {isSavingDiscounts ? (
+                    <>
+                      <LoadingSpinner size="xs" variant="brand" className="text-white" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5" />
+                      <span>Save Discounts</span>
+                    </>
+                  )}
                 </button>
                 <select
                   value={selectedYear}
@@ -761,12 +831,13 @@ export default function StudentProfilePage() {
 
             {/* Table */}
             <div className="overflow-x-auto border border-slate-100 rounded-xl w-full">
-              <table className="w-full text-left border-collapse min-w-[600px]">
+              <table className="w-full text-left border-collapse min-w-[650px]">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
                     <th className="px-4 py-3">Product / Fee Item</th>
                     <th className="px-4 py-3 text-right">Unit Price</th>
                     <th className="px-4 py-3 text-right">Total Amount</th>
+                    <th className="px-4 py-3 text-center">Discount %</th>
                     <th className="px-4 py-3 text-right">Discount Amt</th>
                     <th className="px-4 py-3 text-right">Net Total</th>
                   </tr>
@@ -778,27 +849,58 @@ export default function StudentProfilePage() {
                         <td className="px-4 py-3.5"><div className="h-4 w-36 bg-slate-200 rounded" /></td>
                         <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
                         <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
+                        <td className="px-4 py-3.5 text-center"><div className="h-4 w-12 bg-slate-200 rounded mx-auto" /></td>
                         <td className="px-4 py-3.5 text-right"><div className="h-4 w-14 bg-slate-200 rounded ml-auto" /></td>
                         <td className="px-4 py-3.5 text-right"><div className="h-4 w-16 bg-slate-200 rounded ml-auto" /></td>
                       </tr>
                     ))
                   ) : recFees.list.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-6 text-center text-slate-400 text-xs">
+                      <td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">
                         No fee structure items recorded for this academic session.
                       </td>
                     </tr>
                   ) : (
                     recFees.list.map((prod: any) => (
-                      <tr key={prod.id}>
+                      <tr key={prod.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-4 py-3 font-semibold text-slate-750">{prod.name}</td>
-                        <td className="px-4 py-3 text-right font-mono">
-                          ₹{prod.price.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        <td className="px-4 py-3 text-right font-mono text-slate-600">
+                          ₹{prod.unitPrice.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono">
+                        <td className="px-4 py-3 text-right font-mono text-slate-700">
                           ₹{prod.grossTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-purple-600">
+                        <td className="px-4 py-2 text-center">
+                          {prod.id === 'PREV_YEAR_DUE_CF' ? (
+                            <span className="text-slate-400 text-xs font-mono">—</span>
+                          ) : (
+                            <div className="inline-flex items-center gap-1 border border-slate-200 rounded-lg px-2 py-1 bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all shadow-2xs">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="any"
+                                disabled={isSavingDiscounts}
+                                value={prod.discountPercent ?? 0}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === '') {
+                                    setItemDiscounts((prev) => ({ ...prev, [prod.id]: 0 }));
+                                    return;
+                                  }
+                                  const num = parseFloat(val);
+                                  if (!isNaN(num)) {
+                                    const clamped = Math.max(0, Math.min(100, num));
+                                    setItemDiscounts((prev) => ({ ...prev, [prod.id]: clamped }));
+                                  }
+                                }}
+                                className="w-12 bg-transparent text-slate-800 font-bold text-xs text-right outline-none disabled:opacity-50"
+                              />
+                              <span className="text-[11px] font-bold text-slate-400">%</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-purple-600 font-semibold">
                           ₹{prod.discountAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
                         <td className="px-4 py-3 text-right font-mono font-bold text-slate-800">
@@ -811,19 +913,19 @@ export default function StudentProfilePage() {
                     <>
                       <tr className="bg-slate-50 font-bold text-slate-800">
                         <td className="px-4 py-3">Session Fee Subtotal (Before Disc)</td>
-                        <td colSpan={3}></td>
+                        <td colSpan={4}></td>
                         <td className="px-4 py-3 text-right font-mono">₹{recFees.subtotal.toLocaleString('en-IN')}</td>
                       </tr>
-                      {appliedDiscountPercent > 0 && (
-                        <tr className="font-bold text-purple-600">
-                          <td className="px-4 py-3">Applied Batch Discount (-)</td>
-                          <td colSpan={3}></td>
+                      {recFees.discVal > 0 && (
+                        <tr className="font-bold text-purple-600 bg-purple-50/30">
+                          <td className="px-4 py-3">Total Discounts Applied (-)</td>
+                          <td colSpan={4}></td>
                           <td className="px-4 py-3 text-right font-mono">-₹{recFees.discVal.toLocaleString('en-IN')}</td>
                         </tr>
                       )}
                       <tr className="bg-blue-50/20 font-extrabold text-[#2E5BFF] text-[14px]">
                         <td className="px-4 py-3">Final Payable Amount</td>
-                        <td colSpan={3}></td>
+                        <td colSpan={4}></td>
                         <td className="px-4 py-3 text-right font-mono">₹{recFees.final.toLocaleString('en-IN')}</td>
                       </tr>
                     </>

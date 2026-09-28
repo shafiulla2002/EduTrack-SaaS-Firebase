@@ -4,7 +4,7 @@ import { TenantContext } from '../tenants/tenant.context';
 import { Role, PaymentStatus, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { StorageService } from '../common/storage.service';
-import { BillingService } from '../billing/billing.service';
+import { BillingService, invalidateStudentBillingCache } from '../billing/billing.service';
 
 // High-speed in-memory cache for Student Details (20s TTL)
 const studentDetailsMemoryCache = new Map<string, { data: any; expiresAt: number }>();
@@ -1273,6 +1273,8 @@ export class StudentsService implements OnModuleInit {
         feeItems.push({
           oliId: oli.id,
           productName: oli.product?.name || 'Fee Product',
+          unitPrice: Number(oli.unitPrice || 0),
+          quantity: Number(oli.quantity || 1),
           totalAmount,
           netAmount,
           paidAmount,
@@ -1292,6 +1294,8 @@ export class StudentsService implements OnModuleInit {
         feeItems.unshift({
           oliId: 'PREV_YEAR_DUE_CF',
           productName: 'Previous Year Balance Brought Forward',
+          unitPrice: prevBalanceDue,
+          quantity: 1,
           totalAmount: prevBalanceDue,
           netAmount: prevBalanceDue,
           paidAmount: 0,
@@ -1351,6 +1355,90 @@ export class StudentsService implements OnModuleInit {
     });
 
     return result;
+  }
+
+  async updateFeeDiscounts(
+    studentId: string,
+    payload: {
+      discounts?: Array<{ oliId?: string; id?: string; discountPercent?: number; discount?: number }>;
+      feeItems?: Array<{ oliId?: string; id?: string; discountPercent?: number; discount?: number }>;
+      academicYearId?: string;
+    },
+  ) {
+    const tenantId = this.getTenantId();
+
+    const student = await this.prisma.studentProfile.findUnique({
+      where: { id: studentId },
+    });
+
+    if (!student || student.tenantId !== tenantId) {
+      throw new NotFoundException('Student profile not found.');
+    }
+
+    const rawItems = payload.feeItems || payload.discounts || [];
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      throw new BadRequestException('No fee items provided to update discounts.');
+    }
+
+    const updates: Array<{ id: string; discount: number }> = [];
+
+    for (const item of rawItems) {
+      const oliId = item.oliId || item.id;
+      if (!oliId || oliId === 'PREV_YEAR_DUE_CF') {
+        continue;
+      }
+
+      const rawDiscount = item.discountPercent !== undefined ? item.discountPercent : item.discount;
+      const discountVal = Number(rawDiscount);
+
+      if (isNaN(discountVal) || discountVal < 0 || discountVal > 100) {
+        throw new BadRequestException(`Invalid discount percentage: ${rawDiscount}. Must be between 0 and 100.`);
+      }
+
+      updates.push({
+        id: oliId,
+        discount: discountVal,
+      });
+    }
+
+    if (updates.length > 0) {
+      // Validate that the line items actually belong to this student and tenant
+      const validItems = await this.prisma.opportunityLineItem.findMany({
+        where: {
+          id: { in: updates.map((u) => u.id) },
+          tenantId,
+          opportunity: { studentId, tenantId },
+        },
+        select: { id: true },
+      });
+
+      const validIdSet = new Set(validItems.map((v) => v.id));
+      const filteredUpdates = updates.filter((u) => validIdSet.has(u.id));
+
+      if (filteredUpdates.length > 0) {
+        await this.prisma.$transaction(
+          filteredUpdates.map((u) =>
+            this.prisma.opportunityLineItem.update({
+              where: { id: u.id },
+              data: { discount: u.discount },
+            }),
+          ),
+        );
+      }
+    }
+
+    // Invalidate caches across student details and billing modules
+    invalidateStudentDetailsCache(studentId, tenantId);
+    invalidateStudentBillingCache(studentId, tenantId);
+
+    // Fetch fresh student details to return immediately
+    const updatedDetails = await this.getStudentDetails(studentId, payload.academicYearId);
+
+    return {
+      success: true,
+      message: 'Fee discounts updated successfully.',
+      studentDetails: updatedDetails,
+    };
   }
 
   // ── CSV BULK IMPORT FRAMEWORK ───────────────────────────────────────────────

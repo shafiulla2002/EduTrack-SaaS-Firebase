@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Delete, Req, BadRequestException, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, Delete, Req, BadRequestException, Patch } from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -133,6 +133,22 @@ export class StudentsController {
     @Query('academicYearId') academicYearId?: string,
   ) {
     return this.studentsService.getStudentDetails(id, academicYearId);
+  }
+
+  @Put(':id/fee-discounts')
+  async updateFeeDiscounts(
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    return this.studentsService.updateFeeDiscounts(id, body);
+  }
+
+  @Patch(':id/fee-discounts')
+  async patchFeeDiscounts(
+    @Param('id') id: string,
+    @Body() body: any,
+  ) {
+    return this.studentsService.updateFeeDiscounts(id, body);
   }
 
   @Patch(':id')
