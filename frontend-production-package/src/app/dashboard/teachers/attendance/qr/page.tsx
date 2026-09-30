@@ -231,9 +231,10 @@ export default function TeacherAttendanceQrPage() {
         <div className="flex items-center gap-2">
           <Link
             href="/dashboard/teachers/attendance"
-            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors shadow-xs"
           >
-            View Live Attendance
+            <ChevronLeft className="w-4 h-4" />
+            Back to Teacher Attendance
           </Link>
         </div>
       </div>
