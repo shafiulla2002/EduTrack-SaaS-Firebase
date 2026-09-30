@@ -6,7 +6,8 @@ import BulkImportModal from '@/components/BulkImportModal';
 import { api, fastGet, getCachedData } from '@/lib/api';
 import { useSchoolSetupUpdate, dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '../providers/TenantContext';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, QrCode, CheckCircle2, ShieldCheck } from 'lucide-react';
+import TeacherQrScannerModal from '@/components/TeacherQrScannerModal';
 import {
   PencilSpinner,
   TableSkeleton,
@@ -797,6 +798,15 @@ function AdminDashboardOverview() {
 function TeacherDashboardView() {
   const [data, setData] = useState<any>(() => getCachedData<any>('/teacher-portal/dashboard'));
   const [loading, setLoading] = useState(() => !getCachedData<any>('/teacher-portal/dashboard'));
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [todayAttendance, setTodayAttendance] = useState<{ marked: boolean; attendance: any } | null>(null);
+
+  const fetchAttendanceStatus = async () => {
+    try {
+      const res = await api.get('/teacher-attendance/my-today');
+      setTodayAttendance(res.data);
+    } catch {}
+  };
 
   useEffect(() => {
     async function loadStats() {
@@ -817,6 +827,7 @@ function TeacherDashboardView() {
       }
     }
     loadStats();
+    fetchAttendanceStatus();
   }, []);
 
   if (loading) {
@@ -837,11 +848,34 @@ function TeacherDashboardView() {
 
   return (
     <div className="space-y-6 max-w-md mx-auto sm:max-w-none">
-      {/* Welcome header */}
+      {/* Welcome header with Attendance Status */}
       <div className="bg-gradient-to-tr from-[#1E293B] to-[#0F172A] p-6 rounded-3xl text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-[20%] right-[-10%] w-[150px] h-[150px] rounded-full bg-blue-500/10 blur-xl pointer-events-none" />
-        <h2 className="text-xl font-bold tracking-tight">Hello Teacher! 👋</h2>
-        <p className="text-[13px] text-slate-300 font-light mt-1">Here is your timeline schedule and tasks overview for today.</p>
+        
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">Hello Teacher! 👋</h2>
+            <p className="text-[13px] text-slate-300 font-light mt-1">Here is your timeline schedule and tasks overview for today.</p>
+          </div>
+
+          {/* Today Check-in Action Button */}
+          <div>
+            {todayAttendance?.marked ? (
+              <div className="inline-flex items-center gap-2 px-3.5 py-2 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl text-emerald-300 text-xs font-bold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                Checked-in ({todayAttendance.attendance?.status || 'PRESENT'})
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsScannerOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white text-xs font-bold rounded-2xl shadow-lg shadow-blue-500/30 transition-all cursor-pointer active:scale-95"
+              >
+                <QrCode className="w-4 h-4" />
+                Mark Attendance
+              </button>
+            )}
+          </div>
+        </div>
         
         {/* Today status badges */}
         <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-700/50">
@@ -860,41 +894,49 @@ function TeacherDashboardView() {
       <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
         <h3 className="text-[15px] font-bold text-slate-800 mb-4">Quick Actions</h3>
         <div className="grid grid-cols-3 gap-4">
+          <button
+            onClick={() => setIsScannerOpen(true)}
+            className="flex flex-col items-center justify-center p-3 hover:bg-blue-50/60 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center"
+          >
+            <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#2E5BFF] flex items-center justify-center shadow-xs">
+              <QrCode className="w-6 h-6" />
+            </div>
+            <span className="text-[11px] font-semibold text-slate-700 group-hover:text-[#2E5BFF]">Mark Attendance</span>
+          </button>
+
+          <Link href="/dashboard/my-attendance" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
+            <div className="w-12 h-12 rounded-xl bg-emerald-55 text-emerald-600 flex items-center justify-center shadow-xs">
+              <span className="text-lg">📊</span>
+            </div>
+            <span className="text-[11px] font-semibold text-slate-600">My Logs</span>
+          </Link>
+
           <Link href="/dashboard/attendance-mgmt" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
             <div className="w-12 h-12 rounded-xl bg-blue-55 text-blue-600 flex items-center justify-center shadow-xs">
               <span className="text-lg">📅</span>
             </div>
-            <span className="text-[11px] font-semibold text-slate-600">Attendance</span>
+            <span className="text-[11px] font-semibold text-slate-600">Class Attend</span>
           </Link>
+
           <Link href="/dashboard/marks-mgmt" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-emerald-55 text-emerald-600 flex items-center justify-center shadow-xs">
+            <div className="w-12 h-12 rounded-xl bg-purple-55 text-purple-600 flex items-center justify-center shadow-xs">
               <span className="text-lg">✍️</span>
             </div>
             <span className="text-[11px] font-semibold text-slate-600">Enter Marks</span>
           </Link>
+
           <Link href="/dashboard/homework" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-purple-55 text-purple-600 flex items-center justify-center shadow-xs">
+            <div className="w-12 h-12 rounded-xl bg-amber-55 text-amber-600 flex items-center justify-center shadow-xs">
               <span className="text-lg">📖</span>
             </div>
             <span className="text-[11px] font-semibold text-slate-600">Homework</span>
           </Link>
-          <Link href="/dashboard/communication" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-pink-55 text-pink-600 flex items-center justify-center shadow-xs">
-              <span className="text-lg">💬</span>
-            </div>
-            <span className="text-[11px] font-semibold text-slate-600">Messages</span>
-          </Link>
+
           <Link href="/dashboard/my-timetable" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-amber-55 text-amber-600 flex items-center justify-center shadow-xs">
+            <div className="w-12 h-12 rounded-xl bg-teal-55 text-teal-600 flex items-center justify-center shadow-xs">
               <span className="text-lg">⏰</span>
             </div>
             <span className="text-[11px] font-semibold text-slate-600">Timetable</span>
-          </Link>
-          <Link href="/dashboard/calendar" className="flex flex-col items-center justify-center p-3 hover:bg-slate-50 rounded-2xl transition-all gap-1.5 group cursor-pointer text-center">
-            <div className="w-12 h-12 rounded-xl bg-teal-55 text-teal-600 flex items-center justify-center shadow-xs">
-              <span className="text-lg">🗓️</span>
-            </div>
-            <span className="text-[11px] font-semibold text-slate-600">Calendar</span>
           </Link>
         </div>
       </div>
@@ -962,6 +1004,15 @@ function TeacherDashboardView() {
           </div>
         )}
       </div>
+
+      {/* QR Scanner Modal */}
+      <TeacherQrScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onAttendanceSuccess={() => {
+          fetchAttendanceStatus();
+        }}
+      />
     </div>
   );
 }

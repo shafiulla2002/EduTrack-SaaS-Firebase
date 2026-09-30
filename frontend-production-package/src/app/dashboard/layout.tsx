@@ -157,6 +157,29 @@ export default function DashboardLayout({
             </svg>
           ),
         },
+        {
+          name: 'Teacher Attendance',
+          href: '/dashboard/teachers/attendance',
+          svg: (
+            <svg className="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="8.5" cy="7" r="4" />
+              <polyline points="17 11 19 13 23 9" />
+            </svg>
+          ),
+        },
+        {
+          name: 'Attendance QR Code',
+          href: '/dashboard/teachers/attendance/qr',
+          svg: (
+            <svg className="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+          ),
+        },
       ],
     },
     {
@@ -377,7 +400,18 @@ export default function DashboardLayout({
           ),
         },
         {
-          name: 'Attendance',
+          name: 'My Attendance',
+          href: '/dashboard/my-attendance',
+          svg: (
+            <svg className="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="8.5" cy="7" r="4" />
+              <polyline points="17 11 19 13 23 9" />
+            </svg>
+          ),
+        },
+        {
+          name: 'Class Attendance',
           href: '/dashboard/attendance-mgmt',
           svg: (
             <svg className="icon-svg" viewBox="0 0 24 24">

@@ -34,6 +34,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { QueueModule } from './queue/queue.module';
 import { PaymentSettingsModule } from './payment-settings/payment-settings.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
+import { TeacherAttendanceModule } from './teacher-attendance/teacher-attendance.module';
 
 import { MonitoringModule } from './monitoring/monitoring.module';
 
@@ -49,6 +50,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
     StudentsModule,
     TeachersModule,
     AttendanceModule,
+    TeacherAttendanceModule,
     ExamsModule,
     BillingModule,
     ExpensesModule,

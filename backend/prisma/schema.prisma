@@ -162,6 +162,10 @@ model Tenant {
   subInvoices       SubscriptionInvoice[]
   subPayments       SubscriptionPayment[]
   subNotifications  SubscriptionNotificationLog[]
+  teacherAttendances       TeacherAttendance[]
+  teacherAttendanceQrCodes TeacherAttendanceQrCode[]
+  teacherAttendanceSetting TeacherAttendanceSetting?
+  teacherAttendanceAuditLogs TeacherAttendanceAuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -193,6 +197,11 @@ model User {
   bookIssues            BookIssue[]
   notifications         Notification[]
   createdCommunications Communication[]          @relation("CreatedCommunications")
+
+  // Teacher Attendance relations
+  createdTeacherAttendanceQrs TeacherAttendanceQrCode[] @relation("CreatedTeacherAttendanceQrs")
+  teacherAttendances          TeacherAttendance[]
+  teacherAttendanceAuditLogs  TeacherAttendanceAuditLog[]
 
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
@@ -248,6 +257,7 @@ model StaffProfile {
   homeworks     Homework[]
   leaveRequests LeaveRequest[]
   announcements Announcement[]
+  teacherAttendances TeacherAttendance[]
   tenantId      String
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1655,6 +1665,128 @@ model PaymentGatewayConfig {
   webhookSecret  String?  // Encrypted
   updatedAt      DateTime @updatedAt
 }
+
+enum TeacherAttendanceStatus {
+  PRESENT
+  LATE
+  HALF_DAY
+  ABSENT
+  EXCUSED
+}
+
+model TeacherAttendanceQrCode {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  code             String   @unique
+  qrPayload        String   @db.Text
+  status           String   @default("ACTIVE") // ACTIVE, INACTIVE, REVOKED
+  version          Int      @default(1)
+  createdById      String
+  createdBy        User     @relation("CreatedTeacherAttendanceQrs", fields: [createdById], references: [id])
+
+  // Geolocation & Security Settings
+  latitude         Float?
+  longitude        Float?
+  radiusMeters     Float?   @default(150)
+  requiresLocation Boolean  @default(false)
+
+  attendances      TeacherAttendance[]
+  auditLogs        TeacherAttendanceAuditLog[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([code])
+  @@index([tenantId, status])
+}
+
+model TeacherAttendanceSetting {
+  id                   String   @id @default(uuid())
+  tenantId             String   @unique
+  tenant               Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  workStartTime        String   @default("09:00 AM")
+  lateThresholdMinutes Int      @default(15) // e.g. after 9:15 AM marked as LATE
+  halfDayThresholdTime String?  @default("12:00 PM")
+  attendanceCutoffTime String?  @default("02:00 PM")
+
+  schoolLatitude       Float?
+  schoolLongitude      Float?
+  allowedRadiusMeters  Float?   @default(200)
+  enableGeofencing     Boolean  @default(false)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model TeacherAttendance {
+  id             String                  @id @default(uuid())
+  tenantId       String
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  teacherId      String
+  teacher        StaffProfile            @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  attendanceDate DateTime                @db.Date
+  checkInTime    DateTime                @default(now())
+  status         TeacherAttendanceStatus @default(PRESENT)
+
+  qrCodeId       String?
+  qrCode         TeacherAttendanceQrCode? @relation(fields: [qrCodeId], references: [id], onDelete: SetNull)
+
+  scanSource     String                  @default("IN_APP_SCANNER") // IN_APP_SCANNER, MOBILE_CAMERA_DEEP_LINK, MANUAL_ADMIN
+  latitude       Float?
+  longitude      Float?
+  distanceMeters Float?
+  ipAddress      String?
+  userAgent      String?
+  remarks        String?                 @db.Text
+
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@unique([tenantId, teacherId, attendanceDate])
+  @@index([tenantId])
+  @@index([teacherId])
+  @@index([userId])
+  @@index([attendanceDate])
+  @@index([tenantId, attendanceDate])
+  @@index([tenantId, teacherId, attendanceDate])
+}
+
+model TeacherAttendanceAuditLog {
+  id             String   @id @default(uuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  teacherId      String?
+  qrCodeId       String?
+  qrCode         TeacherAttendanceQrCode? @relation(fields: [qrCodeId], references: [id], onDelete: SetNull)
+
+  action         String   // SCAN_SUCCESS, SCAN_REJECTED, QR_GENERATED, QR_REGENERATED, QR_DEACTIVATED
+  result         String   // SUCCESS, QR_INVALID, QR_EXPIRED, QR_INACTIVE, TENANT_MISMATCH, ALREADY_MARKED, OUTSIDE_GEOFENCE, UNAUTHORIZED_TEACHER, RATE_LIMITED
+  reason         String?
+  scanSource     String?
+  latitude       Float?
+  longitude      Float?
+  distanceMeters Float?
+  ipAddress      String?
+  userAgent      String?
+
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+}
+
 
 
 
