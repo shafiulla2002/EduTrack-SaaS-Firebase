@@ -1,6 +1,12 @@
 {
-  "buildCommand": "cd EdutrackSaaS2026/frontend && npm install && npm run build",
-  "outputDirectory": "EdutrackSaaS2026/frontend/.next",
-  "installCommand": "cd EdutrackSaaS2026/frontend && npm install",
-  "framework": "nextjs"
+  "version": 2,
+  "builds": [
+    {
+      "src": "EdutrackSaaS2026/frontend/package.json",
+      "use": "@vercel/next",
+      "config": {
+        "rootDirectory": "EdutrackSaaS2026/frontend"
+      }
+    }
+  ]
 }
