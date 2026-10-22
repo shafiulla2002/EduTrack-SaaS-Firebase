@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+android/.gradle/
+android/build/
+android/app/build/
+.kotlin/
+*.aab
+*.apk
+keystore-backup/
+.DS_Store

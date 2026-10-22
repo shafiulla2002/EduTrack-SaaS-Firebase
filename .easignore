@@ -1,0 +1,9 @@
+EdutrackSaaS2026/
+edutrack-mobile/node_modules/
+edutrack-mobile/.expo/
+edutrack-mobile/android/.gradle/
+edutrack-mobile/android/build/
+edutrack-mobile/android/app/build/
+*.zip
+*.7z
+*.tar.gz
