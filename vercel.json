@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd EdutrackSaaS2026/frontend && npm install && npm run build",
+  "outputDirectory": "EdutrackSaaS2026/frontend/.next",
+  "installCommand": "cd EdutrackSaaS2026/frontend && npm install",
+  "framework": "nextjs"
+}
