@@ -1,0 +1,35 @@
+{
+  "totalStudents": 50,
+  "totalTeachers": 7,
+  "totalClasses": 5,
+  "paidFees": 599997,
+  "pendingFees": 0,
+  "attendancePercentage": 80,
+  "topStudents": [
+    {
+      "name": "Student db3b",
+      "average": 81
+    },
+    {
+      "name": "Student b5bd",
+      "average": 81
+    },
+    {
+      "name": "Student 1571",
+      "average": 81
+    },
+    {
+      "name": "Student a6a2",
+      "average": 81
+    },
+    {
+      "name": "Student 018a",
+      "average": 81
+    }
+  ],
+  "databaseSize": "18.4 MB",
+  "storagePerStudent": "14.2 KB",
+  "storagePerSchool": "1.08 MB",
+  "monthlyGrowth": "240 KB",
+  "tenantId": "49e10ad6-5b57-494c-a13f-596659543e46"
+}

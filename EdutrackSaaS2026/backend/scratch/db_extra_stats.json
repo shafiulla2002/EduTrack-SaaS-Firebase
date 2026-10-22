@@ -1,0 +1,55 @@
+{
+  "classEnrollments": [
+    {
+      "className": "Grade 1",
+      "count": 10
+    },
+    {
+      "className": "Grade 2",
+      "count": 10
+    },
+    {
+      "className": "Grade 3",
+      "count": 10
+    },
+    {
+      "className": "Grade 4",
+      "count": 10
+    },
+    {
+      "className": "Grade 5",
+      "count": 10
+    }
+  ],
+  "totalExpenses": 0,
+  "attendanceTrends": [
+    {
+      "date": "Jun 26",
+      "rate": 80
+    },
+    {
+      "date": "Jun 26",
+      "rate": 80
+    },
+    {
+      "date": "Jun 26",
+      "rate": 80
+    },
+    {
+      "date": "Jun 26",
+      "rate": 80
+    },
+    {
+      "date": "Jun 26",
+      "rate": 80
+    },
+    {
+      "date": "Jun 26",
+      "rate": 80
+    },
+    {
+      "date": "Jun 26",
+      "rate": 80
+    }
+  ]
+}
