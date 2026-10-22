@@ -1,0 +1,360 @@
+<apex:page controller="AdmissionInvoiceController" renderAs="{!IF($CurrentPage.parameters.preview == 'true', '', 'pdf')}" applyHtmlTag="false" showHeader="false" cache="false" readOnly="true" sidebar="false" standardStylesheets="false">
+    <html>
+        <head>
+            <style type="text/css">
+                * {
+                    box-sizing: border-box;
+                }
+                @page {
+                    size: A4;
+                    margin: 0; /* Full bleed for header */
+                }
+                body {
+                    font-family: 'Arial Unicode MS', sans-serif;
+                    font-size: 10pt;
+                    color: #2d3748;
+                    margin: 0;
+                    padding: 0;
+                    background-color: white;
+                }
+                .download-banner {
+                    text-align: center;
+                    padding: 15px;
+                    background-color: #f7fafc;
+                    border-bottom: 1px solid #e2e8f0;
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    z-index: 1000;
+                }
+                .download-btn {
+                    display: inline-block;
+                    padding: 10px 20px;
+                    background-color: #1a365d;
+                    color: white;
+                    text-decoration: none;
+                    border-radius: 4px;
+                    font-weight: bold;
+                    font-family: sans-serif;
+                }
+                .download-btn:hover {
+                    background-color: #2a4365;
+                }
+                /* Offset for fixed banner in preview mode */
+                .preview-offset {
+                    height: 80px;
+                    width: 100%;
+                }
+                .container {
+                    padding: 20px 40px 40px;
+                    position: relative;
+                }
+
+                /* Header Section */
+                .header-container {
+                    background-color: #1a365d; /* Dark Blue */
+                    color: white;
+                    border-bottom: 4px solid #ed8936; /* Orange Accent */
+                    height: 130px; 
+                    position: relative;
+                    width: 100%;
+                }
+                .school-name {
+                    font-size: 22pt;
+                    font-weight: bold;
+                    text-transform: uppercase;
+                    padding-top: 35px;
+                    padding-left: 140px; /* Space for logo */
+                    line-height: 1.2;
+                }
+                .tagline {
+                    font-size: 9pt;
+                    color: #cbd5e0;
+                    padding-left: 140px;
+                    font-style: italic;
+                }
+
+                /* Logo Positioning - No Flexbox (Unsupported in PDF) */
+                .logo-overlay {
+                    position: absolute;
+                    top: 15px;
+                    left: 20px;
+                    width: 100px;
+                    height: 100px;
+                    z-index: 100;
+                    background-color: white;
+                    border-radius: 50%;
+                    padding: 5px;
+                    text-align: center;
+                    overflow: hidden;
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+                }
+                .school-logo {
+                    width: 100%;
+                    height: auto;
+                    max-height: 100px;
+                    margin-top: 0;
+                }
+
+                /* Receipt Title */
+                .receipt-title-row {
+                    margin-top: 40px;
+                    margin-bottom: 20px;
+                    text-align: center;
+                }
+                .receipt-heading {
+                    font-size: 16pt;
+                    font-weight: bold;
+                    color: #1a365d;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                }
+
+                /* Receipt Meta (Date/No) */
+                .meta-row {
+                    margin-bottom: 20px;
+                    width: 100%;
+                }
+                .meta-table {
+                    width: 100%;
+                }
+                .meta-label {
+                    font-weight: bold;
+                    color: #4a5568;
+                }
+
+                /* Student Details Box */
+                .student-box {
+                    background-color: #f7fafc; /* Light Blue/Grey */
+                    border: 1px solid #e2e8f0;
+                    padding: 20px;
+                    margin-bottom: 30px;
+                    border-left: 4px solid #1a365d; /* Accent left border */
+                }
+                .student-table {
+                    width: 100%;
+                }
+                .student-label {
+                    font-size: 9pt;
+                    color: #718096;
+                    font-weight: bold;
+                }
+                .student-value {
+                    font-size: 11pt;
+                    color: #1a365d; /* Dark Blue text */
+                    font-weight: bold;
+                    margin-bottom: 10px;
+                    display: block;
+                    text-transform: capitalize; /* Fix casing issues */
+                }
+
+                /* Fees Table */
+                .fee-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-bottom: 40px;
+                }
+                .fee-table th {
+                    background-color: #ebf8ff; /* Light Blue Header */
+                    color: #1a365d;
+                    font-weight: bold;
+                    text-align: left;
+                    padding: 12px 15px;
+                    text-transform: uppercase;
+                    font-size: 9pt;
+                    border-bottom: 2px solid #cbd5e0;
+                }
+                .fee-table td {
+                    padding: 12px 15px;
+                    border-bottom: 1px solid #edf2f7;
+                    color: #2d3748;
+                    text-transform: capitalize; /* Capitalize fee names too */
+                }
+                .fee-table th.amount-col, 
+                .fee-table td.amount-col {
+                    text-align: right;
+                }
+
+                /* Grand Total Box */
+                .total-container {
+                    text-align: right;
+                }
+                .total-box {
+                    display: inline-block;
+                    background-color: #1a365d;
+                    color: white;
+                    padding: 15px 30px;
+                    border-radius: 4px;
+                }
+                .total-label {
+                    font-size: 11pt;
+                    margin-right: 20px;
+                    font-weight: normal;
+                }
+                .total-value {
+                    font-size: 16pt;
+                    font-weight: bold;
+                }
+                
+                .address-block {
+                    font-size: 10pt; 
+                    font-weight: bold;
+                    text-transform: capitalize;
+                    line-height: 1.4;
+                }
+
+                @media print {
+                    .download-banner {
+                        display: none !important;
+                    }
+                    .header-container {
+                        margin-top: 0;
+                    }
+                    @page {
+                        margin: 0;
+                    }
+                    body {
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                }
+
+            </style>
+        </head>
+        <body>
+            <apex:outputPanel rendered="{!$CurrentPage.parameters.preview == 'true'}" layout="none">
+                <div class="download-banner">
+                    <a href="/apex/AdmissionInvoice?id={!invoice.Id}" class="download-btn">Download PDF</a>
+                    <a href="#" onclick="window.print(); return false;" class="download-btn" style="margin-left: 10px;">Print</a>
+                </div>
+                <div class="preview-offset"></div>
+            </apex:outputPanel> 
+            
+            <!-- Dark Header -->
+            <div class="header-container">
+                <!-- Logo Overlay using negative margin trick or absolute positioning if container is relative -->
+                <div class="logo-overlay">
+                    <apex:image value="{!schoolLogo}" styleClass="school-logo" rendered="{!NOT(ISBLANK(schoolLogo))}" />
+                    <apex:image value="{!URLFOR($Resource.SchoolLogo)}" styleClass="school-logo" rendered="{!ISBLANK(schoolLogo)}" />
+                </div>
+                
+                <div class="school-name">{!schoolName}</div>
+                <div class="tagline">{!schoolSubtitle}</div>
+            </div>
+
+            <div class="container">
+                <!-- Receipt Heading -->
+                <div class="receipt-title-row">
+                    <div class="receipt-heading">Fee Receipt</div>
+                </div>
+
+                <!-- Meta Info -->
+                <div class="meta-row">
+                    <table class="meta-table">
+                        <tr>
+                            <td width="50%">
+                                <span class="meta-label">Receipt No:</span> 
+                                <span style="margin-left: 10px;">{!invoice.Name}</span>
+                            </td>
+                            <td width="50%" style="text-align: right;">
+                                <span class="meta-label">Academic Year:</span>
+                                <span style="margin-left: 10px;">{!academicYearName}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <span class="meta-label">Date:</span>
+                                <span style="margin-left: 10px;">
+                                    <apex:outputText value="{0,date,dd MMM yyyy}">
+                                        <apex:param value="{!invoice.Invoice_Date__c}" />
+                                    </apex:outputText>
+                                </span>
+                            </td>
+                            <td></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Student Details Box -->
+                <div class="student-box">
+                    <table class="student-table">
+                        <tr>
+                            <td width="35%" style="vertical-align: top;">
+                                <div class="student-label">Student Name</div>
+                                <div class="student-value">{!studentName}</div>
+                                <div class="student-label" style="margin-top: 10px;">Parent Details</div>
+                                <div style="font-size: 10pt; text-transform: capitalize;">
+                                    Father's Name: {!fatherName}<br/>
+                                    Mother's Name: {!motherName}
+                                </div>
+                            </td>
+                            <td width="30%" style="vertical-align: top;">
+                                <div class="student-label">Class &amp; Section</div>
+                                <div class="student-value">{!className} - {!sectionName}</div>
+                                <div class="student-label" style="margin-top: 10px;">Date of Birth</div>
+                                <div class="student-value">{!studentDob}</div>
+                                <!--<div class="student-label" style="margin-top: 10px;">Roll Number</div>
+                                <div class="student-value">{!invoice.Student__r.Roll_No__c}</div>-->
+                            </td>
+                            <td width="35%" style="vertical-align: top;">
+                                <div class="student-label" style="font-weight: bold; color: #000;">Address</div>
+                                <div class="address-block">
+                                    {!addressVillage}<br/>
+                                    {!addressCityPostal}<br/>
+                                    {!addressState}<br/>
+                                    {!addressCountry}
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="student-label">Admission Ref</div>
+                                <div class="student-value" style="font-size: 9pt;">{!admissionRef}</div>
+                            </td>
+                           <td></td><td></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Fee Table -->
+                <table class="fee-table">
+                    <thead>
+                        <tr>
+                            <th width="10%">SL. NO</th>
+                            <th width="60%">PARTICULARS</th>
+                            <th width="30%" class="amount-col">AMOUNT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <apex:variable var="index" value="{!1}"/>
+                        <apex:repeat value="{!wrappedItems}" var="item">
+                            <tr>
+                                <td>{!index}</td>
+                                <td>{!item.particulars}</td>
+                                <td class="amount-col">
+                                    <apex:outputText value="{0, number, ###,###,##0.00}">
+                                        <apex:param value="{!item.amount}" />
+                                    </apex:outputText>
+                                </td>
+                            </tr>
+                            <apex:variable var="index" value="{!index + 1}"/>
+                        </apex:repeat>
+                    </tbody>
+                </table>
+
+                <!-- Grand Total Box -->
+                <div class="total-container">
+                    <div class="total-box">
+                        <span class="total-label">Grand Total Paid</span>
+                        <span class="total-value">
+                            <apex:outputText value="{0, number, ###,###,##0.00}">
+                                <apex:param value="{!totalAmount}" />
+                            </apex:outputText>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </body>
+    </html>
+</apex:page>

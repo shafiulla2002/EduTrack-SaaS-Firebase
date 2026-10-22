@@ -1,0 +1,85 @@
+<template>
+    <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_small">
+        <div class="slds-modal__container">
+            <header class="slds-modal__header">
+                <button class="modal-close-button" title="Close" onclick={handleClose}>
+                    <lightning-icon icon-name="utility:close" alternative-text="close" size="small"></lightning-icon>
+                </button>
+                <h2 class="slds-text-heading_medium">Bulk Student Import</h2>
+            </header>
+            <div class="slds-modal__content slds-p-around_medium">
+                <template lwc:if={isStep1}>
+                    <div class="import-step">
+                        <div class="info-box slds-m-bottom_medium">
+                            <p>Import students effortlessly. Download the template, fill in the details, and upload the
+                                CSV.</p>
+                        </div>
+                        <div class="slds-grid slds-grid_vertical slds-grid_align-center slds-text-align_center">
+                            <div class="slds-m-bottom_large">
+                                <lightning-button label="Download CSV Template" icon-name="utility:download"
+                                    onclick={handleDownloadTemplate} variant="brand"></lightning-button>
+                            </div>
+                            <div class="upload-zone">
+                                <lightning-input type="file" label="Upload Filled CSV" accept=".csv"
+                                    onchange={handleFileUpload}></lightning-input>
+                                <template lwc:if={fileName}>
+                                    <p class="slds-m-top_x-small">Selected: <strong>{fileName}</strong></p>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <template lwc:if={isStepConfirm}>
+                    <div class="confirm-step slds-text-align_center">
+                        <div class="slds-m-bottom_medium">
+                            <lightning-icon icon-name="utility:info" size="large" variant="info"></lightning-icon>
+                        </div>
+                        <h3 class="slds-text-heading_medium slds-m-bottom_small">Confirm Import</h3>
+                        <p class="slds-text-heading_small slds-m-bottom_large">
+                            We found <strong>{totalRows}</strong> records in <strong>{fileName}</strong>.<br />
+                            Are you sure you want to proceed with the import?
+                        </p>
+                        <div class="slds-grid slds-grid_align-center slds-m-top_large">
+                            <lightning-button label="Back" variant="neutral" onclick={handleBack}
+                                class="slds-m-right_small"></lightning-button>
+                            <lightning-button label="Confirm and Upload" variant="brand"
+                                onclick={handleConfirm}></lightning-button>
+                        </div>
+                    </div>
+                </template>
+
+                <template lwc:if={isStepResult}>
+                    <div class="processing-step slds-text-align_center">
+                        <template lwc:if={isProcessing}>
+                            <lightning-spinner alternative-text="Processing" size="medium"></lightning-spinner>
+                            <p class="slds-m-top_medium">Creating records and allocating fees... Please wait.</p>
+                        </template>
+                        <template lwc:else>
+                            <div class="result-summary">
+                                <div class={resultIconClass}>{resultIcon}</div>
+                                <h3 class="slds-text-heading_small slds-m-vertical_small">{resultTitle}</h3>
+                                <p>Successfully Imported: <strong>{successCount}</strong> / {totalRows}</p>
+                                <template lwc:if={hasErrors}>
+                                    <div class="error-log slds-m-top_medium slds-p-around_small">
+                                        <p class="slds-text-color_error slds-m-bottom_xx-small">Errors encountered:</p>
+                                        <ul>
+                                            <template for:each={errors} for:item="err">
+                                                <li key={err}>{err}</li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </template>
+                                <div class="slds-m-top_large">
+                                    <lightning-button label="Done" variant="brand"
+                                        onclick={handleClose}></lightning-button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </section>
+    <div class="slds-backdrop slds-backdrop_open"></div>
+</template>

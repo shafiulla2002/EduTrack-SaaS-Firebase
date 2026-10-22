@@ -1,0 +1,1321 @@
+﻿{
+  "status": 100,
+  "result": {
+    "summary": {
+      "failRate": "6%",
+      "failing": 5,
+      "hostname": "https://developmentorg3-dev-ed.develop.my.salesforce.com",
+      "orgId": "00Df600000HKx70EAD",
+      "outcome": "Failed",
+      "passRate": "94%",
+      "passing": 77,
+      "skipped": 0,
+      "testRunId": "707f6000009fzQj",
+      "testStartTime": "2026-05-01T11:28:11.000Z",
+      "testsRan": 82,
+      "userId": "005f6000003ojzVAAQ",
+      "username": "shafi@devorg.com",
+      "commandTime": "95 ms",
+      "testExecutionTime": "16077 ms",
+      "testTotalTime": "16109 ms"
+    },
+    "tests": [
+      {
+        "Id": "07Mf6000001VGXtEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testBulkCreateSubjects",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 67,
+        "FullName": "EduTrack.ClassManagementControllerTest.testBulkCreateSubjects"
+      },
+      {
+        "Id": "07Mf6000001VGXuEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testBulkCreateTeachers",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 199,
+        "FullName": "EduTrack.ClassManagementControllerTest.testBulkCreateTeachers"
+      },
+      {
+        "Id": "07Mf6000001VGXvEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCheckDuplicateClassSectionBlankParams",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 4,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCheckDuplicateClassSectionBlankParams"
+      },
+      {
+        "Id": "07Mf6000001VGXwEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCheckDuplicateClassSectionExists",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 132,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCheckDuplicateClassSectionExists"
+      },
+      {
+        "Id": "07Mf6000001VGXxEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCheckDuplicateClassSectionNoMatch",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 54,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCheckDuplicateClassSectionNoMatch"
+      },
+      {
+        "Id": "07Mf6000001VGXyEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateClassSectionBlankParams",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 6,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateClassSectionBlankParams"
+      },
+      {
+        "Id": "07Mf6000001VGXzEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateClassSectionDuplicate",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 84,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateClassSectionDuplicate"
+      },
+      {
+        "Id": "07Mf6000001VGY0EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateClassSectionPeriodsNullEntry",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 221,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateClassSectionPeriodsNullEntry"
+      },
+      {
+        "Id": "07Mf6000001VGY1EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateClassSectionSuccess",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 165,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateClassSectionSuccess"
+      },
+      {
+        "Id": "07Mf6000001VGY2EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateClassSectionWithNullPeriods",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 144,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateClassSectionWithNullPeriods"
+      },
+      {
+        "Id": "07Mf6000001VGY3EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateTeacherBlankEmail",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateTeacherBlankEmail"
+      },
+      {
+        "Id": "07Mf6000001VGY4EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateTeacherBlankName",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateTeacherBlankName"
+      },
+      {
+        "Id": "07Mf6000001VGY5EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateTeacherDuplicateEmail",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 61,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateTeacherDuplicateEmail"
+      },
+      {
+        "Id": "07Mf6000001VGY6EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateTeacherNoSkills",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateTeacherNoSkills"
+      },
+      {
+        "Id": "07Mf6000001VGY7EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateTeacherSkillBlankSubjectOrLevel",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 81,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateTeacherSkillBlankSubjectOrLevel"
+      },
+      {
+        "Id": "07Mf6000001VGY8EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testCreateTeacherWithSkillsSuccess",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 70,
+        "FullName": "EduTrack.ClassManagementControllerTest.testCreateTeacherWithSkillsSuccess"
+      },
+      {
+        "Id": "07Mf6000001VGY9EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testDeleteTeacherAssignmentBlankId",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testDeleteTeacherAssignmentBlankId"
+      },
+      {
+        "Id": "07Mf6000001VGYAEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testDeleteTeacherAssignmentSuccess",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 399,
+        "FullName": "EduTrack.ClassManagementControllerTest.testDeleteTeacherAssignmentSuccess"
+      },
+      {
+        "Id": "07Mf6000001VGYBEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAcademicYears",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 700,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAcademicYears"
+      },
+      {
+        "Id": "07Mf6000001VGYCEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAcademicYearsEmpty",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 12,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAcademicYearsEmpty"
+      },
+      {
+        "Id": "07Mf6000001VGYDEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllClassSections",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 102,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllClassSections"
+      },
+      {
+        "Id": "07Mf6000001VGYEEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllClassWorkloadsNoData",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 12,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllClassWorkloadsNoData"
+      },
+      {
+        "Id": "07Mf6000001VGYFEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllClassWorkloadsWithData",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 349,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllClassWorkloadsWithData"
+      },
+      {
+        "Id": "07Mf6000001VGYGEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllClasses",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 396,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllClasses"
+      },
+      {
+        "Id": "07Mf6000001VGYHEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllSections",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 437,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllSections"
+      },
+      {
+        "Id": "07Mf6000001VGYIEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllSubjects",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 427,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllSubjects"
+      },
+      {
+        "Id": "07Mf6000001VGYJEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllTeacherWorkloadsAssignmentsOnly",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 628,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllTeacherWorkloadsAssignmentsOnly"
+      },
+      {
+        "Id": "07Mf6000001VGYKEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllTeacherWorkloadsNoData",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 14,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllTeacherWorkloadsNoData"
+      },
+      {
+        "Id": "07Mf6000001VGYLEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllTeacherWorkloadsWithPeriods",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 669,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllTeacherWorkloadsWithPeriods"
+      },
+      {
+        "Id": "07Mf6000001VGYMEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetAllTeachers",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 71,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetAllTeachers"
+      },
+      {
+        "Id": "07Mf6000001VGYNEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetClassSectionWorkloadBlankId",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetClassSectionWorkloadBlankId"
+      },
+      {
+        "Id": "07Mf6000001VGYOEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetClassSectionWorkloadNoAssignments",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 566,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetClassSectionWorkloadNoAssignments"
+      },
+      {
+        "Id": "07Mf6000001VGYPEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetClassSectionWorkloadWithData",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 674,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetClassSectionWorkloadWithData"
+      },
+      {
+        "Id": "07Mf6000001VGYQEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetClasses",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 438,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetClasses"
+      },
+      {
+        "Id": "07Mf6000001VGYREA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetLeaserPeriodsForTeacherBlank",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetLeaserPeriodsForTeacherBlank"
+      },
+      {
+        "Id": "07Mf6000001VGYSEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetLeaserPeriodsForTeacherWithData",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 180,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetLeaserPeriodsForTeacherWithData"
+      },
+      {
+        "Id": "07Mf6000001VGYTEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodTimings",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 55,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodTimings"
+      },
+      {
+        "Id": "07Mf6000001VGYUEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodTimingsEmpty",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 11,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodTimingsEmpty"
+      },
+      {
+        "Id": "07Mf6000001VGYVEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodTimingsNullTimes",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 33,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodTimingsNullTimes"
+      },
+      {
+        "Id": "07Mf6000001VGYWEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForClassSectionBlank",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForClassSectionBlank"
+      },
+      {
+        "Id": "07Mf6000001VGYXEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForClassSectionImplicitSubstitute",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 255,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForClassSectionImplicitSubstitute"
+      },
+      {
+        "Id": "07Mf6000001VGYYEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForClassSectionLeaserPeriod",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 235,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForClassSectionLeaserPeriod"
+      },
+      {
+        "Id": "07Mf6000001VGYZEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForClassSectionNormalPeriod",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 226,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForClassSectionNormalPeriod"
+      },
+      {
+        "Id": "07Mf6000001VGYaEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForClassSectionSelfLeaser",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 225,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForClassSectionSelfLeaser"
+      },
+      {
+        "Id": "07Mf6000001VGYbEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForClassSectionUnassigned",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 121,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForClassSectionUnassigned"
+      },
+      {
+        "Id": "07Mf6000001VGYcEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForTeacherBlank",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 6,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForTeacherBlank"
+      },
+      {
+        "Id": "07Mf6000001VGYdEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForTeacherLeaserPeriod",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 182,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForTeacherLeaserPeriod"
+      },
+      {
+        "Id": "07Mf6000001VGYeEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForTeacherNullSubject",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 147,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForTeacherNullSubject"
+      },
+      {
+        "Id": "07Mf6000001VGYfEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForTeacherWithGapsBlank",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForTeacherWithGapsBlank"
+      },
+      {
+        "Id": "07Mf6000001VGYgEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForTeacherWithGapsData",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 217,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForTeacherWithGapsData"
+      },
+      {
+        "Id": "07Mf6000001VGYhEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetPeriodsForTeacherWithSubjectsField",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 169,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetPeriodsForTeacherWithSubjectsField"
+      },
+      {
+        "Id": "07Mf6000001VGYiEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": "Class.EduTrack.EduTrackTestUtils.createTestUser: line 37, column 1\nClass.EduTrack.ClassManagementControllerTest.testGetSections: line 242, column 1",
+        "Message": "System.DmlException: Insert failed. First exception on row 0; first error: MIXED_DML_OPERATION, DML operation on setup object is not permitted after you have updated a non-setup object (or vice versa): PermissionSetAssignment, original object: EduTrack__Section__c: []",
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetSections",
+        "Outcome": "Fail",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 203,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetSections"
+      },
+      {
+        "Id": "07Mf6000001VGYjEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetSkillLevelOptions",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 9,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetSkillLevelOptions"
+      },
+      {
+        "Id": "07Mf6000001VGYkEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeacherSkillsNullId",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 5,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeacherSkillsNullId"
+      },
+      {
+        "Id": "07Mf6000001VGYlEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeacherSkillsWithData",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 88,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeacherSkillsWithData"
+      },
+      {
+        "Id": "07Mf6000001VGYmEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeacherWorkloadBlankId",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 435,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeacherWorkloadBlankId"
+      },
+      {
+        "Id": "07Mf6000001VGYnEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": "Class.EduTrack.ClassManagementController.getTeacherWorkload: line 1076, column 1\nClass.EduTrack.ClassManagementControllerTest.testGetTeacherWorkloadNoPeriods: line 876, column 1",
+        "Message": "System.QueryException: Insufficient permissions: secure query included inaccessible field",
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeacherWorkloadNoPeriods",
+        "Outcome": "Fail",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 186,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeacherWorkloadNoPeriods"
+      },
+      {
+        "Id": "07Mf6000001VGYoEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": "Class.EduTrack.ClassManagementController.getTeacherWorkload: line 1076, column 1\nClass.EduTrack.ClassManagementControllerTest.testGetTeacherWorkloadWithPeriods: line 860, column 1",
+        "Message": "System.QueryException: Insufficient permissions: secure query included inaccessible field",
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeacherWorkloadWithPeriods",
+        "Outcome": "Fail",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 181,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeacherWorkloadWithPeriods"
+      },
+      {
+        "Id": "07Mf6000001VGYpEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": "Class.EduTrack.EduTrackTestUtils.createTestUser: line 37, column 1\nClass.EduTrack.ClassManagementControllerTest.testGetTeachersForSubject: line 371, column 1",
+        "Message": "System.DmlException: Insert failed. First exception on row 0; first error: MIXED_DML_OPERATION, DML operation on setup object is not permitted after you have updated a non-setup object (or vice versa): PermissionSetAssignment, original object: EduTrack__Subject__c: []",
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeachersForSubject",
+        "Outcome": "Fail",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 264,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeachersForSubject"
+      },
+      {
+        "Id": "07Mf6000001VGYqEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeachersForSubjectInClassFallback",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 132,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeachersForSubjectInClassFallback"
+      },
+      {
+        "Id": "07Mf6000001VGYrEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeachersForSubjectInClassWithSkills",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 149,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeachersForSubjectInClassWithSkills"
+      },
+      {
+        "Id": "07Mf6000001VGYsEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": "Class.EduTrack.EduTrackTestUtils.createTestUser: line 37, column 1\nClass.EduTrack.ClassManagementControllerTest.testGetTeachersForSubjectSkillLevelBlank: line 393, column 1",
+        "Message": "System.DmlException: Insert failed. First exception on row 0; first error: MIXED_DML_OPERATION, DML operation on setup object is not permitted after you have updated a non-setup object (or vice versa): PermissionSetAssignment, original object: EduTrack__Subject__c: []",
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTeachersForSubjectSkillLevelBlank",
+        "Outcome": "Fail",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 232,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTeachersForSubjectSkillLevelBlank"
+      },
+      {
+        "Id": "07Mf6000001VGYtEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTimetableForClassBlankDates",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 169,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTimetableForClassBlankDates"
+      },
+      {
+        "Id": "07Mf6000001VGYuEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTimetableForClassImplicitSubstitute",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 412,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTimetableForClassImplicitSubstitute"
+      },
+      {
+        "Id": "07Mf6000001VGYvEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTimetableForClassLeaserPeriod",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 239,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTimetableForClassLeaserPeriod"
+      },
+      {
+        "Id": "07Mf6000001VGYwEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTimetableForClassNormalPeriod",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 199,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTimetableForClassNormalPeriod"
+      },
+      {
+        "Id": "07Mf6000001VGYxEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetTimetableForClassNullDayOrPeriod",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 114,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetTimetableForClassNullDayOrPeriod"
+      },
+      {
+        "Id": "07Mf6000001VGYyEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetWorkloadSummaryAllYears",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 471,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetWorkloadSummaryAllYears"
+      },
+      {
+        "Id": "07Mf6000001VGYzEAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetWorkloadSummaryBlankYear",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 504,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetWorkloadSummaryBlankYear"
+      },
+      {
+        "Id": "07Mf6000001VGZ0EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testGetWorkloadSummaryWithAcademicYear",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 1354,
+        "FullName": "EduTrack.ClassManagementControllerTest.testGetWorkloadSummaryWithAcademicYear"
+      },
+      {
+        "Id": "07Mf6000001VGZ1EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testSaveSubstituteForPeriodAssign",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 226,
+        "FullName": "EduTrack.ClassManagementControllerTest.testSaveSubstituteForPeriodAssign"
+      },
+      {
+        "Id": "07Mf6000001VGZ2EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testSaveSubstituteForPeriodBlankId",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 6,
+        "FullName": "EduTrack.ClassManagementControllerTest.testSaveSubstituteForPeriodBlankId"
+      },
+      {
+        "Id": "07Mf6000001VGZ3EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testSaveSubstituteForPeriodClear",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 156,
+        "FullName": "EduTrack.ClassManagementControllerTest.testSaveSubstituteForPeriodClear"
+      },
+      {
+        "Id": "07Mf6000001VGZ4EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testSaveTimetablePeriodsBlankData",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 74,
+        "FullName": "EduTrack.ClassManagementControllerTest.testSaveTimetablePeriodsBlankData"
+      },
+      {
+        "Id": "07Mf6000001VGZ5EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testSaveTimetablePeriodsNullDayOrNumber",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 85,
+        "FullName": "EduTrack.ClassManagementControllerTest.testSaveTimetablePeriodsNullDayOrNumber"
+      },
+      {
+        "Id": "07Mf6000001VGZ6EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testSaveTimetablePeriodsPMTime",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 150,
+        "FullName": "EduTrack.ClassManagementControllerTest.testSaveTimetablePeriodsPMTime"
+      },
+      {
+        "Id": "07Mf6000001VGZ7EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testSaveTimetablePeriodsReplaceExisting",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 231,
+        "FullName": "EduTrack.ClassManagementControllerTest.testSaveTimetablePeriodsReplaceExisting"
+      },
+      {
+        "Id": "07Mf6000001VGZ8EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testSaveTimetablePeriodsSuccess",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 153,
+        "FullName": "EduTrack.ClassManagementControllerTest.testSaveTimetablePeriodsSuccess"
+      },
+      {
+        "Id": "07Mf6000001VGZ9EAO",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testUpdateTeacherAssignmentBlankId",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 7,
+        "FullName": "EduTrack.ClassManagementControllerTest.testUpdateTeacherAssignmentBlankId"
+      },
+      {
+        "Id": "07Mf6000001VGZAEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testUpdateTeacherAssignmentNewTeacher",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 207,
+        "FullName": "EduTrack.ClassManagementControllerTest.testUpdateTeacherAssignmentNewTeacher"
+      },
+      {
+        "Id": "07Mf6000001VGZBEA4",
+        "QueueItemId": "709f6000005ZfqDAAS",
+        "StackTrace": null,
+        "Message": null,
+        "AsyncApexJobId": "707f6000009fzQjAAI",
+        "MethodName": "testUpdateTeacherAssignmentPeriodsOnly",
+        "Outcome": "Pass",
+        "ApexClass": {
+          "Id": "01pf6000002elQTAAY",
+          "Name": "ClassManagementControllerTest",
+          "NamespacePrefix": "EduTrack"
+        },
+        "RunTime": 152,
+        "FullName": "EduTrack.ClassManagementControllerTest.testUpdateTeacherAssignmentPeriodsOnly"
+      }
+    ]
+  }
+}

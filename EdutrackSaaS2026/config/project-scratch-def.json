@@ -1,0 +1,17 @@
+{
+  "orgName": "Demo company",
+  "edition": "Partner Developer",
+  "namespace": "EduTrack",
+  "features": ["EnableSetPasswordInApi", "Communities", "ExperienceBundle", "ContactsToMultipleAccounts", "PersonAccounts", "ServiceCloud", "Entitlements"],
+  "settings": {
+    "lightningExperienceSettings": {
+      "enableS1DesktopEnabled": true
+    },
+    "communitiesSettings": {
+      "enableNetworksEnabled": true
+    },
+    "mobileSettings": {
+      "enableS1EncryptedStoragePref2": false
+    }
+  }
+}

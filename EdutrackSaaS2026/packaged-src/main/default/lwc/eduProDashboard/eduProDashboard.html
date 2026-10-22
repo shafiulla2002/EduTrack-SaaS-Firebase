@@ -1,0 +1,484 @@
+<template>
+    <template lwc:if={isInitializing}>
+        <div class="initialization-loading">
+            <lightning-spinner alternative-text="Loading School Configuration..." size="large"></lightning-spinner>
+        </div>
+    </template>
+    <template lwc:else>
+        <template lwc:if={isSetupCompleted}>
+            <div class="main-container">
+                <!-- Mobile Sidebar Overlay -->
+                <template if:true={isSidebarOpen}>
+                    <div class="mobile-overlay" onclick={closeSidebar}></div>
+                </template>
+
+                <!-- ========== SIDEBAR ========== -->
+                <aside class={sidebarClass}>
+                    <nav>
+                        <div class="nav-section">
+                            <div class="nav-title">Main</div>
+                            <a href="#" class={dashboardNavClass} onclick={handleDashboardClick}>
+                                <span class="icon">📊</span>
+                                Dashboard
+                            </a>
+                            <a href="#" class={studentNavClass} onclick={handleStudentClick}>
+                                <span class="icon">👥</span>
+                                Students
+                            </a>
+                            <a href="#" class={staffNavClass} onclick={handleStaffClick}>
+                                <span class="icon">🧑‍🏫</span>
+                                School Staff
+                            </a>
+                            <a href="#" class={schoolManagementNavClass} onclick={handleSchoolManagementClick}>
+                                <span class="icon">🏫</span>
+                                Teacher &amp; Class Management
+                            </a>
+                        </div>
+
+                        <div class="nav-section">
+                            <div class="nav-title">Admissions</div>
+                            <a href="#" class={admissionNavClass} onclick={handleNewAdmission}>
+                                <span class="icon">✍️</span>
+                                New Admission
+                            </a>
+                            <a href="#" class={promotionNavClass} onclick={handlePromotionClick}>
+                                <span class="icon">🚀</span>
+                                Promote Students
+                            </a>
+                        </div>
+
+                        <div class="nav-section">
+                            <div class="nav-title">Financials</div>
+                            <a href="#" class={feeNavClass} onclick={handlePayBill}>
+                                <span class="icon">💳</span>
+                                Fee Management
+                            </a>
+                            <a href="#" class={expenseNavClass} onclick={handleExpenseClick}>
+                                <span class="icon">🧾</span>
+                                Expense Management
+                            </a>
+                        </div>
+
+                        <div class="nav-section">
+                            <div class="nav-title">Academics</div>
+                            <a href="#" class={gradesNavClass} onclick={handleGradesClick}>
+                                <span class="icon">📝</span>
+                                Grades & Marks
+                            </a>
+                            <a href="#" class={enterMarksNavClass} onclick={handleEnterMarksClick}>
+                                <span class="icon">✍️</span>
+                                Enter Marks
+                            </a>
+                            <a href="#" class={attendanceNavClass} onclick={handleAttendanceClick}>
+                                <span class="icon">📅</span>
+                                Attendance
+                            </a>
+                            <a href="#" class={complaintBoxNavClass} onclick={handleComplaintBoxClick}>
+                                <span class="icon">📥</span>
+                                Complaint Box
+                            </a>
+                            <a href="#" class={setupNavClass} onclick={handleSetupClick}>
+                                <span class="icon">⚙️</span>
+                                School Setup
+                            </a>
+                        </div>
+                    </nav>
+                </aside>
+
+                <!-- ========== MAIN CONTENT ========== -->
+                <main class="main-content">
+                    <!-- TOP BAR -->
+                    <div class="top-bar">
+                        <button class="menu-toggle" onclick={toggleSidebar}>
+                            <span>☰</span>
+                        </button>
+                        <div class="search-bar" style="position: relative;">
+                            <span>🔍</span>
+                            <input type="text" placeholder="Search students, classes, invoices..." value={searchTerm}
+                                oninput={handleSearchChange} onblur={hideSearchDropdown}>
+                            <span style="color: var(--text-tertiary); font-size: 12px;">⌘K</span>
+
+                            <!-- Search Results Dropdown -->
+                            <template if:true={showSearchDropdown}>
+                                <div class="search-results-dropdown">
+                                    <template for:each={searchResults} for:item="result">
+                                        <div key={result.id} class="search-result-item" data-id={result.id}
+                                            data-type={result.type} onclick={handleSearchResultClick}>
+                                            <div class="title">{result.title}</div>
+                                            <div class="subtitle">{result.subtitle}</div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="logo">
+                            <div class="logo-icon">
+                                <template lwc:if={schoolLogo}>
+                                    <img src={schoolLogo} alt="Logo" style="height: 40px; border-radius: 8px;">
+                                </template>
+                                <template lwc:else>
+                                    🎓
+                                </template>
+                            </div>
+                            <div class="logo-text">
+                                <h1>{schoolName}</h1>
+                                <p>{schoolSubtitle}</p>
+                            </div>
+                        </div>
+
+                        <div class="top-actions"></div>
+                    </div>
+
+                    <!-- CONTENT AREA -->
+                    <div class="content-area">
+                        <template lwc:if={isDashboardPage}>
+                            <div class="page-header">
+                                <div class="page-title">
+                                    <h2>Dashboard Overview</h2>
+                                    <span class="feature-tag new">✨ New Features</span>
+                                </div>
+                                <div>
+                                    <!--<button class="btn btn-secondary" style="margin-left: 12px;"
+                                        onclick={handlePayBill}>
+                                        <span>💳</span>
+                                        Pay Fees
+                                    </button>-->
+                                    <button class="btn btn-secondary" style="margin-left: 12px;"
+                                        onclick={handlePriceBookSetup}>
+                                        <span>💰</span>
+                                        Pricebook Setup
+                                    </button>
+                                    <button class="btn btn-secondary" style="margin-left: 12px;"
+                                        onclick={handleNewAdmission}>
+                                        <span>➕</span>
+                                        New Admission
+                                    </button>
+                                    <button class="btn btn-secondary" style="margin-left: 12px;"
+                                        onclick={handleImportStudents}>
+                                        <span>📥</span>
+                                        Import Students
+                                    </button>
+                                </div>
+                            </div>
+
+
+                            <!-- STATS GRID -->
+                            <div class="stats-grid animate-in">
+                                <div class="stat-card blue">
+                                    <div class="stat-header">
+                                        <div class="stat-icon">👨‍🎓</div>
+                                        <div class={studentTrend.class}>
+                                            <span>{studentTrend.icon}</span>
+                                            {studentTrend.value}
+                                        </div>
+                                    </div>
+                                    <div class="stat-value">{totalStudents}</div>
+                                    <div class="stat-label">Total Students</div>
+                                    <div class="stat-footer">
+                                        <strong>Real-time</strong> from Org
+                                    </div>
+                                </div>
+
+                                <div class="stat-card green">
+                                    <div class="stat-header">
+                                        <div class="stat-icon">💰</div>
+                                        <div class={revenueTrend.class}>
+                                            <span>{revenueTrend.icon}</span>
+                                            {revenueTrend.value}
+                                        </div>
+                                    </div>
+                                    <div class="stat-value">{totalRevenue}</div>
+                                    <div class="stat-label">Total Revenue</div>
+                                    <div class="stat-footer">
+                                        <strong>Real-time</strong> from Org
+                                    </div>
+                                </div>
+
+                                <div class="stat-card purple">
+                                    <div class="stat-header">
+                                        <div class="stat-icon">📊</div>
+                                        <div class={attendanceTrend.class}>
+                                            <span>{attendanceTrend.icon}</span>
+                                            {attendanceTrend.value}
+                                        </div>
+                                    </div>
+                                    <div class="stat-value">{avgAttendance}</div>
+                                    <div class="stat-label">Average Attendance</div>
+                                    <div class="stat-footer">
+                                        <strong>Real-time</strong> from Org
+                                    </div>
+                                </div>
+
+                                <div class="stat-card orange">
+                                    <div class="stat-header">
+                                        <div class="stat-icon">🏆</div>
+                                        <div class={scoreTrend.class}>
+                                            <span>{scoreTrend.icon}</span>
+                                            {scoreTrend.value}
+                                        </div>
+                                    </div>
+                                    <div class="stat-value">{avgAcademicScore}</div>
+                                    <div class="stat-label">Avg. Academic Score</div>
+                                    <div class="stat-footer">
+                                        <strong>Real-time</strong> from Org
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- MAIN SECTIONS -->
+                            <div class="section-grid">
+                                <!-- RECENT ADMISSIONS -->
+                                <div class="card">
+                                    <div class="card-header">
+                                        <div class="card-title">
+                                            <span>✍️</span>
+                                            {admissionsTitle}
+                                        </div>
+                                        <div style="display: flex; gap: 8px;">
+                                            <template if:true={showLessAdmissions}>
+                                                <button class="btn btn-secondary" onclick={handleShowLessAdmissions}
+                                                    style="padding: 8px 16px; font-size: 13px;">Show Less</button>
+                                            </template>
+                                            <template if:true={showMoreAdmissions}>
+                                                <button class="btn btn-secondary" onclick={handleShowMoreAdmissions}
+                                                    style="padding: 8px 16px; font-size: 13px;">Show More</button>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="table-container">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>Student</th>
+                                                    <th>Class</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template for:each={displayAdmissions} for:item="adm">
+                                                    <tr key={adm.id}>
+                                                        <td>
+                                                            <div class="student-info">
+                                                                <div class="student-avatar">{adm.avatar}</div>
+                                                                <div class="student-details">
+                                                                    <div class="name">{adm.name}</div>
+                                                                    <div class="id">{adm.id}</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td>{adm.class}</td>
+                                                        <td><span class="badge-status badge-active">{adm.status}</span>
+                                                        </td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <!-- PAYMENT OVERVIEW -->
+                                <div class="card">
+                                    <div class="card-header">
+                                        <div class="card-title">
+                                            <span>💳</span>
+                                            {paymentsTitle}
+                                        </div>
+                                        <div style="display: flex; gap: 8px;">
+                                            <template if:true={showLessPayments}>
+                                                <button class="btn btn-secondary" onclick={handleShowLessPayments}
+                                                    style="padding: 8px 16px; font-size: 13px;">Show Less</button>
+                                            </template>
+                                            <template if:true={showMorePayments}>
+                                                <button class="btn btn-secondary" onclick={handleShowMorePayments}
+                                                    style="padding: 8px 16px; font-size: 13px;">Show More</button>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="table-container">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>Invoice</th>
+                                                    <th>Amount</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template for:each={displayPayments} for:item="pay">
+                                                    <tr key={pay.id}>
+                                                        <td>
+                                                            <div class="student-details">
+                                                                <div class="name">{pay.name}</div>
+                                                                <div class="id">{pay.id}</div>
+                                                            </div>
+                                                        </td>
+                                                        <td style="font-weight: 600;">{pay.amount}</td>
+                                                        <td><span class={pay.statusClass}>{pay.status}</span></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- QUICK ACTIONS -->
+                            <div class="card" style="animation-delay: 0.5s;">
+                                <div class="card-header">
+                                    <div class="card-title">
+                                        <span>⚡</span>
+                                        Quick Actions
+                                    </div>
+                                </div>
+
+                                <div class="quick-actions">
+                                    <div class="quick-action-card">
+                                        <div class="icon">📱</div>
+                                        <div class="title">Send SMS Alert</div>
+                                    </div>
+                                    <div class="quick-action-card">
+                                        <div class="icon">📧</div>
+                                        <div class="title">Email Report Card</div>
+                                    </div>
+                                    <div class="quick-action-card">
+                                        <div class="icon">💳</div>
+                                        <div class="title">Process Payment</div>
+                                    </div>
+                                    <div class="quick-action-card">
+                                        <div class="icon">📊</div>
+                                        <div class="title">Generate Analytics</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TRENDING FEATURES & ROADMAP -->
+                            <div class="card roadmap-card" style="animation-delay: 0.6s;">
+                                <div class="card-header">
+                                    <div class="card-title">
+                                        <span>✨</span>
+                                        Trending Features & Roadmap
+                                    </div>
+                                </div>
+                                <div class="roadmap-grid">
+                                    <div class="roadmap-item">
+                                        <div class="roadmap-icon">📱</div>
+                                        <div class="roadmap-info">
+                                            <div class="title">
+                                                Parent Mobile App
+                                                <span class="feature-tag new">Live Now</span>
+                                            </div>
+                                            <p>Real-time updates on attendance, grades, and fee payments.</p>
+                                        </div>
+                                    </div>
+                                    <div class="roadmap-item">
+                                        <div class="roadmap-icon">📸</div>
+                                        <div class="roadmap-info">
+                                            <div class="title">
+                                                Face Recognition
+                                                <span class="feature-tag ai">Beta</span>
+                                            </div>
+                                            <p>Automated attendance marking using facial recognition.</p>
+                                        </div>
+                                    </div>
+                                    <div class="roadmap-item">
+                                        <div class="roadmap-icon">💰</div>
+                                        <div class="roadmap-info">
+                                            <div class="title">
+                                                Auto-Debit Setup
+                                                <span class="feature-tag premium">Premium</span>
+                                            </div>
+                                            <p>Automated quarterly fee deduction with UPI autopay.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+
+                        <template lwc:if={isStaffPage}>
+                            <c-schoolstaff></c-schoolstaff>
+                        </template>
+
+                        <template lwc:if={isAdmissionPage}>
+                            <c-admission-manager onnavtopaybill={handlePayBill} onstudentadmitted={handleStudentAdmitted}></c-admission-manager>
+                        </template>
+
+                        <template if:true={isPayBillPage}>
+                            <c-pay-the-bill student-id={selectedStudentIdForBilling}></c-pay-the-bill>
+                        </template>
+
+                        <template if:true={isExpensePage}>
+                            <c-expense-management></c-expense-management>
+                        </template>
+
+                        <template if:true={isEnterMarksPage}>
+                            <c-enter-marks></c-enter-marks>
+                        </template>
+
+                        <template lwc:if={isPriceBookPage}>
+                            <c-price-book-setup></c-price-book-setup>
+                        </template>
+
+                        <template lwc:if={isAttendancePage}>
+                            <c-attendance></c-attendance>
+                        </template>
+
+                        <template lwc:if={isSchoolManagementPage}>
+                            <c-teacherand-classmanagement></c-teacherand-classmanagement>
+                        </template>
+
+                        <template lwc:if={isAttendanceReportPage}>
+                            <c-attendance-report></c-attendance-report>
+                        </template>
+
+                        <template lwc:if={isAnalyticsPage}>
+                            <div class="card animate-in">
+                                <div class="card-header">
+                                    <div class="card-title">
+                                        <span>📈</span>
+                                        Analytics Overview
+                                    </div>
+                                </div>
+                                <div class="chart-placeholder">
+                                    Analytics and Trends Visualization coming soon...
+                                </div>
+                            </div>
+                        </template>
+
+                        <template lwc:if={isStudentPage}>
+                            <c-student student-id={selectedStudentIdFromSearch}
+                                onnavtopaybill={handlePayBill}></c-student>
+                        </template>
+
+                        <template lwc:if={isPromotionPage}>
+                            <c-student-promotion></c-student-promotion>
+                        </template>
+
+                        <template lwc:if={isGradesPage}>
+                            <c-grades-module></c-grades-module>
+                        </template>
+
+                        <template lwc:if={isComplaintBoxPage}>
+                            <c-complaintbox></c-complaintbox>
+                        </template>
+
+                        <template lwc:if={isSetupPage}>
+                            <c-school-setup onsetupcomplete={handleSetupComplete}></c-school-setup>
+                        </template>
+
+                        <!-- BULK IMPORT MODAL -->
+                        <template lwc:if={showBulkImport}>
+                            <c-bulk-student-import onclose={handleCloseBulkImport}></c-bulk-student-import>
+                        </template>
+                    </div>
+                </main>
+            </div>
+        </template>
+        <template lwc:else>
+            <!-- ONLY SETUP PAGE DISPLAYED -->
+            <div class="initial-setup-overlay">
+                <c-school-setup onsetupcomplete={handleSetupComplete}></c-school-setup>
+            </div>
+        </template>
+    </template>
+</template>

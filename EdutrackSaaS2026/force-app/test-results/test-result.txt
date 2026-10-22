@@ -1,0 +1,28 @@
+=== Test Results
+TEST NAME                                              OUTCOME  MESSAGE                                                                          RUNTIME (MS)
+─────────────────────────────────────────────────────  ───────  ───────────────────────────────────────────────────────────────────────────────  ────────────
+EduTrack.EduProDashboardControllerTest.testAllMethods  Fail     System.AuraHandledException: Script-thrown exception                             
+                                                                Class.EduTrack.EduProDashboardController.getDashboardMetrics: line 47, column 1  
+                                                                Class.EduTrack.EduProDashboardControllerTest.testAllMethods: line 116, column 1              
+
+
+=== Test Setup Time by Test Class for Run 707f6000009fiLf
+TEST SETUP METHOD NAME                        SETUP TIME
+────────────────────────────────────────────  ──────────
+EduTrack.EduProDashboardControllerTest.setup  1235      
+
+
+=== Test Summary
+NAME                 VALUE             
+───────────────────  ──────────────────
+Outcome              Failed            
+Tests Ran            2                 
+Pass Rate            50%               
+Fail Rate            50%               
+Skip Rate            0%                
+Test Run Id          707f6000009fiLf   
+Test Setup Time      1235 ms           
+Test Execution Time  43 ms             
+Test Total Time      1278 ms           
+Org Id               00Df600000HKx70EAD
+Username             shafi@devorg.com  

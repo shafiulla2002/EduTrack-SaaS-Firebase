@@ -1,0 +1,247 @@
+<template>
+    <div class="page-background">
+        <div class="container">
+            <!-- School Header -->
+            <div class="school-header">
+                <div class="school-logo">
+                    <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M30 5L5 20V35C5 46.05 15.95 55 30 55C44.05 55 55 46.05 55 35V20L30 5Z"
+                            fill="url(#gradient1)" />
+                        <path d="M30 10L10 22V35C10 43.84 18.16 50 30 50C41.84 50 50 43.84 50 35V22L30 10Z" fill="white"
+                            opacity="0.2" />
+                        <defs>
+                            <linearGradient id="gradient1" x1="5" y1="5" x2="55" y2="55">
+                                <stop offset="0%" stop-color="#667eea" />
+                                <stop offset="100%" stop-color="#764ba2" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <template if:true={isLoading}>
+                <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+            </template>
+
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button class={addFeesTabClass} data-tab="addFees" onclick={handleTabClick}>
+                    <span class="tab-icon">📝</span>
+                    Add Fee Products
+                </button>
+                <button class={priceBookTabClass} data-tab="setPriceBook" onclick={handleTabClick}>
+                    <span class="tab-icon">💰</span>
+                    Set Price Book
+                </button>
+            </div>
+
+            <!-- Add Fees Tab Content -->
+            <template if:true={isAddFeesTab}>
+                <div class="tab-content active">
+                    <div class="section-header">
+                        <h2>Create Fee Products</h2>
+                        <p>Add new fee items to your school's fee structure</p>
+                    </div>
+
+                    <div class="input-container">
+                        <template for:each={inputFields} for:item="field" for:index="index">
+                            <div key={field.id} class="input-group">
+                                <div class="input-wrapper">
+                                    <label>Product Name</label>
+                                    <!-- Autocomplete wrapper -->
+                                    <div class="autocomplete-wrapper">
+                                        <input
+                                            type="text"
+                                            class="product-input"
+                                            placeholder="e.g., Tuition Fee, Library Fee, Sports Fee"
+                                            data-id={field.id}
+                                            value={field.value}
+                                            onchange={handleInputChange}
+                                            oninput={handleInputChange}
+                                            onfocus={handleInputFocus}
+                                            onblur={handleInputBlur}
+                                            onkeydown={handleKeyDown}
+                                            disabled={isLoading}
+                                            autocomplete="off"
+                                        />
+                                        <!-- Dropdown suggestions -->
+                                        <template if:true={field.showSuggestions}>
+                                            <div class="suggestions-dropdown">
+                                                <template if:true={field.hasSuggestions}>
+                                                    <template for:each={field.suggestions} for:item="suggestion">
+                                                        <div
+                                                            key={suggestion.label}
+                                                            class={suggestion.itemClass}
+                                                            data-field-id={field.id}
+                                                            data-value={suggestion.label}
+                                                            onmousedown={handleSuggestionClick}
+                                                        >
+                                                            <span class="suggestion-icon">{suggestion.icon}</span>
+                                                            <span class="suggestion-text">{suggestion.label}</span>
+                                                            <span class="suggestion-badge">{suggestion.badge}</span>
+                                                        </div>
+                                                    </template>
+                                                </template>
+                                                <template if:false={field.hasSuggestions}>
+                                                    <div class="suggestion-empty">
+                                                        <span>No matching products found</span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                                <template if:true={field.isFirst}>
+                                    <button class="add-btn" onclick={addInputField} title="Add another product"
+                                        disabled={isLoading}>
+                                        +
+                                    </button>
+                                </template>
+                                <template if:false={field.isFirst}>
+                                    <button class="remove-btn" data-id={field.id} onclick={removeInputField}
+                                        title="Remove this product" disabled={isLoading}>
+                                        −
+                                    </button>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+
+                    <button class="submit-btn" onclick={submitProducts} disabled={isLoading}>
+                        <span class="btn-icon">✓</span>
+                        Submit Products
+                    </button>
+
+                    <template if:true={showProductsList}>
+                        <div class="products-list">
+                            <h3>✓ Products Created Successfully</h3>
+                            <div class="products-container">
+                                <template for:each={displayedProducts} for:item="product">
+                                    <div key={product.id} class="product-item">
+                                        <div class="product-info">
+                                            <div class="product-name">{product.name}</div>
+                                            <div class="product-code">Code: {product.code}</div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="action-buttons">
+                                <button class="done-btn" onclick={handleDone}>
+                                    <span class="btn-icon">→</span>
+                                    Done
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Set Price Book Tab Content -->
+            <template if:true={isPriceBookTab}>
+                <div class="tab-content active">
+                    <div class="section-header">
+                        <h2>Configure Price Books</h2>
+                        <p>Set fee amounts for different classes</p>
+                    </div>
+
+                    <div class="selectors-grid">
+                        <div class="selector-group">
+                            <label>Academic Year</label>
+                            <lightning-combobox name="academicYear" value={selectedYear} placeholder="Select Year..."
+                                options={yearOptions} onchange={handleYearChange} class="custom-combobox"
+                                disabled={isLoading}>
+                            </lightning-combobox>
+                        </div>
+                        <div class="selector-group">
+                            <label>Select Class</label>
+                            <lightning-combobox name="class" value={selectedClass} placeholder="Choose a class..."
+                                options={classOptions} onchange={handleClassChange} class="custom-combobox"
+                                disabled={isLoading}>
+                            </lightning-combobox>
+                        </div>
+                    </div>
+
+                    <div class="price-list-container">
+                        <template if:true={showEmptyState}>
+                            <div class="empty-state">
+                                <div class="empty-icon">📋</div>
+                                <p>No products found</p>
+                                <p class="empty-hint">Please create products in the "Add Fees" tab first</p>
+                            </div>
+                        </template>
+
+                        <template if:false={showEmptyState}>
+                            <div class="product-list-header">
+                                <h3>Select Products and Enter Prices</h3>
+                                <p class="product-count">{priceListItems.length} product(s) available</p>
+                            </div>
+
+                            <template for:each={priceListItems} for:item="item">
+                                <div key={item.id} data-selected={item.selected} class="product-price-item">
+                                    <div class="checkbox-wrapper">
+                                        <input type="checkbox" data-index={item.id} checked={item.selected}
+                                            onchange={handleCheckboxChange} disabled={isLoading}>
+                                    </div>
+                                    <div class="product-details">
+                                        <label class="product-name-label">
+                                            {item.name}
+                                        </label>
+                                        <div class="product-code-small">Code: {item.productCode}</div>
+                                    </div>
+                                    <div class="price-input-wrapper">
+                                        <span>₹</span>
+                                        <input type="number" data-index={item.id} placeholder="0.00" min="0" step="0.01"
+                                            value={item.price} disabled={item.disabled} onchange={handlePriceChange}>
+                                    </div>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+
+                    <button class="submit-btn" onclick={submitPriceBook} disabled={isLoading}>
+                        <span class="btn-icon">✓</span>
+                        Create Price Book
+                    </button>
+
+                    <template if:true={showSuccessMessage}>
+                        <div class="success-message-container">
+                            <div class="success-message">
+                                <div class="success-icon">✓</div>
+                                <h3>Price Book Created Successfully!</h3>
+                                <div class="success-details">
+                                    <p class="success-class">
+                                        <strong>Price Book:</strong> {successData.priceBookName}
+                                    </p>
+                                    <p class="success-class">
+                                        <strong>Class:</strong> {successData.className}
+                                    </p>
+                                    <p class="success-entries">
+                                        <strong>Entries Created:</strong> {successData.entriesCreated}
+                                    </p>
+                                </div>
+                                <div class="success-products">
+                                    <strong>Products Added:</strong>
+                                    <template for:each={successData.products} for:item="product">
+                                        <div key={product.productId} class="success-item">
+                                            <span class="success-product-name">{product.name}</span>
+                                            <span class="success-product-price">₹{product.price}</span>
+                                        </div>
+                                    </template>
+                                    <div class="success-total">
+                                        <span>Total Academic Fee</span>
+                                        <span>₹{successData.total}</span>
+                                    </div>
+                                </div>
+                                <button class="done-btn success-done-btn" onclick={resetPriceBook}>
+                                    Continue
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+</template>

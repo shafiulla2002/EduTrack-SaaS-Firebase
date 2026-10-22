@@ -1,0 +1,253 @@
+<template>
+    <div class="setup-container">
+        <div class="setup-card animate-in">
+            <div class="setup-header">
+                <div class="setup-icon">🏠</div>
+                <div class="setup-title-group">
+                    <h2 class="setup-title">School Configuration</h2>
+                    <p class="setup-subtitle">Manage your school's identity and setup details</p>
+                </div>
+                <template if:true={isReadOnly}>
+                    <button class="btn btn-secondary" onclick={handleEdit}>
+                        <span>✏️</span> Edit Details
+                    </button>
+                </template>
+            </div>
+
+            <div class="setup-form">
+                <!-- SCHOOL INFO -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">School Name *</label>
+                        <input type="text" class="form-input" data-id="schoolName" value={schoolData.schoolName}
+                            onchange={handleInputChange} placeholder="Enter school name" disabled={isReadOnly}>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">School Email</label>
+                        <input type="email" class="form-input" data-id="schoolEmail" value={schoolData.schoolEmail}
+                            onchange={handleInputChange} placeholder="contact@school.com" disabled={isReadOnly}>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">School Phone</label>
+                        <input type="tel" class="form-input" data-id="schoolPhone" value={schoolData.schoolPhone}
+                            onchange={handleInputChange} placeholder="+91 XXXX XXX XXX" disabled={isReadOnly}>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">School Logo</label>
+                        <div class="logo-upload-container">
+                            <template if:true={schoolData.schoolLogo}>
+                                <div class="preview-wrapper">
+                                    <img src={schoolData.schoolLogo} class="logo-preview" alt="Logo preview">
+                                    <template if:false={isReadOnly}>
+                                        <lightning-button label="Remove Logo" variant="destructive-text" 
+                                            onclick={handleRemoveFile} data-type="logo" class="slds-m-top_x-small"></lightning-button>
+                                    </template>
+                                </div>
+                            </template>
+                            <template if:false={isReadOnly}>
+                                <div class="file-input-wrapper">
+                                    <span class="btn-file-icon">📤</span>
+                                    <input type="file" class="file-input" accept="image/*" onchange={handleFileSelect}
+                                        id="logoUpload">
+                                    <label for="logoUpload" class="file-label">Upload New Logo</label>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group full-width">
+                        <label class="form-label">School Subtitle</label>
+                        <input type="text" class="form-input" data-id="schoolSubtitle" value={schoolData.schoolSubtitle}
+                            onchange={handleInputChange} placeholder="e.g. Powered by Salesforce" disabled={isReadOnly}>
+                    </div>
+                </div>
+
+                <div class="form-group full-width">
+                    <label class="form-label">School Address</label>
+                    <textarea class="form-input" data-id="schoolAddress" onchange={handleInputChange}
+                        placeholder="Enter physical address" disabled={isReadOnly}>{schoolData.schoolAddress}</textarea>
+                </div>
+
+                <hr class="section-divider">
+                <h3 class="subsection-title">Academic Year Configuration</h3>
+                <p class="subsection-note">Select the academic cycle and set it as active.</p>
+
+                <div class="academic-year-container">
+                    <div class="year-grid">
+                        <div class="form-group">
+                            <label class="form-label">Select Academic Year *</label>
+                            <lightning-combobox name="academicYear" value={selectedYear} placeholder="Select Year Range"
+                                options={yearOptions} onchange={handleYearChange} variant="label-hidden"
+                                class="custom-combobox" disabled={isLoading}>
+                            </lightning-combobox>
+                        </div>
+                        <div class="form-group flex-align-center" style="margin-top: 20px;">
+                            <lightning-input type="checkbox" label="Set as Active Year" checked={isYearActive}
+                                onchange={handleYearActiveChange} disabled={isLoading}>
+                            </lightning-input>
+                        </div>
+                        <div class="form-group" style="margin-top: 20px;">
+                            <button class="btn btn-primary" onclick={saveYearConfiguration} disabled={isLoading}
+                                style="height: 44px; width: 100%;">
+                                <span>➕</span> Add/Update
+                            </button>
+                        </div>
+                    </div>
+
+                    <template lwc:if={academicYears.length}>
+                        <div class="custom-table-wrapper">
+                            <table class="custom-table">
+                                <thead>
+                                    <tr>
+                                        <th>Academic Year</th>
+                                        <th>Duration</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={academicYears} for:item="year">
+                                        <tr key={year.Id}>
+                                            <td class="font-bold">{year.Name}</td>
+                                            <td>{year.Start_Date__c} — {year.End_Date__c}</td>
+                                            <td>
+                                                <template lwc:if={year.Is_Active__c}>
+                                                    <span class="badge badge-success">Active</span>
+                                                </template>
+                                                <template lwc:else>
+                                                    <span class="badge badge-secondary">Inactive</span>
+                                                </template>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+                </div>
+
+                <hr class="section-divider">
+                <h3 class="subsection-title">Payment Configuration</h3>
+                <p class="subsection-note">Configure digital payment IDs and UPI QR code.</p>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">PhonePe Merchant ID / UPI</label>
+                        <input type="text" class="form-input" data-id="phonePeId" value={schoolData.phonePeId}
+                            onchange={handleInputChange} placeholder="e.g. merchant@ybl" disabled={isReadOnly}>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Google Pay ID</label>
+                        <input type="text" class="form-input" data-id="googlePayId" value={schoolData.googlePayId}
+                            onchange={handleInputChange} placeholder="e.g. school@okaxis" disabled={isReadOnly}>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Default UPI QR Code</label>
+                        <div class="logo-upload-container">
+                            <template if:true={schoolData.upiQrUrl}>
+                                <div class="preview-wrapper">
+                                    <img src={schoolData.upiQrUrl} class="qr-preview" alt="QR preview">
+                                    <template if:false={isReadOnly}>
+                                        <lightning-button label="Remove QR" variant="destructive-text" 
+                                            onclick={handleRemoveFile} data-type="qr" class="slds-m-top_x-small"></lightning-button>
+                                    </template>
+                                </div>
+                            </template>
+                            <template if:false={isReadOnly}>
+                                <div class="file-input-wrapper">
+                                    <span class="btn-file-icon">📷</span>
+                                    <input type="file" class="file-input" accept="image/*" onchange={handleFileSelect}
+                                        id="qrUpload" data-type="qr">
+                                    <label for="qrUpload" class="file-label">Upload QR Code</label>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="section-divider">
+                <div class="flex-justify-between align-center">
+                    <div>
+                        <h3 class="subsection-title">Bank Accounts (Net Banking)</h3>
+                        <p class="subsection-note">Add multiple bank accounts for fee collection via Net Banking.</p>
+                    </div>
+                    <template if:false={isReadOnly}>
+                        <button class="btn btn-secondary btn-sm" onclick={addBankAccount}>
+                            <span>➕</span> Add Bank Account
+                        </button>
+                    </template>
+                </div>
+
+                <template for:each={bankAccounts} for:item="bank">
+                    <div key={bank.id} class="bank-account-card animate-fade-in">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Bank Name *</label>
+                                <input type="text" class="form-input" data-id={bank.id} data-field="bankName"
+                                    value={bank.bankName} onchange={handleBankInputChange}
+                                    placeholder="e.g. State Bank of India" disabled={isReadOnly}>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">IFSC Code *</label>
+                                <input type="text" class="form-input" data-id={bank.id} data-field="ifsc"
+                                    value={bank.ifsc} onchange={handleBankInputChange} placeholder="SBIN000XXXX"
+                                    disabled={isReadOnly}>
+                            </div>
+                        </div>
+                        <div class="form-row mt-12">
+                            <div class="form-group">
+                                <label class="form-label">Account Number *</label>
+                                <input type="text" class="form-input" data-id={bank.id} data-field="accountNumber"
+                                    value={bank.accountNumber} onchange={handleBankInputChange}
+                                    placeholder="Enter account number" disabled={isReadOnly}>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Branch Name</label>
+                                <input type="text" class="form-input" data-id={bank.id} data-field="branch"
+                                    value={bank.branch} onchange={handleBankInputChange} placeholder="Enter branch name"
+                                    disabled={isReadOnly}>
+                            </div>
+                        </div>
+                        <div class="flex-justify-between align-center mt-12">
+                            <div class="flex-align-center gap-8">
+                                <input type="checkbox" id={bank.id} class="primary-checkbox" data-id={bank.id}
+                                    data-field="isPrimary" checked={bank.isPrimary} onchange={handleBankInputChange}
+                                    disabled={isReadOnly}>
+                                <label for={bank.id} class="form-label margin-0">Primary Account</label>
+                            </div>
+                            <template if:false={isReadOnly}>
+                                <button class="btn-text btn-danger" data-id={bank.id} onclick={removeBankAccount}>
+                                    Remove Account
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+
+                <template if:false={isReadOnly}>
+                    <div class="setup-actions">
+                        <button class="btn btn-secondary" onclick={handleCancel} disabled={isLoading}>
+                            Cancel
+                        </button>
+                        <button class="btn btn-primary" onclick={handleSave} disabled={isLoading}>
+                            <template lwc:if={isLoading}>
+                                <span class="spinner"></span> Saving...
+                            </template>
+                            <template lwc:else>
+                                <span>💾</span> Save Configuration
+                            </template>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</template>

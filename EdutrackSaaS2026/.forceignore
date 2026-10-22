@@ -1,0 +1,26 @@
+# List files or directories below to ignore them when running force:source:push, force:source:pull, and force:source:status
+# More information: https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_exclude_source.htm
+#
+
+package.xml
+
+# LWC configuration files
+**/jsconfig.json
+**/.eslintrc.json
+
+# LWC Jest
+**/__tests__/**
+
+# Ignore problematic metadata causing deployment failures to NamespaceOrg
+**/layouts/Case*
+**/objects/Contact/Contact.object-meta.xml
+**/layouts/Class_Section__c-Class Section Layout.layout-meta.xml
+**/layouts/Exam__c*
+**/objects/Account/recordTypes/OldPA.recordType-meta.xml
+**/objects/Account/recordTypes/TestRT.recordType-meta.xml
+**/layouts/Account-*
+**/objects/Attendance_Session__c/fields/Taken_By__c.field-meta.xml
+**/objects/Case/listViews/*
+**/objects/Case/webLinks/*
+**/objects/Lead/listViews/*
+**/objects/Lead/webLinks/*

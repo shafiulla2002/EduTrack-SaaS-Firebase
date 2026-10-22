@@ -1,0 +1,151 @@
+<template>
+    <!-- Main Template Canvas -->
+    <lightning-card title="Expense Management" icon-name="custom:custom18">
+        <!-- Add Row Button to right -->
+        <div slot="actions">
+            <lightning-button label="Add Expense" icon-name="utility:add" onclick={handleOpenModal} variant="brand"></lightning-button>
+        </div>
+
+        <!-- Summary Statistics Header -->
+        <div class="slds-p-around_medium slds-border_bottom">
+            <div class="slds-grid slds-gutters">
+                <div class="slds-col slds-size_1-of-3">
+                    <div class="summary-card current-month">
+                        <div class="card-bg-icon">💰</div>
+                        <div class="label slds-text-title_caps">This Month Total</div>
+                        <div class="value slds-text-heading_large">
+                            <lightning-formatted-number value={summary.currentMonth} format-style="currency" currency-code="INR"></lightning-formatted-number>
+                        </div>
+                    </div>
+                </div>
+                <div class="slds-col slds-size_1-of-3">
+                    <div class="summary-card prev-month">
+                        <div class="card-bg-icon">📊</div>
+                        <div class="label slds-text-title_caps">Last Month Total</div>
+                        <div class="value slds-text-heading_large slds-text-color_weak">
+                            <lightning-formatted-number value={summary.prevMonth} format-style="currency" currency-code="INR"></lightning-formatted-number>
+                        </div>
+                    </div>
+                </div>
+                <div class="slds-col slds-size_1-of-3">
+                    <div class="summary-card yearly-total">
+                        <div class="card-bg-icon">📅</div>
+                        <div class="label slds-text-title_caps">This Year Total</div>
+                        <div class="value slds-text-heading_large">
+                            <lightning-formatted-number value={summary.yearly} format-style="currency" currency-code="INR"></lightning-formatted-number>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <!-- Filters Strip Layout -->
+        <div class="slds-p-horizontal_medium slds-p-vertical_small slds-grid slds-grid_vertical-align-center slds-gutters filters-bar">
+            <div class="slds-col slds-size_1-of-4">
+                <lightning-combobox label="Category" value={selectedCategory} options={categoryOptions} onchange={handleCategoryChange}></lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-4">
+                <lightning-combobox label="Status" value={selectedStatus} options={statusOptions} onchange={handleStatusChange}></lightning-combobox>
+            </div>
+            <div class="slds-col slds-size_1-of-4">
+                <lightning-input type="month" label="Month" value={selectedMonth} onchange={handleMonthChange} disabled={showAll}></lightning-input>
+            </div>
+            <div class="slds-col slds-size_1-of-4 slds-p-top_large">
+                <lightning-input type="checkbox" label="Show All Time" checked={showAll} onchange={handleShowAllChange}></lightning-input>
+            </div>
+        </div>
+
+        <!-- Data Grid Display Canvas -->
+        <div class="slds-p-around_medium">
+            <template if:true={isLoading}>
+                <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+            </template>
+
+            <template if:false={expenses.length}>
+                <div class="empty-state slds-text-align_center slds-p-around_large slds-text-color_weak">
+                    <lightning-icon icon-name="utility:info" size="large"></lightning-icon>
+                    <p class="slds-m-top_small">No expenses found for the selected filters.</p>
+                </div>
+            </template>
+
+            <template if:true={expenses.length}>
+                <div class="expense-cards-grid">
+                    <template for:each={expenses} for:item="exp">
+                        <div key={exp.Id} class="expense-card animate-in">
+                            <div class={exp.categoryClass}>
+                                <div class="card-header">
+                                    <div class="header-left">
+                                        <lightning-icon icon-name={exp.iconName} size="small" class="category-icon"></lightning-icon>
+                                        <span class="category-label">{exp.Category__c}</span>
+                                    </div>
+                                    <span class={exp.statusClass}>{exp.Status__c}</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="amount-row">
+                                        <span class="currency">₹</span>
+                                        <span class="value">{exp.Amount__c}</span>
+                                    </div>
+                                    <div class="date-row">
+                                        <lightning-icon icon-name="utility:date_input" size="xx-small" class="date-icon"></lightning-icon>
+                                        <span>{exp.Date__c}</span>
+                                    </div>
+                                    <p class="description">{exp.Description__c}</p>
+                                </div>
+                                <div class="card-footer">
+                                    <span class="payment-mode">{exp.Payment_mode__c}</span>
+                                    <div class="actions">
+                                        <lightning-button-icon icon-name="utility:edit" variant="border-filled" alternative-text="Edit" data-id={exp.Id} onclick={handleEdit} class="slds-m-right_xx-small"></lightning-button-icon>
+                                        <lightning-button-icon icon-name="utility:delete" variant="border-filled" alternative-text="Delete" data-id={exp.Id} onclick={handleDelete}></lightning-button-icon>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+
+        <!-- Upsert Modal Dialog Frame -->
+        <template if:true={showModal}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_small">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" onclick={handleCloseModal} title="Close">
+                            <lightning-icon icon-name="utility:close" size="small" variant="inverse"></lightning-icon>
+                        </button>
+                        <h2 class="slds-text-heading_medium">{modalTitle}</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <div class="slds-grid slds-wrap slds-gutters">
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                                <lightning-combobox name="Category__c" label="Category" value={currentExpense.Category__c} options={modalCategoryOptions} onchange={handleFieldChange} required></lightning-combobox>
+                            </div>
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                                <lightning-input name="Amount__c" type="number" label="Amount" value={currentExpense.Amount__c} step="0.01" onchange={handleFieldChange} required></lightning-input>
+                            </div>
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                                <lightning-input name="Date__c" type="date" label="Date" value={currentExpense.Date__c} onchange={handleFieldChange} required></lightning-input>
+                            </div>
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                                <lightning-combobox name="Status__c" label="Status" value={currentExpense.Status__c} options={modalStatusOptions} onchange={handleFieldChange}></lightning-combobox>
+                            </div>
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                                <lightning-combobox name="Payment_mode__c" label="Payment Mode" value={currentExpense.Payment_mode__c} options={paymentOptions} onchange={handleFieldChange}></lightning-combobox>
+                            </div>
+                            <div class="slds-col slds-size_1-of-1">
+                                <lightning-textarea name="Description__c" label="Description" value={currentExpense.Description__c} onchange={handleFieldChange}></lightning-textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <lightning-button label="Cancel" onclick={handleCloseModal} class="slds-m-right_x-small"></lightning-button>
+                        <lightning-button label="Save" variant="brand" onclick={handleSaveExpense}></lightning-button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+    </lightning-card>
+</template>

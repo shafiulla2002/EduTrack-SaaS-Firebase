@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>School_Subtitle__c</fullName>
+    <description>Subtitle for the school, displayed on the dashboard and PDF receipts.</description>
+    <externalId>false</externalId>
+    <label>School Subtitle</label>
+    <length>255</length>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+    <testsuite name="force.apex" timestamp="2026-05-01T10:28:52.000Z" hostname="https://developmentorg3-dev-ed.develop.my.salesforce.com" tests="2" failures="1"  errors="0"  time="0.04">
+        <properties>
+            <property name="outcome" value="Failed"/>
+            <property name="testsRan" value="2"/>
+            <property name="passing" value="1"/>
+            <property name="failing" value="1"/>
+            <property name="skipped" value="0"/>
+            <property name="passRate" value="50%"/>
+            <property name="failRate" value="50%"/>
+            <property name="testStartTime" value="Fri May 01 2026 3:58:52 pm"/>
+            <property name="testSetupTimeInMs" value="1235"/>
+            <property name="testExecutionTime" value="0.04 s"/>
+            <property name="testTotalTime" value="1.28 s"/>
+            <property name="commandTime" value="0.10 s"/>
+            <property name="hostname" value="https://developmentorg3-dev-ed.develop.my.salesforce.com"/>
+            <property name="orgId" value="00Df600000HKx70EAD"/>
+            <property name="username" value="shafi@devorg.com"/>
+            <property name="testRunId" value="707f6000009fiLf"/>
+            <property name="userId" value="005f6000003ojzVAAQ"/>
+        </properties>
+        <testcase name="testAllMethods" classname="EduTrack.EduProDashboardControllerTest" time="0.04">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.EduProDashboardController.getDashboardMetrics: line 47, column 1
+Class.EduTrack.EduProDashboardControllerTest.testAllMethods: line 116, column 1]]></failure>
+        </testcase>
+    </testsuite>
+</testsuites>

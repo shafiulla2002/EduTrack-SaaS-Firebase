@@ -1,0 +1,266 @@
+<template>
+    <div class="phone-container">
+        <!-- Header with Gradient -->
+        <div class="header">
+            <button class="back-btn" onclick={handleBack}>
+                <lightning-icon icon-name="utility:chevronleft" alternative-text="Back" size="small" variant="inverse">
+                </lightning-icon>
+            </button>
+            <div class="header-content">
+                <h2>Enter Student Marks</h2>
+                <p class="header-subtitle">Grade and evaluate performance</p>
+            </div>
+        </div>
+
+        <!-- Form Section with Cards -->
+        <div class="marks-entry-form">
+            <!-- Select Class Card -->
+            <div class="form-card">
+                <div class="form-card-header">
+                    <div class="form-icon">
+                        <span>🏫</span>
+                    </div>
+                    <label class="form-label">Select Class</label>
+                </div>
+                <lightning-combobox
+                    name="classSelect"
+                    label="Select Class"
+                    variant="label-hidden"
+                    value={selectedClass}
+                    placeholder="Choose a class"
+                    options={classOptions}
+                    onchange={handleClassChange}>
+                </lightning-combobox>
+            </div>
+
+            <!-- Select Section-->
+            <!-- Select Section Card -->
+<div class="form-card">
+    <div class="form-card-header">
+        <div class="form-icon">
+            <span>🏷️</span>
+        </div>
+        <label class="form-label">Select Section</label>
+    </div>
+    <lightning-combobox
+        name="sectionSelect"
+        label="Select Section"
+        variant="label-hidden"
+        value={selectedSection}
+        placeholder="Choose a section"
+        options={sectionOptions}
+        onchange={handleSectionChange}
+        disabled={isSectionDisabled}>
+    </lightning-combobox>
+</div>
+
+            <!-- Select Subject Card -->
+            <div class="form-card">
+                <div class="form-card-header">
+                    <div class="form-icon">
+                        <span>📚</span>
+                    </div>
+                           <label class="form-label">Select Subject</label>
+                </div>
+                <lightning-combobox
+                    name="subjectSelect"
+                    label="Select Subject"
+                    variant="label-hidden"
+                    value={selectedSubject}
+                    placeholder="Choose a subject"
+                    options={subjectOptions}
+                    onchange={handleSubjectChange}
+                    disabled={isSubjectDisabled}>
+                </lightning-combobox>
+            </div>
+
+            <!-- Select Exam Card -->
+            <div class="form-card">
+                <div class="form-card-header">
+                    <div class="form-icon">
+                        <span>📝</span>
+                    </div>
+                    <label class="form-label">Select Exam</label>
+                </div>
+                <lightning-combobox
+                    name="examSelect"
+                    label="Select Exam"
+                    variant="label-hidden"
+                    value={selectedExam}
+                    placeholder="Choose an exam"
+                    options={examOptions}
+                    onchange={handleExamChange}
+                    disabled={isExamDisabled}>
+                </lightning-combobox>
+            </div>
+        </div>
+
+        <!-- Statistics Section - Moved before students list -->
+        <template if:true={showStudentsList}>
+            <div class="statistics-section">
+                <div class="section-title">
+                    <span class="title-icon">📊</span>
+                    <h3>Class Statistics</h3>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card stat-average">
+                        <div class="stat-icon-wrapper">
+                            <span class="stat-icon">📈</span>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">Class Average</div>
+                            <div class="stat-value">{classAverage}</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-highest">
+                        <div class="stat-icon-wrapper">
+                            <span class="stat-icon">🏆</span>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">Highest Score</div>
+                            <div class="stat-value">{highestMarks}</div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-entered">
+                        <div class="stat-icon-wrapper">
+                            <span class="stat-icon">✅</span>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-label">Students</div>
+                            <div class="stat-value">{studentsEntered}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Students List for Marks Entry -->
+        <template if:true={showStudentsList}>
+            <div class="students-marks-section">
+                <div class="section-header">
+                    <div class="section-title-main">
+                        <span class="header-icon">👨‍🎓</span>
+                        <div>
+                            <h3>Enter Marks</h3>
+<p class="section-meta">{selectedClassLabel} • {selectedSectionLabel} • {selectedSubjectLabel} • {selectedExamLabel}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="students-list">
+                    <template for:each={studentsList} for:item="student">
+                        <div key={student.Id} class="student-mark-card">
+                            <div class="student-info-section">
+                                <div class="student-avatar">
+                                    {student.avatar}
+                                </div>
+                                <div class="student-details">
+                                    <h4>{student.Name}</h4>
+                                    <p class="roll-number">Roll: {student.Roll_Number__c}</p>
+                                </div>
+                            </div>
+                            <div class="marks-input-section">
+                                <div class="marks-input-container">
+                                    <lightning-input
+                                        type="number"
+                                        label="Marks Obtained"
+                                        variant="label-hidden"
+                                        value={student.obtainedMarks}
+                                        data-student-id={student.Id}
+                                        onchange={handleMarksChange}
+                                        min="0"
+                                        max={maxMarks}
+                                        class="marks-input">
+                                    </lightning-input>
+                                    <div class="marks-controls">
+                                        <button 
+                                            class="btn-increment" 
+                                            data-student-id={student.Id}
+                                            onclick={handleIncrementMarks}
+                                            title="Increase marks">
+                                            <span>+</span>
+                                        </button>
+                                        <button 
+                                            class="btn-decrement" 
+                                            data-student-id={student.Id}
+                                            onclick={handleDecrementMarks}
+                                            title="Decrease marks">
+                                            <span>−</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <span class="max-marks-label">/ {maxMarks}</span>
+                                <template if:true={student.grade}>
+                                    <span class={student.gradeClass}>{student.grade}</span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="action-buttons-footer">
+                    <button class="btn btn-secondary" onclick={handleCancel}>
+                        <span class="btn-icon">✕</span>
+                        <span>Cancel</span>
+                    </button>
+                    <button 
+                        class="btn btn-primary" 
+                        onclick={handleSaveMarks}
+                        disabled={isSaveDisabled}>
+                        <span class="btn-icon">💾</span>
+                        <span>Save Marks</span>
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <!-- Loading Spinner -->
+        <template if:true={loading}>
+            <div class="loading-overlay">
+                <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+                <p class="loading-text">Loading data...</p>
+            </div>
+        </template>
+
+        <!-- No Data Message -->
+        <template if:true={showNoDataMessage}>
+            <div class="no-data-container">
+                <div class="no-data-icon">📋</div>
+                <h3 class="no-data-title">No Data Available</h3>
+                <p class="no-data-msg">{noDataMessage}</p>
+            </div>
+        </template>
+
+        <!-- Quick Add Subject Modal -->
+        <template if:true={isAddSubjectModalOpen}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_small">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header custom-modal-header">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={handleCloseAddSubject}>
+                            <lightning-icon icon-name="utility:close" size="small" variant="inverse"></lightning-icon>
+                            <span class="slds-assistive-text">Close</span>
+                        </button>
+                        <h2 class="slds-text-heading_medium">Add New Subject</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium custom-modal-content">
+                        <lightning-input 
+                            label="Subject Name" 
+                            placeholder="e.g. Robotics" 
+                            value={newSubjectName}
+                            onchange={handleNewSubjectNameChange}
+                            required
+                            class="custom-input">
+                        </lightning-input>
+                    </div>
+                    <footer class="slds-modal__footer custom-modal-footer">
+                        <button class="btn-cancel" onclick={handleCloseAddSubject}>Cancel</button>
+                        <button class="btn-save" onclick={handleSaveNewSubject} disabled={isNewSubjectSaveDisabled}>
+                            Save Subject
+                        </button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+    </div>
+</template>

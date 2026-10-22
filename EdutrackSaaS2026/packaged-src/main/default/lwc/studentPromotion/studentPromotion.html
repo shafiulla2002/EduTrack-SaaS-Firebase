@@ -1,0 +1,322 @@
+<template>
+    <div class="promotion-master-container animate-fade-in">
+
+        <!-- HEADER -->
+        <header>
+            <div class="header-left">
+                <div class="logo-icon">🎓</div>
+                <div>
+                    <div class="header-title">Scholar<span>Flow</span></div>
+                </div>
+            </div>
+            <div class="header-badge">Student Promotion</div>
+        </header>
+
+        <!-- APP LAYOUT -->
+        <div class="app">
+
+            <!-- LEFT SIDEBAR -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-title">Promotion Filters</div>
+                </div>
+
+                <!-- Academic Year (Source) -->
+                <div class="filter-group">
+                    <div class="filter-label">Current Academic Year</div>
+                    <select class="modern-select" data-name="sourceYear" onchange={handleFilterChange}
+                        value={sourceYear}>
+                        <template for:each={academicYearOptions} for:item="opt">
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        </template>
+                    </select>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Target Year -->
+                <div class="filter-group">
+                    <div class="filter-label">Target Academic Year</div>
+                    <select class="modern-select" data-name="targetYear" onchange={handleTargetChange}
+                        value={targetYear}>
+                        <template for:each={academicYearOptions} for:item="opt">
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        </template>
+                    </select>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Class -->
+                <div class="filter-group">
+                    <div class="filter-label">Class</div>
+                    <select class="modern-select" data-name="sourceClass" onchange={handleFilterChange}
+                        value={sourceClass}>
+                        <option value="">Choose Class...</option>
+                        <template for:each={classOptions} for:item="opt">
+                            <option key={opt} value={opt}>{opt}</option>
+                        </template>
+                    </select>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Section -->
+                <div class="filter-group">
+                    <div class="filter-label">Section</div>
+                    <div class="section-grid">
+                        <template for:each={sectionOptionsMapped} for:item="sec">
+                            <div key={sec.label} class={sec.className} onclick={handleSectionToggle}
+                                data-value={sec.label}>
+                                {sec.label}
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="divider"></div>
+
+                <!-- Sidebar Footer -->
+                <div class="sidebar-footer">
+                    <div class="summary-box">
+                        <div class="summary-row">
+                            <span>Selected For Promotion</span>
+                            <span class="summary-val">{targetTotalCount}</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Source Pool</span>
+                            <span class="summary-val">{sourceTotalCount}</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>Destination</span>
+                            <span class="summary-val">{targetClassDisplay}</span>
+                        </div>
+                    </div>
+
+                    <button class="promote-btn" onclick={handlePromote} disabled={isPromoteDisabled}>
+                        <template lwc:if={isLoading}>
+                            <lightning-icon icon-name="utility:spinner" alternative-text="Promoting..." size="x-small"
+                                variant="inverse" class="slds-m-right_x-small"></lightning-icon>
+                        </template>
+                        <template lwc:else>
+                            <lightning-icon icon-name="utility:upload" size="x-small" variant="inverse"
+                                class="slds-m-right_x-small"></lightning-icon>
+                        </template>
+                        <span>{promoteButtonLabel}</span>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- MAIN CONTENT -->
+            <main class="main">
+                <div class="main-header">
+                    <div class="main-title">Promotion Preview</div>
+                    <div class="year-range-pill">
+                        <span class="from">{sourceYearLabel}</span>
+                        <span class="arrow">→</span>
+                        <span class="to">{targetYearLabel}</span>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="stats-strip">
+                    <div class="stat-box">
+                        <div class="stat-label">Candidate Pool</div>
+                        <div class="stat-value blue">{sourceTotalCount}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Vetted Students</div>
+                        <div class="stat-value green">{targetTotalCount}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Classes Promoted</div>
+                        <div class="stat-value">{sourceSummary.length} / {classOptionsList.length}</div>
+                    </div>
+                </div>
+
+                <!-- Two Cards + Transfer Zone -->
+                <div class="cards-area">
+
+                    <!-- FROM CARD -->
+                    <div class={fromCardClass}>
+                        <div class="card-header">
+                            <div class="card-year-label">
+                                <template lwc:if={showBackButton}>
+                                    <button class="back-nav-btn" title="Back to Classes" onclick={handleBackToClasses}>
+                                        <lightning-icon icon-name="utility:chevronleft" size="x-small"
+                                            variant="inverse"></lightning-icon>
+                                    </button>
+                                </template>
+                                <div class="card-dot"></div>
+                                <div>
+                                    <div class="card-year-text">{sourceYearLabel}</div>
+                                    <div class="card-year-sub">Current Enrollment</div>
+                                </div>
+                            </div>
+                            <div class="card-total-badge">{sourceTotalCount}</div>
+                        </div>
+                        <div class="card-body">
+                            <template lwc:if={isLoading}>
+                                <div class="empty-state">
+                                    <lightning-spinner alternative-text="Loading..." size="medium"
+                                        variant="inverse"></lightning-spinner>
+                                </div>
+                            </template>
+                            <template lwc:else>
+                                <template lwc:if={isSummaryView}>
+                                    <template for:each={sourceSummaryMapped} for:item="sum">
+                                        <div key={sum.id} class={sum.rowClass} onclick={handleSummaryClick}
+                                            data-class={sum.className} data-section={sum.section}>
+                                            <div class="class-info">
+                                                <div class={sum.avatarClass}>{sum.avatar}</div>
+                                                <div>
+                                                    <div class="class-name">{sum.className}</div>
+                                                    <div class="class-section">Section {sum.section}</div>
+                                                </div>
+                                            </div>
+                                            <div class="class-count">
+                                                <div class="count-pill">{sum.statusLabel}</div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </template>
+                                <template lwc:else>
+                                    <template for:each={students} for:item="s">
+                                        <div key={s.id} class={s.itemRowClass} onclick={handleStudentRowClick}
+                                            data-id={s.id}>
+                                            <div class="class-info">
+                                                <div class={s.avatarClass}>{s.avatar}</div>
+                                                <div>
+                                                    <div class="class-name">{s.name}</div>
+                                                    <div class="class-section">{s.studentId} • {sourceClass}</div>
+                                                </div>
+                                            </div>
+                                            <div class="class-count">
+                                                <div class="count-pill">{s.formattedBalance}</div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </template>
+                                <template lwc:if={students.length}></template>
+                                <template lwc:else>
+                                    <template lwc:if={isSummaryView}></template>
+                                    <template lwc:else>
+                                        <div class="empty-state">
+                                            <div class="empty-icon">👥</div>
+                                            <div class="empty-text">Select criteria to fetch candidates</div>
+                                        </div>
+                                    </template>
+                                </template>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- TRANSFER ZONE -->
+                    <div class={transferZoneClass}>
+                        <div class="transfer-track">
+                            <div class="beam-line"></div>
+                            <div class="dot-cascade">
+                                <div class="cascade-dot"></div>
+                                <div class="cascade-dot"></div>
+                                <div class="cascade-dot"></div>
+                                <div class="cascade-dot"></div>
+                                <div class="cascade-dot"></div>
+                            </div>
+                        </div>
+                        <div class="transfer-arrow-wrap">
+                            <div class="transfer-ring"></div>
+                            <div class="transfer-arrow-inner">→</div>
+                        </div>
+                        <div class="transfer-track" style="transform: scaleY(-1);">
+                            <div class="beam-line"></div>
+                        </div>
+                    </div>
+
+                    <!-- TO CARD -->
+                    <div class={toCardClass}>
+                        <div class="card-header">
+                            <div class="card-year-label">
+                                <div class="card-dot"></div>
+                                <div>
+                                    <div class="card-year-text">{targetYearLabel}</div>
+                                    <div class="card-year-sub">After Promotion</div>
+                                </div>
+                            </div>
+                            <div class="card-total-badge">{targetTotalCount}</div>
+                        </div>
+                        <div class="card-body">
+                            <template lwc:if={isSummaryView}>
+                                <template for:each={targetSummaryMapped} for:item="sum">
+                                    <div key={sum.id} class={sum.rowClass}>
+                                        <div class="class-info">
+                                            <div class={sum.avatarClass}>{sum.avatar}</div>
+                                            <div>
+                                                <div class="class-name">{sum.className}</div>
+                                                <div class="class-section">Section {sum.section}</div>
+                                            </div>
+                                        </div>
+                                        <div class="class-count">
+                                            <div class="count-pill">{sum.studentCount} students</div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </template>
+                            <template lwc:else>
+                                <template for:each={selectedStudents} for:item="s">
+                                    <div key={s.id} class="class-row animate-fade-in">
+                                        <div class="class-info">
+                                            <div class={s.avatarClass}>{s.avatar}</div>
+                                            <div>
+                                                <div class="class-name">{s.name}</div>
+                                                <div class="class-section">Promoting to {targetClassDisplay}</div>
+                                            </div>
+                                        </div>
+                                        <div class="class-count">
+                                            <div class="count-pill">Ready</div>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template lwc:if={selectedStudents.length}></template>
+                                <template lwc:else>
+                                    <div class="empty-state">
+                                        <div class="empty-icon">📤</div>
+                                        <div class="empty-text">Vetted students will appear here</div>
+                                    </div>
+                                </template>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NEW: SUCCESS OVERLAY MODAL -->
+                <template lwc:if={showSuccessModal}>
+                    <div class="success-modal-backdrop animate-fade-in">
+                        <div class="success-modal-card animate-slide-up">
+                            <div class="success-icon-wrap">
+                                <div class="success-icon">✨</div>
+                            </div>
+                            <h2>Promotion Successful!</h2>
+                            <p class="success-message">{successMessage}</p>
+
+                            <div class="success-stats">
+                                <div class="s-stat">
+                                    <span>From</span>
+                                    <strong>{sourceYearLabel}</strong>
+                                </div>
+                                <div class="s-stat">
+                                    <span>To</span>
+                                    <strong>{targetYearLabel}</strong>
+                                </div>
+                            </div>
+
+                            <button class="success-close-btn" onclick={closeSuccessModal}>
+                                Continue
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+            </main>
+        </div>
+    </div>
+</template>

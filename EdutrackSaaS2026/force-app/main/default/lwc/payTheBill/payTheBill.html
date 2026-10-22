@@ -1,0 +1,312 @@
+<template>
+    <div class="app-container" data-v="3.0">
+        <!-- SITE HEADER -->
+        <!-- SITE HEADER (Top Bar) -->
+        <header class="site-header">
+            <div class="header-content-wrapper">
+                <h1>Fee Management &amp; Billing</h1>
+                <p>Search students to manage invoices and process payments with the premium billing suite.</p>
+            </div>
+        </header>
+
+        <!-- MAIN WRAPPER -->
+        <div class="main-wrapper">
+            <div class="billing-card animate-fade-in">
+
+                <!-- CARD TOP (Hidden via CSS, removed from flow here) -->
+                <!-- <div class="card-top">...</div> -->
+
+                <!-- CARD BODY -->
+                <div class="card-body">
+
+                    <!-- LOADING SPINNER -->
+                    <template lwc:if={isLoading}>
+                        <div class="spinner-inline"></div>
+                    </template>
+
+                    <!-- SEARCH BAR -->
+                    <div class="search-wrap">
+                        <label class="section-label">Quick Student Search</label>
+                        <span class="search-icon">🔍</span>
+                        <input type="text" class="search-input" placeholder="Search by name, ID or phone..."
+                            oninput={handleStudentSearch}>
+                    </div>
+
+                    <!-- SEARCH RESULTS -->
+                    <template lwc:if={studentsFound.length}>
+                        <div class="results-grid animate-slide-up">
+                            <template for:each={studentsFound} for:item="student">
+                                <div key={student.Id} class="result-card" onclick={selectStudent} data-id={student.Id}>
+                                    <div class="avatar">{student.nameInitials}</div>
+                                    <div class="r-info">
+                                        <div class="r-name">{student.account.Name}</div>
+                                        <div class="r-sub">{student.account.Class__r.Name} · {student.account.Section__r.Name}
+                                        </div>
+                                        <div class="r-phone">{student.account.PersonMobilePhone}</div>
+                                    </div>
+                                    <div class="r-bal">Due: {student.formattedDue}</div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- EMPTY STATE / PROMPT -->
+                    <template lwc:if={showSearchPrompt}>
+                        <div class="empty animate-fade-in">
+                            <div class="empty-icon">🔎</div>
+                            <div class="empty-title">Find a Student</div>
+                            <div class="empty-sub">Type at least 3 characters to search by name</div>
+                        </div>
+                    </template>
+
+                    <!-- LEDGER & BILLING SECTION -->
+                    <template lwc:if={selectedStudentId}>
+                        <div class="ledger-header">
+                            <div class="ledger-title">
+                                Ledger: <span>{selectedStudentName}</span>
+                                <div class="year-picker-wrap">
+                                    <lightning-combobox name="academicYear" value={selectedAcademicYear}
+                                        placeholder="Select Year" options={academicYearOptions}
+                                        onchange={handleYearChange} variant="label-hidden"
+                                        class="year-picker"></lightning-combobox>
+                                </div>
+                            </div>
+                            <div class="ledger-badges">
+                                <span class="badge-green"><span class="dot green"></span> PAID:
+                                    {formattedTotalPaid}</span>
+                                <span class="badge-red"><span class="dot red"></span> PENDING:
+                                    {formattedInversePending}</span>
+                            </div>
+                        </div>
+
+                        <!-- FEE TABLE -->
+                        <div class="tbl-wrap">
+                            <template lwc:if={unpaidFees}>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th style="width:46px"></th>
+                                            <th>FEE PARTICULARS</th>
+                                            <th>TOTAL AMT.</th>
+                                            <th>{discountHeader}</th>
+                                            <th>PAID</th>
+                                            <th>BALANCE</th>
+                                            <th style="width:140px">PAYMENT INPUT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template for:each={unpaidFees} for:item="fee">
+                                            <tr key={fee.oliId} class={fee.rowClass}>
+                                                <td>
+                                                    <input type="checkbox" class="cb" checked={fee.isSelected}
+                                                        data-id={fee.oliId} onchange={handleFeeSelect}
+                                                        disabled={fee.isPaid}>
+                                                </td>
+                                                <td class="fee-nm">{fee.feeName}</td>
+                                                <td>₹{fee.totalAmount}</td>
+                                                <td style="color: #64748b; font-weight: 600;">₹{fee.discountAmount}</td>
+                                                <td>
+                                                    <template lwc:if={fee.isPaid}>
+                                                        <span class="badge-green">₹{fee.paidAmount}</span>
+                                                    </template>
+                                                    <template lwc:else>
+                                                        ₹{fee.paidAmount}
+                                                    </template>
+                                                </td>
+                                                <td class="bal-val">₹{fee.balanceDue}</td>
+                                                <td>
+                                                    <input type="number" class="amt-input" value={fee.paymentAmount}
+                                                        data-id={fee.oliId} onchange={handleAmountChange}
+                                                        disabled={fee.isInputDisabled} min="0" step="1">
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </template>
+                            <template lwc:else>
+                                <div class="empty">
+                                    <div class="empty-icon">🎉</div>
+                                    <div class="empty-title">All Clear!</div>
+                                    <div class="empty-sub">This student has no outstanding fees.</div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- PAYMENT CHANNELS -->
+                        <div class="pay-section">
+                            <label class="section-label">CHOOSE PAYMENT CHANNEL</label>
+                            <div class="pay-grid">
+                                <template for:each={paymentOptions} for:item="channel">
+                                    <div key={channel.value} class={channel.className}
+                                        onclick={handlePaymentMethodSelect} data-value={channel.value}>
+                                        <!-- SVG LOGO INJECTION -->
+                                        <div class="pay-logo" lwc:dom="manual" data-svg={channel.svg}></div>
+                                        <div class="pay-lbl">{channel.label}</div>
+                                        <template lwc:if={channel.selected}>
+                                            <div class="check-badge">✓</div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- MERCHANT STANDEE (UPI) -->
+                            <template lwc:if={showQRSection}>
+                                <div class="standee-wrap animate-fade-in">
+                                    <div class="standee-hdr">
+                                        <div class="standee-logo" lwc:dom="manual" data-svg={selectedPaymentLogo}>
+                                        </div>
+                                        <span class="standee-name">{selectedPaymentMethod}</span>
+                                    </div>
+                                    <div class="standee-accepted">Accepted Here</div>
+                                    <div class="standee-amt-box">
+                                        <span class="standee-amt-lbl">AMOUNT:</span>
+                                        <span class="standee-amt-val">₹{billingTotal}</span>
+                                    </div>
+                                    <div class="qr-box">
+                                        <template lwc:if={isQRLoading}>
+                                            <div class="spinner-inline"></div>
+                                        </template>
+                                        <template lwc:else>
+                                            <div class="slds-m-top_medium slds-text-align_center">
+                                                <template lwc:if={qrCodeUrl}>
+                                                    <img src={qrCodeUrl} alt="QR Code" class="qr-code-img" />
+                                                    <p class="slds-text-body_small slds-m-top_small">Scan with Any UPI App</p>
+                                                    <p class="slds-text-body_small text-muted">A/C: {upiIdUsed}</p>
+                                                    <p class="slds-text-body_small slds-m-top_x-small" style="font-size: 8px; color: #ccc;">{rawUpiUrl}</p>
+                                                </template>
+                                                <template lwc:else>
+                                                    <div class="qr-missing-msg animate-fade-in">
+                                                        <div class="msg-icon">⚠️</div>
+                                                        <div class="msg-text">Go to School Setup and upload a QR code.</div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div class="standee-merchant">{schoolName}</div>
+                                </div>
+                            </template>
+
+                            <!-- BANK GRID (NET BANKING) -->
+                            <template lwc:if={isNetBankingSelected}>
+                                <div class="bank-wrap animate-slide-up">
+                                    <p class="bank-lbl">Select Your Bank</p>
+                                    <div class="bank-grid">
+                                        <template for:each={bankOptionsDisplay} for:item="bank">
+                                            <div key={bank.id} class={bank.className} data-id={bank.id}
+                                                onclick={handleBankSelect}>
+                                                <div class="bank-icon-placeholder">{bank.initials}</div>
+                                                <span class="bank-name">{bank.name}</span>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <template if:true={selectedBankId}>
+                                        <div class="bank-details-form animate-in">
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label class="form-label">Bank Name</label>
+                                                    <input type="text" class="form-input" data-id="bankName"
+                                                        value={netBankingDetails.bankName}
+                                                        onchange={handleBankInputChange} placeholder="Enter Bank Name">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">IFSC Code</label>
+                                                    <input type="text" class="form-input" data-id="bankIfsc"
+                                                        value={netBankingDetails.bankIfsc}
+                                                        onchange={handleBankInputChange} placeholder="SBIN000XXXX">
+                                                </div>
+                                            </div>
+                                            <div class="form-row">
+                                                <div class="form-group">
+                                                    <label class="form-label">Account Number</label>
+                                                    <input type="text" class="form-input" data-id="bankAccountNumber"
+                                                        value={netBankingDetails.bankAccountNumber}
+                                                        onchange={handleBankInputChange}
+                                                        placeholder="Enter Account Number">
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">Branch Details</label>
+                                                    <input type="text" class="form-input" data-id="bankBranch"
+                                                        value={netBankingDetails.bankBranch}
+                                                        onchange={handleBankInputChange}
+                                                        placeholder="Enter Branch Name">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+
+                    <!-- HISTORY SECTION MOVED DOWN -->
+                </div>
+
+                <!-- CARD FOOTER -->
+                <template lwc:if={selectedStudentId}>
+                    <div class="card-footer">
+                        <div class="total-info">
+                            <span class="total-lbl">TOTAL SETTLEMENT</span>
+                            <span class="total-val">₹{billingTotal}</span>
+                        </div>
+                        <div class="footer-actions">
+                            <button class="btn btn-secondary" onclick={openInvoicePreview}>
+                                <lightning-icon icon-name="utility:preview" size="x-small"
+                                    class="slds-m-right_x-small"></lightning-icon>
+                                Preview Receipt
+                            </button>
+                            <button class="btn btn-primary" onclick={handleSubmitPayment} disabled={isPaymentDisabled}>
+                                <lightning-icon icon-name="utility:check" size="x-small" variant="inverse"
+                                    class="slds-m-right_x-small"></lightning-icon>
+                                Finalize Payment
+                            </button>
+                        </div>
+                    </div>
+                </template>
+
+            </div>
+
+            <!-- HISTORY SECTION (OUTSIDE CARD) -->
+            <template lwc:if={recentInvoices.length}>
+                <div class="history-section animate-slide-up">
+                    <div class="history-title">Recent Transaction History</div>
+                    <div class="tbl-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>INVOICE #</th>
+                                    <th>DATE</th>
+                                    <th>AMOUNT</th>
+                                    <th style="text-align:right">MANAGEMENT ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={recentInvoices} for:item="inv">
+                                    <tr key={inv.id}>
+                                        <td><strong>{inv.id}</strong></td>
+                                        <td>{inv.dateStr}</td>
+                                        <td>{inv.totalAmount}</td>
+                                        <td>
+                                            <div class="tbl-actions">
+                                                <button class="pill preview" onclick={openInvoicePreview}
+                                                    data-id={inv.id}>Preview</button>
+                                                <button class="pill rollback" onclick={handleCancelInvoice}
+                                                    data-id={inv.id} data-name={inv.name}>Rollback</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- SITE FOOTER -->
+        <div class="site-footer">© 2026 Vikas High School · Secured by OmniCloud</div>
+    </div>
+</template>

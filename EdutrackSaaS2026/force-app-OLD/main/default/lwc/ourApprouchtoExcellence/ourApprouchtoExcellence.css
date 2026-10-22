@@ -1,0 +1,219 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f5faff; /* Light blue background */
+}
+
+.container {
+    text-align: center;
+    padding: 40px;
+}
+
+.title {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 40px;
+    color: #333;
+}
+
+.card-container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.card {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    width: 300px;
+    padding: 20px;
+    text-align: center;
+    position: relative; /* Needed for the border positioning */
+}
+
+/* Add colored borders under the cards */
+.card:nth-child(1) {
+    border-bottom: 4px solid #007bff; /* Blue border for Deep Discovery */
+}
+
+.card:nth-child(2) {
+    border-bottom: 4px solid #28a745; /* Green border for Strategic Design */
+}
+
+.card:nth-child(3) {
+    border-bottom: 4px solid #6f42c1; /* Purple border for Flawless Execution */
+}
+
+.icon {
+    width: 50px;
+    height: 50px;
+    margin: 0 auto 20px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.discovery-icon {
+    background-color: #007bff; /* Blue */
+    border-radius: 50%;
+    position: relative;
+}
+
+.discovery-icon::before {
+    content: "🔍"; /* Magnifying glass emoji as placeholder */
+    font-size: 30px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+}
+
+.design-icon {
+    background-color: #28a745; /* Green */
+    border-radius: 50%;
+    position: relative;
+}
+
+.design-icon::before {
+    content: "A"; /* Placeholder for the "A" icon */
+    font-size: 30px;
+    font-weight: bold;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+}
+
+.img {
+    max-width: 100%;
+    height: 8vh !important;
+}
+
+.execution-icon::before {
+    content: '';
+    background-size: contain;
+    background-repeat: no-repeat;
+    width: 30px;
+    height: 30px;
+    display: inline-block;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.card-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.card-description {
+    font-size: 1rem;
+    color: #666;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .container {
+        padding: 20px;
+    }
+
+    .title {
+        font-size: 2rem;
+        margin-bottom: 30px;
+    }
+
+    .card-container {
+        gap: 15px;
+    }
+
+    .card {
+        width: 90%;
+        max-width: 280px;
+        padding: 15px;
+    }
+
+    .icon {
+        width: 40px;
+        height: 40px;
+        margin-bottom: 15px;
+    }
+
+    .discovery-icon::before,
+    .design-icon::before {
+        font-size: 24px;
+    }
+
+    .execution-icon::before {
+        width: 24px;
+        height: 24px;
+    }
+
+    .card-title {
+        font-size: 1.3rem;
+    }
+
+    .card-description {
+        font-size: 0.9rem;
+    }
+
+    .img {
+        height: 6vh !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 15px;
+    }
+
+    .title {
+        font-size: 1.6rem;
+        margin-bottom: 20px;
+    }
+
+    .card-container {
+        gap: 10px;
+    }
+
+    .card {
+        width: 95%;
+        max-width: 260px;
+        padding: 12px;
+    }
+
+    .icon {
+        width: 35px;
+        height: 35px;
+        margin-bottom: 10px;
+    }
+
+    .discovery-icon::before,
+    .design-icon::before {
+        font-size: 20px;
+    }
+
+    .execution-icon::before {
+        width: 20px;
+        height: 20px;
+    }
+
+    .card-title {
+        font-size: 1.2rem;
+    }
+
+    .card-description {
+        font-size: 0.85rem;
+    }
+
+    .img {
+        height: 5vh !important;
+    }
+}

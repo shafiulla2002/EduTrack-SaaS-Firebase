@@ -1,0 +1,39 @@
+/* covenantSynergyTermsOfService.css */
+
+/* Enhances the lightning-card itself */
+.THIS .terms-of-service-card {
+    max-width: 1000px; /* Slightly wider for better readability on larger screens */
+    margin: 2rem auto; /* Centers the card on the page */
+    border-radius: var(--lwc-borderRadiusMedium, 0.5rem); /* Rounded corners for the card */
+    box-shadow: var(--lwc-shadow, 0 2px 4px rgba(0, 0, 0, 0.1)); /* Subtle shadow */
+}
+
+/* Styles for the main content area inside the card */
+.THIS .slds-text-longform {
+    line-height: 1.7; /* Increased line height for better readability */
+    font-size: 0.875rem; /* Default body text size - Corrected from LWC token */
+}
+
+/* Section styling for better visual separation */
+.THIS .policy-section {
+    margin-bottom: var(--lwc-spacingLarge, 2rem); /* More space between sections */
+    padding-bottom: var(--lwc-spacingMedium, 1rem); /* Padding at the bottom of each section */
+    border-bottom: 1px solid var(--lwc-colorBorder, #dddbda); /* Subtle border between sections */
+}
+
+.THIS .policy-section:last-child {
+    border-bottom: none; /* No border after the last section */
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+/* Enhancing list items */
+.THIS .slds-list_dotted li {
+    margin-bottom: var(--lwc-spacingXSmall, 0.25rem); /* Space between list items */
+}
+
+/* Disclaimer text alignment and style */
+.THIS .disclaimer-text {
+    font-style: italic;
+    padding-top: var(--lwc-spacingSmall, 0.75rem);
+}

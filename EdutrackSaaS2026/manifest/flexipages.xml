@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>FlowsApp_UtilityBar</members>
+        <members>AcademicOperations_UtilityBar</members>
+        <members>Opportunity_Product_Record_Page1</members>
+        <members>DataGovernanceConsole_UtilityBar</members>
+        <members>Opportunity_Product_Record_Page</members>
+        <members>LightningSalesConsole_UtilityBar</members>
+        <members>LightningService_UtilityBar</members>
+        <members>Invoice_Record_Page1</members>
+        <members>EduTrack_Product_Record_Page</members>
+        <members>LightningSales_UtilityBar</members>
+        <members>EduTrack_Invoice_Record_Page</members>
+        <members>EduTrack_Opportunity_Record_Page</members>
+        <members>ExpressionSetConsole_UtilityBar</members>
+        <members>VIKAS_SCHOOL_UtilityBar</members>
+        <members>Account_Record_Page</members>
+        <members>Attendance_Session_Record_Page</members>
+        <members>Opportunity_Record_Page</members>
+        <members>Class_Section_Record_Page</members>
+        <members>EduTrack_Account_Record_Page</members>
+        <members>Invoice_Record_Page</members>
+        <members>Class_Record_Page</members>
+        <members>SalesCloudMobile_UtilityBar</members>
+        <members>Account_Record_Page1</members>
+        <members>Account_Record_Page2</members>
+        <name>FlexiPage</name>
+    </types>
+    <version>59.0</version>
+</Package>

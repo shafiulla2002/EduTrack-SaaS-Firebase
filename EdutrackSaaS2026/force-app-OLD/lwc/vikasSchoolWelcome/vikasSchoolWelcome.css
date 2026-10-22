@@ -1,0 +1,18 @@
+:host {
+    --card-bg-color: #f4f6f9;
+}
+
+.slds-card {
+    background-color: var(--card-bg-color);
+    border: 2px solid #0070d2;
+    border-radius: 8px;
+}
+
+p {
+    font-size: 1.1rem;
+    color: #3e3e3c;
+}
+
+strong {
+    color: #0070d2;
+}

@@ -1,0 +1,588 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+    <testsuite name="force.apex" timestamp="2026-04-30T11:19:12.000Z" hostname="https://developmentorg3-dev-ed.develop.my.salesforce.com" tests="224" failures="42"  errors="0"  time="19.89">
+        <properties>
+            <property name="outcome" value="Failed"/>
+            <property name="testsRan" value="224"/>
+            <property name="passing" value="182"/>
+            <property name="failing" value="42"/>
+            <property name="skipped" value="0"/>
+            <property name="passRate" value="81%"/>
+            <property name="failRate" value="19%"/>
+            <property name="testStartTime" value="Thu Apr 30 2026 4:49:12 pm"/>
+            <property name="testSetupTimeInMs" value="84837"/>
+            <property name="testExecutionTime" value="19.89 s"/>
+            <property name="testTotalTime" value="104.73 s"/>
+            <property name="commandTime" value="0.15 s"/>
+            <property name="hostname" value="https://developmentorg3-dev-ed.develop.my.salesforce.com"/>
+            <property name="orgId" value="00Df600000HKx70EAD"/>
+            <property name="username" value="shafi@devorg.com"/>
+            <property name="testRunId" value="707f6000009bn6F"/>
+            <property name="userId" value="005f6000003ojzVAAQ"/>
+            <property name="coveredLines" value="2206"/>
+            <property name="testRunCoverage" value="65%"/>
+            <property name="orgWideCoverage" value="52%"/>
+        </properties>
+        <testcase name="testAcademicYears" classname="EduTrack.SchoolSetupControllerTest" time="0.16">
+        </testcase>
+        <testcase name="testBankAccounts" classname="EduTrack.SchoolSetupControllerTest" time="0.08">
+        </testcase>
+        <testcase name="testGetSetup" classname="EduTrack.SchoolSetupControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testSaveSetup" classname="EduTrack.SchoolSetupControllerTest" time="0.05">
+        </testcase>
+        <testcase name="testSaveSetupException" classname="EduTrack.SchoolSetupControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testUploadLogo" classname="EduTrack.SchoolSetupControllerTest" time="0.48">
+        </testcase>
+        <testcase name="testGetProjects" classname="EduTrack.TimeEntryControllerTest" time="0.09">
+        </testcase>
+        <testcase name="testGetTimeEntriesForWeek" classname="EduTrack.TimeEntryControllerTest" time="0.19">
+        </testcase>
+        <testcase name="testGetWorkstreams" classname="EduTrack.TimeEntryControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testSaveTimeEntry_CreateNew" classname="EduTrack.TimeEntryControllerTest" time="0.07">
+        </testcase>
+        <testcase name="testSaveTimeEntry_UpdateExisting" classname="EduTrack.TimeEntryControllerTest" time="0.09">
+        </testcase>
+        <testcase name="testChildListHandling" classname="EduTrack.NamespaceUtilsTest" time="0.24">
+        </testcase>
+        <testcase name="testGetVFPageUrl" classname="EduTrack.NamespaceUtilsTest" time="0.01">
+        </testcase>
+        <testcase name="testNestedSObject" classname="EduTrack.NamespaceUtilsTest" time="0.09">
+        </testcase>
+        <testcase name="testNullInputs" classname="EduTrack.NamespaceUtilsTest" time="0.01">
+        </testcase>
+        <testcase name="testStripNamespace_AllCases" classname="EduTrack.NamespaceUtilsTest" time="0.03">
+        </testcase>
+        <testcase name="LightningSelfRegisterControllerInstantiation" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testGetExtraFieldsInSelfRegistration" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testGetNonEmptyExtraFields" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetNullExtraFields" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testIsValidPassword" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.00">
+        </testcase>
+        <testcase name="testSelfRegisterWithCreatedAccount" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.34">
+        </testcase>
+        <testcase name="testSelfRegisterWithProperCredentials" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testSelfRegistration" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testSetExperienceId" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testSiteAsContainerEnabled" classname="EduTrack.LightningSelfRegisterControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testConstructor" classname="EduTrack.LightningForgotPasswordControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testForgotPassword" classname="EduTrack.LightningForgotPasswordControllerTest" time="0.00">
+        </testcase>
+        <testcase name="testSetExperienceId" classname="EduTrack.LightningForgotPasswordControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testConstructor" classname="EduTrack.LightningLoginFormControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testGetForgotPasswordUrl" classname="EduTrack.LightningLoginFormControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetIsSelfRegistrationEnabled" classname="EduTrack.LightningLoginFormControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetIsUsernamePasswordEnabled" classname="EduTrack.LightningLoginFormControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetSelfRegistrationUrl" classname="EduTrack.LightningLoginFormControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testLogin" classname="EduTrack.LightningLoginFormControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testSetExperienceId" classname="EduTrack.LightningLoginFormControllerTest" time="0.00">
+        </testcase>
+        <testcase name="testMicrobatchSelfRegController" classname="EduTrack.MicrobatchSelfRegControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testDeleteExpense" classname="EduTrack.ExpenseControllerTest" time="1.14">
+        </testcase>
+        <testcase name="testGetExpenseSummary" classname="EduTrack.ExpenseControllerTest" time="0.14">
+        </testcase>
+        <testcase name="testGetExpenses" classname="EduTrack.ExpenseControllerTest" time="0.27">
+        </testcase>
+        <testcase name="testSaveExpense" classname="EduTrack.ExpenseControllerTest" time="0.16">
+        </testcase>
+        <testcase name="testCommunitiesSelfRegConfirmController" classname="EduTrack.CommunitiesSelfRegConfirmControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testDebugData" classname="EduTrack.ComplaintBoxTest" time="0.10">
+        </testcase>
+        <testcase name="testGetAcademicYears" classname="EduTrack.ComplaintBoxTest" time="0.01">
+        </testcase>
+        <testcase name="testGetCurrentTeacher" classname="EduTrack.ComplaintBoxTest" time="0.10">
+        </testcase>
+        <testcase name="testGetPendingCases" classname="EduTrack.ComplaintBoxTest" time="0.14">
+        </testcase>
+        <testcase name="testGetStudentCases" classname="EduTrack.ComplaintBoxTest" time="0.03">
+        </testcase>
+        <testcase name="testGetStudentClasses" classname="EduTrack.ComplaintBoxTest" time="0.01">
+        </testcase>
+        <testcase name="testGetStudentStats" classname="EduTrack.ComplaintBoxTest" time="0.04">
+        </testcase>
+        <testcase name="testGetStudentsByClass" classname="EduTrack.ComplaintBoxTest" time="0.04">
+        </testcase>
+        <testcase name="testGetTeachers" classname="EduTrack.ComplaintBoxTest" time="0.02">
+        </testcase>
+        <testcase name="testSearchStudents" classname="EduTrack.ComplaintBoxTest" time="0.03">
+        </testcase>
+        <testcase name="testSubmitStudentBehavior" classname="EduTrack.ComplaintBoxTest" time="0.17">
+        </testcase>
+        <testcase name="testUpdateCaseStatus" classname="EduTrack.ComplaintBoxTest" time="0.07">
+        </testcase>
+        <testcase name="testConstructorWithExpId" classname="EduTrack.CommunitiesSelfRegControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testPasswordMatch_WithPassword" classname="EduTrack.CommunitiesSelfRegControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testPasswordMismatch" classname="EduTrack.CommunitiesSelfRegControllerTest" time="0.00">
+        </testcase>
+        <testcase name="testPasswordNullBranch" classname="EduTrack.CommunitiesSelfRegControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testCommunitiesLandingController" classname="EduTrack.CommunitiesLandingControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testCommunitiesLoginController" classname="EduTrack.CommunitiesLoginControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testSave" classname="EduTrack.MyProfilePageControllerTest" time="1.36">
+        </testcase>
+        <testcase name="testCheckProductExists" classname="EduTrack.AddFeesControllerTest" time="0.06">
+        </testcase>
+        <testcase name="testCreateFeeProducts" classname="EduTrack.AddFeesControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testCreatePriceBookEntries" classname="EduTrack.AddFeesControllerTest" time="0.26">
+        </testcase>
+        <testcase name="testGetActiveAcademicYears" classname="EduTrack.AddFeesControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetAllFeeProducts" classname="EduTrack.AddFeesControllerTest" time="0.08">
+        </testcase>
+        <testcase name="testGetExistingPrices" classname="EduTrack.AddFeesControllerTest" time="0.13">
+        </testcase>
+        <testcase name="testAdmissionInvoiceController" classname="EduTrack.AdmissionInvoiceControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionInvoiceControllerTest.setup: line 30, column 1]]></failure>
+        </testcase>
+        <testcase name="testAdmissionInvoiceControllerNoId" classname="EduTrack.AdmissionInvoiceControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionInvoiceControllerTest.setup: line 30, column 1]]></failure>
+        </testcase>
+        <testcase name="testCreateAdmission" classname="EduTrack.AdmissionControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionControllerTest.setup: line 120, column 1]]></failure>
+        </testcase>
+        <testcase name="testDiscounts" classname="EduTrack.AdmissionControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionControllerTest.setup: line 120, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetActiveProducts" classname="EduTrack.AdmissionControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionControllerTest.setup: line 120, column 1]]></failure>
+        </testcase>
+        <testcase name="testImportStudentsBulk" classname="EduTrack.AdmissionControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionControllerTest.setup: line 120, column 1]]></failure>
+        </testcase>
+        <testcase name="testInvoiceAndFees" classname="EduTrack.AdmissionControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionControllerTest.setup: line 120, column 1]]></failure>
+        </testcase>
+        <testcase name="testOptionsAndCSV" classname="EduTrack.AdmissionControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionControllerTest.setup: line 120, column 1]]></failure>
+        </testcase>
+        <testcase name="testQRCode" classname="EduTrack.AdmissionControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionControllerTest.setup: line 120, column 1]]></failure>
+        </testcase>
+        <testcase name="testSearchAndGetStudent" classname="EduTrack.AdmissionControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.AdmissionControllerTest.setup: line 120, column 1]]></failure>
+        </testcase>
+        <testcase name="testAllMethods" classname="EduTrack.EduProDashboardControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.EduProDashboardControllerTest.setup: line 54, column 1]]></failure>
+        </testcase>
+        <testcase name="testAllMethods" classname="EduTrack.AttendanceReportControllerTest" time="0.02">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.AttendanceReportController.getStudents: line 29, column 1
+Class.EduTrack.AttendanceReportControllerTest.testAllMethods: line 73, column 1]]></failure>
+        </testcase>
+        <testcase name="testForgotPasswordController" classname="EduTrack.ForgotPasswordControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testPDFControllerEmpty" classname="EduTrack.InvoicePDFControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.InvoicePDFControllerTest.setup: line 23, column 1]]></failure>
+        </testcase>
+        <testcase name="testPDFControllerWithId" classname="EduTrack.InvoicePDFControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.InvoicePDFControllerTest.setup: line 23, column 1]]></failure>
+        </testcase>
+        <testcase name="testAllMethods" classname="EduTrack.EnterMarksControllerTest" time="0.14">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.EnterMarksController.getStudentsForMarksEntry: line 243, column 1
+Class.EduTrack.EnterMarksControllerTest.testAllMethods: line 81, column 1]]></failure>
+        </testcase>
+        <testcase name="testChangePasswordController" classname="EduTrack.ChangePasswordControllerTest" time="0.04">
+        </testcase>
+        <testcase name="testBulkCreateSubjects" classname="EduTrack.ClassManagementControllerTest" time="0.06">
+        </testcase>
+        <testcase name="testBulkCreateTeachers" classname="EduTrack.ClassManagementControllerTest" time="0.22">
+        </testcase>
+        <testcase name="testCheckDuplicateClassSectionBlankParams" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testCheckDuplicateClassSectionExists" classname="EduTrack.ClassManagementControllerTest" time="0.17">
+        </testcase>
+        <testcase name="testCheckDuplicateClassSectionNoMatch" classname="EduTrack.ClassManagementControllerTest" time="0.05">
+        </testcase>
+        <testcase name="testCreateClassSectionBlankParams" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testCreateClassSectionDuplicate" classname="EduTrack.ClassManagementControllerTest" time="0.08">
+        </testcase>
+        <testcase name="testCreateClassSectionPeriodsNullEntry" classname="EduTrack.ClassManagementControllerTest" time="0.32">
+        </testcase>
+        <testcase name="testCreateClassSectionSuccess" classname="EduTrack.ClassManagementControllerTest" time="0.19">
+        </testcase>
+        <testcase name="testCreateClassSectionWithNullPeriods" classname="EduTrack.ClassManagementControllerTest" time="0.18">
+        </testcase>
+        <testcase name="testCreateTeacherBlankEmail" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testCreateTeacherBlankName" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testCreateTeacherDuplicateEmail" classname="EduTrack.ClassManagementControllerTest" time="0.08">
+        </testcase>
+        <testcase name="testCreateTeacherNoSkills" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testCreateTeacherSkillBlankSubjectOrLevel" classname="EduTrack.ClassManagementControllerTest" time="0.10">
+        </testcase>
+        <testcase name="testCreateTeacherWithSkillsSuccess" classname="EduTrack.ClassManagementControllerTest" time="0.08">
+        </testcase>
+        <testcase name="testDeleteTeacherAssignmentBlankId" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testDeleteTeacherAssignmentSuccess" classname="EduTrack.ClassManagementControllerTest" time="0.43">
+        </testcase>
+        <testcase name="testGetAcademicYears" classname="EduTrack.ClassManagementControllerTest" time="0.04">
+        </testcase>
+        <testcase name="testGetAcademicYearsEmpty" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetAllClassSections" classname="EduTrack.ClassManagementControllerTest" time="0.10">
+        </testcase>
+        <testcase name="testGetAllClassWorkloadsNoData" classname="EduTrack.ClassManagementControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testGetAllClassWorkloadsWithData" classname="EduTrack.ClassManagementControllerTest" time="0.19">
+        </testcase>
+        <testcase name="testGetAllClasses" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetAllSections" classname="EduTrack.ClassManagementControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testGetAllSubjects" classname="EduTrack.ClassManagementControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testGetAllTeacherWorkloadsAssignmentsOnly" classname="EduTrack.ClassManagementControllerTest" time="0.14">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.ClassManagementController.getAllTeacherWorkloads: line 925, column 1
+Class.EduTrack.ClassManagementControllerTest.testGetAllTeacherWorkloadsAssignmentsOnly: line 769, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetAllTeacherWorkloadsNoData" classname="EduTrack.ClassManagementControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testGetAllTeacherWorkloadsWithPeriods" classname="EduTrack.ClassManagementControllerTest" time="0.17">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.ClassManagementController.getAllTeacherWorkloads: line 925, column 1
+Class.EduTrack.ClassManagementControllerTest.testGetAllTeacherWorkloadsWithPeriods: line 752, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetAllTeachers" classname="EduTrack.ClassManagementControllerTest" time="0.05">
+        </testcase>
+        <testcase name="testGetClassSectionWorkloadBlankId" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetClassSectionWorkloadNoAssignments" classname="EduTrack.ClassManagementControllerTest" time="0.15">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.ClassManagementController.getClassSectionWorkload: line 1168, column 1
+Class.EduTrack.ClassManagementControllerTest.testGetClassSectionWorkloadNoAssignments: line 890, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetClassSectionWorkloadWithData" classname="EduTrack.ClassManagementControllerTest" time="0.21">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.ClassManagementController.getClassSectionWorkload: line 1168, column 1
+Class.EduTrack.ClassManagementControllerTest.testGetClassSectionWorkloadWithData: line 875, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetClasses" classname="EduTrack.ClassManagementControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testGetLeaserPeriodsForTeacherBlank" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetLeaserPeriodsForTeacherWithData" classname="EduTrack.ClassManagementControllerTest" time="0.15">
+        </testcase>
+        <testcase name="testGetPeriodTimings" classname="EduTrack.ClassManagementControllerTest" time="0.07">
+        </testcase>
+        <testcase name="testGetPeriodTimingsEmpty" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetPeriodTimingsNullTimes" classname="EduTrack.ClassManagementControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testGetPeriodsForClassSectionBlank" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetPeriodsForClassSectionImplicitSubstitute" classname="EduTrack.ClassManagementControllerTest" time="0.22">
+        </testcase>
+        <testcase name="testGetPeriodsForClassSectionLeaserPeriod" classname="EduTrack.ClassManagementControllerTest" time="0.22">
+        </testcase>
+        <testcase name="testGetPeriodsForClassSectionNormalPeriod" classname="EduTrack.ClassManagementControllerTest" time="0.18">
+        </testcase>
+        <testcase name="testGetPeriodsForClassSectionSelfLeaser" classname="EduTrack.ClassManagementControllerTest" time="0.18">
+        </testcase>
+        <testcase name="testGetPeriodsForClassSectionUnassigned" classname="EduTrack.ClassManagementControllerTest" time="0.10">
+        </testcase>
+        <testcase name="testGetPeriodsForTeacherBlank" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetPeriodsForTeacherLeaserPeriod" classname="EduTrack.ClassManagementControllerTest" time="0.14">
+        </testcase>
+        <testcase name="testGetPeriodsForTeacherNullSubject" classname="EduTrack.ClassManagementControllerTest" time="0.13">
+        </testcase>
+        <testcase name="testGetPeriodsForTeacherWithGapsBlank" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetPeriodsForTeacherWithGapsData" classname="EduTrack.ClassManagementControllerTest" time="0.20">
+        </testcase>
+        <testcase name="testGetPeriodsForTeacherWithSubjectsField" classname="EduTrack.ClassManagementControllerTest" time="0.14">
+        </testcase>
+        <testcase name="testGetSections" classname="EduTrack.ClassManagementControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testGetSkillLevelOptions" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetTeacherSkillsNullId" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetTeacherSkillsWithData" classname="EduTrack.ClassManagementControllerTest" time="0.10">
+        </testcase>
+        <testcase name="testGetTeacherWorkloadBlankId" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetTeacherWorkloadNoPeriods" classname="EduTrack.ClassManagementControllerTest" time="0.19">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.ClassManagementController.getTeacherWorkload: line 1072, column 1
+Class.EduTrack.ClassManagementControllerTest.testGetTeacherWorkloadNoPeriods: line 843, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetTeacherWorkloadWithPeriods" classname="EduTrack.ClassManagementControllerTest" time="0.18">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.ClassManagementController.getTeacherWorkload: line 1072, column 1
+Class.EduTrack.ClassManagementControllerTest.testGetTeacherWorkloadWithPeriods: line 827, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetTeachersForSubject" classname="EduTrack.ClassManagementControllerTest" time="0.11">
+        </testcase>
+        <testcase name="testGetTeachersForSubjectInClassFallback" classname="EduTrack.ClassManagementControllerTest" time="0.14">
+        </testcase>
+        <testcase name="testGetTeachersForSubjectInClassWithSkills" classname="EduTrack.ClassManagementControllerTest" time="0.15">
+        </testcase>
+        <testcase name="testGetTeachersForSubjectSkillLevelBlank" classname="EduTrack.ClassManagementControllerTest" time="0.09">
+        </testcase>
+        <testcase name="testGetTimetableForClassBlankDates" classname="EduTrack.ClassManagementControllerTest" time="0.15">
+        </testcase>
+        <testcase name="testGetTimetableForClassImplicitSubstitute" classname="EduTrack.ClassManagementControllerTest" time="0.20">
+        </testcase>
+        <testcase name="testGetTimetableForClassLeaserPeriod" classname="EduTrack.ClassManagementControllerTest" time="0.20">
+        </testcase>
+        <testcase name="testGetTimetableForClassNormalPeriod" classname="EduTrack.ClassManagementControllerTest" time="0.30">
+        </testcase>
+        <testcase name="testGetTimetableForClassNullDayOrPeriod" classname="EduTrack.ClassManagementControllerTest" time="0.10">
+        </testcase>
+        <testcase name="testGetWorkloadSummaryAllYears" classname="EduTrack.ClassManagementControllerTest" time="0.04">
+        </testcase>
+        <testcase name="testGetWorkloadSummaryBlankYear" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetWorkloadSummaryWithAcademicYear" classname="EduTrack.ClassManagementControllerTest" time="0.19">
+        </testcase>
+        <testcase name="testSaveSubstituteForPeriodAssign" classname="EduTrack.ClassManagementControllerTest" time="0.16">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.ClassManagementController.saveSubstituteForPeriod: line 1793, column 1
+Class.EduTrack.ClassManagementControllerTest.testSaveSubstituteForPeriodAssign: line 1349, column 1]]></failure>
+        </testcase>
+        <testcase name="testSaveSubstituteForPeriodBlankId" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testSaveSubstituteForPeriodClear" classname="EduTrack.ClassManagementControllerTest" time="0.13">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.ClassManagementController.saveSubstituteForPeriod: line 1793, column 1
+Class.EduTrack.ClassManagementControllerTest.testSaveSubstituteForPeriodClear: line 1365, column 1]]></failure>
+        </testcase>
+        <testcase name="testSaveTimetablePeriodsBlankData" classname="EduTrack.ClassManagementControllerTest" time="0.07">
+        </testcase>
+        <testcase name="testSaveTimetablePeriodsNullDayOrNumber" classname="EduTrack.ClassManagementControllerTest" time="0.11">
+        </testcase>
+        <testcase name="testSaveTimetablePeriodsPMTime" classname="EduTrack.ClassManagementControllerTest" time="0.18">
+        </testcase>
+        <testcase name="testSaveTimetablePeriodsReplaceExisting" classname="EduTrack.ClassManagementControllerTest" time="0.21">
+        </testcase>
+        <testcase name="testSaveTimetablePeriodsSuccess" classname="EduTrack.ClassManagementControllerTest" time="0.14">
+        </testcase>
+        <testcase name="testUpdateTeacherAssignmentBlankId" classname="EduTrack.ClassManagementControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testUpdateTeacherAssignmentNewTeacher" classname="EduTrack.ClassManagementControllerTest" time="0.21">
+        </testcase>
+        <testcase name="testUpdateTeacherAssignmentPeriodsOnly" classname="EduTrack.ClassManagementControllerTest" time="0.15">
+        </testcase>
+        <testcase name="testAllMethods" classname="EduTrack.AttendanceControllerTest" time="0.33">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.AttendanceController.saveAttendance: line 334, column 1
+Class.EduTrack.AttendanceControllerTest.testAllMethods: line 97, column 1]]></failure>
+        </testcase>
+        <testcase name="testRegistration" classname="EduTrack.SiteRegisterControllerTest" time="0.02">
+        </testcase>
+        <testcase name="testSiteLoginController" classname="EduTrack.SiteLoginControllerTest" time="0.04">
+        </testcase>
+        <testcase name="testAllMethods" classname="EduTrack.GradesControllerTest" time="0.48">
+        </testcase>
+        <testcase name="testAllMethods" classname="EduTrack.StudentControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.StudentControllerTest.setup: line 98, column 1]]></failure>
+        </testcase>
+        <testcase name="testEmpty" classname="EduTrack.VikasSchoolControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testGetAcademicYearName" classname="EduTrack.NamingHelperTest" time="0.05">
+        </testcase>
+        <testcase name="testAuthenticateTeacher_BlankInputs" classname="EduTrack.MarksheetControllerTest" time="0.01">
+        </testcase>
+        <testcase name="testAuthenticateTeacher_InvalidCredentials" classname="EduTrack.MarksheetControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testAuthenticateTeacher_Valid" classname="EduTrack.MarksheetControllerTest" time="0.01">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.MarksheetController.authenticateTeacher: line 91, column 1
+Class.EduTrack.MarksheetControllerTest.testAuthenticateTeacher_Valid: line 88, column 1]]></failure>
+        </testcase>
+        <testcase name="testCheckInternalUser" classname="EduTrack.MarksheetControllerTest" time="0.03">
+            <failure message="System.AssertException: Assertion Failed: Should be identified as a teacher: Expected: true, Actual: false"><![CDATA[Class.EduTrack.MarksheetControllerTest.testCheckInternalUser: line 81, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetAssignedClasses_NoResults" classname="EduTrack.MarksheetControllerTest" time="0.03">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.MarksheetController.getAssignedClasses: line 155, column 1
+Class.EduTrack.MarksheetControllerTest.testGetAssignedClasses_NoResults: line 157, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetAssignedClasses_Valid" classname="EduTrack.MarksheetControllerTest" time="0.02">
+            <failure message="System.AuraHandledException: Script-thrown exception"><![CDATA[Class.EduTrack.MarksheetController.getAssignedClasses: line 155, column 1
+Class.EduTrack.MarksheetControllerTest.testGetAssignedClasses_Valid: line 131, column 1]]></failure>
+        </testcase>
+        <testcase name="testSaveTeachingSession_EmptyMap" classname="EduTrack.MarksheetControllerTest" time="0.03">
+        </testcase>
+        <testcase name="testSaveTeachingSession_Valid" classname="EduTrack.MarksheetControllerTest" time="0.05">
+            <failure message="System.AssertException: Assertion Failed: Period should be marked as completed: Expected: true, Actual: false"><![CDATA[Class.EduTrack.MarksheetControllerTest.testSaveTeachingSession_Valid: line 201, column 1]]></failure>
+        </testcase>
+        <testcase name="testPricebookAutomationOnStatusChange" classname="EduTrack.AcademicYearTriggerTest" time="0.18">
+        </testcase>
+        <testcase name="testAllMethods" classname="EduTrack.PromotionControllerTest" time="1.09">
+        </testcase>
+        <testcase name="testHandleStatusChange" classname="EduTrack.PricebookAutomationHandlerTest" time="0.15">
+        </testcase>
+        <testcase name="testDeleteStaff" classname="EduTrack.SchoolStaffControllerTest" time="0.34">
+        </testcase>
+        <testcase name="testGetAllStaff" classname="EduTrack.SchoolStaffControllerTest" time="0.09">
+        </testcase>
+        <testcase name="testGetPayrollRecords" classname="EduTrack.SchoolStaffControllerTest" time="0.04">
+        </testcase>
+        <testcase name="testGetPayslipData" classname="EduTrack.SchoolStaffControllerTest" time="0.05">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.SchoolStaffController.getPayslipData: line 152, column 1
+Class.EduTrack.SchoolStaffControllerTest.testGetPayslipData: line 113, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetStaffDetail" classname="EduTrack.SchoolStaffControllerTest" time="0.06">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.SchoolStaffController.getStaffDetail: line 76, column 1
+Class.EduTrack.SchoolStaffControllerTest.testGetStaffDetail: line 123, column 1]]></failure>
+        </testcase>
+        <testcase name="testGetStaffDetailExceptions" classname="EduTrack.SchoolStaffControllerTest" time="0.02">
+            <failure message="System.QueryException: Insufficient permissions: secure query included inaccessible field"><![CDATA[Class.EduTrack.SchoolStaffController.getStaffDetail: line 76, column 1
+Class.EduTrack.SchoolStaffControllerTest.testGetStaffDetailExceptions: line 195, column 1]]></failure>
+        </testcase>
+        <testcase name="testMiscExceptions" classname="EduTrack.SchoolStaffControllerTest" time="0.14">
+        </testcase>
+        <testcase name="testPaySalary" classname="EduTrack.SchoolStaffControllerTest" time="0.06">
+        </testcase>
+        <testcase name="testPaySalaryUpdate" classname="EduTrack.SchoolStaffControllerTest" time="0.06">
+        </testcase>
+        <testcase name="testProcessAllPayroll" classname="EduTrack.SchoolStaffControllerTest" time="0.05">
+            <failure message="System.AssertException: Assertion Failed: Should process payroll for both staff members"><![CDATA[Class.EduTrack.SchoolStaffControllerTest.testProcessAllPayroll: line 265, column 1]]></failure>
+        </testcase>
+        <testcase name="testUploadStaffPhoto" classname="EduTrack.SchoolStaffControllerTest" time="0.48">
+        </testcase>
+        <testcase name="testUpsertStaff" classname="EduTrack.SchoolStaffControllerTest" time="0.10">
+        </testcase>
+        <testcase name="testUpsertStaffExceptions" classname="EduTrack.SchoolStaffControllerTest" time="0.23">
+        </testcase>
+        <testcase name="testUpsertStaffUpdate" classname="EduTrack.SchoolStaffControllerTest" time="0.06">
+        </testcase>
+        <testcase name="testCancelledInvoiceExclusion" classname="EduTrack.InvoiceItemTriggerTest" time="0.33">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.TestDataFactory.createInvoiceItem: line 154, column 1
+Class.EduTrack.InvoiceItemTriggerTest.testCancelledInvoiceExclusion: line 94, column 1]]></failure>
+        </testcase>
+        <testcase name="testTotalPaidCalculation" classname="EduTrack.InvoiceItemTriggerTest" time="0.15">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.TestDataFactory.createInvoiceItem: line 154, column 1
+Class.EduTrack.InvoiceItemTriggerTest.testTotalPaidCalculation: line 57, column 1]]></failure>
+        </testcase>
+        <testcase name="testEmpty" classname="EduTrack.StudentmanagercontrollerTest" time="0.01">
+        </testcase>
+        <testcase name="testStatusChangeRecalculation" classname="EduTrack.InvoiceTriggerTest" time="0.09">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: CANNOT_INSERT_UPDATE_ACTIVATE_ENTITY, EduTrack.InvoiceItemTrigger: execution of AfterInsert
+
+caused by: System.SObjectException: SObject row was retrieved via SOQL without querying the requested field: EduTrack__Invoice__c.EduTrack__Opportunity__c
+
+Class.EduTrack.InvoiceItemTriggerHandler.processAffectedInvoices: line 42, column 1
+Class.EduTrack.InvoiceItemTriggerHandler.onAfterInsert: line 6, column 1
+Trigger.EduTrack.InvoiceItemTrigger: line 6, column 1: []"><![CDATA[Class.EduTrack.TestDataFactory.createInvoiceItem: line 154, column 1
+Class.EduTrack.InvoiceTriggerTest.testStatusChangeRecalculation: line 56, column 1]]></failure>
+        </testcase>
+    </testsuite>
+</testsuites>

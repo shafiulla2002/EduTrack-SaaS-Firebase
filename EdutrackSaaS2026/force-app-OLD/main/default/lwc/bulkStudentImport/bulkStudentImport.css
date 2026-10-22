@@ -1,0 +1,78 @@
+.import-step {
+    padding: 1rem;
+}
+
+.info-box {
+    background: #f0f7ff;
+    border-left: 4px solid #0070d2;
+    padding: 1rem;
+    border-radius: 4px;
+    color: #084481;
+}
+
+.upload-zone {
+    width: 100%;
+    max-width: 400px;
+    padding: 2rem;
+    border: 2px dashed #dddbda;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.upload-zone:hover {
+    border-color: #0070d2;
+    background: #f3f3f3;
+}
+
+.result-summary {
+    padding: 2rem;
+}
+
+.icon-success {
+    font-size: 3rem;
+}
+
+.icon-warning {
+    font-size: 3rem;
+}
+
+.error-log {
+    background: #fffafa;
+    border: 1px solid #ffcccc;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.error-log ul {
+    list-style: disc;
+    padding-left: 1.5rem;
+    color: #c23934;
+}
+
+.modal-close-button {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #f4f6f9;
+    border: none;
+    border-radius: 4px;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.modal-close-button:hover {
+    background: #e2e6ea;
+    transform: translateY(-50%) scale(1.1);
+}
+
+.slds-modal__header {
+    position: relative;
+    padding: 1.5rem !important;
+}

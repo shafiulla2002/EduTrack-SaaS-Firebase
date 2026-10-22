@@ -1,0 +1,748 @@
+<template>
+    <div class={mainContainerClass}>
+        <!-- Header Section -->
+        <div class="header-section">
+            <div class="title-group">
+                <div class="icon-box">
+                    <lightning-icon icon-name="standard:event" size="medium" variant="inverse"></lightning-icon>
+                </div>
+                <div class="title-text">
+                    <h1>Attendance Report</h1>
+                    <p>Track and analyze student attendance</p>
+                </div>
+            </div>
+            
+            <div class="controls-group">
+                <div class="view-selector">
+                    <button class={dailyBtnClass} onclick={handleViewChange} data-view="daily">Daily</button>
+                    <button class={weeklyBtnClass} onclick={handleViewChange} data-view="weekly">Weekly</button>
+                    <button class={monthlyBtnClass} onclick={handleViewChange} data-view="monthly">Monthly</button>
+                    <button class={yearlyBtnClass} onclick={handleViewChange} data-view="yearly">Yearly</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters Section -->
+        <div class="filters-section">
+            <template if:true={showGlobalFilters}>
+                <template if:true={showFilters}>
+                    <div class="search-section">
+                        <div class="search-box">
+                            <input 
+                                type="text" 
+                                placeholder="Search students..." 
+                                value={searchTerm}
+                                 oninput={handleSearch}
+                                autocomplete="off"
+                            />
+                            <span class="search-icon">🔍</span>
+                        </div>
+                    </div>
+
+                    <div class="filter-dropdowns">
+                        <div class="select-wrapper">
+                            <select onchange={handleClassChange} value={selectedClass}>
+                                <template for:each={classOptions} for:item="opt">
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div class="select-wrapper">
+                            <select onchange={handleSectionChange} value={selectedSection}>
+                                <template for:each={availableSections} for:item="opt">
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+
+                    <template if:true={hasActiveFilters}>
+                        <button class="clear-btn" onclick={handleClearFilters}>
+                            <lightning-icon icon-name="utility:close" size="x-small"></lightning-icon>
+                            Clear
+                        </button>
+                    </template>
+                </template>
+
+                <div class="date-controls">
+                    <button class="nav-btn" onclick={handlePrevious}>
+                        <lightning-icon icon-name="utility:chevronleft" size="small"></lightning-icon>
+                    </button>
+                    <div class="date-display">
+                        <span class="date-main">
+                            <template if:true={isDailyView}>{formattedDate}</template>
+                        </span>
+                    </div>
+                    <button class="nav-btn" onclick={handleNext}>
+                        <lightning-icon icon-name="utility:chevronright" size="small"></lightning-icon>
+                    </button>
+                </div>
+                
+                <div class="date-picker-wrapper">
+                    <lightning-icon icon-name="utility:event" size="medium" variant="brand"></lightning-icon>
+                    <input type="date" class="overlay-date-input" onchange={handleDateSelect} value={datePickerValue} />
+                </div>
+            </template>
+        </div>
+
+        <!-- content area -->
+        <div class="content-area">
+            <template if:true={showLoadingSpinner}>
+                <div class="spinner-container">
+                    <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+                </div>
+            </template>
+
+            <template if:true={showContent}>
+                
+                <!-- Daily View -->
+                <template if:true={isDailyView}>
+                    <div class="daily-view-container">
+                        <!-- Integrated Search and Date Navigation -->
+
+
+                        <!-- Overall Daily Summary Banner -->
+                        <template if:true={overallDailySummary}>
+                            <div class="overall-summary-banner">
+                                <div class="overall-stat">
+                                    <span class="overall-label">Active Date</span>
+                                    <span class="overall-value" style="font-size: 1.25rem;">{overallDailySummary.dateLabel}</span>
+                                </div>
+                                <div class="overall-stat">
+                                    <span class="overall-label">Total Students</span>
+                                    <span class="overall-value">{overallDailySummary.totalPotential}</span>
+                                </div>
+                                <div class="overall-stat">
+                                    <span class="overall-label">Present Overall</span>
+                                    <span class="overall-value" style="color: #16a34a;">{overallDailySummary.totalPresent}</span>
+                                </div>
+                                <div class="overall-stat">
+                                    <span class="overall-label">Absent Overall</span>
+                                    <span class="overall-value" style="color: #dc2626;">{overallDailySummary.totalAbsent}</span>
+                                </div>
+                                <div class="overall-rate-circle">
+                                    <span class="overall-label">Rate</span>
+                                    <span class="overall-rate-val">{overallDailySummary.rate}%</span>
+                                </div>
+                            </div>
+                        </template>
+
+                        <div class="daily-calendar-grid">
+                            <template for:each={classSectionSummary} for:item="summary">
+                                <div key={summary.key} class={summary.themeClass} onclick={handleCardClick} data-key={summary.key}>
+                                    <div class="card-header">
+                                        <h3 class="card-title">{summary.classValue} - Section {summary.section}</h3>
+                                        <div class="rate-sub-text">
+                                            <span class="rate-val-small">{summary.attendanceRate}% Attendance</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card-stats-body">
+                                        <div class="stat-box total">
+                                            <div class="s-val">{summary.totalCount}</div>
+                                            <div class="s-lbl">TOTAL</div>
+                                        </div>
+                                        <div class="stat-item green">
+                                            <span class="stat-val">{summary.presentDisplay}</span>
+                                            <span class="stat-lbl">PRESENT</span>
+                                        </div>
+                                        <div class="stat-box absent">
+                                            <div class="s-val">{summary.absentCount}</div>
+                                            <div class="s-lbl">ABSENT</div>
+
+                                            <!-- Step 3: Absentee Tooltip on Hover -->
+                                            <template if:true={summary.hasAbsentees}>
+                                                <div class="absentee-tooltip">
+                                                    <span class="tooltip-title">Absent Students</span>
+                                                    <div class="tooltip-list">
+                                                        <template for:each={summary.absentees} for:item="absentStudent">
+                                                            <div key={absentStudent.id} class="tooltip-item">
+                                                                {absentStudent.name}
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Redundant list removed: Information moved to card hover tooltips -->
+                    </div>
+                </template>
+
+                <!-- Analytics Views (Weekly, Monthly, Yearly) -->
+                <template if:false={isDailyView}>
+                    <div class="analytics-view-container">
+                        
+                        <div class="stats-section">
+                            <!-- Weekly View -->
+                            <template if:true={isWeeklyView}>
+                                 <div class="weekly-view-premium">
+                                     <div class="weekly-header-centered">
+                                         <h2>Weekly Class View</h2>
+
+                                         <div class="integrated-controls-premium" style="justify-content: center;">
+                                             <!-- Filter Group (Left) -->
+                                             <div class="daily-filters-premium">
+                                                 <!-- Class Dropdown -->
+                                                 <div class="premium-dropdown-container">
+                                                     <div class="dropdown-trigger-box" onclick={toggleClassNameDropdown}>
+                                                         <span class="trigger-value">{selectedClassLabel}</span>
+                                                         <span class="dropdown-icon">▼</span>
+                                                     </div>
+                                                     <template if:true={isClassDropdownOpen}>
+                                                         <div class="dropdown-list-portal">
+                                                             <div class="dropdown-list-content">
+                                                                 <template for:each={classOptions} for:item="opt">
+                                                                     <div key={opt.value} 
+                                                                         class="option-item" 
+                                                                         data-value={opt.value} 
+                                                                         onclick={handleSelectClass}>
+                                                                         {opt.label}
+                                                                     </div>
+                                                                 </template>
+                                                             </div>
+                                                         </div>
+                                                     </template>
+                                                 </div>
+
+                                                 <!-- Section Dropdown -->
+                                                 <div class="premium-dropdown-container">
+                                                     <div class="dropdown-trigger-box" onclick={toggleSectionDropdown}>
+                                                         <span class="trigger-value">{selectedSectionLabel}</span>
+                                                         <span class="dropdown-icon">▼</span>
+                                                     </div>
+                                                     <template if:true={isSectionDropdownOpen}>
+                                                         <div class="dropdown-list-portal">
+                                                             <div class="dropdown-list-content">
+                                                                 <template for:each={availableSections} for:item="opt">
+                                                                     <div key={opt.value} 
+                                                                         class="option-item" 
+                                                                         data-value={opt.value} 
+                                                                         onclick={handleSelectSection}>
+                                                                         {opt.label}
+                                                                     </div>
+                                                                 </template>
+                                                             </div>
+                                                         </div>
+                                                     </template>
+                                                 </div>
+                                             </div>
+
+                                             <!-- Date Pill (Middle) -->
+                                             <div class="date-nav-pill-premium">
+                                                 <button class="pill-nav-btn" onclick={handlePrevWeek}>
+                                                     <span>‹</span>
+                                                 </button>
+                                                 <span class="pill-date-text">{weekRangeText}</span>
+                                                 <button class="pill-nav-btn" onclick={handleNextWeek}>
+                                                     <span>›</span>
+                                                 </button>
+                                             </div>
+
+                                              <!-- Weekly Rate Badge (Right) -->
+                                              <div class="rate-badge-premium">
+                                                  <span class="rate-label">WEEKLY RATE</span>
+                                                  <span class="rate-value">{weeklyViewData.attendanceRate}%</span>
+                                              </div>
+                                         </div>
+
+                                         <div class="weekly-stats-centered">
+                                             <p class="summary-text-purple">SHOWING: {weeklyViewData.totalStudents} STUDENTS FROM {weeklyViewData.selectedClassLabel}</p>
+                                         </div>
+                                     </div>
+
+                                    <div class="weekly-grid-6">
+                                        <template for:each={weeklyViewData.weekDays} for:item="day">
+                                            <div key={day.dayKey} class={day.cardClass}>
+                                                <div class="wd-header">
+                                                    <span class="wd-name">{day.dayName}</span>
+                                                    <span class="wd-num">{day.dayNum}</span>
+                                                </div>
+                                                
+                                                <template if:false={day.isHoliday}>
+                                                    <div class="wd-rate">{day.rate}%</div>
+                                                    <div class="wd-stats-mini">
+                                                        <div class="wd-stat-row">
+                                                            <span class="wd-label p">P:</span>
+                                                            <span class="wd-value">{day.presentCount}</span>
+                                                        </div>
+                                                        <div class="wd-stat-row">
+                                                            <span class="wd-label a">A:</span>
+                                                            <span class="wd-value">{day.absentCount}</span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+
+                                                <template if:true={day.isHoliday}>
+                                                    <div class="holiday-badge">{day.holidayLabel}</div>
+                                                    <div class="holiday-note">No Session</div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+
+
+                                </div>
+                            </template>
+
+                            <!-- Monthly View -->
+                            <template if:true={isMonthlyView}>
+                                <div class="monthly-view-premium">
+                                    <!-- Monthly Toolbar (Integrated) -->
+                                    <div class="integrated-controls-premium">
+                                        <!-- Integrated Search -->
+                                        <div class="search-box-premium monthly-search">
+                                            <span class="search-icon">🔍</span>
+                                            <input type="text" placeholder="Search student..." 
+                                                   class="search-input" oninput={handleSearch} value={searchTerm}>
+                                            
+                                            <template if:true={showMonthlySearchDropdown}>
+                                                <div class="search-dropdown-list">
+                                                    <template for:each={filteredStudents} for:item="student">
+                                                        <div key={student.id} 
+                                                             class="search-result-item" 
+                                                             data-id={student.id} 
+                                                             onclick={handleSelectMonthlyStudent}>
+                                                            <div class="result-avatar">{student.initial}</div>
+                                                            <div class="result-info">
+                                                                <span class="r-name">{student.name}</span>
+                                                                <span class="r-meta">{student.className}-{student.section}</span>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                    <template if:false={hasSearchResults}>
+                                                        <div class="no-results-item">No students found</div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <!-- Class Selection -->
+                                        <div class="premium-dropdown-container">
+                                            <div class="dropdown-trigger-box" onclick={toggleClassNameDropdown}>
+                                                <span class="trigger-value">{selectedClassLabel}</span>
+                                                <span class="dropdown-icon">▼</span>
+                                            </div>
+                                            <template if:true={isClassDropdownOpen}>
+                                                <div class="dropdown-list-portal">
+                                                    <div class="dropdown-list-content">
+                                                        <template for:each={classOptions} for:item="opt">
+                                                            <div key={opt.value} 
+                                                                 class="option-item" 
+                                                                 data-value={opt.value} 
+                                                                 onclick={handleSelectClass}>
+                                                                {opt.label}
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <!-- Section Selection -->
+                                        <div class="premium-dropdown-container">
+                                            <div class="dropdown-trigger-box" onclick={toggleSectionDropdown}>
+                                                <span class="trigger-value">{selectedSectionLabel}</span>
+                                                <span class="dropdown-icon">▼</span>
+                                            </div>
+                                            <template if:true={isSectionDropdownOpen}>
+                                                <div class="dropdown-list-portal">
+                                                    <div class="dropdown-list-content">
+                                                        <template for:each={availableSections} for:item="opt">
+                                                            <div key={opt.value} 
+                                                                 class="option-item" 
+                                                                 data-value={opt.value} 
+                                                                 onclick={handleSelectSection}>
+                                                                {opt.label}
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <!-- Monthly Date Pill -->
+                                        <div class="date-nav-pill-premium">
+                                            <button class="nav-arrow left" onclick={handlePrevious} title="Previous Month">
+                                                <lightning-icon icon-name="utility:chevronleft" size="xx-small"></lightning-icon>
+                                            </button>
+                                            <div class="date-range-display">
+                                                <span class="range-text">{formattedMonth}</span>
+                                            </div>
+                                            <button class="nav-arrow right" onclick={handleNext} title="Next Month">
+                                                <lightning-icon icon-name="utility:chevronright" size="xx-small"></lightning-icon>
+                                            </button>
+                                        </div>
+
+                                        <!-- Overall Monthly Rate Badge -->
+                                        <div class="rate-badge-premium">
+                                            <span class="rate-label">MONTHLY RATE</span>
+                                            <span class="rate-value">{monthlyViewData.attendanceRate}%</span>
+                                        </div>
+                                    </div>
+
+                                     <div class="weekly-header-centered">
+                                         <h2>Monthly Attendance Overview</h2>
+                                         
+                                         <template if:false={monthlyViewData.isSearching}>
+                                             <div class="monthly-stats-badges">
+                                                 <div class="stat-badge-premium working">
+                                                     <span class="b-val">{monthlyViewData.workingDays}</span>
+                                                     <span class="b-lbl">WORKING DAYS</span>
+                                                 </div>
+                                                 <div class="stat-badge-premium present">
+                                                     <span class="b-val">{monthlyViewData.present}</span>
+                                                     <span class="b-lbl">PRESENT</span>
+                                                 </div>
+                                                 <div class="stat-badge-premium absent">
+                                                     <span class="b-val">{monthlyViewData.absent}</span>
+                                                     <span class="b-lbl">ABSENT</span>
+                                                 </div>
+                                             </div>
+                                         </template>
+
+                                         <template if:true={monthlyViewData.isSearching}>
+                                             <template if:true={monthlyViewData.searchedStudent}>
+                                                 <div class="search-summary-card-monthly">
+                                                     <div class="summary-left">
+                                                         <div class="student-avatar-big">{monthlyViewData.searchedStudent.initial}</div>
+                                                         <div class="student-meta">
+                                                             <span class="s-name">{monthlyViewData.searchedStudent.name}</span>
+                                                             <div class="student-stats-col">
+                                                                 <span class="s-info-row">Roll No: {monthlyViewData.searchedStudent.rollNo}</span>
+                                                                  <span class="s-info-row">Class {monthlyViewData.searchedStudent.className} • Section {monthlyViewData.searchedStudent.section}</span>
+                                                                 <div class="mini-meta-badges">
+                                                                     <span class="m-badge p">P. {monthlyViewData.studentPresentCount}</span>
+                                                                     <span class="divider">||</span>
+                                                                     <span class="m-badge a">A. {monthlyViewData.studentAbsentCount}</span>
+                                                                 </div>
+                                                             </div>
+                                                         </div>
+                                                     </div>
+                                                     <div class="summary-right">
+                                                         <div class="rate-circle-premium">
+                                                             <span class="r-val">{monthlyViewData.attendanceRate}%</span>
+                                                             <span class="r-lbl">MONTHLY RATE</span>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             </template>
+                                             <template if:false={monthlyViewData.hasResults}>
+                                                 <div class="no-results-box-premium">
+                                                     <lightning-icon icon-name="utility:search" size="large"></lightning-icon>
+                                                     <p>No students found matching "<strong>{searchTerm}</strong>"</p>
+                                                 </div>
+                                             </template>
+                                         </template>
+                                     </div>
+
+                                    <div class="calendar-grid">
+                                        <div class="week-days-header">
+                                            <span class="day-sun">Sun</span><span class="day-mon">Mon</span><span class="day-tue">Tue</span><span class="day-wed">Wed</span><span class="day-thu">Thu</span><span class="day-fri">Fri</span><span class="day-sat">Sat</span>
+                                        </div>
+                                        <div class="calendar-body">
+                                            <template for:each={monthlyViewData.allDays} for:item="day">
+                                                <template if:true={day.empty}>
+                                                    <div key={day.key} class="day-cell empty"></div>
+                                                </template>
+                                                <template if:false={day.empty}>
+                                                    <div key={day.key} class={day.cellClass}>
+                                                        <div class="cell-stack">
+                                                            <span class="day-number">{day.day}</span>
+                                                            <div class="day-rate-badge">{day.rate}%</div>
+                                                        </div>
+                                                        <template if:true={day.isAbsent}>
+                                                            <div class="absent-marker-premium">ABSENT</div>
+                                                        </template>
+                                                        <template if:true={day.isPresent}>
+                                                            <div class="present-marker-premium">PRESENT</div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Yearly View -->
+                            <!-- Yearly View -->
+                            <template if:true={isYearlyView}>
+                                <div class="yearly-view-mode">
+                                    <div class="integrated-controls">
+                                        <!-- Search Box -->
+                                        <div class="search-box-compact">
+                                            <lightning-icon icon-name="utility:search" size="x-small" class="search-icon-compact"></lightning-icon>
+                                            <input type="text" 
+                                                placeholder="Search student..." 
+                                                value={searchTerm}
+                                                oninput={handleSearch} />
+                                            
+                                            <template if:true={showYearlySearchDropdown}>
+                                                <div class="search-dropdown-list">
+                                                    <template for:each={filteredStudents} for:item="student">
+                                                        <div key={student.id} 
+                                                             class="search-result-item" 
+                                                             data-id={student.id} 
+                                                             onclick={handleSelectYearlyStudent}>
+                                                            <div class="result-avatar">{student.initial}</div>
+                                                            <div class="result-info">
+                                                                <span class="r-name">{student.name}</span>
+                                                                <span class="r-meta">{student.className}-{student.section}</span>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                    <template if:false={hasSearchResults}>
+                                                        <div class="no-results-item">No students found</div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <!-- Class Selection -->
+                                        <div class="premium-dropdown-container">
+                                            <div class="dropdown-trigger-box" onclick={toggleClassNameDropdown}>
+                                                <span class="trigger-value">{selectedClassLabel}</span>
+                                                <span class="dropdown-icon">▼</span>
+                                            </div>
+                                            <template if:true={isClassDropdownOpen}>
+                                                <div class="dropdown-list-portal">
+                                                    <div class="dropdown-list-content">
+                                                        <template for:each={classOptions} for:item="opt">
+                                                            <div key={opt.value} 
+                                                                 class="option-item" 
+                                                                 data-value={opt.value} 
+                                                                 onclick={handleSelectClass}>
+                                                                {opt.label}
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <!-- Section Selection -->
+                                        <div class="premium-dropdown-container">
+                                            <div class="dropdown-trigger-box" onclick={toggleSectionDropdown}>
+                                                <span class="trigger-value">{selectedSectionLabel}</span>
+                                                <span class="dropdown-icon">▼</span>
+                                            </div>
+                                            <template if:true={isSectionDropdownOpen}>
+                                                <div class="dropdown-list-portal">
+                                                    <div class="dropdown-list-content">
+                                                        <template for:each={availableSections} for:item="opt">
+                                                            <div key={opt.value} 
+                                                                 class="option-item" 
+                                                                 data-value={opt.value} 
+                                                                 onclick={handleSelectSection}>
+                                                                {opt.label}
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <!-- Yearly Date Pill & Rate Badge -->
+                                        <div class="date-nav-pill-premium">
+                                            <button class="nav-arrow left" onclick={handlePrevYear} title="Previous Year">
+                                                <lightning-icon icon-name="utility:chevronleft" size="xx-small"></lightning-icon>
+                                            </button>
+                                            <div class="date-range-display">
+                                                <span class="range-text">{yearlyViewData.year}</span>
+                                            </div>
+                                            <button class="nav-arrow right" onclick={handleNextYear} title="Next Year">
+                                                <lightning-icon icon-name="utility:chevronright" size="xx-small"></lightning-icon>
+                                            </button>
+                                        </div>
+
+                                        <!-- Moved Yearly Rate Badge here for visibility -->
+                                        <div class="rate-badge-premium yearly-rate-compact">
+                                            <span class="rate-label">YEARLY RATE</span>
+                                            <span class="rate-value">{yearlyViewData.attendanceRate}%</span>
+                                        </div>
+                                    </div>
+
+                                     <!-- Yearly Stats / Student Summary -->
+                                         <div class="weekly-header-centered">
+                                             <h2>Yearly Attendance Overview</h2>
+                                             
+                                             <!-- Generic Yearly Overview (Global Stats) - Hidden on Search -->
+                                             <template if:false={yearlyViewData.isSearching}>
+                                                 <div class="monthly-stats-badges">
+                                                     <div class="stat-badge-premium working">
+                                                         <span class="b-val">{yearlyViewData.workingDays}</span>
+                                                         <span class="b-lbl">WORKING DAYS</span>
+                                                     </div>
+                                                     <div class="stat-badge-premium present">
+                                                         <span class="b-val">{yearlyViewData.present}</span>
+                                                         <span class="b-lbl">PRESENT</span>
+                                                     </div>
+                                                     <div class="stat-badge-premium absent">
+                                                         <span class="b-val">{yearlyViewData.absent}</span>
+                                                         <span class="b-lbl">ABSENT</span>
+                                                     </div>
+                                                 </div>
+                                             </template>
+
+                                             <!-- Student Specific Search Result - Inside the Bordered Card -->
+                                             <template if:true={yearlyViewData.isSearching}>
+                                                 <template if:true={yearlyViewData.searchedStudent}>
+                                                     <div class="search-summary-card-monthly">
+                                                         <div class="summary-left">
+                                                             <div class="student-avatar-big">{yearlyViewData.searchedStudent.initial}</div>
+                                                             <div class="student-meta">
+                                                                 <span class="s-name">{yearlyViewData.searchedStudent.name}</span>
+                                                                 <div class="student-stats-col">
+                                                                     <span class="s-info-row">Roll No: {yearlyViewData.searchedStudent.rollNo}</span>
+                                                                     <span class="s-info-row">Class {yearlyViewData.searchedStudent.className} • Section {yearlyViewData.searchedStudent.section}</span>
+                                                                     <div class="mini-meta-badges">
+                                                                         <span class="m-badge p">P. {yearlyViewData.studentPresentCount}</span>
+                                                                         <span class="divider">||</span>
+                                                                         <span class="m-badge a">A. {yearlyViewData.studentAbsentCount}</span>
+                                                                     </div>
+                                                                 </div>
+                                                             </div>
+                                                         </div>
+                                                         <div class="summary-right">
+                                                             <div class="rate-circle-premium">
+                                                                 <span class="r-val">{yearlyViewData.attendanceRate}%</span>
+                                                                 <span class="r-lbl">YEARLY RATE</span>
+                                                             </div>
+                                                         </div>
+                                                     </div>
+                                                 </template>
+                                                 <template if:false={yearlyViewData.hasResults}>
+                                                     <div class="no-results-box-premium">
+                                                         <lightning-icon icon-name="utility:search" size="large"></lightning-icon>
+                                                         <p>No students found matching "<strong>{searchTerm}</strong>"</p>
+                                                     </div>
+                                                 </template>
+                                             </template>
+                                         </div>
+                                     
+
+                                    <div class="yearly-grid">
+                                        <template for:each={yearlyViewData.months} for:item="month">
+                                            <div key={month.monthName} class={month.cardClass}>
+                                                <h3>{month.monthName}</h3>
+                                                <div class="month-stats">
+                                                    <div class="m-stat">
+                                                        <span>Pres</span>
+                                                        <strong>{month.present}</strong>
+                                                    </div>
+                                                    <div class="m-stat">
+                                                        <span>Abs</span>
+                                                        <strong>{month.absent}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class={month.rateClass}>{month.rate}%</div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+            </template>
+        </div>
+
+        <!-- Student Detail Modal (Universal) -->
+        <template if:true={showStudentModal}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={handleCloseModal}>
+                            <lightning-icon icon-name="utility:close" variant="inverse" size="small"></lightning-icon>
+                        </button>
+                        <h2 class="slds-text-heading_medium slds-hyphenate">Attendance Details</h2>
+                    </header>
+                    
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <template if:true={selectedStudent}>
+                            <div class="student-detail-card-modal">
+                                <!-- Date Navigation Row -->
+                                <div class="modal-nav-container">
+                                    <button class="nav-btn-round" title="Previous Date" onclick={handlePrevious}>
+                                        <lightning-icon icon-name="utility:chevronleft" size="small"></lightning-icon>
+                                    </button>
+                                    <div class="modal-date-display">
+                                        <span class="day-text">{formattedDate}</span>
+                                    </div>
+                                    <button class="nav-btn-round" title="Next Date" onclick={handleNext}>
+                                        <lightning-icon icon-name="utility:chevronright" size="small"></lightning-icon>
+                                    </button>
+                                </div>
+
+                                <div class="card-header">
+                                    <div class="student-avatar-large">{selectedStudentInitial}</div>
+                                    <div class="student-details-main">
+                                        <h2>{selectedStudent.name}</h2>
+                                        <p>Roll No: {selectedStudent.rollNo} | {selectedStudent.className} - {selectedStudent.section}</p>
+                                    </div>
+                                </div>
+
+                                <!-- Current Status (Daily) -->
+                                <div class="main-status-hero">
+                                    <div class="hero-icon">
+                                        <span class="emoji-large">{dailyViewData.statusIcon}</span>
+                                    </div>
+                                    <h1 class={dailyViewData.statusTextClass}>{dailyViewData.status}</h1>
+                                </div>
+
+                                <!-- Checkbox-style Stats Row -->
+                                <div class="checkbox-stats-container">
+                                    <!-- Present Checkbox Card -->
+                                    <div class={presentCardClass}>
+                                        <div class="checkbox-indicator">
+                                            <template if:true={dailyViewData.isPresent}>
+                                                <lightning-icon icon-name="utility:check" size="xx-small" variant="inverse"></lightning-icon>
+                                            </template>
+                                        </div>
+                                        <div class="checkbox-stats-info">
+                                            <span class="cb-value">{dailyViewData.present}</span>
+                                            <span class="cb-label">Present Today</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Absent Checkbox Card -->
+                                    <div class={absentCardClass}>
+                                        <div class="checkbox-indicator">
+                                            <template if:true={dailyViewData.isAbsent}>
+                                                <lightning-icon icon-name="utility:check" size="xx-small" variant="inverse"></lightning-icon>
+                                            </template>
+                                        </div>
+                                        <div class="checkbox-stats-info">
+                                            <span class="cb-value">{dailyViewData.absent}</span>
+                                            <span class="cb-label">Absent Today</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Holiday Checkbox Card -->
+                                    <div class={holidayCardClass}>
+                                        <div class="checkbox-indicator">
+                                            <template if:true={dailyViewData.isHoliday}>
+                                                <lightning-icon icon-name="utility:check" size="xx-small" variant="inverse"></lightning-icon>
+                                            </template>
+                                        </div>
+                                        <div class="checkbox-stats-info">
+                                            <span class="cb-value">{dailyViewData.holiday}</span>
+                                            <span class="cb-label">Holiday</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+    </div>
+</template>

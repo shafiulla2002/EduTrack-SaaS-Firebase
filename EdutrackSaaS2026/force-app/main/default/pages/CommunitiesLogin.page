@@ -1,0 +1,10 @@
+<apex:page id="loginPage" controller="CommunitiesLoginController" title="{!$Label.site.site_login}">
+    <apex:form >
+        <apex:actionFunction name="forwardToAuthPage" action="{!forwardToAuthPage}" />
+    </apex:form>
+    <script>
+        window.onload = function() {
+            forwardToAuthPage();
+        };
+    </script>
+</apex:page>

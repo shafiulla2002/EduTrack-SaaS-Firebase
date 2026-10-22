@@ -1,0 +1,576 @@
+<template>
+    <div class="student-container animate-in">
+
+        <!-- ================= PAGE 1: STUDENT DIRECTORY (Unified Search + List) ================= -->
+        <template lwc:if={isListView}>
+            <div class="directory-header">
+                <h1 class="directory-title">👥 Student Directory</h1>
+                <p class="directory-subtitle">View and search students across all classes and sessions.</p>
+
+                <!-- BIG SEARCH BAR -->
+                <div class="search-bar-wrap directory-search">
+                    <span class="ico">🔍</span>
+                    <input type="text" placeholder="Search by Name / ID / Phone (3+ chars)…" value={searchTerm}
+                        oninput={handleSearchInput}>
+                    <button class="search-btn" onclick={handleSearch}>Search</button>
+                </div>
+
+                <!-- FILTERS (V3: Perfect Alignment) -->
+                <div class="filters-wrap directory-filters">
+                    <div class="filter-card">
+                        <div class="filter-group">
+                            <span class="filter-label">Academic Year</span>
+                            <select class="fsel" onchange={handleFilterChange} data-name="academicYear">
+                                <option value="">All Academic Years</option>
+                                <template for:each={academicYearOptions} for:item="opt">
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="filter-sep"></div>
+
+                        <div class="filter-group">
+                            <span class="filter-label">Class</span>
+                            <select class="fsel" onchange={handleFilterChange} data-name="className">
+                                <option value="">All Classes</option>
+                                <template for:each={classOptions} for:item="opt">
+                                    <option key={opt} value={opt}>{opt}</option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="filter-sep"></div>
+
+                        <div class="filter-group">
+                            <span class="filter-label">Section</span>
+                            <select class="fsel" onchange={handleFilterChange} data-name="sectionName">
+                                <option value="">All Sections</option>
+                                <option value="A">Section A</option>
+                                <option value="B">Section B</option>
+                                <option value="C">Section C</option>
+                                <option value="D">Section D</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="result-count-pill">{students.length} students found</div>
+                </div>
+            </div>
+
+            <!-- GRID (V3: Professional List) -->
+            <div class="student-grid mt-20 list-view">
+                <div class="student-list-container">
+                    <!-- Column Headers -->
+                    <div class="list-header-row">
+                        <div class="lh-col lh-avatar-spacer"></div>
+                        <div class="lh-col lh-name">Name</div>
+                        <div class="lh-col lh-class">Class</div>
+                        <div class="lh-col lh-section">Section</div>
+                        <div class="lh-col lh-contact">Contact</div>
+                        <div class="lh-col lh-action"></div>
+                    </div>
+
+                    <div class="list-body-scroll">
+                        <template lwc:if={isLoading}>
+                            <div class="loading-state">
+                                <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+                            </div>
+                        </template>
+                        <template lwc:else>
+                            <template lwc:if={students.length}>
+                                <template for:each={students} for:item="student">
+                                    <div key={student.id} class="scard list-card" onclick={handleViewDetails}
+                                        data-id={student.id}>
+                                        <div class="scard-left">
+                                            <div class={student.gradientClass}>{student.avatar}</div>
+                                        </div>
+                                        <div class="scard-col scard-col-name">
+                                            <h3 class="scard-name">{student.name}</h3>
+                                        </div>
+                                        <div class="scard-col scard-col-class">
+                                            <span class="stag stag-cls">{student.className}</span>
+                                        </div>
+                                        <div class="scard-col scard-col-section">
+                                            <span class="stag stag-sec">{student.section}</span>
+                                        </div>
+                                        <div class="scard-col scard-col-contact">
+                                            <span class="meta-item">{student.phone}</span>
+                                        </div>
+                                        <div class="scard-right">
+                                            <div class="chevron">›</div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </template>
+                            <template lwc:else>
+                                <div class="empty-state">
+                                    <div class="empty-icon">👥</div>
+                                    <h3>No Students Found</h3>
+                                    <p>Try adjusting your search criteria or filters</p>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+
+        <!-- ================= PAGE 2: DETAIL VIEW ================= -->
+        <template lwc:if={isDetailView}>
+            <div class="detail-page-body animate-slide-up">
+
+                <!-- Profile Banner -->
+                <div class="profile-banner">
+                    <div class="banner-content">
+                        <div class="pav">{student.avatar}</div>
+                        <div class="pinfo">
+                            <h2>{student.Name}</h2>
+                            <p>{studentSubtitle}</p>
+                        </div>
+                    </div>
+                    <button class="banner-back-btn" onclick={handleBack}>← Back to List</button>
+                </div>
+
+                <!-- DETAIL CARDS GRID -->
+                <div class="detail-grid">
+                    <!-- 1. ADDRESS -->
+                    <div class="dc">
+                        <div class="dc-hd">
+                            <div class="dc-ico i-addr">🏠</div>
+                            <h3>Address Information</h3>
+                        </div>
+                        <div class="ig ig-3">
+                            <div class="ii"><label>Father's Name</label>
+                                <p>{student.Father_Name__c}</p>
+                            </div>
+                            <div class="ii"><label>Mother's Name</label>
+                                <p>{student.Mother_Name__c}</p>
+                            </div>
+                            <div class="ii"><label>Date of Birth</label>
+                                <p>{student.PersonBirthdate}</p>
+                            </div>
+                            <div class="ii"><label>Mobile Number</label>
+                                <p>{student.PersonMobilePhone}</p>
+                            </div>
+                            <div class="ii"><label>Email Address</label>
+                                <p>{student.PersonEmail}</p>
+                            </div>
+                            <div class="ii"><label>Nationality</label>
+                                <p>Indian</p>
+                            </div>
+                            <div class="ii ig-full"><label>Permanent Address</label>
+                                <p>{address.street}, {address.cityState}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. ATTENDANCE -->
+                    <div class="dc">
+                        <div class="dc-hd">
+                            <div class="dc-ico i-att">📅</div>
+                            <h3>Attendance Report</h3>
+                            <span class="badge">{selectedDetailAcademicYearName}</span>
+                        </div>
+                        <div class="att-stats">
+                            <div class="astat as1">
+                                <span class="v v1">{attendanceStats.workingDays}</span><span class="l">Working
+                                    Days</span>
+                            </div>
+                            <div class="astat as2">
+                                <span class="v v2">{attendanceStats.present}</span><span class="l">Days
+                                    Present</span>
+                            </div>
+                            <div class="astat as3">
+                                <span class="v v3">{attendanceStats.absent}</span><span class="l">Days Absent</span>
+                            </div>
+                            <div class="astat as4">
+                                <span class="v v4">{attendanceStats.percent}</span><span class="l">Attendance
+                                    %</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. FEE INFORMATION (Full Width) -->
+                    <div class="dc full">
+                        <div class="dc-hd">
+                            <div class="dc-ico i-inv">💰</div>
+                            <h3>Fee Information Summary</h3>
+                            <span class="badge">Financial Status</span>
+                        </div>
+                        <div class="att-stats ig-4">
+                            <div class="astat as1">
+                                <span class="v v1">{feeSummary.allocated}</span><span class="l">Allocated
+                                    Amount</span>
+                            </div>
+                            <div class="astat as2">
+                                <span class="v v2">{feeSummary.paid}</span><span class="l">Total Paid</span>
+                            </div>
+                            <div class="astat as3">
+                                <span class="v v3">{feeSummary.pending}</span><span class="l">Pending Balance</span>
+                            </div>
+                            <div class="astat as4">
+                                <span class="v v4">{feeSummary.discount}</span><span class="l">Discount Given</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. ACADEMIC DETAILS (Full Width) -->
+                    <div class="dc full">
+                        <div class="dc-hd">
+                            <div class="dc-ico i-opp">📦</div>
+                            <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                                <h3>Current Academic Year Fees</h3>
+                                <template lwc:if={academicTotals.hasDiscount}>
+                                    <span class="discount-pill">
+                                        ✨ {academicTotals.percentLabel}
+                                    </span>
+                                </template>
+                            </div>
+                            <div class="hdr-actions">
+                                <div class="discount-input-group">
+                                    <span class="discount-label">Disc %</span>
+                                    <input type="number" class="discount-input" placeholder="0" min="0" max="100"
+                                        value={tempDiscount} oninput={handleDiscountInput}
+                                        disabled={isDiscountDisabled}>
+                                    <button class="btn-mini-action" onclick={handleApplyDiscount}
+                                        disabled={isDiscountDisabled}>
+                                        Save
+                                    </button>
+                                </div>
+                                <select class="hdr-select" onchange={handleDetailYearChange}>
+                                    <template for:each={detailAcademicYearOptions} for:item="opt">
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Previous Year Dues (Separate Section) - Only show if > 0 -->
+                        <template lwc:if={academicTotals.previousDuesRaw}>
+                            <div class="dues-summary-banner">
+                                <div class="dues-info">
+                                    <span class="dues-lbl">Previous Year Dues / Balance Received</span>
+                                    <span class="dues-val">{academicTotals.previousDues}</span>
+                                </div>
+                                <div class="dues-context">
+                                    <span class="dues-icon">ℹ️</span>
+                                    <span>This amount is a one-time carry-forward and is not eligible for current batch
+                                        discounts.</span>
+                                </div>
+                            </div>
+                        </template>
+
+                        <div class="tw">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Product / Fee Item</th>
+                                        <th class="tr">Unit Price</th>
+                                        <th class="tr">Total Amount</th>
+                                        <th class="tr">Discount Amt</th>
+                                        <th class="tr">Net Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={productList} for:item="prod">
+                                        <tr key={prod.id}>
+                                            <td>{prod.name}</td>
+                                            <td class="tr">{prod.price}</td>
+                                            <td class="tr">{prod.grossTotal}</td>
+                                            <td class="tr">
+                                                <div
+                                                    style="display: flex; align-items: center; gap: 6px; justify-content: flex-end;">
+                                                    <span>{prod.discountAmount}</span>
+                                                </div>
+                                            </td>
+                                            <td class="tr"><strong>{prod.total}</strong></td>
+                                        </tr>
+                                    </template>
+
+                                    <!-- Subtotal Row -->
+                                    <tr class="subtotal-row">
+                                        <td><strong>Total Current Academic Session Fee (Before Discount)</strong></td>
+                                        <td colspan="3"></td>
+                                        <td class="tr"><strong>{academicTotals.currentYearGross}</strong></td>
+                                    </tr>
+
+                                    <!-- Discount Row (Conditional) -->
+                                    <template lwc:if={academicTotals.hasDiscount}>
+                                        <tr class="discount-display-row">
+                                            <td><span style="color: #6366f1;">Batch Discount Applied (-)</span></td>
+                                            <td colspan="3"></td>
+                                            <td class="tr" style="color: #6366f1;">({academicTotals.totalDiscount})</td>
+                                        </tr>
+                                    </template>
+
+                                    <!-- Previous Dues Row (Conditional) -->
+                                    <template lwc:if={academicTotals.previousDuesRaw}>
+                                        <tr class="dues-display-row">
+                                            <td><span style="color: #f59e0b;">Previous Year Dues (+)</span></td>
+                                            <td colspan="3"></td>
+                                            <td class="tr" style="color: #f59e0b;">{academicTotals.previousDues}</td>
+                                        </tr>
+                                    </template>
+
+                                    <!-- Grand Total Row -->
+                                    <tr class="total-row">
+                                        <td><strong>Final Payable Amount</strong></td>
+                                        <td colspan="3"></td>
+                                        <td class="tr"><strong
+                                                style="color: #22c55e; font-size: 1.2em;">{academicTotals.finalPayable}</strong>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="financial-summary-footer">
+                            <div class="f-row final">
+                                <span class="f-lbl">Final Payable Amount</span>
+                                <span class="f-val highlight-green">{academicTotals.finalPayable}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. INVOICE DETAILS (Full Width) -->
+                    <div class="dc full">
+                        <div class="dc-hd">
+                            <div class="dc-ico i-inv">🧾</div>
+                            <h3>Invoice Details</h3>
+                            <span class="badge">{invoiceList.length} Transactions</span>
+                        </div>
+                        <div class="tw">
+                            <table class="inv-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Invoice #</th>
+                                        <th>Payment Mode</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th class="tr">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={invoiceList} for:item="inv">
+                                        <!-- Main row — click row to expand/collapse -->
+                                        <tr key={inv.id} class="inv-main-row" data-id={inv.id}
+                                            onclick={handleToggleInvoice}>
+                                            <td>{inv.date}</td>
+                                            <td>
+                                                <button class="inv-link" data-id={inv.id} onclick={handleInvoiceClick}>
+                                                    {inv.number}
+                                                </button>
+                                            </td>
+                                            <td>{inv.mode}</td>
+                                            <td><strong>{inv.amount}</strong></td>
+                                            <td><span class={inv.statusClass}>{inv.status}</span></td>
+                                            <td class="tr">
+                                                <button class="btn-edit-action" data-id={inv.id}
+                                                    onclick={handleEditInvoice}>
+                                                    ✏️ Edit
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        <!-- Redesigned Expanded View -->
+                                        <template lwc:if={inv.isExpanded}>
+                                            <tr key={inv.id} class="inv-items-row">
+                                                <td colspan="5">
+                                                    <div class="inv-items-container">
+                                                        <template for:each={inv.items} for:item="item">
+                                                            <div key={item.name} class="inv-item-line">
+                                                                <span class="item-name">{item.name}</span>
+                                                                <span class="item-amt">{item.amount}</span>
+                                                            </div>
+                                                        </template>
+                                                        <template lwc:if={inv.itemCount}>
+                                                            <div class="inv-items-footer">
+                                                                <span>Total Items: {inv.itemCount}</span>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 6. PROGRESS CARD (Left) -->
+                    <div class="dc">
+                        <div class="dc-hd">
+                            <div class="dc-ico i-perf">🛡️</div>
+                            <h3>Progress Card</h3>
+                        </div>
+                        <div class="progress-section">
+                            <div class="ii"><label>OVERALL PERFORMANCE</label></div>
+                            <div class="progress-info">
+                                <span class="grade-badge">{academicProgress.grade}</span>
+                                <div class="progress-details">
+                                    <div class="progress-val-container">
+                                        <span class="progress-val">{academicProgress.overallAverage}%</span>
+                                        <span class="progress-val-label">OVERALL AVERAGE</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="summary-box">
+                                <p>{academicProgress.summary}</p>
+                            </div>
+
+                            <div class="ii" style="margin-top:20px">
+                                <div class="label-row">
+                                    <label>YEAR COMPLETION</label>
+                                    <span class="percent-val">65%</span>
+                                </div>
+                            </div>
+                            <div class="progress-container thin">
+                                <div class="progress-bar purple" style="width:65%;"></div>
+                            </div>
+                            <p style="font-size:11px; color:#94a3b8; margin-top:5px;">65% of academic syllabus
+                                covered
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- 7. PERFORMANCE REPORT -->
+                    <div class="dc">
+                        <div class="dc-hd">
+                            <div class="dc-ico i-perf">📊</div>
+                            <h3>Performance Report</h3>
+                        </div>
+
+                        <!-- Exam Category Tabs -->
+                        <div class="perf-tabs">
+                            <template for:each={examTabs} for:item="tab">
+                                <button key={tab.value} class={tab.activeClass} data-id={tab.value}
+                                    onclick={handleExamTabChange}>
+                                    <span class="tab-label">{tab.label}</span>
+                                    <span if:true={tab.count} class="tab-badge">{tab.count}</span>
+                                </button>
+                            </template>
+                        </div>
+
+                        <div class="perf-content">
+                            <!-- Empty State -->
+                            <template if:false={examList.length}>
+                                <div class="perf-empty-state">
+                                    <span class="empty-ico">📄</span>
+                                    <h4>No {selectedExamTab} records found</h4>
+                                    <p>No records available in this category.</p>
+                                </div>
+                            </template>
+
+                            <!-- Exam Cards -->
+                            <template for:each={examList} for:item="exam">
+                                <div key={exam.id} class="perf-group">
+                                    <div class="perf-main-row has-toggle" onclick={handleToggleExam} data-id={exam.id}>
+                                        <div class="perf-icon">📘</div>
+                                        <div class="perf-info">
+                                            <h4>{exam.name}</h4>
+                                            <p>{exam.type}</p>
+                                        </div>
+                                        <div class="perf-score-val">{exam.score}</div>
+                                        <div class={exam.chevronClass}>⌄</div>
+                                    </div>
+
+                                    <template lwc:if={exam.isExpanded}>
+                                        <div class="perf-exp-content animate-slide-up">
+                                            <!-- Subject breakdown grid -->
+                                            <div class="perf-subjects-grid">
+                                                <template for:each={exam.subjects} for:item="subj">
+                                                    <div key={subj.name} class="perf-sub-cell">
+                                                        <span class="sub-name">{subj.name}</span>
+                                                        <span class="sub-score">{subj.score}/{subj.max}</span>
+                                                    </div>
+                                                </template>
+                                            </div>
+
+                                            <!-- Total Marks Summary -->
+                                            <div class="perf-footer">
+                                                <div class="perf-total-row">
+                                                    <span class="total-label">TOTAL MARKS</span>
+                                                    <span class="total-val">{exam.totalObtained} /
+                                                        {exam.totalMax}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- 8. STUDENT BEHAVIOUR (Full Width) -->
+                    <div class="dc full">
+                        <div class="dc-hd">
+                            <div class="dc-ico i-beh">🛡️</div>
+                            <h3>Student Behaviour</h3>
+                        </div>
+
+                        <!-- Summary Stats Row -->
+                        <div class="beh-stats-row">
+                            <div class="beh-stat-chip beh-stat-total">
+                                <span class="bstat-num">{behaviourStats.total}</span>
+                                <span class="bstat-lbl">Total Cases</span>
+                            </div>
+                            <div class="beh-stat-chip beh-stat-active">
+                                <span class="bstat-num">{behaviourStats.active}</span>
+                                <span class="bstat-lbl">Active</span>
+                            </div>
+                            <div class="beh-stat-chip beh-stat-positive">
+                                <span class="bstat-num">{behaviourStats.positive}</span>
+                                <span class="bstat-lbl">Positive</span>
+                            </div>
+                            <div class="beh-stat-chip beh-stat-negative">
+                                <span class="bstat-num">{behaviourStats.negative}</span>
+                                <span class="bstat-lbl">Negative</span>
+                            </div>
+                        </div>
+
+                        <!-- Cases List -->
+                        <template if:true={behaviourStats.hasCases}>
+                            <div class="bcase-list">
+                                <template for:each={caseList} for:item="bc">
+                                    <div key={bc.id} class="bcase-card">
+                                        <div class="bcase-icon">{bc.typeIcon}</div>
+                                        <div class="bcase-body">
+                                            <div class="bcase-top">
+                                                <span class="bcase-subject">{bc.subject}</span>
+                                                <span class={bc.statusClass}>{bc.status}</span>
+                                            </div>
+                                            <div class="bcase-meta">
+                                                <span class={bc.typeClass}>{bc.type}</span>
+                                                <span class="bcase-priority">🔴 {bc.priority}</span>
+                                                <span class="bcase-date">🗓 {bc.date}</span>
+                                            </div>
+                                            <template if:true={bc.hasDesc}>
+                                                <p class="bcase-desc">{bc.description}</p>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <!-- Empty State -->
+                        <template if:false={behaviourStats.hasCases}>
+                            <div class="beh-empty-state">
+                                <div class="beh-icon">🛡️</div>
+                                <h4>No Cases Found</h4>
+                                <p>No disciplinary actions recorded. Student consistently demonstrates punctuality,
+                                    respect, and active participation.</p>
+                                <div class="btags">
+                                    <span class="btag">✓ Punctual</span>
+                                    <span class="btag">✓ Respectful</span>
+                                    <span class="btag">✓ No Incidents</span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

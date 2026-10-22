@@ -1,0 +1,51 @@
+<template>
+    <div class="promotion-container">
+
+        <div class="card">
+            <h2>Bulk Class Promotion</h2>
+
+            <div class="field">
+                <label>Source Academic Year</label>
+                <select onchange={handleChange} data-name="sourceYear" value={sourceYear}>
+                    <template for:each={academicYearOptions} for:item="opt">
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Source Class</label>
+                <select onchange={handleChange} data-name="sourceClass" value={sourceClass}>
+                    <template for:each={classOptions} for:item="cls">
+                        <option key={cls} value={cls}>{cls}</option>
+                    </template>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Section (Optional)</label>
+                <select onchange={handleChange} data-name="sourceSection" value={sourceSection}>
+                    <option value="">All Sections</option>
+                    <option value="A">A</option>
+                    <option value="B">B</option>
+                    <option value="C">C</option>
+                    <option value="D">D</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>Promotion Academic Year</label>
+                <select onchange={handleChange} data-name="targetYear" value={targetYear}>
+                    <template for:each={academicYearOptions} for:item="opt">
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    </template>
+                </select>
+            </div>
+
+            <button class="btn" onclick={handlePromote} disabled={isLoading}>
+                Promote Entire Class
+            </button>
+
+        </div>
+    </div>
+</template>

@@ -1,0 +1,44 @@
+<template>
+    <!-- My Inquiry Button -->
+    <div class="inquiry-button-container">
+        <button class="inquiry-button" onclick={openModal}>
+            <img src={image1} class="imgs" />
+                <lightning-icon icon-name="utility:basket" size="small" class="icon-style"></lightning-icon>
+                    My Inquiry
+        </button>
+    </div>
+
+    <!-- Modal Popup -->
+    <template if:true={isModalOpen}>
+        <section role="dialog" class="modal-container">
+            <div class="modal-content">
+                <!-- Modal Header -->
+                  <button class="close-button" onclick={closeModal}>
+                        <lightning-icon icon-name="utility:close" size="small" class="close-icon"></lightning-icon>
+                    </button>
+                <div class="modal-header">
+                    <h2 class="modal-title">YOUR SELECTED SERVICES</h2>
+                  
+                </div>
+
+                <!-- Modal Body -->
+                <div class="modal-body">
+                    <p>Your inquiry list is empty. Add services from "Our Work"!</p>
+                </div>
+
+                <!-- Modal Footer (Buttons) -->
+                <div class="modal-footer">
+                    <button class="action-button proceed-button" onclick={handleProceed}>
+                        Proceed to Contact
+                        <lightning-icon icon-name="utility:email" size="small" class="button-icon"></lightning-icon>
+                    </button>
+                    <button class="action-button continue-button" onclick={closeModal}>
+                        Continue Browsing
+                        <lightning-icon icon-name="utility:arrowleft" size="small" class="button-icon"></lightning-icon>
+                        <span class="arrow">←</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </template>
+</template>

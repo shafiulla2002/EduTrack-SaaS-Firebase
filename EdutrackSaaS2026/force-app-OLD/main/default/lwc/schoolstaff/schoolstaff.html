@@ -1,0 +1,970 @@
+<template>
+    <div class="ss-wrap">
+
+        <!-- ══ TOAST ══ -->
+        <template lwc:if={showToast}>
+            <div class={toastClass}>
+                <span class="toast-icon">{toastIcon}</span>
+                <span>{toastMessage}</span>
+            </div>
+        </template>
+
+        <!-- ══ LOADING SPINNER ══ -->
+        <template lwc:if={isLoading}>
+            <div class="ss-loading-overlay">
+                <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+            </div>
+        </template>
+
+        <!-- ══ PAGE HEADER ══ -->
+        <div class="page-header">
+            <div class="page-title">
+                <h2>School Staff</h2>
+                <span class="feature-tag new">👥 Staff Directory</span>
+            </div>
+            <div class="header-actions">
+               <!-- <button class="btn btn-secondary" onclick={handleExportStaff}>
+                    <span>📤</span> Export
+                </button>-->
+                <button class="btn btn-secondary" onclick={handleAddStaff}>
+                    <span>➕</span> Add Staff
+                </button>
+            </div>
+        </div>
+
+        <!-- ══ STATS GRID ══ -->
+        <div class="stats-grid animate-in">
+            <div class="stat-card blue">
+                <div class="stat-header">
+                    <div class="stat-icon">👥</div>
+                    <div class="stat-trend up"><span>↑</span>{totalStaffCount}</div>
+                </div>
+                <div class="stat-value">{totalStaffCount}</div>
+                <div class="stat-label">Total Staff</div>
+                <div class="stat-footer"><strong>Real-time</strong> from Org</div>
+            </div>
+            <div class="stat-card green">
+                <div class="stat-header">
+                    <div class="stat-icon">👩‍🏫</div>
+                    <div class="stat-trend up"><span>↑</span>{teachingCount}</div>
+                </div>
+                <div class="stat-value">{teachingCount}</div>
+                <div class="stat-label">Teaching Staff</div>
+                <div class="stat-footer"><strong>Real-time</strong> from Org</div>
+            </div>
+            <div class="stat-card purple">
+                <div class="stat-header">
+                    <div class="stat-icon">🧹</div>
+                    <div class="stat-trend up"><span>↑</span>{nonTeachingCount}</div>
+                </div>
+                <div class="stat-value">{nonTeachingCount}</div>
+                <div class="stat-label">Non-Teaching Staff</div>
+                <div class="stat-footer"><strong>Real-time</strong> from Org</div>
+            </div>
+            <div class="stat-card orange">
+                <div class="stat-header">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-trend up"><span>↑</span>{paidCount} paid</div>
+                </div>
+                <div class="stat-value">{totalMonthlySalary}</div>
+                <div class="stat-label">Monthly Payroll</div>
+                <div class="stat-footer"><strong>Real-time</strong> from Org</div>
+            </div>
+        </div>
+
+        <!-- ══ TABS ══ -->
+        <div class="ss-tabs-row">
+            <div class="tabs">
+                <button class={allTabClass}         data-tab="all"          onclick={handleTabChange}>All Staff</button>
+                <button class={teachingTabClass}    data-tab="teaching"     onclick={handleTabChange}>👩‍🏫 Teaching</button>
+                <button class={nonTeachingTabClass} data-tab="non-teaching" onclick={handleTabChange}>🧹 Non-Teaching</button>
+                <button class={salaryTabClass}      data-tab="salary"       onclick={handleTabChange}>💳 Payroll</button>
+            </div>
+
+            <template lwc:if={isStaffListView}>
+                <div class="ss-filter-row">
+                    <div class="ss-search-box">
+                        <span>🔍</span>
+                        <input type="text" placeholder="Search staff…"
+                            value={searchTerm} oninput={handleSearchChange} />
+                    </div>
+                    <select class="ss-select" onchange={handleDeptFilter}>
+                        <option value="">All Departments</option>
+                        <option value="Science">Science</option>
+                        <option value="Mathematics">Mathematics</option>
+                        <option value="English">English</option>
+                        <option value="Social Studies">Social Studies</option>
+                        <option value="Arts">Arts</option>
+                        <option value="Physical Education">Physical Education</option>
+                        <option value="Administration">Administration</option>
+                        <option value="Finance">Finance</option>
+                        <option value="Security">Security</option>
+                        <option value="Housekeeping">Housekeeping</option>
+                        <option value="Transport">Transport</option>
+                        <option value="Canteen">Canteen</option>
+                    </select>
+                    <select class="ss-select" onchange={handleStatusFilter}>
+                        <option value="">All Status</option>
+                        <option value="Active">Active</option>
+                        <option value="On Leave">On Leave</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+            </template>
+        </div>
+
+        <!-- ══ STAFF CARDS ══ -->
+        <template lwc:if={isStaffListView}>
+            <template lwc:if={hasFilteredStaff}>
+                <div class="staff-cards-grid animate-in">
+                    <template for:each={filteredStaff} for:item="member">
+                        <div key={member.id} class="staff-card" data-id={member.id}
+                            onclick={handleStaffCardClick}>
+                            <div class={member.cardBandClass}></div>
+                            <div class="scard-body">
+                                <div class="scard-top">
+                                    <div class="scard-avatar-wrap">
+                                        <template lwc:if={member.hasPhoto}>
+                                            <img class="scard-photo" src={member.photoUrl} alt={member.name} />
+                                        </template>
+                                        <template lwc:else>
+                                            <div class={member.avatarClass}>{member.initials}</div>
+                                        </template>
+                                        <span class={member.statusDotClass}></span>
+                                    </div>
+                                    <div class="scard-emp-id">{member.employeeId}</div>
+                                </div>
+                                <div class="scard-name">{member.name}</div>
+                                <div class="scard-role">{member.designation}</div>
+<template lwc:if={member.isTeachingCard}>
+    <template lwc:if={member.skillsLabel}>
+        <div class="scard-dept-tag">{member.skillsLabel}</div>
+    </template>
+    <template lwc:else>
+        <div class="scard-dept-tag">{member.department}</div>
+    </template>
+</template>
+<template lwc:else>
+    <div class="scard-dept-tag">{member.department}</div>
+</template>
+                                <div class="scard-info">
+                                    <div class="scard-info-row">
+                                        <span>📧</span>
+                                        <span class="scard-info-val">{member.email}</span>
+                                    </div>
+                                    <div class="scard-info-row">
+                                        <span>📱</span>
+                                        <span class="scard-info-val">{member.phone}</span>
+                                    </div>
+                                    <div class="scard-info-row">
+                                        <span>📅</span>
+                                        <span class="scard-info-val">Joined {member.joiningDate}</span>
+                                    </div>
+                                </div>
+                                <div class="scard-footer">
+                                    <span class={member.typeBadgeClass}>{member.staffType}</span>
+                                    <span class={member.statusBadgeClass}>{member.status}</span>
+                                    <span class="scard-salary">{member.netSalaryFmt}/mo</span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+            <template lwc:else>
+                <div class="card ss-empty animate-in">
+                    <div class="ss-empty-icon">👥</div>
+                    <h3>No Staff Found</h3>
+                    <p>No staff members match your current filters.</p>
+                    <button class="btn btn-secondary" onclick={handleAddStaff}>
+                        <span>➕</span> Add First Staff Member
+                    </button>
+                </div>
+            </template>
+        </template>
+
+        <!-- ══ PAYROLL VIEW ══ -->
+        <template lwc:if={isSalaryView}>
+            <div class="stats-grid animate-in" style="margin-bottom:24px;">
+                <div class="stat-card blue">
+                    <div class="stat-header">
+                        <div class="stat-icon">💼</div>
+                        <div class="stat-trend up"><span>↑</span>Monthly</div>
+                    </div>
+                    <div class="stat-value">{totalMonthlySalary}</div>
+                    <div class="stat-label">Total Payroll</div>
+                    <div class="stat-footer"><strong>Real-time</strong> from Org</div>
+                </div>
+                <div class="stat-card green">
+                    <div class="stat-header">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-trend up"><span>↑</span>Paid</div>
+                    </div>
+                    <div class="stat-value">{paidCount}</div>
+                    <div class="stat-label">Salaries Paid</div>
+                    <div class="stat-footer"><strong>Real-time</strong> from Org</div>
+                </div>
+                <div class="stat-card orange">
+                    <div class="stat-header">
+                        <div class="stat-icon">⏳</div>
+                        <div class="stat-trend down"><span>↓</span>Pending</div>
+                    </div>
+                    <div class="stat-value">{pendingCount}</div>
+                    <div class="stat-label">Pending Salaries</div>
+                    <div class="stat-footer"><strong>Real-time</strong> from Org</div>
+                </div>
+                <div class="stat-card purple">
+                    <div class="stat-header">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-trend up"><span>↑</span>Annual</div>
+                    </div>
+                    <div class="stat-value">{totalAnnualSalary}</div>
+                    <div class="stat-label">Annual Budget</div>
+                    <div class="stat-footer"><strong>Real-time</strong> from Org</div>
+                </div>
+            </div>
+
+            <div class="card animate-in">
+                <div class="card-header">
+                    <div class="card-title"><span>💳</span> Payroll Management</div>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <div class="payroll-period-wrap">
+                            <span class="period-label">Period:</span>
+                            <select class="ss-select" onchange={handleMonthChange}>
+                                <option value="Jan 2025">Jan 2025</option>
+                                <option value="Feb 2025">Feb 2025</option>
+                                <option value="Mar 2025">Mar 2025</option>
+                                <option value="Apr 2025">Apr 2025</option>
+                                <option value="May 2025">May 2025</option>
+                                <option value="Jun 2025">Jun 2025</option>
+                                <option value="Jul 2025">Jul 2025</option>
+                                <option value="Aug 2025">Aug 2025</option>
+                                <option value="Sep 2025">Sep 2025</option>
+                                <option value="Oct 2025">Oct 2025</option>
+                                <option value="Nov 2025">Nov 2025</option>
+                                <option value="Dec 2025">Dec 2025</option>
+                                <option value="Jan 2026">Jan 2026</option>
+                                <option value="Feb 2026">Feb 2026</option>
+                                <option value="Mar 2026" selected>Mar 2026</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-secondary" onclick={handleGeneratePayslips}>
+                            <span>📄</span> Generate Payslips
+                        </button>
+                        <button class="btn btn-secondary" onclick={handleProcessPayroll}>
+                            <span>⚡</span> Process All
+                        </button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Staff Member</th>
+                                <th>Type</th>
+                                <th>Basic</th>
+                                <th>Allowances</th>
+                                <th>Deductions</th>
+                                <th>Net Salary</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template for:each={salaryRecords} for:item="rec">
+                                <tr key={rec.staffId}>
+                                    <td>
+                                        <div class="student-info">
+                                            <div class={rec.avatarClass}>{rec.initials}</div>
+                                            <div class="student-details">
+                                                <div class="name">{rec.staffName}</div>
+                                                <div class="id">{rec.designation}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class={rec.typeBadgeClass}>{rec.staffType}</span></td>
+                                    <td style="font-weight:600;">{rec.basicSalary}</td>
+                                    <td style="font-weight:600;color:var(--success);">{rec.allowances}</td>
+                                    <td style="font-weight:600;color:var(--danger);">{rec.deductions}</td>
+                                    <td style="font-weight:800;color:var(--primary);font-size:15px;">{rec.netSalary}</td>
+                                    <td><span class={rec.salaryStatusClass}>{rec.salaryStatus}</span></td>
+                                    <td>
+                                        <button class={rec.actionBtnClass}
+                                                data-id={rec.staffId}
+                                                onclick={handlePaySalary}>{rec.actionLabel}</button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </template>
+
+        <!-- ══ ADD/EDIT MODAL ══ -->
+        <template lwc:if={showStaffModal}>
+            <div class="ss-modal-overlay" onclick={handleModalOverlayClick}>
+                <div class="ss-modal" onclick={stopPropagation}>
+                    <div class="ss-modal-header">
+                        <div class="card-title"><span>👤</span> {modalTitle}</div>
+                        <button class="ss-close-btn" onclick={handleCloseModal}>✕</button>
+                    </div>
+                    <div class="ss-modal-body">
+
+                        <!-- Teaching / Non-Teaching toggle -->
+                        <div class="ss-type-toggle">
+                            <button class={teachingToggleClass} data-type="Teaching"
+                                onclick={handleStaffTypeChange}>👩‍🏫 Teaching Staff</button>
+                            <button class={nonTeachingToggleClass} data-type="Non-Teaching"
+                                onclick={handleStaffTypeChange}>🧹 Non-Teaching</button>
+                        </div>
+
+                        <!-- ══ PHOTO UPLOAD ══ -->
+                        <div class="ss-form-section">
+                            <div class="ss-section-heading">📷 Profile Photo</div>
+                            <div class="ss-photo-upload-row">
+                                <div class="ss-photo-preview-wrap">
+                                    <template lwc:if={hasPhotoPreview}>
+                                        <img class="ss-photo-preview-img" src={photoPreview} alt="Preview" />
+                                    </template>
+                                    <template lwc:else>
+                                        <div class="ss-photo-placeholder">
+                                            <span class="ss-photo-icon">📷</span>
+                                            <span class="ss-photo-hint">No photo</span>
+                                        </div>
+                                    </template>
+                                </div>
+                                <div class="ss-photo-controls">
+                                    <p class="ss-photo-desc">Upload a profile photo. Accepted: JPG, PNG, GIF (max 2MB).</p>
+                                    <label class="btn btn-secondary ss-photo-label" for="staffPhotoInput">
+                                        📁 Choose Photo
+                                    </label>
+                                    <input id="staffPhotoInput" type="file" accept="image/*"
+                                           class="ss-photo-input" onchange={handlePhotoChange} />
+                                    <template lwc:if={hasPhotoPreview}>
+                                        <button class="btn ss-danger-btn ss-photo-remove-btn"
+                                                onclick={handleRemovePhoto}>🗑️ Remove</button>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Personal -->
+                        <div class="ss-form-section">
+                            <div class="ss-section-heading">Personal Information</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">First Name *</label>
+                                    <input type="text" class="form-input" placeholder="First Name"
+                                        data-field="firstName" value={formData.firstName} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Last Name *</label>
+                                    <input type="text" class="form-input" placeholder="Last Name"
+                                        data-field="lastName" value={formData.lastName} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Gender</label>
+                                    <select class="form-input" data-field="gender" value={formData.gender} onchange={handleFormInput}>
+                                        <option value="">Select</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Date of Birth</label>
+                                    <input type="date" class="form-input" data-field="dob"
+                                        value={formData.dob} oninput={handleFormInput} />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Contact -->
+                        <div class="ss-form-section">
+                            <div class="ss-section-heading">Contact Details</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">Email *</label>
+                                    <input type="email" class="form-input" placeholder="email@school.com"
+                                        data-field="email" value={formData.email} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Phone *</label>
+                                    <input type="tel" class="form-input" placeholder="+91 9XXXXXXXXX"
+                                        data-field="phone" value={formData.phone} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group ss-full-col">
+                                    <label class="form-label">Address</label>
+                                    <input type="text" class="form-input" placeholder="Full Address"
+                                        data-field="address" value={formData.address} oninput={handleFormInput} />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Professional -->
+                        <div class="ss-form-section">
+                            <div class="ss-section-heading">Professional Details</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">Employee ID</label>
+                                    <input type="text" class="form-input" readonly
+                                        data-field="employeeId" value={formData.employeeId} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Designation *</label>
+                                    <select class="form-input" data-field="designation" onchange={handleFormInput}>
+                                        <option value="">Select</option>
+                                        <template lwc:if={isTeachingType}>
+                                            <option value="Principal">Principal</option>
+                                            <option value="Vice Principal">Vice Principal</option>
+                                            <option value="Senior Teacher">Senior Teacher</option>
+                                            <option value="Teacher">Teacher</option>
+                                            <option value="Assistant Teacher">Assistant Teacher</option>
+                                            <option value="Lab Instructor">Lab Instructor</option>
+                                            <option value="Sports Coach">Sports Coach</option>
+                                        </template>
+                                        <template lwc:else>
+                                            <option value="Administrative Officer">Administrative Officer</option>
+                                            <option value="Accountant">Accountant</option>
+                                            <option value="Librarian">Librarian</option>
+                                            <option value="Clerk">Clerk</option>
+                                            <option value="Security Guard">Security Guard</option>
+                                            <option value="Peon">Peon</option>
+                                            <option value="Sweeper">Sweeper</option>
+                                            <option value="Bus Driver">Bus Driver</option>
+                                            <option value="Cook">Cook</option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Department *</label>
+                                    <select class="form-input" data-field="department" onchange={handleFormInput}>
+                                        <option value="">Select</option>
+                                        <template lwc:if={isTeachingType}>
+                                            <option value="Science">Science</option>
+                                            <option value="Mathematics">Mathematics</option>
+                                            <option value="English">English</option>
+                                            <option value="Social Studies">Social Studies</option>
+                                            <option value="Arts">Arts</option>
+                                            <option value="Physical Education">Physical Education</option>
+                                            <option value="Commerce">Commerce</option>
+                                        </template>
+                                        <template lwc:else>
+                                            <option value="Administration">Administration</option>
+                                            <option value="Finance">Finance</option>
+                                            <option value="Library">Library</option>
+                                            <option value="Security">Security</option>
+                                            <option value="Housekeeping">Housekeeping</option>
+                                            <option value="Transport">Transport</option>
+                                            <option value="Canteen">Canteen</option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Status</label>
+                                    <select class="form-input" data-field="status" onchange={handleFormInput}>
+                                        <option value="Active">Active</option>
+                                        <option value="On Leave">On Leave</option>
+                                        <option value="Inactive">Inactive</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Joining Date *</label>
+                                    <input type="date" class="form-input" data-field="joiningDate"
+                                        value={formData.joiningDate} oninput={handleFormInput} />
+                                </div>
+                                <template lwc:if={isTeachingType}>
+                                    <div class="form-group">
+                                        <label class="form-label">Qualification</label>
+                                        <input type="text" class="form-input" placeholder="e.g. M.Sc, B.Ed"
+                                            data-field="qualification" value={formData.qualification}
+                                            oninput={handleFormInput} />
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- ══ SUBJECT SKILLS (Teaching only) ══ -->
+                        <template lwc:if={isTeachingType}>
+                            <div class="ss-form-section">
+                                <div class="ss-section-heading-row">
+                                    <div class="ss-section-heading" style="margin-bottom:0;border-bottom:none;">📚 Subject Skills</div>
+                                    <button class="ss-add-skill-btn" onclick={handleAddSkill}>
+                                        ➕ Add Subject Skill
+                                    </button>
+                                </div>
+
+                                <template lwc:if={hasFormSkills}>
+                                    <div class="ss-skills-list">
+                                        <template for:each={formSkillsList} for:item="sk">
+                                            <div key={sk.id} class="ss-skill-card">
+                                                <div class="ss-skill-card-header">
+                                                    <span class="ss-skill-badge">Skill #{sk.id}</span>
+                                                    <button class="ss-skill-remove-btn"
+                                                            data-skill-id={sk.id}
+                                                            onclick={handleRemoveSkill}>🗑</button>
+                                                </div>
+                                                <div class="ss-skill-fields">
+                                                    <div class="form-group">
+                                                        <label class="form-label">* Subject</label>
+                                                        <select class="form-input"
+                                                                data-skill-id={sk.id}
+                                                                onchange={handleSkillSubjectChange}>
+                                                            <option value="">Select Subject</option>
+                                                            <template for:each={sk.subjectOptions} for:item="opt">
+                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                            </template>
+                                                        </select>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label class="form-label">* Skill Level</label>
+                                                        <select class="form-input"
+                                                                data-skill-id={sk.id}
+                                                                onchange={handleSkillLevelChange}>
+                                                            <option value="">Select Level</option>
+                                                            <template for:each={sk.skillLevelOptions} for:item="opt">
+                                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                            </template>
+                                                        </select>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <label class="form-label">Years of Experience</label>
+                                                        <input type="number" class="form-input"
+                                                               min="0" step="0.5" placeholder="0.0"
+                                                               value={sk.yearsOfExperience}
+                                                               data-skill-id={sk.id}
+                                                               oninput={handleSkillExperienceChange} />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template lwc:else>
+                                    <div class="ss-skills-empty">
+                                        <span>📚</span>
+                                        <p>No subject skills added yet. Click <strong>➕ Add Subject Skill</strong> to begin.</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        <!-- Salary -->
+                        <div class="ss-form-section">
+                            <div class="ss-section-heading">Salary Structure</div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label class="form-label">Basic Salary (₹) *</label>
+                                    <input type="number" class="form-input" placeholder="35000"
+                                        data-field="basicSalary" value={formData.basicSalary} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">HRA (₹)</label>
+                                    <input type="number" class="form-input" placeholder="5000"
+                                        data-field="hra" value={formData.hra} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">DA / Allowances (₹)</label>
+                                    <input type="number" class="form-input" placeholder="3000"
+                                        data-field="da" value={formData.da} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">PF Deduction (₹)</label>
+                                    <input type="number" class="form-input" placeholder="2000"
+                                        data-field="pf" value={formData.pf} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Account Number</label>
+                                    <input type="text" class="form-input" placeholder="Bank Account No."
+                                        data-field="accountNumber" value={formData.accountNumber} oninput={handleFormInput} />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">IFSC Code</label>
+                                    <input type="text" class="form-input" placeholder="SBIN0001234"
+                                        data-field="ifsc" value={formData.ifsc} oninput={handleFormInput} />
+                                </div>
+                            </div>
+                            <div class="ss-salary-preview">
+                                <div class="payment-item">
+                                    <div class="payment-info">
+                                        <div class="payment-icon" style="background:#E8EEFF;">💼</div>
+                                        <div class="payment-details"><div class="title">Basic Salary</div></div>
+                                    </div>
+                                    <div class="payment-amount"><div class="price">₹{formData.basicSalary}</div></div>
+                                </div>
+                                <div class="payment-item">
+                                    <div class="payment-info">
+                                        <div class="payment-icon" style="background:#E6FAF5;">➕</div>
+                                        <div class="payment-details">
+                                            <div class="title">HRA + DA</div>
+                                            <div class="subtitle">Allowances</div>
+                                        </div>
+                                    </div>
+                                    <div class="payment-amount">
+                                        <div class="price" style="color:var(--success);">+ ₹{totalAllowances}</div>
+                                    </div>
+                                </div>
+                                <div class="payment-item">
+                                    <div class="payment-info">
+                                        <div class="payment-icon" style="background:#FFE8EC;">➖</div>
+                                        <div class="payment-details"><div class="title">PF Deduction</div></div>
+                                    </div>
+                                    <div class="payment-amount">
+                                        <div class="price" style="color:var(--danger);">− ₹{formData.pf}</div>
+                                    </div>
+                                </div>
+                                <div class="payment-total">
+                                    <div class="label">Net Monthly Salary</div>
+                                    <div class="amount">₹{computedNetSalary}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ss-modal-footer">
+                        <button class="btn btn-secondary" onclick={handleCloseModal}>Cancel</button>
+                        <button class="btn btn-primary" onclick={handleSaveStaff}>{saveButtonLabel}</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ══ DETAIL MODAL ══ -->
+        <template lwc:if={showDetailModal}>
+            <div class="ss-modal-overlay" onclick={handleCloseDetail}>
+                <div class="ss-modal ss-detail-modal" onclick={stopPropagation}>
+                    <div class="ss-modal-header">
+                        <div class="card-title"><span>👤</span> Staff Profile</div>
+                        <button class="ss-close-btn" onclick={handleCloseDetail}>✕</button>
+                    </div>
+                    <div class="ss-modal-body">
+
+                        <!-- Profile Banner -->
+                        <div class="ss-profile-banner">
+                            <template lwc:if={selectedStaff.hasPhoto}>
+                                <img class="ss-detail-photo" src={selectedStaff.photoUrl} alt={selectedStaff.name} />
+                            </template>
+                            <template lwc:else>
+                                <div class={selectedStaff.avatarClass}
+                                    style="width:72px;height:72px;font-size:26px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;flex-shrink:0;">
+                                    {selectedStaff.initials}
+                                </div>
+                            </template>
+                            <div class="spb-info">
+                                <h3>{selectedStaff.name}</h3>
+                                <p>{selectedStaff.designation} · {selectedStaff.department}</p>
+                                <div class="spb-badges">
+                                    <span class={selectedStaff.typeBadgeClass}>{selectedStaff.staffType}</span>
+                                    <span class={selectedStaff.statusBadgeClass}>{selectedStaff.status}</span>
+                                    <span class="badge-status badge-partial">{selectedStaff.employeeId}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Loading shimmer -->
+                        <template lwc:if={detailLoading}>
+                            <div class="dd-loading-row">
+                                <lightning-spinner size="small" alternative-text="Loading details"></lightning-spinner>
+                                <span class="dd-loading-text">Loading details…</span>
+                            </div>
+                        </template>
+
+                        <!-- Core info grid -->
+                        <div class="ss-detail-grid">
+                            <div class="ss-detail-section">
+                                <div class="card-title" style="font-size:14px;margin-bottom:14px;">📋 Personal Info</div>
+                                <div class="ss-detail-row"><span>Gender</span><strong>{selectedStaff.gender}</strong></div>
+                                <div class="ss-detail-row"><span>Date of Birth</span><strong>{selectedStaff.dob}</strong></div>
+                                <div class="ss-detail-row"><span>Joining Date</span><strong>{selectedStaff.joiningDate}</strong></div>
+                                <div class="ss-detail-row"><span>Qualification</span><strong>{selectedStaff.qualification}</strong></div>
+                            </div>
+                            <div class="ss-detail-section">
+                                <div class="card-title" style="font-size:14px;margin-bottom:14px;">📞 Contact</div>
+                                <div class="ss-detail-row"><span>Email</span><strong>{selectedStaff.email}</strong></div>
+                                <div class="ss-detail-row"><span>Phone</span><strong>{selectedStaff.phone}</strong></div>
+                                <div class="ss-detail-row"><span>Address</span><strong>{selectedStaff.address}</strong></div>
+                            </div>
+                            <div class="ss-detail-section">
+                                <div class="card-title" style="font-size:14px;margin-bottom:14px;">💰 Salary</div>
+                                <div class="ss-detail-row"><span>Basic</span><strong>{selectedStaff.basicSalaryFmt}</strong></div>
+                                <div class="ss-detail-row success-row"><span>+ Allowances</span><strong>{selectedStaff.allowancesFmt}</strong></div>
+                                <div class="ss-detail-row danger-row"><span>− Deductions</span><strong>{selectedStaff.deductionsFmt}</strong></div>
+                                <div class="ss-net-row">
+                                    <span>Net / Month</span>
+                                    <strong>{selectedStaff.netSalaryFmt}</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ══ SUBJECT SKILLS ══ -->
+                        <template lwc:if={hasDetailSkills}>
+                            <div class="dd-section">
+                                <div class="dd-section-title">📚 Subject Skills</div>
+                                <div class="dd-skills-grid">
+                                    <template for:each={detailSkills} for:item="sk">
+                                        <div key={sk.subjectId} class="dd-skill-chip">
+                                            <span class="dd-skill-subject">{sk.subjectName}</span>
+                                            <span class={sk.levelClass}>{sk.skillLevel}</span>
+                                            <template lwc:if={sk.expLabel}>
+                                                <span class="dd-skill-exp">{sk.expLabel}</span>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- ══ PAYROLL INVOICES ══ -->
+                        <div class="dd-section">
+                            <div class="dd-section-title">💳 Salary Invoices</div>
+                            <template lwc:if={hasDetailInvoices}>
+                                <div class="dd-invoices-list">
+                                    <template for:each={detailInvoices} for:item="inv">
+                                        <div key={inv.id} class="dd-invoice-row">
+                                            <div class="dd-inv-month">
+                                                <span class="dd-inv-icon">📅</span>
+                                                <span class="dd-inv-label">{inv.month}</span>
+                                            </div>
+                                            <span class={inv.statusClass}>{inv.status}</span>
+                                            <span class="dd-inv-amount">{inv.amountFmt}</span>
+                                            <template lwc:if={inv.paidDate}>
+                                                <span class="dd-inv-date">{inv.paidDate}</span>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                            <template lwc:else>
+                                <div class="dd-empty-msg">No salary invoices found.</div>
+                            </template>
+                        </div>
+
+                        <!-- ══ TIMETABLE / PERIODS ══ -->
+                        <div class="dd-section">
+                            <div class="dd-section-header">
+                                <div class="dd-section-title">🗓 Schedule
+                                    <template lwc:if={detailWeeklyCount}>
+                                        <span class="dd-weekly-badge">{detailWeeklyCount} periods/week</span>
+                                    </template>
+                                </div>
+                                <template lwc:if={detailShowToggle}>
+                                    <button class="dd-toggle-btn" onclick={handleToggleAllPeriods}>
+                                        {togglePeriodsLabel}
+                                    </button>
+                                </template>
+                            </div>
+
+                            <template lwc:if={hasDetailPeriods}>
+                                <template for:each={detailPeriodRows} for:item="dayGroup">
+                                    <div key={dayGroup.day} class="dd-day-group">
+                                        <div class="dd-day-label">{dayGroup.day}</div>
+                                        <div class="dd-period-cards">
+                                            <template for:each={dayGroup.periods} for:item="p">
+                                                <div key={p.periodId} class="dd-period-card">
+                                                    <div class="dd-period-num">P{p.periodNumber}</div>
+                                                    <div class="dd-period-info">
+                                                        <div class="dd-period-subject">{p.subjectName}</div>
+                                                        <div class="dd-period-class">{p.className}</div>
+                                                    </div>
+                                                    <template lwc:if={p.timeLabel}>
+                                                        <div class="dd-period-time">{p.timeLabel}</div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </template>
+                            <template lwc:else>
+                                <template lwc:if={detailLoading}>
+                                    <!-- already showing spinner above -->
+                                </template>
+                                <template lwc:else>
+                                    <div class="dd-empty-msg">No periods assigned for {detailTodayLabel}.</div>
+                                </template>
+                            </template>
+                        </div>
+
+                        <!-- ══ CASES (Complaints & Praises) ══ -->
+                        <div class="dd-section">
+                            <div class="dd-section-header">
+                                <div class="dd-section-title">
+                                    📋 Student Cases
+                                    <template lwc:if={hasDetailCases}>
+                                        <span class="dd-weekly-badge">{detailCaseCounts.all} total</span>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Filter pills -->
+                            <template lwc:if={hasDetailCases}>
+                                <div class="dc-filter-row">
+                                    <button class={caseFilterAllClass}
+                                            data-filter="all"
+                                            onclick={handleCaseFilterChange}>
+                                        All ({detailCaseCounts.all})
+                                    </button>
+                                    <button class={caseFilterComplaintClass}
+                                            data-filter="Complaint"
+                                            onclick={handleCaseFilterChange}>
+                                        ⚠️ Complaints ({detailCaseCounts.complaints})
+                                    </button>
+                                    <button class={caseFilterPraiseClass}
+                                            data-filter="Praise"
+                                            onclick={handleCaseFilterChange}>
+                                        🌟 Praises ({detailCaseCounts.praises})
+                                    </button>
+                                </div>
+
+                                <template lwc:if={hasFilteredDetailCases}>
+                                    <div class="dc-cases-list">
+                                        <template for:each={filteredDetailCases} for:item="c">
+                                            <div key={c.id} class="dc-case-card">
+                                                <!-- Card top row -->
+                                                <div class="dc-case-top">
+                                                    <div class="dc-case-left">
+                                                        <span class="dc-case-icon">{c.typeIcon}</span>
+                                                        <div>
+                                                            <div class="dc-case-subject">{c.subject}</div>
+                                                            <div class="dc-case-num">#{c.caseNumber}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="dc-case-badges">
+                                                        <span class={c.typeClass}>{c.type}</span>
+                                                        <span class={c.statusClass}>{c.status}</span>
+                                                        <template lwc:if={c.priority}>
+                                                            <span class={c.priorityClass}>{c.priority}</span>
+                                                        </template>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Meta row: student + class + date -->
+                                                <div class="dc-case-meta">
+                                                    <template lwc:if={c.hasStudent}>
+                                                        <span class="dc-meta-item">
+                                                            <span class="dc-meta-icon">👤</span>
+                                                            {c.studentName}
+                                                        </span>
+                                                    </template>
+                                                    <template lwc:if={c.hasClass}>
+                                                        <span class="dc-meta-item">
+                                                            <span class="dc-meta-icon">🏫</span>
+                                                            {c.className}
+                                                        </span>
+                                                    </template>
+                                                    <span class="dc-meta-item dc-meta-date">
+                                                        <span class="dc-meta-icon">📅</span>
+                                                        {c.createdDate}
+                                                    </span>
+                                                </div>
+
+                                                <!-- Description -->
+                                                <template lwc:if={c.shortDesc}>
+                                                    <div class="dc-case-desc">{c.shortDesc}</div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template lwc:else>
+                                    <div class="dd-empty-msg">No {detailCaseFilter} cases found.</div>
+                                </template>
+                            </template>
+
+                            <template lwc:else>
+                                <template lwc:if={detailLoading}>
+                                    <!-- spinner shown above -->
+                                </template>
+                                <template lwc:else>
+                                    <div class="dd-empty-msg">No cases submitted by this staff member.</div>
+                                </template>
+                            </template>
+                        </div>
+
+                    </div>
+                    <div class="ss-modal-footer">
+                        <button class="btn btn-secondary" onclick={handleEditFromDetail}>✏️ Edit Profile</button>
+                        <button class="btn ss-danger-btn" onclick={handleDeleteStaff}>🗑️ Remove</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- ══ PAYSLIP MODAL ══ -->
+        <template lwc:if={showPayslipModal}>
+            <div class="ss-modal-overlay" onclick={handlePayslipOverlayClick}>
+                <div class="ss-modal ss-payslip-modal" onclick={stopPropagation}>
+                    <div class="ss-modal-header ss-payslip-header">
+                        <div class="card-title"><span>📄</span> Salary Payslip</div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <span class="badge-status badge-paid">✅ Paid</span>
+                            <button class="ss-close-btn" onclick={handleClosePayslip}>✕</button>
+                        </div>
+                    </div>
+                    <div class="ss-modal-body ss-payslip-body">
+                        <div class="payslip-school-band">
+                            <div class="psb-logo">🏫</div>
+                            <div class="psb-info">
+                                <div class="psb-school-name">EduTrack School</div>
+                                <div class="psb-subtitle">Official Salary Payslip · {payslipMonth}</div>
+                            </div>
+                            <div class="psb-inv-id">
+                                <div class="psb-inv-label">Invoice ID</div>
+                                <div class="psb-inv-val">{payslipInvId}</div>
+                            </div>
+                        </div>
+                        <div class="payslip-emp-row">
+                            <div class="per-avatar-wrap">
+                                <div class={payslipAvatarClass} style="width:60px;height:60px;font-size:22px;border-radius:14px;display:flex;align-items:center;justify-content:center;color:white;font-weight:800;">
+                                    {payslipInitials}
+                                </div>
+                            </div>
+                            <div class="per-details">
+                                <div class="per-name">{payslipStaffName}</div>
+                                <div class="per-desig">{payslipDesig}</div>
+                                <div class="per-meta">
+                                    <span class="badge-status badge-partial">{payslipEmpId}</span>
+                                    <span class="badge-status badge-active">{payslipStaffType}</span>
+                                </div>
+                            </div>
+                            <div class="per-month-box">
+                                <div class="per-month-label">Pay Period</div>
+                                <div class="per-month-val">{payslipMonth}</div>
+                                <div class="per-paid-label">Paid on {payslipPaidDate}</div>
+                            </div>
+                        </div>
+                        <div class="payslip-breakdown">
+                            <div class="pbs-section">
+                                <div class="pbs-heading pbs-earn-heading"><span>💚</span> Earnings</div>
+                                <div class="pbs-row"><span>Basic Salary</span><strong>{payslipBasic}</strong></div>
+                                <div class="pbs-row earn-row"><span>HRA</span><strong style="color:var(--success);">{payslipHra}</strong></div>
+                                <div class="pbs-row earn-row"><span>DA</span><strong style="color:var(--success);">{payslipDa}</strong></div>
+                                <div class="pbs-sub-total earn-total"><span>Total Earnings</span><strong>{payslipAllowances}</strong></div>
+                            </div>
+                            <div class="pbs-section">
+                                <div class="pbs-heading pbs-ded-heading"><span>🔴</span> Deductions</div>
+                                <div class="pbs-row ded-row"><span>PF (Provident Fund)</span><strong style="color:var(--danger);">−{payslipPf}</strong></div>
+                                <div class="pbs-sub-total ded-total"><span>Total Deductions</span><strong style="color:var(--danger);">−{payslipDeductions}</strong></div>
+                            </div>
+                        </div>
+                        <div class="payslip-net-banner">
+                            <div class="pnb-label">💰 Net Salary Credited</div>
+                            <div class="pnb-amount">{payslipNet}</div>
+                            <div class="pnb-note">Amount disbursed for {payslipMonth}</div>
+                        </div>
+                        <div class="payslip-footer-note">
+                            This is a computer-generated payslip and does not require a physical signature.
+                            For queries contact the Finance Department.
+                        </div>
+                    </div>
+                    <div class="ss-modal-footer">
+                        <button class="btn btn-secondary" onclick={handleClosePayslip}>✕ Close</button>
+                        <button class="btn btn-primary" onclick={handlePrintPayslip}>🖨️ Print Payslip</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+    </div>
+</template>

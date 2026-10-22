@@ -1,0 +1,382 @@
+<template>
+    <div class="student-manager-container">
+        <!-- HEADER SECTION -->
+        <div class="page-header">
+            <div class="header-left">
+                <div class="page-title">
+                    <div class="title-icon">👥</div>
+                    <div>
+                        <h2>Student Management</h2>
+                        <p class="subtitle">Manage and monitor all student records</p>
+                    </div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick={handleBulkImport}>
+                    <span>📤</span>
+                    Bulk Import
+                </button>
+                <button class="btn btn-secondary" onclick={handleExportData}>
+                    <span>📊</span>
+                    Export Data
+                </button>
+                <button class="btn btn-primary" onclick={handleAddStudent}>
+                    <span>➕</span>
+                    Add New Student
+                </button>
+            </div>
+        </div>
+
+        <!-- STATS OVERVIEW -->
+        <div class="stats-overview">
+            <div class="stat-card-mini blue">
+                <div class="stat-icon">👨‍🎓</div>
+                <div class="stat-content">
+                    <div class="stat-value">1,847</div>
+                    <div class="stat-label">Total Students</div>
+                </div>
+                <div class="stat-badge success">
+                    <span>↑</span> 12%
+                </div>
+            </div>
+
+            <div class="stat-card-mini green">
+                <div class="stat-icon">✅</div>
+                <div class="stat-content">
+                    <div class="stat-value">1,742</div>
+                    <div class="stat-label">Active Students</div>
+                </div>
+                <div class="stat-badge success">
+                    <span>↑</span> 8%
+                </div>
+            </div>
+
+            <div class="stat-card-mini orange">
+                <div class="stat-icon">⏸️</div>
+                <div class="stat-content">
+                    <div class="stat-value">68</div>
+                    <div class="stat-label">On Leave</div>
+                </div>
+                <div class="stat-badge warning">
+                    <span>↑</span> 3%
+                </div>
+            </div>
+
+            <div class="stat-card-mini purple">
+                <div class="stat-icon">🎓</div>
+                <div class="stat-content">
+                    <div class="stat-value">37</div>
+                    <div class="stat-label">Graduated</div>
+                </div>
+                <div class="stat-badge info">
+                    <span>→</span> 0%
+                </div>
+            </div>
+        </div>
+
+        <!-- FILTERS & SEARCH -->
+        <div class="filter-section">
+            <div class="search-container">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input 
+                        type="text" 
+                        placeholder="Search by name, ID, class, parent..." 
+                        value={searchQuery}
+                        onkeyup={handleSearch}
+                    />
+                    <span class="keyboard-hint">⌘K</span>
+                </div>
+            </div>
+
+            <div class="filter-controls">
+                <div class="filter-group">
+                    <label class="filter-label">Class</label>
+                    <select class="filter-select" onchange={handleClassFilter}>
+                        <option value="">All Classes</option>
+                        <option value="10A">Class 10-A</option>
+                        <option value="10B">Class 10-B</option>
+                        <option value="9A">Class 9-A</option>
+                        <option value="9B">Class 9-B</option>
+                        <option value="8A">Class 8-A</option>
+                        <option value="8B">Class 8-B</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Status</label>
+                    <select class="filter-select" onchange={handleStatusFilter}>
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="onleave">On Leave</option>
+                        <option value="graduated">Graduated</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label">Academic Year</label>
+                    <select class="filter-select" onchange={handleYearFilter}>
+                        <option value="2025-26">2025-2026</option>
+                        <option value="2024-25">2024-2025</option>
+                        <option value="2023-24">2023-2024</option>
+                    </select>
+                </div>
+
+                <button class="btn-filter-reset" onclick={handleResetFilters}>
+                    <span>↻</span>
+                    Reset
+                </button>
+            </div>
+
+            <div class="view-toggle">
+                <button class={gridViewClass} onclick={handleGridView}>
+                    <span>⊞</span>
+                    Grid
+                </button>
+                <button class={listViewClass} onclick={handleListView}>
+                    <span>☰</span>
+                    List
+                </button>
+            </div>
+        </div>
+
+        <!-- GRID VIEW -->
+        <template lwc:if={isGridView}>
+            <div class="students-grid">
+                <template for:each={filteredStudents} for:item="student">
+                    <div key={student.id} class="student-card" onclick={handleStudentClick} data-id={student.id}>
+                        <div class="student-card-header">
+                            <div class="student-avatar-large" style={student.avatarStyle}>
+                                {student.initials}
+                            </div>
+                            <div class={student.statusBadgeClass}>
+                                <span class="status-dot"></span>
+                                {student.status}
+                            </div>
+                        </div>
+
+                        <div class="student-card-body">
+                            <h3 class="student-name">{student.name}</h3>
+                            <div class="student-id">{student.studentId}</div>
+                            
+                            <div class="student-meta">
+                                <div class="meta-item">
+                                    <span class="meta-icon">📚</span>
+                                    <span class="meta-text">{student.class}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span class="meta-icon">📅</span>
+                                    <span class="meta-text">{student.admissionDate}</span>
+                                </div>
+                            </div>
+
+                            <div class="student-stats-mini">
+                                <div class="mini-stat">
+                                    <div class="mini-stat-label">Attendance</div>
+                                    <div class="mini-stat-value" style={student.attendanceColor}>{student.attendance}%</div>
+                                </div>
+                                <div class="mini-stat">
+                                    <div class="mini-stat-label">Grade Avg</div>
+                                    <div class="mini-stat-value" style={student.gradeColor}>{student.gradeAvg}%</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="student-card-footer">
+                            <button class="card-action-btn" onclick={handleViewProfile} data-id={student.id}>
+                                <span>👁️</span>
+                                View Profile
+                            </button>
+                            <button class="card-action-btn" onclick={handleQuickEdit} data-id={student.id}>
+                                <span>✏️</span>
+                                Edit
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- LIST VIEW -->
+        <template lwc:if={isListView}>
+            <div class="students-list-container">
+                <div class="list-header">
+                    <div class="list-header-cell checkbox-cell">
+                        <input type="checkbox" onchange={handleSelectAll} />
+                    </div>
+                    <div class="list-header-cell student-cell">
+                        <span>Student</span>
+                        <span class="sort-icon">⇅</span>
+                    </div>
+                    <div class="list-header-cell">
+                        <span>Class</span>
+                        <span class="sort-icon">⇅</span>
+                    </div>
+                    <div class="list-header-cell">
+                        <span>Parent/Guardian</span>
+                    </div>
+                    <div class="list-header-cell">
+                        <span>Contact</span>
+                    </div>
+                    <div class="list-header-cell">
+                        <span>Attendance</span>
+                        <span class="sort-icon">⇅</span>
+                    </div>
+                    <div class="list-header-cell">
+                        <span>Grade Avg</span>
+                        <span class="sort-icon">⇅</span>
+                    </div>
+                    <div class="list-header-cell">
+                        <span>Status</span>
+                    </div>
+                    <div class="list-header-cell actions-cell">
+                        <span>Actions</span>
+                    </div>
+                </div>
+
+                <div class="list-body">
+                    <template for:each={filteredStudents} for:item="student">
+                        <div key={student.id} class="list-row">
+                            <div class="list-cell checkbox-cell">
+                                <input type="checkbox" data-id={student.id} onchange={handleRowSelect} />
+                            </div>
+                            <div class="list-cell student-cell">
+                                <div class="student-info-inline">
+                                    <div class="student-avatar-small" style={student.avatarStyle}>
+                                        {student.initials}
+                                    </div>
+                                    <div class="student-details-inline">
+                                        <div class="student-name-inline">{student.name}</div>
+                                        <div class="student-id-inline">{student.studentId}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="list-cell">
+                                <span class="class-badge">{student.class}</span>
+                            </div>
+                            <div class="list-cell">
+                                <div class="parent-info">
+                                    <div class="parent-name">{student.parentName}</div>
+                                    <div class="parent-relation">{student.relation}</div>
+                                </div>
+                            </div>
+                            <div class="list-cell">
+                                <div class="contact-info">
+                                    <div class="contact-item">
+                                        <span>📱</span> {student.phone}
+                                    </div>
+                                    <div class="contact-item">
+                                        <span>📧</span> {student.email}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="list-cell">
+                                <div class="progress-inline">
+                                    <div class="progress-bar-small">
+                                        <div class="progress-fill-small" style={student.attendanceProgress}></div>
+                                    </div>
+                                    <span class="progress-text">{student.attendance}%</span>
+                                </div>
+                            </div>
+                            <div class="list-cell">
+                                <div class="grade-display" style={student.gradeColor}>
+                                    <strong>{student.gradeAvg}%</strong>
+                                    <span class="grade-letter">{student.gradeLetter}</span>
+                                </div>
+                            </div>
+                            <div class="list-cell">
+                                <span class={student.statusBadgeClass}>
+                                    <span class="status-dot"></span>
+                                    {student.status}
+                                </span>
+                            </div>
+                            <div class="list-cell actions-cell">
+                                <div class="action-buttons">
+                                    <button class="action-btn" onclick={handleViewProfile} data-id={student.id} title="View Profile">
+                                        👁️
+                                    </button>
+                                    <button class="action-btn" onclick={handleQuickEdit} data-id={student.id} title="Edit">
+                                        ✏️
+                                    </button>
+                                    <button class="action-btn" onclick={handleMoreActions} data-id={student.id} title="More">
+                                        ⋮
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <!-- PAGINATION -->
+        <div class="pagination-container">
+            <div class="pagination-info">
+                Showing <strong>{startRecord}</strong> to <strong>{endRecord}</strong> of <strong>{totalRecords}</strong> students
+            </div>
+            <div class="pagination-controls">
+                <button class="pagination-btn" onclick={handleFirstPage} disabled={isFirstPage}>
+                    <span>⟨⟨</span>
+                </button>
+                <button class="pagination-btn" onclick={handlePrevPage} disabled={isFirstPage}>
+                    <span>⟨</span>
+                </button>
+                
+                <template for:each={pageNumbers} for:item="page">
+                    <button 
+                        key={page.number} 
+                        class={page.className} 
+                        onclick={handlePageClick}
+                        data-page={page.number}
+                    >
+                        {page.number}
+                    </button>
+                </template>
+
+                <button class="pagination-btn" onclick={handleNextPage} disabled={isLastPage}>
+                    <span>⟩</span>
+                </button>
+                <button class="pagination-btn" onclick={handleLastPage} disabled={isLastPage}>
+                    <span>⟩⟩</span>
+                </button>
+            </div>
+            <div class="pagination-size">
+                <select class="page-size-select" onchange={handlePageSizeChange}>
+                    <option value="10">10 per page</option>
+                    <option value="25">25 per page</option>
+                    <option value="50">50 per page</option>
+                    <option value="100">100 per page</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- BULK ACTIONS BAR (shown when items selected) -->
+        <template lwc:if={hasSelectedItems}>
+            <div class="bulk-actions-bar">
+                <div class="bulk-info">
+                    <span class="selected-count">{selectedCount} students selected</span>
+                    <button class="clear-selection" onclick={handleClearSelection}>Clear</button>
+                </div>
+                <div class="bulk-actions">
+                    <button class="bulk-btn" onclick={handleBulkEmail}>
+                        <span>📧</span>
+                        Send Email
+                    </button>
+                    <button class="bulk-btn" onclick={handleBulkSMS}>
+                        <span>💬</span>
+                        Send SMS
+                    </button>
+                    <button class="bulk-btn" onclick={handleBulkExport}>
+                        <span>📊</span>
+                        Export Selected
+                    </button>
+                    <button class="bulk-btn danger" onclick={handleBulkDelete}>
+                        <span>🗑️</span>
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

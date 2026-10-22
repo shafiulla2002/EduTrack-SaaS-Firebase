@@ -1,0 +1,606 @@
+<template>
+    <div class="admission-wrapper">
+        <!-- Header Section -->
+        <div class="admission-header">
+            <h1>VIKAS HIGH SCHOOL</h1>
+            <p>Advanced Entrance & Fee Management Portal</p>
+        </div>
+
+        <!-- Main Card Section -->
+        <div class="card-premium">
+            <!-- Tab Switcher -->
+            <div class="tab-switcher slds-m-bottom_xx-large">
+                <div class={admissionTabClass} onclick={handleTabChange} data-tab="admission">
+                    <lightning-icon icon-name="utility:user_add" size="x-small" variant={admissionIconVariant}
+                        class="slds-m-right_x-small"></lightning-icon>
+                    New Admission
+                </div>
+                <div class={billingTabClass} onclick={handleTabChange} data-tab="billing">
+                    <lightning-icon icon-name="utility:moneybag" size="x-small" variant={billingIconVariant}
+                        class="slds-m-right_x-small"></lightning-icon>
+                    Pay the Bill
+                </div>
+            </div>
+
+            <!-- Admission Tab -->
+            <template if:true={isAdmissionTab}>
+                <div class="animate-fade-in">
+                    <!-- Progress Bar -->
+                    <div class="slds-m-bottom_large progress-container">
+                        <lightning-progress-indicator current-step={currentStep} type="base" variant="base">
+                            <lightning-progress-step label="Student Profile" value="1"></lightning-progress-step>
+                            <lightning-progress-step label="Academic Details" value="2"></lightning-progress-step>
+                            <lightning-progress-step label="Fee Structure" value="3"></lightning-progress-step>
+                            <lightning-progress-step label="Review & Submit" value="4"></lightning-progress-step>
+                        </lightning-progress-indicator>
+                    </div>
+
+                    <!-- Step 1 -->
+                    <template if:true={isStep1}>
+                        <div class="step-container">
+                            <div class="slds-text-heading_medium slds-m-bottom_medium section-title">Student Profile
+                            </div>
+                            <div class="slds-grid slds-gutters slds-wrap">
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input label="First Name" data-id="firstName"
+                                        value={tempStudent.firstName} onchange={handleInputChange} name="firstName"
+                                        required class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input label="Last Name" data-id="lastName" value={tempStudent.lastName}
+                                        onchange={handleInputChange} name="lastName" required
+                                        class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input label="Father Name" data-id="fatherName"
+                                        value={tempStudent.fatherName} onchange={handleInputChange} name="fatherName"
+                                        required class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input label="Mother Name" data-id="motherName"
+                                        value={tempStudent.motherName} onchange={handleInputChange} name="motherName"
+                                        class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input type="date" label="Date of Birth" data-id="dob"
+                                        value={tempStudent.dob} onchange={handleInputChange} name="dob" required
+                                        class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input label="Phone Number" data-id="phone" type="tel"
+                                        value={tempStudent.phone} onchange={handleInputChange} name="phone" required
+                                        class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-1 slds-m-bottom_medium">
+                                    <lightning-input label="Email Address" data-id="email" type="email"
+                                        value={tempStudent.email} onchange={handleInputChange} name="email"
+                                        class="input-clean"></lightning-input>
+                                </div>
+
+                                <!-- Address Section -->
+                                <div class="slds-col slds-size_1-of-1 slds-m-top_small slds-m-bottom_small">
+                                    <h3 class="slds-text-title_caps slds-text-color_weak">Residential Address</h3>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input label="Village/City" data-id="village" value={tempStudent.village}
+                                        onchange={handleInputChange} name="village"
+                                        class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input label="City (Official)" data-id="city" value={tempStudent.city}
+                                        onchange={handleInputChange} name="city" class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-input label="Pincode" data-id="pincode" value={tempStudent.pincode}
+                                        onchange={handleInputChange} name="pincode"
+                                        class="input-clean"></lightning-input>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-combobox label="State" data-id="state" value={tempStudent.state}
+                                        options={stateOptions} onchange={handleInputChange} name="state"
+                                        class="input-clean" placeholder="Select State"></lightning-combobox>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-combobox label="Country" data-id="country" value={tempStudent.country}
+                                        options={countryOptions} onchange={handleInputChange} name="country"
+                                        class="input-clean" placeholder="Select Country"></lightning-combobox>
+                                </div>
+
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Step 2 -->
+                    <template if:true={isStep2}>
+                        <div class="step-container">
+                            <div class="slds-text-heading_medium slds-m-bottom_medium section-title">Academic Details
+                            </div>
+                            <div class="slds-grid slds-gutters slds-wrap">
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-combobox label="Class" value={tempStudent.selectedClass}
+                                        data-id="selectedClass" options={classOptions} name="selectedClass"
+                                        onchange={handleInputChange} required class="input-clean"></lightning-combobox>
+                                </div>
+                                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                    <lightning-combobox label="Section" value={tempStudent.selectedSection}
+                                        onchange={handleInputChange} data-id="selectedSection" name="selectedSection"
+                                        options={sectionOptions} class="input-clean"></lightning-combobox>
+                                </div>
+                                <div class="slds-col slds-size_1-of-1 slds-m-bottom_medium">
+                                    <lightning-combobox label="Academic Year" value={tempStudent.academicYear}
+                                        data-id="academicYear" name="academicYear" onchange={handleInputChange}
+                                        options={yearOptions} required class="input-clean"></lightning-combobox>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Step 3 -->
+                    <template if:true={isStep3}>
+                        <div class="step-container">
+                            <div class="slds-text-heading_medium slds-m-bottom_medium section-title">Fee Structure</div>
+                            <div class="selection-grid">
+                                <template if:true={hasProducts}>
+                                    <template for:each={displayProducts} for:item="p">
+                                        <div key={p.Id} class={p.wrapperClass} onclick={handleProductCardClick}
+                                            data-id={p.Id}>
+                                            <div class="checkbox-wrapper">
+                                                <lightning-input type="checkbox" data-id={p.Id} checked={p.checked}
+                                                    onchange={handleProductSelect}
+                                                    variant="label-hidden"></lightning-input>
+                                            </div>
+                                            <div class="card-content">
+                                                <h3 class="product-title">{p.Product2.Name}</h3>
+                                                <p class="product-desc">{p.Product2.Description}</p>
+                                                <div class="product-price">
+                                                    <lightning-formatted-number value={p.UnitPrice}
+                                                        format-style="currency"
+                                                        currency-code="INR"></lightning-formatted-number>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </template>
+                                <template if:false={hasProducts}>
+                                    <div class="slds-text-align_center slds-p-around_large slds-text-color_weak"
+                                        style="width: 100%;">
+                                        <div style="font-size: 2rem;">📋</div>
+                                        <h3 class="slds-text-heading_small slds-m-top_medium">No Fees Found</h3>
+                                        <p>No fee structure has been set up for {tempStudent.selectedClass} yet.</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Step 4 -->
+                    <template if:true={isStep4}>
+                        <div class="step-container">
+                            <div class="slds-text-heading_medium slds-m-bottom_medium section-title">Review Enrollment
+                            </div>
+                            <div class="review-box slds-p-around_medium slds-m-bottom_medium">
+                                <div class="slds-grid slds-gutters slds-wrap">
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                                        <span class="label-text">Name:</span> <span
+                                            class="value-text">{tempStudent.firstName} {tempStudent.lastName}</span>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                                        <span class="label-text">Phone:</span> <span
+                                            class="value-text">{tempStudent.phone}</span>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_small">
+                                        <span class="label-text">Class:</span> <span
+                                            class="value-text">{tempStudent.selectedClass} -
+                                            {tempStudent.selectedSection}</span>
+                                    </div>
+                                    <div
+                                        class="slds-col slds-size_1-of-1 slds-m-top_medium slds-border_top slds-p-top_small">
+                                        <!-- Fee Breakdown List -->
+                                        <div class="fee-breakdown slds-m-bottom_small">
+                                            <template for:each={selectedServiceDetails} for:item="item">
+                                                <div key={item.id}
+                                                    class="fee-row slds-grid slds-grid_align-spread slds-p-vertical_xx-small">
+                                                    <span class="fee-name" style="color: #4a5568;">{item.name}</span>
+                                                    <span class="fee-amount font-bold">
+                                                        <lightning-formatted-number value={item.price}
+                                                            format-style="currency"
+                                                            currency-code="INR"></lightning-formatted-number>
+                                                    </span>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <div class="totals-row">
+                                            <span class="label-text">Total Applicable Fees:</span>
+                                            <span class="total-amount"><lightning-formatted-number
+                                                    value={selectedServicesTotal} format-style="currency"
+                                                    currency-code="INR"></lightning-formatted-number></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Step 5: Success & Redirect -->
+                    <template if:true={isSuccessStep}>
+                        <div class="animate-slide-up" style="text-align: center; padding: 3rem 1rem;">
+                            <div style="font-size: 4rem; margin-bottom: 1.5rem;">🎉</div>
+                            <h2
+                                style="font-size: 1.8rem; font-weight: 800; color: var(--primary-color); margin-bottom: 0.5rem;">
+                                Admission Successful!
+                            </h2>
+                            <p style="color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2.5rem;">
+                                The student record and admission opportunity have been created.
+                            </p>
+
+                            <div style="display: flex; gap: 1rem; justify-content: center;">
+                                <button class="btn btn-primary" onclick={handlePayNow}>
+                                    <span style="margin-right: 8px;">💳</span>
+                                    Pay the Bill Now
+                                </button>
+                                <button class="btn btn-secondary" onclick={handleNewAdmissionAction}>
+                                    <span style="margin-right: 8px;">➕</span>
+                                    New Admission
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Footer Actions -->
+                    <template if:false={isSuccessStep}>
+                        <div class="slds-grid slds-grid_align-spread slds-m-top_large actions-footer">
+                            <button class="btn-secondary" onclick={handleBack} disabled={isFirstStep}>Back</button>
+                            <button class="btn-primary" onclick={handleNext} disabled={isLoading}>
+                                {nextButtonLabel}
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Billing Tab -->
+            <template if:true={isBillingTab}>
+                <div class="animate-fade-in">
+                    <div class="search-hero slds-m-bottom_large">
+                        <div class="search-box">
+                            <lightning-icon icon-name="utility:search" size="x-small"
+                                class="search-icon-input"></lightning-icon>
+                            <input type="text" placeholder="Search Student (Name or Mobile)..."
+                                class="custom-search-input" onkeyup={handleStudentSearch} />
+                        </div>
+                    </div>
+
+                    <!-- Search Results -->
+                    <template if:true={studentsFound}>
+                        <div class="results-grid">
+                            <template for:each={studentsFound} for:item="s">
+                                <div key={s.account.Id} class="result-card clickable" onclick={selectStudent}
+                                    data-id={s.account.Id}>
+                                    <div class="avatar-circle">
+                                        <lightning-icon icon-name="standard:person_account" size="small"
+                                            variant="inverse"></lightning-icon>
+                                    </div>
+                                    <div class="result-info">
+                                        <div class="result-name">{s.account.Name}</div>
+                                        <div class="result-class-section"
+                                            style="font-size: 0.8rem; color: #718096; margin-bottom: 2px;">
+                                            {s.account.Class__c} - {s.account.Section__c}
+                                        </div>
+                                        <div class="result-mobile">{s.account.PersonMobilePhone}</div>
+                                    </div>
+                                    <div class="result-balance">
+                                        Due: <lightning-formatted-number value={s.totalPendingBalance}
+                                            format-style="currency" currency-code="INR"></lightning-formatted-number>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Selected Student Ledger -->
+                    <template if:true={selectedStudentId}>
+                        <div class="ledger-container animate-slide-up">
+                            <div class="ledger-header slds-m-bottom_medium">
+                                <h2 class="ledger-title">Payment Ledger: <span
+                                        class="highlight">{selectedStudentName}</span></h2>
+                            </div>
+
+                            <template if:true={lastInvoiceId}>
+                                <div
+                                    class="success-message slds-m-bottom_medium slds-grid slds-grid_align-spread slds-grid_vertical-align-center">
+                                    <div class="slds-grid slds-grid_vertical-align-center">
+                                        <lightning-icon icon-name="utility:success" variant="inverse" size="small"
+                                            class="slds-m-right_small"></lightning-icon>
+                                        <div>
+                                            <div class="slds-text-heading_small font-bold">Payment
+                                                Successful!</div>
+                                            <div class="slds-text-body_small">Your invoice has
+                                                been generated.</div>
+                                        </div>
+                                    </div>
+                                    <!-- Button moved to footer as requested -->
+                                </div>
+                            </template>
+
+                            <template if:true={unpaidFees}>
+                                <div class="table-container-clean">
+                                    <table class="table-clean">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 50px;"></th>
+                                                <th style="text-transform: uppercase;">FEE NAME</th>
+                                                <th style="text-transform: uppercase;">TOTAL</th>
+                                                <th style="text-transform: uppercase;">PAID</th>
+                                                <th style="text-transform: uppercase;">BALANCE</th>
+                                                <th style="width: 150px; text-transform: uppercase;">
+                                                    AMOUNT TO PAY</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template for:each={unpaidFees} for:item="f">
+                                                <tr key={f.oliId} class={f.rowClass}>
+                                                    <td>
+                                                        <lightning-input type="checkbox" data-id={f.oliId}
+                                                            onchange={handleFeeSelect} checked={f.isSelected}
+                                                            variant="label-hidden"></lightning-input>
+                                                    </td>
+                                                    <td class="fee-name font-bold">{f.productName}</td>
+                                                    <td><lightning-formatted-number value={f.totalAmount}
+                                                            format-style="currency"
+                                                            currency-code="INR"></lightning-formatted-number></td>
+                                                    <td class="paid-col"><lightning-formatted-number
+                                                            value={f.paidAmount} format-style="currency"
+                                                            currency-code="INR"></lightning-formatted-number></td>
+                                                    <td class="balance-col"><lightning-formatted-number
+                                                            value={f.balanceDue} format-style="currency"
+                                                            currency-code="INR"></lightning-formatted-number></td>
+                                                    <td>
+                                                        <lightning-input type="number" step="0.01"
+                                                            variant="label-hidden" data-id={f.oliId}
+                                                            value={f.paymentAmount} onchange={handleAmountChange}
+                                                            disabled={f.isInputDisabled} max={f.balanceDue} min="0"
+                                                            class="payment-input"></lightning-input>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="payment-selection-area slds-m-top_large">
+                                    <h3 class="section-subtitle">SELECT PAYMENT CHANNEL</h3>
+                                    <div class="payment-grid">
+                                        <template for:each={paymentChannelsDisplay} for:item="channel">
+                                            <div key={channel.value} class={channel.className}
+                                                onclick={handlePaymentMethodSelect} data-value={channel.value}>
+                                                <div class="payment-logo-container">
+                                                    <!-- PHONEPE PREMIUM LOGO -->
+                                                    <template lwc:if={channel.isPhonePe}>
+                                                        <svg viewBox="0 0 100 100" class="payment-logo-svg">
+                                                            <circle cx="50" cy="50" r="50" fill="#5f259f" />
+                                                            <path
+                                                                d="M40 30h12c4 0 7 3 7 7s-3 7-7 7H40v16h-7V30h7zm0 8v6h4c1.5 0 2.5-1 2.5-2.5S45.5 38 44 38h-4z"
+                                                                fill="white" />
+                                                            <path d="M52 24l-8 10M58 24l-8 10" stroke="white"
+                                                                stroke-width="4" stroke-linecap="round" />
+                                                        </svg>
+                                                    </template>
+                                                    <!-- GOOGLE PAY PREMIUM SVG -->
+                                                    <template lwc:elseif={channel.isGooglePay}>
+                                                        <svg viewBox="0 0 40 24" class="payment-logo-svg large">
+                                                            <path
+                                                                d="M10.12 11.23v2.85h4.55c-.18 1.05-.72 1.94-1.61 2.53v2.09h2.61c1.52-1.4 2.4-3.47 2.4-5.94 0-.54-.05-1.06-.15-1.53H10.12z"
+                                                                fill="#4285F4" />
+                                                            <path
+                                                                d="M10.12 17.5c-2.3 0-4.24-1.56-4.94-3.66H2.52v2.13c1.4 2.78 4.28 4.68 7.6 4.68 1.96 0 3.61-.65 4.81-1.76l-2.61-2.09c-.59.4-1.38.74-2.2.74z"
+                                                                fill="#34A853" />
+                                                            <path
+                                                                d="M5.18 13.84c-.38-.59-.59-1.28-.59-2.01s.21-1.42.59-2.01V7.7H2.52C1.61 9.5 1.1 11.53 1.1 13.67s.51 4.17 1.42 5.97L5.18 13.84z"
+                                                                fill="#FBBC05" />
+                                                            <path
+                                                                d="M10.12 6.67c1.1 0 2.08.38 2.85 1.12l2.13-2.13c-1.29-1.2-2.98-1.93-4.98-1.93-3.32 0-6.2 1.9-7.6 4.68l2.66 2.13c.7-2.1 2.64-3.66 4.94-3.66z"
+                                                                fill="#EA4335" />
+                                                            <text x="18" y="16.5" font-family="Arial, sans-serif"
+                                                                font-weight="bold" font-size="9"
+                                                                fill="#5F6368">Pay</text>
+                                                        </svg>
+                                                    </template>
+                                                    <!-- NET BANKING SVG -->
+                                                    <template lwc:elseif={channel.isNetBanking}>
+                                                        <lightning-icon icon-name="custom:custom61"
+                                                            size="medium"></lightning-icon>
+                                                    </template>
+                                                    <!-- CASH SVG -->
+                                                    <template lwc:elseif={channel.isCash}>
+                                                        <lightning-icon icon-name="custom:custom17"
+                                                            size="medium"></lightning-icon>
+                                                    </template>
+                                                </div>
+                                                <div class="payment-label">{channel.label}</div>
+                                                <template if:true={channel.selected}>
+                                                    <div class="selection-badge">✓</div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <!-- UPI QR Code Section (Merchant Standee Style) -->
+                                    <template lwc:if={showQRSection}>
+                                        <div class="upi-qr-section animate-fade-in slds-m-top_medium">
+                                            <div class="standee-container">
+                                                <!-- Standee Header -->
+                                                <div class="standee-header">
+                                                    <div class="standee-header-logo">
+                                                        <svg viewBox="0 0 100 100">
+                                                            <circle cx="50" cy="50" r="50" fill="#5f259f" />
+                                                            <path d="M35 30h25v8H50v27h-8V38h-7v-8z" fill="white" />
+                                                            <path d="M50 38c3 0 5 1.5 5 4s-2 4-5 4h-8V38h8z"
+                                                                fill="white" opacity="0.5" />
+                                                            <circle cx="65" cy="65" r="8" fill="white" opacity="0.8" />
+                                                        </svg>
+                                                    </div>
+                                                    <span class="standee-header-text">PhonePe</span>
+                                                </div>
+
+                                                <h4 class="standee-accepted">ACCEPTED HERE</h4>
+                                                <p class="standee-pay-using">Scan & Pay Using PhonePe App</p>
+
+                                                <!-- Main QR with Center Logo Overlay -->
+                                                <div class="qr-wrapper">
+                                                    <template lwc:if={isQRLoading}>
+                                                        <lightning-spinner alternative-text="Generating QR Code..."
+                                                            size="small"></lightning-spinner>
+                                                    </template>
+                                                    <template lwc:elseif={qrCodeBase64}>
+                                                        <img src={qrCodeUrl} alt="UPI QR Code" class="qr-img" />
+                                                        <!-- Temporarily removed overlay to fix scan issues
+                                                        <div class="qr-overlay-logo">
+                                                            <svg viewBox="0 0 100 100" class="qr-overlay-svg">
+                                                                <circle cx="50" cy="50" r="50" fill="#5f259f" />
+                                                                <path d="M40 30h12c4 0 7 3 7 7s-3 7-7 7H40v16h-7V30h7zm0 8v6h4c1.5 0 2.5-1 2.5-2.5S45.5 38 44 38h-4z" fill="white" />
+                                                                <path d="M52 24l-8 10M58 24l-8 10" stroke="white" stroke-width="4" stroke-linecap="round" />
+                                                            </svg>
+                                                        </div>
+                                                        -->
+                                                    </template>
+                                                    <template lwc:else>
+                                                        <div class="qr-fallback">
+                                                            <div
+                                                                class="slds-align_absolute-center slds-flex-column slds-p-around_medium">
+                                                                <lightning-icon icon-name="utility:lock" size="large"
+                                                                    variant="error"
+                                                                    class="slds-m-bottom_small"></lightning-icon>
+                                                                <p class="slds-text-heading_small font-bold">QR Image
+                                                                    Blocked</p>
+                                                                <p class="slds-text-body_small slds-m-top_x-small">To
+                                                                    enable scanning, please add:</p>
+                                                                <code
+                                                                    class="slds-m-vertical_x-small">https://api.qrserver.com</code>
+                                                                <p class="slds-text-body_small">to <b>Remote Site
+                                                                        Settings</b> in Setup.</p>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                </div>
+
+                                                <!-- Merchant Name Footer -->
+                                                <div class="merchant-footer-name">
+                                                    {upiConfig.payeeName}
+                                                </div>
+                                            </div>
+
+                                            <div class="standee-footer-disclaimer">
+                                                &copy; 2026, All rights reserved, PhonePe Ltd (Formerly known as
+                                                'PhonePe Private Ltd')
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Net Banking Selection Section -->
+                                    <template if:true={isNetBankingSelected}>
+                                        <div class="bank-selection-section animate-fade-in slds-m-top_medium">
+                                            <h4 class="form-label slds-m-bottom_small">Select Your Bank</h4>
+                                            <div class="bank-grid">
+                                                <template for:each={bankOptionsDisplay} for:item="bank">
+                                                    <div key={bank.id} class={bank.className} onclick={handleBankSelect}
+                                                        data-id={bank.id}>
+                                                        <lightning-icon icon-name="standard:account" size="small"
+                                                            class="slds-m-right_small"></lightning-icon>
+                                                        <span class="bank-name">{bank.name}</span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                            <template if:true={selectedBankDetails}>
+                                                <div class="bank-info-box slds-m-top_small animate-slide-up">
+                                                    <p>Bank: <strong>{selectedBankDetails.name}</strong></p>
+                                                    <p>IFSC: <strong>{selectedBankDetails.ifsc}</strong></p>
+                                                    <p>Account Holder: <strong>VIKAS HIGH SCHOOL</strong></p>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <div class="payment-footer">
+                                    <div class="total-section">
+                                        <span class="label" style="text-transform: uppercase;">TOTAL SETTLEMENT</span>
+                                        <span class="value">₹{billingTotal}</span>
+                                    </div>
+                                    <div class="action-section">
+                                        <template if:true={lastInvoiceId}>
+                                            <button class="btn-secondary slds-m-right_small"
+                                                onclick={openInvoicePreview}>
+                                                <lightning-icon icon-name="utility:preview" size="x-small"
+                                                    class="slds-m-right_x-small"></lightning-icon>
+                                                Preview Invoice
+                                            </button>
+                                        </template>
+                                        <button class="btn-primary" onclick={handleSubmitPayment}
+                                            disabled={isPaymentDisabled}>
+                                            <lightning-icon icon-name="utility:check" variant="inverse" size="x-small"
+                                                class="slds-m-right_x-small"></lightning-icon>
+                                            Submit Payment
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <template if:true={recentInvoices.length}>
+                                <div class="history-section slds-m-top_large">
+                                    <h3 class="slds-text-heading_small slds-m-bottom_small"
+                                        style="color: #4338ca; font-weight: 700;">
+                                        Recent Transactions (Correction Area)</h3>
+                                    <div class="table-container-clean">
+                                        <table class="table-clean">
+                                            <thead>
+                                                <tr>
+                                                    <th style="text-transform: uppercase;">INVOICE #</th>
+                                                    <th style="text-transform: uppercase;">DATE</th>
+                                                    <th style="text-transform: uppercase;">AMOUNT
+                                                    </th>
+                                                    <th style="text-transform: uppercase;">PRINT
+                                                    </th>
+                                                    <th style="text-transform: uppercase;">ROLLBACK
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template for:each={recentInvoices} for:item="inv">
+                                                    <tr key={inv.id}>
+                                                        <td><span class="font-bold">{inv.name}</span></td>
+                                                        <td><lightning-formatted-date-time
+                                                                value={inv.invoiceDate}></lightning-formatted-date-time>
+                                                        </td>
+                                                        <td><span class="font-bold"><lightning-formatted-number
+                                                                    value={inv.totalAmount} format-style="currency"
+                                                                    currency-code="INR"></lightning-formatted-number></span>
+                                                        </td>
+                                                        <td>
+                                                            <button class="icon-btn" onclick={openInvoicePreview}
+                                                                data-id={inv.id} title="Preview">👁️</button>
+                                                        </td>
+                                                        <td>
+                                                            <button class="icon-btn danger"
+                                                                onclick={handleCancelInvoice} data-id={inv.id}
+                                                                data-name={inv.name} title="Rollback">↺</button>
+                                                        </td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+        </div>
+
+        <div class="footer-copyright">
+            &copy; 2026 Vikas High School &bull; Secured by OmniCloud
+        </div>
+    </div>
+</template>

@@ -1,0 +1,616 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AcademicYear {
+  id        String      @id
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean     @default(false)
+  tenantId  String
+  Tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  Class     Class[]
+  Complaint Complaint[]
+}
+
+model ActivityLog {
+  id         String   @id
+  userId     String
+  action     String
+  entityName String
+  entityId   String?
+  details    String?
+  tenantId   String
+  createdAt  DateTime @default(now())
+  Tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  User       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Attendance {
+  id                  String            @id
+  attendanceSessionId String
+  studentId           String
+  status              AttendanceStatus
+  reason              String?
+  tenantId            String
+  AttendanceSession   AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Cascade)
+  StudentProfile      StudentProfile    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  Tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model AttendanceSession {
+  id             String       @id
+  date           DateTime     @db.Date
+  classSectionId String
+  takenById      String
+  presentCount   Int          @default(0)
+  absentCount    Int          @default(0)
+  totalStudents  Int          @default(0)
+  tenantId       String
+  Attendance     Attendance[]
+  ClassSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  StaffProfile   StaffProfile @relation(fields: [takenById], references: [id])
+  Tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Book {
+  id              String     @id
+  title           String
+  author          String
+  isbn            String?
+  category        String?
+  totalCopies     Int        @default(0)
+  availableCopies Int        @default(0)
+  tenantId        String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime
+  Tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  BookCopy        BookCopy[]
+}
+
+model BookCopy {
+  id        String         @id
+  bookId    String
+  barcode   String         @unique
+  status    BookCopyStatus @default(AVAILABLE)
+  tenantId  String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime
+  Book      Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  Tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  BookIssue BookIssue[]
+}
+
+model BookIssue {
+  id         String    @id
+  bookCopyId String
+  borrowerId String
+  issueDate  DateTime  @default(now())
+  dueDate    DateTime
+  returnDate DateTime?
+  fineAmount Decimal   @default(0) @db.Decimal(8, 2)
+  finePaid   Boolean   @default(false)
+  tenantId   String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime
+  BookCopy   BookCopy  @relation(fields: [bookCopyId], references: [id], onDelete: Cascade)
+  User       User      @relation(fields: [borrowerId], references: [id], onDelete: Cascade)
+  Tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Class {
+  id             String         @id
+  name           String
+  isActive       Boolean        @default(true)
+  academicYearId String
+  tenantId       String
+  AcademicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
+  Tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ClassSection   ClassSection[]
+}
+
+model ClassSection {
+  id                String              @id
+  classId           String
+  sectionId         String
+  strength          Int                 @default(0)
+  teacherId         String?
+  tenantId          String
+  AttendanceSession AttendanceSession[]
+  Class             Class               @relation(fields: [classId], references: [id], onDelete: Cascade)
+  Section           Section             @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  StaffProfile      StaffProfile?       @relation(fields: [teacherId], references: [id])
+  Tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ClassSubject      ClassSubject[]
+  Complaint         Complaint[]
+  Exam              Exam[]
+  Period            Period[]
+  StudentProfile    StudentProfile[]
+  TeacherAssignment TeacherAssignment[]
+
+  @@unique([classId, sectionId])
+}
+
+model ClassSubject {
+  id             String       @id
+  classSectionId String
+  subjectId      String
+  tenantId       String
+  ClassSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  Subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  Tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([classSectionId, subjectId])
+}
+
+model Complaint {
+  id             String        @id
+  title          String
+  description    String
+  status         String        @default("OPEN")
+  category       String
+  submittedById  String
+  academicYearId String
+  classSectionId String?
+  tenantId       String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime
+  AcademicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
+  ClassSection   ClassSection? @relation(fields: [classSectionId], references: [id])
+  User           User          @relation(fields: [submittedById], references: [id], onDelete: Cascade)
+  Tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Exam {
+  id             String       @id
+  name           String
+  type           String
+  classSectionId String
+  date           DateTime     @db.Date
+  tenantId       String
+  ClassSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  Tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ExamMark       ExamMark[]
+}
+
+model ExamMark {
+  id             String         @id
+  examId         String
+  studentId      String
+  subjectId      String
+  marksObtained  Decimal        @db.Decimal(5, 2)
+  remarks        String?
+  tenantId       String
+  Exam           Exam           @relation(fields: [examId], references: [id], onDelete: Cascade)
+  StudentProfile StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  Subject        Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  Tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([examId, studentId, subjectId])
+}
+
+model Expense {
+  id          String        @id
+  amount      Decimal       @db.Decimal(12, 2)
+  category    String
+  date        DateTime      @db.Date
+  description String?
+  paymentMode String
+  status      ExpenseStatus @default(PENDING)
+  tenantId    String
+  Tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id               String         @id
+  studentId        String
+  invoiceDate      DateTime       @db.Date
+  dueDate          DateTime       @db.Date
+  totalAmount      Decimal        @db.Decimal(12, 2)
+  paidAmount       Decimal        @default(0) @db.Decimal(12, 2)
+  remainingBalance Decimal        @db.Decimal(12, 2)
+  status           PaymentStatus
+  paymentMethod    PaymentMethod?
+  description      String?
+  tenantId         String
+  StudentProfile   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  Tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  InvoiceItem      InvoiceItem[]
+}
+
+model InvoiceItem {
+  id        String  @id
+  invoiceId String
+  name      String
+  amount    Decimal @db.Decimal(12, 2)
+  tenantId  String
+  Invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  Tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id          String   @id
+  title       String
+  message     String
+  type        String
+  recipientId String
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  User        User     @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+}
+
+model ParentProfile {
+  id               String           @id
+  userId           String           @unique
+  emergencyContact String?
+  User             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  StudentProfile   StudentProfile[]
+}
+
+model Period {
+  id                                                    String        @id
+  classSectionId                                        String
+  subjectId                                             String
+  teacherId                                             String
+  substituteTeacherId                                   String?
+  periodTimingId                                        String
+  dayOfWeek                                             String
+  tenantId                                              String
+  ClassSection                                          ClassSection  @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  PeriodTiming                                          PeriodTiming  @relation(fields: [periodTimingId], references: [id], onDelete: Cascade)
+  Subject                                               Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  StaffProfile_Period_substituteTeacherIdToStaffProfile StaffProfile? @relation("Period_substituteTeacherIdToStaffProfile", fields: [substituteTeacherId], references: [id])
+  StaffProfile_Period_teacherIdToStaffProfile           StaffProfile  @relation("Period_teacherIdToStaffProfile", fields: [teacherId], references: [id], onDelete: Cascade)
+  Tenant                                                Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model PeriodTiming {
+  id           String   @id
+  periodNumber Int
+  startTime    String
+  endTime      String
+  isActive     Boolean  @default(true)
+  tenantId     String
+  Period       Period[]
+  Tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Section {
+  id           String         @id
+  name         String
+  isActive     Boolean        @default(true)
+  tenantId     String
+  ClassSection ClassSection[]
+  Tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model StaffProfile {
+  id                                              String              @id
+  userId                                          String              @unique
+  employeeId                                      String?
+  designation                                     String?
+  basicSalary                                     Decimal?            @db.Decimal(12, 2)
+  allowances                                      Decimal?            @db.Decimal(12, 2)
+  deductions                                      Decimal?            @db.Decimal(12, 2)
+  pfDeduction                                     Decimal?            @db.Decimal(12, 2)
+  joiningDate                                     DateTime?
+  status                                          String?
+  qualification                                   String?
+  subjectsTaught                                  String[]
+  AttendanceSession                               AttendanceSession[]
+  ClassSection                                    ClassSection[]
+  Period_Period_substituteTeacherIdToStaffProfile Period[]            @relation("Period_substituteTeacherIdToStaffProfile")
+  Period_Period_teacherIdToStaffProfile           Period[]            @relation("Period_teacherIdToStaffProfile")
+  User                                            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  TeacherAssignment                               TeacherAssignment[]
+  TeacherSkill                                    TeacherSkill[]
+}
+
+model StudentProfile {
+  id              String         @id
+  userId          String         @unique
+  rollNo          String?
+  fatherName      String?
+  motherName      String?
+  aadharNo        String?
+  parentProfileId String?
+  classSectionId  String?
+  Attendance      Attendance[]
+  ExamMark        ExamMark[]
+  Invoice         Invoice[]
+  ClassSection    ClassSection?  @relation(fields: [classSectionId], references: [id])
+  ParentProfile   ParentProfile? @relation(fields: [parentProfileId], references: [id])
+  User            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subject {
+  id                String              @id
+  name              String
+  isActive          Boolean             @default(true)
+  tenantId          String
+  ClassSubject      ClassSubject[]
+  ExamMark          ExamMark[]
+  Period            Period[]
+  Tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  TeacherAssignment TeacherAssignment[]
+  TeacherSkill      TeacherSkill[]
+}
+
+model TeacherAssignment {
+  id             String       @id
+  teacherId      String
+  classSectionId String
+  subjectId      String
+  periodsPerWeek Int          @default(0)
+  tenantId       String
+  ClassSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  Subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  StaffProfile   StaffProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  Tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, classSectionId, subjectId])
+}
+
+model TeacherSkill {
+  id                String       @id
+  teacherId         String
+  subjectId         String
+  skillLevel        String?
+  yearsOfExperience Int?
+  tenantId          String
+  Subject           Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  StaffProfile      StaffProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  Tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@unique([teacherId, subjectId])
+}
+
+
+model Tenant {
+  id                String              @id
+  name              String
+  subDomain         String              @unique
+  logoUrl           String?
+  address           String?
+  email             String?
+  phone             String?
+  subtitle          String?
+  setupCompleted    Boolean             @default(false)
+  bankName          String?
+  bankBranch        String?
+  bankIFSC          String?
+  bankAccountNo     String?
+  googlePayId       String?
+  phonePeId         String?
+  upiQrId           String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  AcademicYear      AcademicYear[]
+  ActivityLog       ActivityLog[]
+  Attendance        Attendance[]
+  AttendanceSession AttendanceSession[]
+  Book              Book[]
+  BookCopy          BookCopy[]
+  BookIssue         BookIssue[]
+  Class             Class[]
+  ClassSection      ClassSection[]
+  ClassSubject      ClassSubject[]
+  Complaint         Complaint[]
+  Exam              Exam[]
+  ExamMark          ExamMark[]
+  Expense           Expense[]
+  Invoice           Invoice[]
+  InvoiceItem       InvoiceItem[]
+  Period            Period[]
+  PeriodTiming      PeriodTiming[]
+  Section           Section[]
+  Subject           Subject[]
+  TeacherAssignment TeacherAssignment[]
+  TeacherSkill      TeacherSkill[]
+  User                User[]
+  SubscriptionOrder   SubscriptionOrder[]
+  Subscription        Subscription[]
+  SubscriptionInvoice SubscriptionInvoice[]
+}
+
+model User {
+  id             String          @id
+  email          String          @unique
+  passwordHash   String
+  name           String
+  role           Role
+  phone          String?
+  isActive       Boolean         @default(true)
+  tenantId       String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime
+  ActivityLog    ActivityLog[]
+  BookIssue      BookIssue[]
+  Complaint      Complaint[]
+  Notification   Notification[]
+  ParentProfile  ParentProfile?
+  StaffProfile   StaffProfile?
+  StudentProfile StudentProfile?
+  Tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+enum Role {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+  STAFF
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum BookCopyStatus {
+  AVAILABLE
+  ISSUED
+  LOST
+  DAMAGED
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CARD
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIALLY_PAID
+  VOIDED
+}
+
+model SubscriptionPlan {
+  id        String   @id @default(uuid())
+  name      String
+  price     Decimal  @db.Decimal(12, 2)
+  duration  Int      // e.g. 6 or 12 (months)
+  features  String[]
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  SubscriptionOrder SubscriptionOrder[]
+  Subscription      Subscription[]
+}
+
+model SubscriptionOrder {
+  id          String   @id @default(uuid())
+  tenantId    String
+  planId      String
+  amount      Decimal  @db.Decimal(12, 2)
+  gst         Decimal  @db.Decimal(12, 2)
+  total       Decimal  @db.Decimal(12, 2)
+  gateway     String   // e.g. "RAZORPAY"
+  status      SubscriptionOrderStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  Tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  SubscriptionPlan    SubscriptionPlan      @relation(fields: [planId], references: [id])
+  SubscriptionPayment SubscriptionPayment[]
+}
+
+model SubscriptionPayment {
+  id              String   @id @default(uuid())
+  orderId         String
+  transactionId   String?  @unique
+  paymentId       String?  @unique
+  gateway         String
+  amount          Decimal  @db.Decimal(12, 2)
+  gst             Decimal  @db.Decimal(12, 2)
+  webhookResponse Json?
+  paymentStatus   SubscriptionPaymentStatus @default(PENDING)
+  paidDate        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  SubscriptionOrder SubscriptionOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id               String   @id @default(uuid())
+  tenantId         String
+  planId           String
+  startDate        DateTime
+  expiryDate       DateTime
+  status           SubscriptionStatus @default(ACTIVE)
+  renewalDate      DateTime?
+  paymentReference String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  Tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  SubscriptionPlan SubscriptionPlan @relation(fields: [planId], references: [id])
+}
+
+model SubscriptionInvoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  tenantId      String
+  schoolName    String
+  planName      String
+  amount        Decimal  @db.Decimal(12, 2)
+  gst           Decimal  @db.Decimal(12, 2)
+  total         Decimal  @db.Decimal(12, 2)
+  paymentId     String?
+  gateway       String?
+  invoicePdf    String?
+  invoiceDate   DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  Tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model PlatformSettings {
+  id              String   @id @default(uuid())
+  companyName     String
+  companyLogo     String?
+  gstNumber       String?
+  panNumber       String?
+  businessAddress String?
+  supportEmail    String?
+  supportPhone    String?
+  website         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model PaymentGatewayConfig {
+  id            String   @id @default(uuid())
+  gatewayName   String   @unique // e.g., "RAZORPAY", "STRIPE"
+  merchantName  String?
+  keyId         String?  // Encrypted
+  keySecret     String?  // Encrypted
+  webhookSecret String?  // Encrypted
+  mode          String   @default("TEST") // "TEST" or "PRODUCTION"
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum SubscriptionOrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+  GRACE_PERIOD
+}

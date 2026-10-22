@@ -1,0 +1,27 @@
+=== Test Results
+TEST NAME                                              OUTCOME  MESSAGE                                                                                                                                                                                                                    RUNTIME (MS)
+─────────────────────────────────────────────────────  ───────  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  ────────────
+EduTrack.EduProDashboardControllerTest.testAllMethods  Fail     System.DmlException: Insert failed. First exception on row 0; first error: DUPLICATE_VALUE, Duplicate PermissionSetAssignment.  Assignee: 005f6000003ojzV; Permission Set: 0PSf6000004A9nh: [AssigneeId, PermissionSetId]  
+                                                                Class.EduTrack.EduProDashboardControllerTest.setup: line 8, column 1                                                                                                                                                                   
+
+
+=== Test Setup Time by Test Class for Run 707f6000009hNhD
+TEST SETUP METHOD NAME                        SETUP TIME
+────────────────────────────────────────────  ──────────
+EduTrack.EduProDashboardControllerTest.setup  416       
+
+
+=== Test Summary
+NAME                 VALUE             
+───────────────────  ──────────────────
+Outcome              Failed            
+Tests Ran            2                 
+Pass Rate            0%                
+Fail Rate            100%              
+Skip Rate            0%                
+Test Run Id          707f6000009hNhD   
+Test Setup Time      416 ms            
+Test Execution Time  0 ms              
+Test Total Time      416 ms            
+Org Id               00Df600000HKx70EAD
+Username             shafi@devorg.com  

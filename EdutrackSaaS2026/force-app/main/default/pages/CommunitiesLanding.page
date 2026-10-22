@@ -1,0 +1,10 @@
+<apex:page id="communitiesLandingPage" controller="CommunitiesLandingController" title="{!$Label.site.site_login}">
+    <apex:form >
+        <apex:actionFunction name="forwardToStartPage" action="{!forwardToStartPage}" />
+    </apex:form>
+    <script>
+        window.onload = function() {
+            forwardToStartPage();
+        };
+    </script>
+</apex:page>

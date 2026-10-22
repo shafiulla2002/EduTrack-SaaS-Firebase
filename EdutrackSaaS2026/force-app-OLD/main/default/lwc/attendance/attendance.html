@@ -1,0 +1,305 @@
+<template>
+    <div class="attendance-container">
+        <!-- Teacher Selection Landing Page -->
+        <template if:true={showTeacherSelection}>
+            <div class="card teacher-selection-card">
+                <div class="card-fill"></div>
+                <div class="card-content">
+                    <div class="header">
+                        <div class="teacher-header-icon">📋</div>
+                        <h1>Take Attendance</h1>
+                        <p>Select your name to get started</p>
+                    </div>
+
+                    <div style="text-align:center">
+                        <div class="date-badge">📅 <span>{contactDate}</span></div>
+                    </div>
+
+                    <!-- Submission Carousel -->
+                    <template if:true={recentSubmissions.length}>
+                        <div class="carousel-container">
+                            <div class="carousel-track">
+                                <template for:each={recentSubmissions} for:item="sub">
+                                    <div key={sub.id} class="carousel-item">
+                                        <span class="carousel-bullet">●</span>
+                                        {sub.text}
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="field-label">👤 Select Teacher</div>
+
+                    <div class="teacher-search-wrapper" data-id="teacher-search-container">
+                        <div class="search-wrap">
+                            <span class="si-left">🔍</span>
+                            <input type="text" 
+                                   class={teacherSearchInputClass} 
+                                   value={teacherSearchTerm}
+                                   placeholder="Search your name…" 
+                                   onfocus={openTeacherDropdown} 
+                                   oninput={handleTeacherSearch}/>
+                            <template if:true={teacherSearchTerm}>
+                                <button class="si-clear show" onclick={handleClearTeacher}>✕</button>
+                            </template>
+                        </div>
+
+                        <div class={teacherDropdownClass}>
+                            <div class="dropdown-inner">
+                                <template for:each={filteredTeachers} for:item="teacher">
+                                    <div key={teacher.id} 
+                                         class="d-item" 
+                                         data-id={teacher.id} 
+                                         onclick={handleTeacherSelect}>
+                                        <div class={teacher.colorClass} title={teacher.initials}>{teacher.initials}</div>
+                                        <div class="d-info">
+                                            <div class="d-name">{teacher.name}</div>
+                                           <!-- <div class="d-sub">{teacher.subject}</div>-->
+                                        </div>
+                                        <div class="d-check">✓</div>
+                                    </div>
+                                </template>
+                            </div>
+                            <template if:true={showNoTeacherMatch}>
+                                <div class="no-match show">
+                                    <div class="nm-icon">🤷</div>No teacher found
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <template if:true={selectedTeacher}>
+                        <div class="selected-preview show">
+                            <div class={selectedTeacher.colorClass} title={selectedTeacher.initials}>{selectedTeacher.initials}</div>
+                            <div class="sel-info">
+                                <div class="sel-name">{selectedTeacher.name}</div>
+                                <div class="sel-sub">{selectedTeacher.subject}</div>
+                            </div>
+                            <button class="sel-change" onclick={handleTeacherChange}>Change</button>
+                        </div>
+                    </template>
+
+                    <button class="btn-proceed" disabled={isProceedDisabled} onclick={handleProceed}>
+                        Proceed to Take Attendance
+                        <span class="btn-arrow">→</span>
+                    </button>
+
+                    <div class="helper">Only you can mark attendance for your class</div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Main Tracker View (Hidden during teacher selection) -->
+        <template if:false={showTeacherSelection}>
+        
+        <!-- Header Section -->
+        <div class="header-section">
+            <div class="header-content">
+                <div>
+                    <h1 class="page-title">{titleLabel}</h1>
+                    <p class="page-subtitle">{subtitleLabel}</p>
+                </div>
+                <button class="btn-report" onclick={handleToggleReport}>
+                    <lightning-icon icon-name={reportBtnIcon} 
+                                    size="small" 
+                                    variant="inverse"
+                                    class="slds-m-right_x-small"></lightning-icon>
+                    {reportBtnLabel}
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Tracker View -->
+        <template if:false={showReport}>
+            <!-- Controls Card -->
+
+        <div class="controls-card">
+            <div class="control-group date-group">
+                <label>Date</label>
+                <input type="date" 
+                       class="modern-input" 
+                       value={selectedDate} 
+                       max={todayDate}
+                       onchange={handleDateChange}>
+            </div>
+            
+            <div class="control-group class-group">
+                <label>Class</label>
+                <lightning-combobox
+                    name="class"
+                    value={selectedClass}
+                    placeholder="Select Class"
+                    options={classOptions}
+                    onchange={handleClassChange}
+                    variant="label-hidden"
+                    class="modern-combobox">
+                </lightning-combobox>
+            </div>
+
+            <div class="control-group section-group">
+                <label>Section</label>
+                <lightning-combobox
+                    name="section"
+                    value={selectedSection}
+                    placeholder="Select Section"
+                    options={sectionOptions}
+                    onchange={handleSectionChange}
+                    variant="label-hidden"
+                    class="modern-combobox"
+                    disabled={isSectionDisabled}>
+                </lightning-combobox>
+            </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <template lwc:if={loading}>
+            <div class="loading-container">
+                <lightning-spinner alternative-text="Loading..." size="medium" variant="brand"></lightning-spinner>
+                <p>Loading data...</p>
+            </div>
+        </template>
+
+        <!-- Success Card (Summary View) -->
+        <template lwc:if={isSuccess}>
+            <div class="success-card">
+                <div class="success-timestamps">
+                    <span class="timestamp-item">Submitted: {submittedTime}</span>
+                    <template if:true={showUpdatedTime}>
+                        <span class="timestamp-separator"></span>
+                        <span class="timestamp-item">Updated: {lastUpdatedTime}</span>
+                    </template>
+                </div>
+                <span class="success-icon">🎉</span>
+                <h2 class="success-title">Attendance Submitted!</h2>
+                <div class="teacher-success-badge">
+                    <span class="teacher-label">Teacher:</span>
+                    <span class="teacher-name">{submittedTeacherName}</span>
+                </div>
+                <p class="success-subtitle">{formattedSelectedClass} • {formattedSelectedSection} • {selectedDate}</p>
+                
+                <div class="summary-stats">
+                    <div class="summary-stat present">
+                        <span class="summary-value">{stats.present}</span>
+                        <span class="summary-label">Present</span>
+                    </div>
+                    <div class="summary-stat absent">
+                        <span class="summary-value">{stats.absent}</span>
+                        <span class="summary-label">Absent</span>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <template lwc:if={isReadOnly}>
+                        <p class="read-only-msg">Attendance for past dates cannot be edited.</p>
+                        <button class="btn-action secondary" onclick={handleViewAttendance}>View Attendance</button>
+                    </template>
+                    <template lwc:else>
+                        <button class="btn-action" onclick={handleUpdateAttendance}>Update Attendance</button>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <!-- Student List (Edit/View Mode) -->
+        <template lwc:else>
+            <template lwc:if={hasStudents}>
+                <!-- Stats Summary (Filter Mode) -->
+                <div class="stats-grid">
+                    <div class={totalCardClass} onclick={handleFilterClick} data-filter="All" title="Show All Students">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Total</span>
+                            <span class="stat-value">{stats.total}</span>
+                        </div>
+                    </div>
+                    <div class={presentCardClass} onclick={handleFilterClick} data-filter="Present" title="Show Present Only">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Present</span>
+                            <span class="stat-value">{stats.present}</span>
+                        </div>
+                    </div>
+                    <div class={absentCardClass} onclick={handleFilterClick} data-filter="Absent" title="Show Absent Only">
+                        <div class="stat-icon">❌</div>
+                        <div class="stat-info">
+                            <span class="stat-label">Absent</span>
+                            <span class="stat-value">{stats.absent}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="student-list-container">
+                    <div class="list-header">
+                        <div class="header-left">
+                            <h2>Student List</h2>
+                            <span class="list-subtitle">{listSubtitle}</span>
+                        </div>
+                        <template lwc:if={sessionExists}>
+                            <button class="btn-close" onclick={handleCloseList} title="Close & Return to Summary">X</button>
+                        </template>
+                    </div>
+                    
+                    <div class="students-grid">
+                        <template for:each={displayedStudents} for:item="student">
+                            <div key={student.id} 
+                                 class={student.cardClass} 
+                                 data-id={student.id} 
+                                 onclick={handleStudentClick}>
+                                
+                                <div class="student-avatar">
+                                    <span class="initials">{student.initials}</span>
+                                </div>
+                                
+                                <div class="student-info">
+                                    <h3 class="student-name">{student.name}</h3>
+                                    <p class="student-roll">Roll No: {student.rollNumber}</p>
+                                </div>
+
+                                <template lwc:if={showStatusBadge}>
+                                    <div class="status-badge">
+                                        {student.status}
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Submit Action (Hidden if ReadOnly) -->
+                        <div class="action-footer">
+                            <template lwc:if={isReadOnly}>
+                                <div class="read-only-notice">
+                                    <lightning-icon icon-name="utility:lock" size="x-small" variant="warning" class="slds-m-right_x-small"></lightning-icon>
+                                    <span>Historical records are in Read-Only mode.</span>
+                                </div>
+                            </template>
+                            <template lwc:else>
+                                <button class="btn-submit" onclick={handleSubmit} disabled={isSubmitDisabled}>
+                                    {submitLabel}
+                                </button>
+                            </template>
+                        </div>
+                </div>
+            </template>
+            
+            <!-- Empty State -->
+            <template lwc:if={showEmptyState}>
+                <div class="empty-state">
+                    <div class="empty-illustration">📚</div>
+                    <h3>No Students Found</h3>
+                    <p>Select a Class and Section to view students.</p>
+                </div>
+            </template>
+        </template> <!-- End of Else (List Mode) -->
+
+        </template> <!-- End of showReport == false -->
+        </template> <!-- End of main tracker view (showTeacherSelection == false) -->
+
+        <!-- Report View -->
+        <template if:true={showReport}>
+            <div class="report-view">
+                <c-attendance-report></c-attendance-report>
+            </div>
+        </template>
+    </div>
+</template>

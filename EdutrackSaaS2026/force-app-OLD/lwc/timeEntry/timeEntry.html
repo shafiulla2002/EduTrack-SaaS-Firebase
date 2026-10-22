@@ -1,0 +1,202 @@
+<template>
+    <div class="time-tracker-container">
+
+        <!-- Week Navigation -->
+        <template if:true={showWeekSummary}>
+            <div class="week-summary">
+                <div class="date-navigation">
+                    <button class="arrow-button" onclick={handlePreviousWeek}>←</button>
+                    <span class="current-date">{todayDate}</span>
+                    <button class="arrow-button" onclick={handleNextWeek}>→</button>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mon</th>
+                            <th>Tue</th>
+                            <th>Wed</th>
+                            <th>Thu</th>
+                            <th>Fri</th>
+                            <th>Sat</th>
+                            <th>Sun</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class={monClass}>{weekSummary.Mon}</td>
+                            <td class={tueClass}>{weekSummary.Tue}</td>
+                            <td class={wedClass}>{weekSummary.Wed}</td>
+                            <td class={thuClass}>{weekSummary.Thu}</td>
+                            <td class={friClass}>{weekSummary.Fri}</td>
+                            <td class={satClass}>{weekSummary.Sat}</td>
+                            <td class={sunClass}>{weekSummary.Sun}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Time Entries -->
+            <div class="time-entries">
+                <template if:true={filteredEntriesForCurrentDate}>
+                    <template for:each={filteredEntriesForCurrentDate} for:item="entry">
+                        <div key={entry.id} class="entry-row">
+                            <!-- Project Name with Dropdown -->
+                            <template if:true={entry.isEditingProject}>
+                                <lightning-combobox
+                                    name="project"
+                                    value={entry.projectId}
+                                    data-id={entry.id}
+                                    data-field="projectName"
+                                    placeholder="Select project"
+                                    options={projectOptions}
+                                    onchange={handleProjectSelect}
+                                    onblur={handleComboboxBlur}>
+                                </lightning-combobox>
+                            </template>
+                            <template if:false={entry.isEditingProject}>
+                                <lightning-formatted-text
+                                    value={entry.projectName}
+                                    onclick={enableEditing}
+                                    data-id={entry.id}
+                                    data-field="projectName">
+                                </lightning-formatted-text>
+                            </template>
+
+                            <!-- Workstream Name with Dropdown -->
+                            <template if:true={entry.isEditingWorkstream}>
+                                <lightning-combobox
+                                    name="workstream"
+                                    value={entry.workstreamId}
+                                    data-id={entry.id}
+                                    data-field="workstreamName"
+                                    placeholder="Select workstream"
+                                    options={workstreamOptions}
+                                    onchange={handleWorkstreamSelect}
+                                    onblur={handleComboboxBlur}>
+                                </lightning-combobox>
+                            </template>
+                            <template if:false={entry.isEditingWorkstream}>
+                                <lightning-formatted-text
+                                    value={entry.workstreamName}
+                                    onclick={enableEditing}
+                                    data-id={entry.id}
+                                    data-field="workstreamName">
+                                </lightning-formatted-text>
+                            </template>
+
+                            <!-- Editable Description -->
+                            <template if:true={entry.isEditingDescription}>
+                                <input type="text"
+                                       value={entry.description}
+                                       data-id={entry.id}
+                                       data-field="description"
+                                       onblur={handleBlur}
+                                       onkeydown={handleKeydown} />
+                            </template>
+                            <template if:false={entry.isEditingDescription}>
+                                <lightning-formatted-text
+                                    value={entry.description}
+                                    onclick={enableEditing}
+                                    data-id={entry.id}
+                                    data-field="description">
+                                </lightning-formatted-text>
+                            </template>
+
+                            <!-- Start/Stop Button -->
+                            <template if:true={entry.buttonLabel}>
+                                <button onclick={handleToggleTracking} data-id={entry.id}>
+                                    {entry.buttonLabel}
+                                </button>
+                            </template>
+                        </div>
+                    </template>
+                </template>
+
+                <template if:false={filteredEntriesForCurrentDate}>
+                    <div>No time entries for this day.</div>
+                </template>
+
+                <button class="add-button" onclick={handleAddEntry}>+ Add</button>
+            </div>
+        </template>
+
+        <!-- New Entry Form -->
+        <template if:true={showForm}>
+            <div class="New-entry">
+                <div class="headig">
+                    <h1>New Time Entry</h1>
+                </div>
+                <div class="custom-divider"></div>
+                <div class="slds-p-around_medium">
+                    <!-- Project -->
+                    <div class="form-row">
+                        <label class="form-label">Project</label>
+                        <div class="form-input">
+                            <lightning-combobox
+                                name="project"
+                                value={selectedProject}
+                                placeholder="Select project"
+                                options={projectOptions}
+                                onchange={handleProjectChange}
+                                required>
+                            </lightning-combobox>
+                        </div>
+                    </div>
+
+                    <!-- Workstream -->
+                    <div class="form-row">
+                        <label class="form-label">WorkStream</label>
+                        <div class="form-input">
+                            <lightning-combobox
+                                name="workstream"
+                                value={selectedWorkstream}
+                                placeholder="Select workstream"
+                                options={workstreamOptions}
+                                onchange={handleWorkstreamChange}
+                                required>
+                            </lightning-combobox>
+                        </div>
+                    </div>
+
+                    <!-- Description -->
+                    <lightning-textarea
+                        name="description"
+                        label="Description"
+                        value={description}
+                        onchange={handleDescriptionChange}>
+                    </lightning-textarea>
+
+                    <!-- Hours Input -->
+                    <lightning-input
+                        name="hours"
+                        label="Hours"
+                        type="number"
+                        value={enteredHours}
+                        min="0"
+                        step="0.25"
+                        onchange={handleHoursChange}
+                       >
+                    </lightning-input>
+
+                    <!-- Billable -->
+                    <div class="billable-container">
+                        <label class="billable-label">Billable</label>
+                        <lightning-input type="toggle"
+                            name="billable"
+                            checked={isBillable}
+                            onchange={handleToggle}>
+                        </lightning-input>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="custom-divider2"></div>
+                    <div class="button-group">
+                        <lightning-button label="Cancel" variant="neutral" onclick={handleCancel}></lightning-button>
+                        <lightning-button label="Save" variant="brand" class="slds-m-left_small" onclick={handleSubmit}></lightning-button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

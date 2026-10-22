@@ -1,0 +1,255 @@
+<template>
+    <div class="premium-container">
+        <div class="premium-card">
+            <!-- Header Section -->
+            <div class="card-header">
+                <div class="header-content">
+                    <lightning-icon icon-name="custom:custom63" size="medium" class="header-icon"></lightning-icon>
+                    <div>
+                        <h1 class="card-title">Student Behavior Submission</h1>
+                        <p class="card-subtitle">Submit complaints or praises for student behavior</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="card-body">
+                
+                <!-- Class Filter Section -->
+                <div class="filter-section">
+                    <div class="section-header">
+                        <lightning-icon icon-name="utility:filter" size="x-small" class="section-icon"></lightning-icon>
+                        <h3 class="section-title">Filter by Class</h3>
+                    </div>
+                    <lightning-combobox
+                        name="classFilter"
+                        placeholder="Select a class to view students"
+                        value={selectedClass}
+                        options={classOptions}
+                        onchange={handleClassChange}
+                        variant="label-hidden"
+                        class="premium-combobox">
+                    </lightning-combobox>
+                </div>
+
+                <!-- Search Student Section - Only show when class is selected -->
+                <template if:true={selectedClass}>
+                    <div class="search-section">
+                        <div class="section-header">
+                            <lightning-icon icon-name="utility:search" size="x-small" class="section-icon"></lightning-icon>
+                            <h3 class="section-title">Search Student</h3>
+                        </div>
+                        <div class="search-input-wrapper">
+                            <lightning-input
+                                type="search"
+                                placeholder="Search by name, phone, or student ID..."
+                                value={searchKey}
+                                onchange={handleSearchChange}
+                                variant="label-hidden"
+                                class="premium-search">
+                            </lightning-input>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Student Cards Display -->
+                <!-- Student Cards Display - Only show when no student is selected -->
+                <template if:true={showStudentList}>
+                    <template if:false={selectedStudent}>
+                        <div class="student-results-container">
+                            <div class="results-header">
+                                <span class="results-count">{filteredStudentsCount} students found</span>
+                            </div>
+                            <div class="student-list-premium">
+                                <template for:each={filteredStudents} for:item="student">
+                                    <div key={student.Id} class="student-card-premium" 
+                                         onclick={handleStudentSelect} data-id={student.Id}>
+                                        <div class="student-avatar">
+                                            <lightning-icon icon-name="standard:avatar" size="large"></lightning-icon>
+                                        </div>
+                                        <div class="student-details">
+                                            <h4 class="student-name">{student.Name}</h4>
+                                            <div class="student-meta">
+                                                
+                                                <span class="meta-item">
+                                                    <lightning-icon icon-name="utility:education" size="xx-small"></lightning-icon>
+{student.Current_Class__c}
+                                                </span>
+                                                <span class="meta-item">
+                                                    <lightning-icon icon-name="utility:phone_portrait" size="xx-small"></lightning-icon>
+                                                    {student.PersonMobilePhone}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div class="student-arrow">
+                                            <lightning-icon icon-name="utility:chevronright" size="small"></lightning-icon>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </template>
+                <!-- Selected Student & Form -->
+                <template if:true={selectedStudent}>
+                    <div class="form-section">
+                        <!-- Selected Student Card -->
+                        <div class="selected-student-premium">
+                            <div class="selected-content">
+                                <lightning-icon icon-name="utility:success" size="small" 
+                                              class="success-icon"></lightning-icon>
+                                <div class="selected-info">
+                                    <h4 class="selected-name">{selectedStudent.Name}</h4>
+                                    <p class="selected-meta">Class: {selectedStudent.Current_Class__c}</p>
+                                </div>
+                            </div>
+                            <lightning-button-icon 
+                                icon-name="utility:close" 
+                                variant="bare-inverse"
+                                onclick={clearStudentSelection}
+                                alternative-text="Clear selection">
+                            </lightning-button-icon>
+                        </div>
+
+                        <!-- Behavior Form -->
+                        <div class="form-grid">
+                            <div class="form-row">
+                                <div class="form-col">
+                                    <label class="premium-label">
+                                        <lightning-icon icon-name="utility:announcement" size="xx-small"></lightning-icon>
+                                        Behavior Type *
+                                    </label>
+                                    <lightning-combobox
+                                        name="behaviorType"
+                                        value={behaviorType}
+                                        placeholder="Select behavior type"
+                                        options={behaviorTypeOptions}
+                                        onchange={handleBehaviorTypeChange}
+                                        variant="label-hidden"
+                                        class="premium-combobox"
+                                        required>
+                                    </lightning-combobox>
+                                </div>
+
+                                <div class="form-col">
+                                    <label class="premium-label">
+                                        <lightning-icon icon-name="utility:layers" size="xx-small"></lightning-icon>
+                                        Category *
+                                    </label>
+                                    <lightning-combobox
+                                        name="category"
+                                        value={category}
+                                        placeholder="Select category"
+                                        options={categoryOptions}
+                                        onchange={handleCategoryChange}
+                                        variant="label-hidden"
+                                        class="premium-combobox"
+                                        required>
+                                    </lightning-combobox>
+                                </div>
+                                <!-- ADD THIS new form-row after the existing Behavior Type + Category row -->
+                                <div class="form-row">
+                                    <div class="form-col-full">
+                                        <label class="premium-label">
+                                            <lightning-icon icon-name="utility:user" size="xx-small"></lightning-icon>
+                                            Submitting Teacher *
+                                        </label>
+                                        <lightning-combobox
+                                            name="submittingTeacher"
+                                            value={submittingTeacher}
+                                            placeholder="Select teacher"
+                                            options={teacherOptions}
+                                            onchange={handleTeacherChange}
+                                            variant="label-hidden"
+                                            class="premium-combobox"
+                                            required>
+                                        </lightning-combobox>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-col-full">
+                                    <label class="premium-label">
+                                        <lightning-icon icon-name="utility:date_time" size="xx-small"></lightning-icon>
+                                        Academic Year *
+                                    </label>
+                                    <lightning-combobox
+                                        name="academicYear"
+                                        value={academicYear}
+                                        placeholder="Select academic year"
+                                        options={academicYearOptions}
+                                        onchange={handleAcademicYearChange}
+                                        variant="label-hidden"
+                                        class="premium-combobox"
+                                        required>
+                                    </lightning-combobox>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-col-full">
+                                    <label class="premium-label">
+                                        <lightning-icon icon-name="utility:text" size="xx-small"></lightning-icon>
+                                        Description *
+                                    </label>
+                                    <lightning-textarea
+                                        name="description"
+                                        value={description}
+                                        placeholder="Enter detailed description of the behavior..."
+                                        onchange={handleDescriptionChange}
+                                        variant="label-hidden"
+                                        class="premium-textarea"
+                                        rows="5"
+                                        required>
+                                    </lightning-textarea>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="action-buttons">
+                                <lightning-button
+                                    variant="neutral"
+                                    label="Reset Form"
+                                    title="Reset"
+                                    onclick={handleReset}
+                                    class="btn-secondary">
+                                </lightning-button>
+                                <lightning-button
+                                    variant="brand"
+                                    label="Submit Behavior Record"
+                                    title="Submit"
+                                    onclick={handleSubmit}
+                                    class="btn-primary"
+                                    disabled={isSubmitting}>
+                                </lightning-button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Empty State -->
+                <template if:false={selectedStudent}>
+                    <template if:false={showStudentList}>
+                        <div class="empty-state">
+                            <lightning-icon icon-name="custom:custom78" size="large" class="empty-icon"></lightning-icon>
+                            <h3 class="empty-title">No Class Selected</h3>
+                            <p class="empty-message">Select a class to view students</p>
+                        </div>
+                    </template>
+                </template>
+
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <template if:true={isLoading}>
+            <div class="loading-overlay">
+                <div class="loading-content">
+                    <lightning-spinner alternative-text="Loading" size="large" variant="brand"></lightning-spinner>
+                    <p class="loading-text">Processing...</p>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

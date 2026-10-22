@@ -1,0 +1,1845 @@
+<template>
+    <lightning-card class="premium-card">
+        <div slot="title" class="card-header">
+            <lightning-icon icon-name="standard:education" size="small" class="header-icon"></lightning-icon>
+            <h1 class="card-title">Teacher &amp; Class Management</h1>
+        </div>
+
+        <template if:true={isLoading}>
+            <div class="spinner-container">
+                <lightning-spinner alternative-text="Loading" size="medium" variant="brand"></lightning-spinner>
+            </div>
+        </template>
+
+        <div class="premium-container">
+
+            <!-- ═══════════════════════════════════
+                 STEP 0: DASHBOARD LANDING
+                 ═══════════════════════════════════ -->
+            <template if:true={isStep0}>
+                <template if:false={showTeacherForm}>
+
+                    <!-- Top Action Row -->
+                    <div class="landing-action-row">
+                        <div>
+                            <h2 class="dash-title">Workload Overview</h2>
+                            <p class="dash-subtitle">Live teacher &amp; class assignment dashboard</p>
+                        </div>
+                        <div class="action-btn-group">
+                            <button class="action-pill action-pill-primary" onclick={handleToggleTeacherForm}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Add Teacher
+                            </button>
+                            <button class="action-pill action-pill-primary" onclick={handleOpenImportTeachers}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg>
+                                Import Teachers
+                            </button>
+                            <button class="action-pill action-pill-primary" onclick={handleOpenImportSubjects}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg>
+                                Add Subject
+                            </button>
+                            <button class="action-pill action-pill-secondary" onclick={handleOpenCreateClass}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                Create Class
+                            </button>
+                            <button class="action-pill action-pill-secondary" onclick={handleOpenCreateSection}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                Create Section
+                            </button>
+                            <button class="action-pill action-pill-timetable action-pill-primary" onclick={handleSkipTeacherCreation}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Add Class Section
+                            </button>
+                            <button class="action-pill action-pill-timetable" onclick={handleOpenTimetable}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                Timetable
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- KPI Strip -->
+                    <div class="kpi-strip">
+                        <div class="kpi-card kpi-blue">
+                            <div class="kpi-icon-wrap kpi-icon-blue">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            </div>
+                            <div class="kpi-data">
+                                <span class="kpi-val">{workloadSummary.totalTeachers}</span>
+                                <span class="kpi-label">Total Teachers</span>
+                            </div>
+                        </div>
+                        <div class="kpi-card kpi-green">
+                            <div class="kpi-icon-wrap kpi-icon-green">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                            </div>
+                            <div class="kpi-data">
+                                <span class="kpi-val">{workloadSummary.totalClasses}</span>
+                                <span class="kpi-label">Class Sections</span>
+                            </div>
+                        </div>
+                        <div class="kpi-card kpi-purple">
+                            <div class="kpi-icon-wrap kpi-icon-purple">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            </div>
+                            <div class="kpi-data">
+                                <span class="kpi-val">{workloadSummary.totalAssignments}</span>
+                                <span class="kpi-label">Assignments</span>
+                            </div>
+                        </div>
+                        <div class="kpi-card kpi-amber">
+                            <div class="kpi-icon-wrap kpi-icon-amber">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </div>
+                            <div class="kpi-data">
+                                <span class="kpi-val">{workloadSummary.avgLoadPercent}%</span>
+                                <span class="kpi-label">Avg Workload</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dual Panel -->
+                    <div class="dual-panel">
+
+                        <!-- LEFT: Teacher Workload -->
+                        <div class="panel">
+                            <div class="panel-header">
+                                <div class="panel-title-row">
+                                    <span class="panel-accent panel-accent-blue"></span>
+                                    <h3 class="panel-title">Teacher Workload</h3>
+                                    <span class="panel-badge">{teacherWorkloadList.length}</span>
+                                </div>
+                                <div class="panel-searchbox">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                    <input type="text" placeholder="Search teachers…" value={teacherSearchTerm} onchange={handleTeacherSearch} class="panel-search-input"/>
+                                </div>
+                            </div>
+
+                            <div class="panel-list">
+                                <template if:true={hasTeacherWorkload}>
+                                    <template for:each={filteredTeacherWorkload} for:item="teacher">
+                                        <div key={teacher.id} class={teacher.rowClass} data-id={teacher.id} onclick={handleSelectTeacher}>
+                                            <div class="tw-avatar" style={teacher.avatarStyle}><span class="avatar-initials">{teacher.initials}</span><img src={teacher.avatarImg} alt={teacher.initials} class="avatar-img"/></div>
+                                            <div class="tw-body">
+                                                <div class="tw-top">
+                                                    <span class="tw-name">{teacher.name}</span>
+                                                    <span class="tw-load-chip" style={teacher.chipStyle}>{teacher.loadPercent}%</span>
+                                                </div>
+                                                <div class="tw-meta">{teacher.subjectCount} subject(s) &bull; {teacher.classCount} class(es)</div>
+                                                <div class="tw-bar-track">
+                                                    <div class="tw-bar-fill" style={teacher.barStyle}></div>
+                                                </div>
+                                            </div>
+                                            <svg class="tw-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                                        </div>
+
+                                        <!-- ── Teacher Detail Drawer ── -->
+                                        <template if:true={teacher.isSelected}>
+                                            <div key={teacher.id} class="detail-drawer inline-detail-drawer">
+                                                <template if:false={selectedTeacherDetail}>
+                                                    <div class="dd-loading-row">
+                                                        <div class="dd-loading-spinner">
+                                                            <lightning-spinner alternative-text="Loading" size="small" variant="brand"></lightning-spinner>
+                                                        </div>
+                                                        <span class="dd-loading-text">Loading assignments…</span>
+                                                    </div>
+                                                </template>
+                                                <template if:true={selectedTeacherDetail}>
+
+                                                    <!-- ══ WEEKLY SCHEDULE — Collapsible Header ══ -->
+                                                    <div class="tt-weekly-schedule-heading collapsible-heading"
+                                                         data-teacher-id={selectedTeacherDetail.id}
+                                                         onclick={handleToggleWeeklySchedule}>
+                                                        <div class="tt-ws-icon">
+                                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                        </div>
+                                                        <div class="tt-ws-text">
+                                                            <span class="tt-ws-label">Weekly Schedule</span>
+                                                            <span class="tt-ws-sublabel">Today's timetable — {todayDayName}</span>
+                                                        </div>
+                                                        <!-- Chevron rotates when expanded -->
+                                                        <div class="collapsible-chevron-wrap">
+                                                            <template if:true={selectedTeacherDetail.isWeeklyExpanded}>
+                                                                <svg class="collapsible-chevron collapsible-chevron-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+                                                            </template>
+                                                            <template if:false={selectedTeacherDetail.isWeeklyExpanded}>
+                                                                <svg class="collapsible-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- ══ Weekly Schedule Body (collapsible) ══ -->
+                                                    <template if:true={selectedTeacherDetail.isWeeklyExpanded}>
+                                                        <div class="dd-header">
+                                                            <div class="dd-avatar" style={teacher.avatarStyle}><span class="avatar-initials">{teacher.initials}</span><img src={teacher.avatarImg} alt={teacher.initials} class="avatar-img"/></div>
+                                                            <div class="dd-info">
+                                                                <h4 class="dd-name">{teacher.name}</h4>
+                                                                <p class="dd-sub">{selectedTeacherDetail.totalAssignments} assignments across {selectedTeacherDetail.classCount} class(es)</p>
+                                                            </div>
+                                                            <div class="dd-ring-wrap">
+                                                                <svg viewBox="0 0 56 56" class="dd-ring-svg">
+                                                                    <circle cx="28" cy="28" r="22" class="ring-track"/>
+                                                                    <circle cx="28" cy="28" r="22" class="ring-prog" style={selectedTeacherDetail.ringStyle}/>
+                                                                </svg>
+                                                                <span class="dd-ring-label">{teacher.loadPercent}%</span>
+                                                            </div>
+                                                            <button class="dd-close" onclick={handleClearTeacherDetail}>
+                                                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                            </button>
+                                                        </div>
+
+                                                        <!-- Assignments section -->
+                                                        <div class="dd-body">
+                                                            <template for:each={selectedTeacherDetail.allSubjects} for:item="subj">
+                                                                <div key={subj.uniqueKey} class="dd-subj-row">
+                                                                    <span class="dd-subj-dot"></span>
+                                                                    <div class="dd-subj-info">
+                                                                        <span class="dd-subj-name">{subj.subjectName}</span>
+                                                                        <span class="dd-subj-class-tag">{subj.className}</span>
+                                                                    </div>
+                                                                    <span class="dd-periods-chip" title={subj.periodsChipTitle}>{subj.periodsPerWeek} p/wk</span>
+                                                                    <div class="dd-row-actions">
+                                                                        <button class="icon-btn icon-btn-edit"
+                                                                            data-assignment-id={subj.assignmentId}
+                                                                            data-subject-id={subj.subjectId}
+                                                                            data-subject-name={subj.subjectName}
+                                                                            data-teacher-id={selectedTeacherDetail.id}
+                                                                            data-teacher-name={teacher.name}
+                                                                            onclick={handleOpenReassign}>
+                                                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                                                        </button>
+                                                                        <button class="icon-btn icon-btn-del"
+                                                                            data-assignment-id={subj.assignmentId}
+                                                                            onclick={handleDeleteAssignment}>
+                                                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </template>
+
+                                                            <!-- Show teacher skills when no assignments -->
+                                                            <template if:true={selectedTeacherDetail.hasNoSubjects}>
+                                                                <template if:true={selectedTeacherDetail.hasSkills}>
+                                                                    <div class="dd-skills-section">
+                                                                        <div class="dd-skills-heading">
+                                                                            <div class="dd-skills-heading-icon">
+                                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                                                                            </div>
+                                                                            <span class="dd-skills-heading-text">Subject Skills</span>
+                                                                        </div>
+                                                                        <div class="dd-skills-list">
+                                                                            <template for:each={selectedTeacherDetail.teacherSkillsList} for:item="skill">
+                                                                                <div key={skill.id} class="dd-skill-row">
+                                                                                    <span class="dd-skill-subject">{skill.subjectName}</span>
+                                                                                    <span class={skill.levelClass}>{skill.skillLevel}</span>
+                                                                                    <template if:true={skill.yearsOfExperience}>
+                                                                                        <span class="dd-skill-exp">{skill.yearsOfExperience} yrs</span>
+                                                                                    </template>
+                                                                                </div>
+                                                                            </template>
+                                                                        </div>
+                                                                    </div>
+                                                                </template>
+                                                                <template if:false={selectedTeacherDetail.hasSkills}>
+                                                                    <div class="dd-no-skills-note">
+                                                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                                                        No assignments or skills found for this teacher.
+                                                                    </div>
+                                                                </template>
+                                                            </template>
+                                                        </div>
+                                                    </template>
+                                                    <!-- /Weekly Schedule body -->
+
+                                                    <!-- ══ TODAY'S SCHEDULE — Collapsible Header ══ -->
+                                                    <template if:true={selectedTeacherDetail.hasTimetable}>
+                                                        <div class="tt-drawer-section">
+
+                                                            <!-- Collapsible "Today's Schedule" header -->
+                                                            <div class="tt-drawer-header collapsible-heading tt-collapsible-today"
+                                                                 data-teacher-id={selectedTeacherDetail.id}
+                                                                 onclick={handleToggleTodaySchedule}>
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                                <span class="tt-drawer-title">Today's Schedule ({todayDayName})</span>
+
+                                                                <template if:true={selectedTeacherDetail.hasLeaserToday}>
+                                                                    <span class="leaser-legend-badge">
+                                                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                                                        Has Leaser Period
+                                                                    </span>
+                                                                </template>
+                                                                <template if:true={selectedTeacherDetail.hasFreeToday}>
+                                                                    <span class="leaser-legend-badge leaser-legend-badge-free">
+                                                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+                                                                        Has Free Period
+                                                                    </span>
+                                                                </template>
+
+                                                                <!-- Chevron -->
+                                                                <div class="collapsible-chevron-wrap collapsible-chevron-ml-auto">
+                                                                    <template if:true={selectedTeacherDetail.isTodayExpanded}>
+                                                                        <svg class="collapsible-chevron collapsible-chevron-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+                                                                    </template>
+                                                                    <template if:false={selectedTeacherDetail.isTodayExpanded}>
+                                                                        <svg class="collapsible-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                                                    </template>
+                                                                </div>
+                                                            </div>
+
+                                                            <!-- Today's Schedule body (collapsible) -->
+                                                            <template if:true={selectedTeacherDetail.isTodayExpanded}>
+                                                                <template for:each={selectedTeacherDetail.timetablePeriods} for:item="dayRow">
+                                                                    <div key={dayRow.day} class="tt-day-group">
+                                                                        <div class="tt-day-label-bar">
+                                                                            <span class="tt-day-pill">{dayRow.dayShort}</span>
+                                                                            <span class="tt-day-full">{dayRow.day}</span>
+                                                                            <template if:true={dayRow.leaserCount}>
+                                                                                <span class="leaser-day-count">{dayRow.leaserCount} leaser</span>
+                                                                            </template>
+                                                                        </div>
+                                                                        <div class="tt-period-chips">
+                                                                            <template for:each={dayRow.periods} for:item="period">
+                                                                                <!-- LEASER / FREE period card -->
+                                                                                <template if:true={period.isLeaser}>
+                                                                                    <div key={period.key}
+                                                                                         class={period.leaserCardClass}
+                                                                                         onclick={handlePeriodCardClick}
+                                                                                         data-class-section-id={period.classSectionId}
+                                                                                         data-academic-year-id={period.academicYearId}
+                                                                                         data-start-date={period.startDate}
+                                                                                         data-end-date={period.endDate}
+                                                                                         data-frequency={period.frequency}
+                                                                                         title={period.leaserCardTitle}>
+                                                                                        <div class={period.leaserRibbonClass}>
+                                                                                            <template if:true={period.isFreeLeaser}>
+                                                                                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+                                                                                            </template>
+                                                                                            <template if:false={period.isFreeLeaser}>
+                                                                                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                                                                            </template>
+                                                                                            {period.leaserType}
+                                                                                        </div>
+                                                                                        <div class="tt-pc-top">
+                                                                                            <span class="tt-pc-num tt-pc-num-leaser">P{period.periodNumber}</span>
+                                                                                            <span class="tt-pc-time">{period.timeLabel}</span>
+                                                                                        </div>
+                                                                                        <div class="tt-pc-subject tt-pc-subject-leaser">{period.subjectName}</div>
+                                                                                        <div class="tt-pc-teacher leaser-sub-row">
+                                                                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                                                                            {period.className}
+                                                                                        </div>
+                                                                                        <template if:true={period.substituteTeacher}>
+                                                                                            <div class="leaser-sub-teacher">
+                                                                                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                                                                                Sub: {period.substituteTeacher}
+                                                                                            </div>
+                                                                                        </template>
+                                                                                        <div class="tt-pc-edit-hint leaser-edit-hint">✏ Edit</div>
+                                                                                    </div>
+                                                                                </template>
+
+                                                                                <!-- NORMAL period card -->
+                                                                                <template if:false={period.isLeaser}>
+                                                                                    <div key={period.key}
+                                                                                         class="tt-period-card tt-period-card-clickable"
+                                                                                         onclick={handlePeriodCardClick}
+                                                                                         data-class-section-id={period.classSectionId}
+                                                                                         data-academic-year-id={period.academicYearId}
+                                                                                         data-start-date={period.startDate}
+                                                                                         data-end-date={period.endDate}
+                                                                                         data-frequency={period.frequency}
+                                                                                         title="Click to edit timetable">
+                                                                                        <div class="tt-pc-top">
+                                                                                            <span class="tt-pc-num">P{period.periodNumber}</span>
+                                                                                            <span class="tt-pc-time">{period.timeLabel}</span>
+                                                                                        </div>
+                                                                                        <div class="tt-pc-subject">{period.subjectName}</div>
+                                                                                        <div class="tt-pc-teacher">
+                                                                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                                                                            {period.className}
+                                                                                        </div>
+                                                                                        <div class="tt-pc-edit-hint">✏ Edit</div>
+                                                                                    </div>
+                                                                                </template>
+                                                                            </template>
+                                                                        </div>
+                                                                    </div>
+                                                                </template>
+                                                            </template>
+                                                            <!-- /Today's Schedule body -->
+
+                                                        </div>
+                                                    </template>
+                                                    <template if:false={selectedTeacherDetail.hasTimetable}>
+                                                        <div class="tt-drawer-empty">
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                            <span>No timetable periods scheduled yet</span>
+                                                        </div>
+                                                    </template>
+
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </template>
+                                </template>
+                                <template if:false={hasTeacherWorkload}>
+                                    <div class="panel-empty">
+                                        <div class="pe-emoji">👤</div>
+                                        <p class="pe-text">No teachers added yet</p>
+                                        <p class="pe-hint">Click "Add Teacher" to get started</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: Class Workload -->
+                        <div class="panel">
+                            <div class="panel-header">
+                                <div class="panel-title-row">
+                                    <span class="panel-accent panel-accent-green"></span>
+                                    <h3 class="panel-title">Class Workload</h3>
+                                    <span class="panel-badge panel-badge-green">{classWorkloadList.length}</span>
+                                </div>
+                                <div class="panel-searchbox">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                    <input type="text" placeholder="Search classes…" value={classSearchTerm} onchange={handleClassSearch} class="panel-search-input"/>
+                                </div>
+                            </div>
+
+                            <div class="panel-list">
+                                <template if:true={hasClassWorkload}>
+                                    <template for:each={filteredClassWorkload} for:item="cls">
+                                        <div key={cls.id} class={cls.rowClass} data-id={cls.id} onclick={handleSelectClass}>
+                                            <div class="cw-icon-bg">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                            </div>
+                                            <div class="tw-body">
+                                                <div class="tw-top">
+                                                    <span class="tw-name">{cls.name}</span>
+                                                    <span class="cw-year-tag">{cls.academicYear}</span>
+                                                </div>
+                                                <div class="tw-meta">{cls.subjectCount} subjects &bull; {cls.staffedCount} staffed &bull; {cls.unstaffedCount} open</div>
+                                                <div class="tw-bar-track">
+                                                    <div class="tw-bar-fill" style={cls.barStyle}></div>
+                                                </div>
+                                            </div>
+                                            <div class="cw-pct-badge" style={cls.badgeStyle}>{cls.loadPercent}%</div>
+                                            <svg class="tw-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                                        </div>
+
+                                        <!-- ── Class Detail Drawer ── -->
+                                        <template if:true={cls.isSelected}>
+                                            <div key={cls.id} class="detail-drawer detail-drawer-green inline-detail-drawer">
+                                                <template if:false={selectedClassDetail}>
+                                                    <div class="dd-loading-row">
+                                                        <div class="dd-loading-spinner">
+                                                            <lightning-spinner alternative-text="Loading" size="small" variant="brand"></lightning-spinner>
+                                                        </div>
+                                                        <span class="dd-loading-text">Loading class details…</span>
+                                                    </div>
+                                                </template>
+                                                <template if:true={selectedClassDetail}>
+                                                    <div class="dd-header">
+                                                        <div class="dd-class-icon">
+                                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                                        </div>
+                                                        <div class="dd-info">
+                                                            <h4 class="dd-name">{selectedClassDetail.name}</h4>
+                                                            <p class="dd-sub">{selectedClassDetail.academicYear} &bull; {selectedClassDetail.subjectCount} subjects &bull; {selectedClassDetail.teacherCount} teachers</p>
+                                                        </div>
+                                                        <div class="dd-ring-wrap">
+                                                            <svg viewBox="0 0 56 56" class="dd-ring-svg">
+                                                                <circle cx="28" cy="28" r="22" class="ring-track"/>
+                                                                <circle cx="28" cy="28" r="22" class="ring-prog ring-prog-green" style={selectedClassDetail.ringStyle}/>
+                                                            </svg>
+                                                            <span class="dd-ring-label">{selectedClassDetail.loadPercent}%</span>
+                                                        </div>
+                                                        <button class="dd-close" onclick={handleClearClassDetail}>
+                                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                        </button>
+                                                    </div>
+                                                    <div class="class-coverage-bar">
+                                                        <div class="ccb-labels">
+                                                            <span>Staffing Coverage</span>
+                                                            <span class="ccb-pct">{selectedClassDetail.loadPercent}% staffed</span>
+                                                        </div>
+                                                        <div class="ccb-track"><div class="ccb-fill" style={selectedClassDetail.progressStyle}></div></div>
+                                                    </div>
+
+                                                    <div class="dd-body">
+                                                        <template for:each={selectedClassDetail.subjects} for:item="subj">
+                                                            <div key={subj.subjectId} class="cd-subj-block">
+                                                                <div class="cd-subj-header">
+                                                                    <div class="cd-dot" style={subj.dotStyle}></div>
+                                                                    <span class="cd-subj-name">{subj.subjectName}</span>
+                                                                    <template if:true={subj.hasTeacher}>
+                                                                        <span class="status-tag status-green">Assigned</span>
+                                                                    </template>
+                                                                    <template if:false={subj.hasTeacher}>
+                                                                        <span class="status-tag status-red">Open</span>
+                                                                    </template>
+                                                                    <div class="cd-mini-bar"><div class="cd-mini-fill" style={subj.barStyle}></div></div>
+                                                                    <span class="cd-pct">{subj.loadPercent}%</span>
+                                                                </div>
+                                                                <div class="cd-teachers">
+                                                                    <template for:each={subj.teachers} for:item="t">
+                                                                        <div key={t.id} class="cd-teacher-row">
+                                                                            <div class="cd-t-avatar" style={t.avatarStyle}>{t.initials}</div>
+                                                                            <span class="cd-t-name">{t.name}</span>
+                                                                            <span class="cd-t-periods" title={t.periodsChipTitle}>{t.periodsPerWeek} p/wk</span>
+                                                                            <span class="cd-t-pct">{t.loadPercent}%</span>
+                                                                            <button class="icon-btn icon-btn-edit"
+                                                                                data-assignment-id={t.assignmentId}
+                                                                                data-subject-id={subj.subjectId}
+                                                                                data-subject-name={subj.subjectName}
+                                                                                data-teacher-id={t.id}
+                                                                                data-teacher-name={t.name}
+                                                                                onclick={handleOpenReassign}>
+                                                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                                                            </button>
+                                                                        </div>
+                                                                    </template>
+                                                                    <template if:false={subj.hasTeacher}>
+                                                                        <div class="cd-empty-row">No teacher assigned yet</div>
+                                                                    </template>
+                                                                </div>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+
+                                                    <!-- ── Timetable Periods Section (Class) — Collapsible ── -->
+                                                    <template if:true={selectedClassDetail.hasTimetable}>
+                                                        <div class="tt-drawer-section tt-drawer-section-green">
+
+                                                            <!-- Collapsible header -->
+                                                            <div class="tt-drawer-header collapsible-heading tt-collapsible-today tt-collapsible-today-green"
+                                                                 data-class-id={selectedClassDetail.id}
+                                                                 onclick={handleToggleClassTodaySchedule}>
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                                <span class="tt-drawer-title">Today's Schedule ({todayDayName})</span>
+                                                                <template if:true={selectedClassDetail.hasSubToday}>
+                                                                    <span class="leaser-legend-badge leaser-legend-badge-green">
+                                                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                                                        Has Substitute
+                                                                    </span>
+                                                                </template>
+
+                                                                <!-- Chevron -->
+                                                                <div class="collapsible-chevron-wrap collapsible-chevron-ml-auto">
+                                                                    <template if:true={selectedClassDetail.isTodayExpanded}>
+                                                                        <svg class="collapsible-chevron collapsible-chevron-open collapsible-chevron-green" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+                                                                    </template>
+                                                                    <template if:false={selectedClassDetail.isTodayExpanded}>
+                                                                        <svg class="collapsible-chevron collapsible-chevron-green" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                                                    </template>
+                                                                </div>
+                                                            </div>
+
+                                                            <!-- Today's Schedule body for class (collapsible) -->
+                                                            <template if:true={selectedClassDetail.isTodayExpanded}>
+                                                                <template for:each={selectedClassDetail.timetablePeriods} for:item="dayRow">
+                                                                    <div key={dayRow.day} class="tt-day-group">
+                                                                        <div class="tt-day-label-bar">
+                                                                            <span class="tt-day-pill tt-day-pill-green">{dayRow.dayShort}</span>
+                                                                            <span class="tt-day-full">{dayRow.day}</span>
+                                                                            <template if:true={dayRow.subCount}>
+                                                                                <span class="leaser-day-count leaser-day-count-green">{dayRow.subCount} sub</span>
+                                                                            </template>
+                                                                        </div>
+                                                                        <div class="tt-period-chips">
+                                                                            <template for:each={dayRow.periods} for:item="p">
+                                                                                <template if:true={p.isSubstitute}>
+                                                                                    <div key={p.key}
+                                                                                         class="tt-period-card tt-period-card-green tt-period-card-sub tt-period-card-clickable"
+                                                                                         onclick={handlePeriodCardClick}
+                                                                                         data-class-section-id={p.classSectionId}
+                                                                                         data-academic-year-id={p.academicYearId}
+                                                                                         data-start-date={p.startDate}
+                                                                                         data-end-date={p.endDate}
+                                                                                         data-frequency={p.frequency}
+                                                                                         title="Substitute teacher covering — original teacher on leave">
+                                                                                        <div class="leaser-ribbon leaser-ribbon-sub">
+                                                                                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                                                                            SUB
+                                                                                        </div>
+                                                                                        <div class="tt-pc-top">
+                                                                                            <span class="tt-pc-num tt-pc-num-sub">P{p.periodNumber}</span>
+                                                                                            <span class="tt-pc-time">{p.timeLabel}</span>
+                                                                                        </div>
+                                                                                        <div class="tt-pc-subject tt-pc-subject-sub">{p.subjectName}</div>
+                                                                                        <div class="tt-pc-teacher sub-covering-row">
+                                                                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                                                                            {p.substituteTeacher}
+                                                                                        </div>
+                                                                                        <template if:true={p.originalTeacher}>
+                                                                                            <div class="sub-original-teacher">
+                                                                                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                                                                                On leave: {p.originalTeacher}
+                                                                                            </div>
+                                                                                        </template>
+                                                                                        <div class="tt-pc-edit-hint tt-pc-edit-hint-green">✏ Edit</div>
+                                                                                    </div>
+                                                                                </template>
+
+                                                                                <template if:false={p.isSubstitute}>
+                                                                                    <div key={p.key}
+                                                                                         class="tt-period-card tt-period-card-green tt-period-card-clickable"
+                                                                                         onclick={handlePeriodCardClick}
+                                                                                         data-class-section-id={p.classSectionId}
+                                                                                         data-academic-year-id={p.academicYearId}
+                                                                                         data-start-date={p.startDate}
+                                                                                         data-end-date={p.endDate}
+                                                                                         data-frequency={p.frequency}
+                                                                                         title="Click to edit timetable">
+                                                                                        <div class="tt-pc-top">
+                                                                                            <span class="tt-pc-num">P{p.periodNumber}</span>
+                                                                                            <span class="tt-pc-time">{p.timeLabel}</span>
+                                                                                        </div>
+                                                                                        <div class="tt-pc-subject">{p.subjectName}</div>
+                                                                                        <div class="tt-pc-teacher">
+                                                                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                                                                            {p.teacherName}
+                                                                                        </div>
+                                                                                        <div class="tt-pc-edit-hint tt-pc-edit-hint-green">✏ Edit</div>
+                                                                                    </div>
+                                                                                </template>
+                                                                            </template>
+                                                                        </div>
+                                                                    </div>
+                                                                </template>
+                                                            </template>
+                                                            <!-- /Today's Schedule body for class -->
+
+                                                        </div>
+                                                    </template>
+                                                    <template if:false={selectedClassDetail.hasTimetable}>
+                                                        <div class="tt-drawer-empty tt-drawer-empty-green">
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                                            <span>No timetable periods scheduled yet</span>
+                                                        </div>
+                                                    </template>
+
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </template>
+                                </template>
+                                <template if:false={hasClassWorkload}>
+                                    <div class="panel-empty">
+                                        <div class="pe-emoji">📚</div>
+                                        <p class="pe-text">No class sections yet</p>
+                                        <p class="pe-hint">Click "Add Class Section" to get started</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                    </div><!-- /dual-panel -->
+                </template>
+
+                <!-- Teacher Form -->
+             <template if:true={showTeacherForm}>
+    <div class="section-card">
+        <div class="section-header">
+            <h2 class="section-title">Add New Teacher</h2>
+            <p class="section-subtitle">Create a complete teacher profile — personal, contact, salary &amp; subject skills</p>
+        </div>
+        <div class="teacher-form-container">
+ 
+            <!-- ══════════════════════════════════════
+                 SECTION 1: PERSONAL INFORMATION
+                 ══════════════════════════════════════ -->
+            <div class="form-section">
+                <h3 class="form-section-title">Personal Information</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <lightning-input
+                            name="firstName"
+                            label="First Name *"
+                            value={teacherFirstName}
+                            placeholder="e.g., John"
+                            onchange={handleTeacherFirstNameChange}
+                            required
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group">
+                        <lightning-input
+                            name="lastName"
+                            label="Last Name *"
+                            value={teacherLastName}
+                            placeholder="e.g., Smith"
+                            onchange={handleTeacherLastNameChange}
+                            required
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group">
+                        <lightning-combobox
+                            name="gender"
+                            label="Gender"
+                            value={teacherGender}
+                            placeholder="Select Gender"
+                            options={genderOptions}
+                            onchange={handleTeacherGenderChange}
+                            class="premium-input">
+                        </lightning-combobox>
+                    </div>
+                    <div class="form-group">
+                        <lightning-input
+                            name="dob"
+                            label="Date of Birth"
+                            type="date"
+                            value={teacherDOB}
+                            onchange={handleTeacherDOBChange}
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group">
+                        <lightning-input
+                            name="joiningDate"
+                            label="Joining Date"
+                            type="date"
+                            value={teacherJoiningDate}
+                            onchange={handleTeacherJoiningDateChange}
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group">
+                        <lightning-combobox
+                            name="teachingType"
+                            label="Teaching Type"
+                            value={teacherTeachingType}
+                            placeholder="Select Type"
+                            options={teachingTypeOptions}
+                            onchange={handleTeacherTeachingTypeChange}
+                            class="premium-input">
+                        </lightning-combobox>
+                    </div>
+                    <div class="form-group full-width">
+                        <lightning-textarea
+                            name="qualification"
+                            label="Qualification"
+                            value={teacherQualification}
+                            placeholder="e.g., M.Ed, B.Ed in English Literature"
+                            onchange={handleTeacherQualificationChange}
+                            class="premium-input">
+                        </lightning-textarea>
+                    </div>
+                </div>
+            </div>
+ 
+            <!-- ══════════════════════════════════════
+                 SECTION 2: CONTACT INFORMATION
+                 ══════════════════════════════════════ -->
+            <div class="form-section">
+                <h3 class="form-section-title">Contact Information</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <lightning-input
+                            name="email"
+                            label="Email *"
+                            type="email"
+                            value={teacherEmail}
+                            placeholder="e.g., john.smith@school.com"
+                            onchange={handleTeacherEmailChange}
+                            required
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group">
+                        <lightning-input
+                            name="phone"
+                            label="Phone"
+                            type="tel"
+                            value={teacherPhone}
+                            placeholder="e.g., +91 98765 43210"
+                            onchange={handleTeacherPhoneChange}
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group full-width">
+                        <lightning-textarea
+                            name="address"
+                            label="Address"
+                            value={teacherAddress}
+                            placeholder="Enter full residential address"
+                            onchange={handleTeacherAddressChange}
+                            class="premium-input">
+                        </lightning-textarea>
+                    </div>
+                </div>
+            </div>
+ 
+            <!-- ══════════════════════════════════════
+                 SECTION 3: SALARY INFORMATION
+                 ══════════════════════════════════════ -->
+            <div class="form-section">
+                <h3 class="form-section-title">Salary Information</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <lightning-input
+                            name="basicSalary"
+                            label="Basic Salary (₹)"
+                            type="number"
+                            value={teacherBasicSalary}
+                            placeholder="e.g., 25000"
+                            min="0"
+                            onchange={handleTeacherBasicSalaryChange}
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group">
+                        <lightning-input
+                            name="allowances"
+                            label="Allowances (₹)"
+                            type="number"
+                            value={teacherAllowances}
+                            placeholder="e.g., 5000"
+                            min="0"
+                            onchange={handleTeacherAllowancesChange}
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group">
+                        <lightning-input
+                            name="deductions"
+                            label="Deductions (₹)"
+                            type="number"
+                            value={teacherDeductions}
+                            placeholder="e.g., 2500"
+                            min="0"
+                            onchange={handleTeacherDeductionsChange}
+                            class="premium-input">
+                        </lightning-input>
+                    </div>
+                    <div class="form-group">
+                        <!-- Net Salary — read-only computed display -->
+                        <div class="net-salary-display">
+                            <span class="net-salary-label">Net / Month</span>
+                            <span class="net-salary-value">₹{computedNetSalary}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+ 
+            <!-- ══════════════════════════════════════
+                 SECTION 4: SUBJECT SKILLS
+                 ══════════════════════════════════════ -->
+            <div class="form-section">
+                <div class="section-header-with-button">
+                    <h3 class="form-section-title">Subject Skills</h3>
+                    <lightning-button
+                        label="Add Subject Skill"
+                        icon-name="utility:add"
+                        onclick={handleAddSkill}
+                        variant="brand-outline"
+                        class="add-skill-button">
+                    </lightning-button>
+                </div>
+                <template if:true={hasTeacherSkills}>
+                    <div class="skills-container">
+                        <template for:each={teacherSkills} for:item="skill">
+                            <div key={skill.id} class="skill-card">
+                                <div class="skill-header">
+                                    <span class="skill-number">Skill #{skill.id}</span>
+                                    <lightning-button-icon
+                                        icon-name="utility:delete"
+                                        variant="bare"
+                                        alternative-text="Remove skill"
+                                        data-skill-id={skill.id}
+                                        onclick={handleRemoveSkill}
+                                        class="delete-skill-btn">
+                                    </lightning-button-icon>
+                                </div>
+                                <div class="skill-fields">
+                                    <div class="skill-field">
+                                        <div class="slds-grid slds-grid_vertical-align-center slds-nowrap">
+                                            <div class="slds-grow">
+                                                <lightning-combobox
+                                                    name="subject"
+                                                    label="Subject"
+                                                    value={skill.subjectId}
+                                                    placeholder="Select Subject"
+                                                    options={availableSubjects}
+                                                    data-skill-id={skill.id}
+                                                    onchange={handleSkillSubjectChange}
+                                                    required
+                                                    class="premium-input">
+                                                </lightning-combobox>
+                                            </div>
+                                            <div class="slds-p-left_xx-small slds-no-flex" style="padding-top: 20px;">
+                                                <lightning-button-icon
+                                                    icon-name="utility:add"
+                                                    variant="border-filled"
+                                                    size="medium"
+                                                    onclick={handleOpenImportSubjects}
+                                                    alternative-text="Add Subject"
+                                                    title="Add Subject">
+                                                </lightning-button-icon>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="skill-field">
+                                        <lightning-combobox
+                                            name="skillLevel"
+                                            label="Skill Level"
+                                            value={skill.skillLevel}
+                                            placeholder="Select Level"
+                                            options={skillLevelOptions}
+                                            data-skill-id={skill.id}
+                                            onchange={handleSkillLevelChange}
+                                            required
+                                            class="premium-input">
+                                        </lightning-combobox>
+                                    </div>
+                                    <div class="skill-field">
+                                        <lightning-input
+                                            name="experience"
+                                            label="Years of Experience"
+                                            type="number"
+                                            value={skill.yearsOfExperience}
+                                            min="0"
+                                            max="50"
+                                            step="0.5"
+                                            placeholder="e.g., 5"
+                                            data-skill-id={skill.id}
+                                            onchange={handleSkillExperienceChange}
+                                            class="premium-input">
+                                        </lightning-input>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template if:false={hasTeacherSkills}>
+                    <div class="empty-skills-state">
+                        <lightning-icon icon-name="utility:info" size="small" variant="warning"></lightning-icon>
+                        <p>No skills added yet. Click "Add Subject Skill" to begin.</p>
+                    </div>
+                </template>
+            </div>
+ 
+            <!-- Form Actions -->
+            <div class="teacher-form-actions">
+                <lightning-button
+                    label="Cancel"
+                    onclick={handleToggleTeacherForm}
+                    icon-name="utility:close"
+                    class="secondary-button">
+                </lightning-button>
+                <lightning-button
+                    label="Create Teacher &amp; Continue"
+                    variant="brand"
+                    onclick={handleCreateTeacher}
+                    icon-name="utility:save"
+                    icon-position="right"
+                    class="submit-button">
+                </lightning-button>
+            </div>
+        </div>
+    </div>
+</template>
+            </template>
+
+            <!-- STEP 1 -->
+            <template if:true={isStep1}>
+                <div class="section-card">
+                    <div class="section-header"><h2 class="section-title">Create New Class Section</h2><p class="section-subtitle">Select academic year, class and section</p></div>
+                    <div class="form-grid">
+                        <div class="form-group"><lightning-combobox name="academicYear" label="Academic Year" value={selectedAcademicYear} placeholder="Select Academic Year" options={academicYearOptions} onchange={handleAcademicYearChange} required class="premium-input"></lightning-combobox></div>
+                        <div class="form-group">
+                            <div class="slds-grid slds-grid_vertical-align-center slds-nowrap">
+                                <div class="slds-grow">
+                                    <lightning-combobox name="class" label="Class" value={selectedClassId} placeholder="Select Class" options={classOptions} onchange={handleClassChange} required class="premium-input"></lightning-combobox>
+                                </div>
+                                <div class="slds-p-left_xx-small slds-no-flex" style="padding-top: 20px;">
+                                    <lightning-button-icon icon-name="utility:add" variant="border-filled" size="medium" onclick={handleToggleInlineAddClass} alternative-text="Add Class Inline" title="Add Class Inline"></lightning-button-icon>
+                                </div>
+                            </div>
+                            <template if:true={showInlineAddClass}>
+                                <div class="slds-grid slds-grid_vertical-align-center slds-m-top_xx-small">
+                                    <div class="slds-grow">
+                                        <lightning-input name="newClassNameInline" type="text" placeholder="New class name..." value={newClassNameInline} onchange={handleNewClassNameInlineChange} class="premium-input"></lightning-input>
+                                    </div>
+                                    <div class="slds-p-left_xx-small slds-no-flex">
+                                        <lightning-button-icon icon-name="utility:check" variant="border-filled" size="small" onclick={handleSaveNewClassInline} alternative-text="Save" title="Save" class="slds-m-right_xx-small"></lightning-button-icon>
+                                        <lightning-button-icon icon-name="utility:close" variant="bare" size="small" onclick={handleToggleInlineAddClass} alternative-text="Cancel" title="Cancel"></lightning-button-icon>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                        <div class="form-group"><lightning-combobox name="section" label="Section" value={selectedSectionId} placeholder="Select Section" options={sectionOptions} onchange={handleSectionChange} required class="premium-input"></lightning-combobox></div>
+                        <div class="form-group"><lightning-input name="classStrength" label="Class Strength (Optional)" type="number" value={classStrength} placeholder="e.g., 40" onchange={handleClassStrengthChange} class="premium-input"></lightning-input></div>
+                    </div>
+                    <template if:true={showDuplicateWarning}><div class="duplicate-warning"><lightning-icon icon-name="utility:warning" size="small" variant="warning"></lightning-icon><span>{duplicateWarningMessage}</span></div></template>
+                    <div class="button-group">
+                        <lightning-button label="Back" onclick={handleStep1Back} icon-name="utility:back" class="secondary-button"></lightning-button>
+                        <lightning-button label="Next: Select Subjects" variant="brand" onclick={handleStep1Next} icon-name="utility:forward" icon-position="right" class="premium-button"></lightning-button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- STEP 2 -->
+            <template if:true={isStep2}>
+                <div class="section-card">
+                    <div class="section-header"><h2 class="section-title">Select Subjects</h2><p class="section-subtitle">Choose subjects for {selectedClassName} — Section {selectedSectionName}</p></div>
+                    <div class="search-container"><lightning-input type="search" placeholder="Search subjects..." value={subjectSearchTerm} onchange={handleSubjectSearch} class="search-input"></lightning-input></div>
+                    <template if:true={hasSelectedSubjects}>
+                        <div class="selected-subjects-container">
+                            <div class="selected-header"><lightning-icon icon-name="utility:check" size="x-small"></lightning-icon><span class="selected-count">{selectedSubjectsCount} Subject(s) Selected</span></div>
+                            <div class="pill-container">
+                                <template for:each={selectedSubjectsList} for:item="subject">
+                                    <div key={subject.Id} class="subject-pill"><span class="pill-text">{subject.Name}</span><lightning-button-icon icon-name="utility:close" variant="bare" alternative-text="Remove" data-id={subject.Id} onclick={handleRemoveSubject} class="pill-remove"></lightning-button-icon></div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <div class="subject-grid">
+                        <template for:each={filteredSubjects} for:item="subject">
+                            <div key={subject.Id} class={subject.cardClass} onclick={handleSubjectToggle} data-id={subject.Id}>
+                                <div class="subject-card-header"><div class="checkbox-container"><lightning-input type="checkbox" checked={subject.isSelected} data-id={subject.Id} variant="label-hidden" onclick={handleSubjectToggle}></lightning-input></div><lightning-icon icon-name="standard:topic" size="small"></lightning-icon></div>
+                                <div class="subject-card-body"><h3 class="subject-name">{subject.Name}</h3><template if:true={subject.Subject_Code__c}><p class="subject-code">{subject.Subject_Code__c}</p></template><template if:true={subject.Description__c}><p class="subject-description">{subject.Description__c}</p></template></div>
+                            </div>
+                        </template>
+                    </div>
+                    <template if:true={noSubjectsFound}><div class="empty-state"><lightning-icon icon-name="utility:search" size="large" class="empty-icon"></lightning-icon><p class="empty-text">No subjects found</p></div></template>
+                    <div class="button-group">
+                        <lightning-button label="Back" onclick={handleStep2Back} icon-name="utility:back" class="secondary-button"></lightning-button>
+                        <lightning-button label="Next: Assign Teachers" variant="brand" onclick={handleStep2Next} icon-name="utility:forward" icon-position="right" disabled={isStep2NextDisabled} class="premium-button"></lightning-button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- STEP 3 -->
+            <template if:true={isStep3}>
+                <div class="section-card">
+                    <div class="section-header"><h2 class="section-title">Assign Teachers</h2><p class="section-subtitle">Assign qualified teachers to each selected subject</p></div>
+                    <div class="assignment-container">
+                        <template for:each={teacherAssignments} for:item="assignment">
+                            <div key={assignment.subjectId} class="assignment-card">
+                                <div class="assignment-header">
+                                    <div class="assignment-subject"><lightning-icon icon-name="standard:topic" size="small"></lightning-icon><h3 class="assignment-subject-name">{assignment.subjectName}</h3></div>
+                                    <template if:true={assignment.hasError}><lightning-badge label="Required" class="error-badge"></lightning-badge></template>
+                                </div>
+                                <div class="teacher-selection">
+                                    <template if:true={assignment.noTeachersAvailable}><div class="no-teachers-warning"><lightning-icon icon-name="utility:warning" size="small" variant="warning"></lightning-icon><span>No qualified teachers available.</span></div></template>
+                                    <template if:false={assignment.noTeachersAvailable}>
+                                        <template for:each={assignment.teachers} for:item="teacher">
+                                            <div key={teacher.id} class="teacher-row">
+                                                <div class="teacher-select-container">
+                                                    <lightning-combobox label={teacher.label} value={teacher.selectedTeacherId} placeholder="Select a teacher" options={teacher.teacherOptions} data-subject-id={assignment.subjectId} data-teacher-index={teacher.id} onchange={handleTeacherChange} class="teacher-combobox"></lightning-combobox>
+                                                </div>
+                                                <template if:false={teacher.isFirst}><lightning-button-icon icon-name="utility:delete" variant="bare" alternative-text="Remove teacher" data-subject-id={assignment.subjectId} data-teacher-index={teacher.id} onclick={handleRemoveTeacher} class="delete-teacher-btn"></lightning-button-icon></template>
+                                            </div>
+                                        </template>
+                                        <lightning-button label="Add Another Teacher" icon-name="utility:add" data-subject-id={assignment.subjectId} onclick={handleAddTeacher} class="add-teacher-btn"></lightning-button>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="button-group">
+                        <lightning-button label="Back" onclick={handleStep3Back} icon-name="utility:back" class="secondary-button"></lightning-button>
+                        <lightning-button label="Create Class Section" variant="brand" onclick={handleSubmit} icon-name="utility:check" icon-position="right" class="submit-button"></lightning-button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- TIMETABLE VIEW -->
+            <template if:true={isTimetableView}>
+                <div class="section-card tt-card">
+                    <div class="tt-page-header">
+                        <div>
+                            <h2 class="section-title">Class Timetable</h2>
+                            <p class="section-subtitle">Schedule periods per day — Mon to Sat</p>
+                        </div>
+                        <button class="action-pill action-pill-secondary" onclick={handleCloseTimetable}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            Close
+                        </button>
+                    </div>
+                    <div class="tt-filter-bar">
+                        <div class="tt-filter-group">
+                            <label class="tt-filter-label">Class Section *</label>
+                            <lightning-combobox name="ttClass" value={ttSelectedClassSectionId} placeholder="Select Class Section" options={classSectionOptions} onchange={handleTTClassChange} class="premium-input tt-select"></lightning-combobox>
+                        </div>
+                        <div class="tt-filter-group">
+                            <label class="tt-filter-label">Academic Year *</label>
+                            <lightning-combobox name="ttYear" value={ttSelectedAcademicYear} placeholder="Select Year" options={academicYearOptions} onchange={handleTTYearChange} class="premium-input tt-select"></lightning-combobox>
+                        </div>
+                        <div class="tt-filter-group">
+                            <label class="tt-filter-label">Frequency *</label>
+                            <lightning-combobox name="ttFreq" value={ttFrequency} placeholder="Select Frequency" options={ttFrequencyOptions} onchange={handleTTFrequencyChange} class="premium-input tt-select"></lightning-combobox>
+                        </div>
+                        <div class="tt-filter-group">
+                            <label class="tt-filter-label">Start Date *</label>
+                            <lightning-input type="date" value={ttStartDate} onchange={handleTTStartDateChange} class="premium-input tt-date"></lightning-input>
+                        </div>
+                        <div class="tt-filter-group">
+                            <label class="tt-filter-label">End Date</label>
+                            <lightning-input type="date" value={ttEndDate} disabled={ttEndDateDisabled} onchange={handleTTEndDateChange} class="premium-input tt-date"></lightning-input>
+                        </div>
+                        <div class="tt-filter-actions">
+                            <button class="action-pill action-pill-primary" onclick={handleLoadTimetable}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+                                Load Timetable
+                            </button>
+                        </div>
+                    </div>
+
+                    <template if:true={showTimetableGrid}>
+    <div class="tt-grid-wrapper">
+
+        <!-- Period header row -->
+        <div class="tt-grid-header-row">
+            <div class="tt-grid-day-col tt-grid-header-cell">DAY</div>
+            <template for:each={periodHeaders} for:item="ph">
+                <div key={ph.num} class="tt-grid-period-col tt-grid-header-cell">
+                    <span class="tt-header-period-num">P{ph.num}</span>
+                    <span class="tt-header-time">{ph.timeLabel}</span>
+                </div>
+            </template>
+        </div>
+
+        <!-- Day rows -->
+        <template for:each={timetableRows} for:item="dayRow">
+            <div key={dayRow.day} class="tt-grid-day-row">
+
+                <!-- Day label + leave badge -->
+                <div class="tt-grid-day-col tt-day-label-cell">
+                    <span class="tt-day-name">{dayRow.dayShort}</span>
+                    <template if:true={dayRow.hasLeave}>
+                        <span class="tt-leave-day-badge">{dayRow.leaveCount} on leave</span>
+                    </template>
+                </div>
+
+                <!-- Period cells -->
+                <template for:each={dayRow.periods} for:item="period">
+                    <div key={period.key} class={period.cellClass}>
+
+                        <!-- ══ LEAVE CELL (teacher is on leave) ══ -->
+                        <template if:true={period.isOnLeave}>
+                            <div class="tt-leave-cell-inner"
+                                 data-day={dayRow.day}
+                                 data-period={period.num}
+                                 data-period-id={period.periodId}
+                                 onclick={handleLeaveCellClick}
+                                 title="Click to assign substitute teacher">
+
+                                <!-- Red/amber leave banner -->
+                                <div class="tt-leave-banner">
+                                    <lightning-icon icon-name="utility:event" size="xx-small"
+                                                    class="tt-leave-icon"></lightning-icon>
+                                    <span class="tt-leave-label">ON LEAVE</span>
+                                </div>
+
+                                <!-- Who is on leave -->
+                                <div class="tt-on-leave-name">{period.onLeaveTeacherName}</div>
+
+                                <!-- Subject dropdowns (still editable for subject change) -->
+                                <lightning-combobox
+                                    class="tt-subject-select"
+                                    value={period.subjectId}
+                                    options={ttSubjectOptions}
+                                    placeholder="Subject"
+                                    data-day={dayRow.day}
+                                    data-period={period.num}
+                                    onchange={handleTTSubjectChange}
+                                    onclick={_stopBubble}
+                                ></lightning-combobox>
+
+                                <!-- Sub assigned indicator OR "Assign Sub" button -->
+                                <template if:true={period.hasSubstitute}>
+                                    <div class="tt-sub-assigned-chip"
+                                         onclick={handleLeaveCellClick}
+                                         data-day={dayRow.day}
+                                         data-period={period.num}
+                                         data-period-id={period.periodId}>
+                                        <lightning-icon icon-name="utility:check" size="xx-small"></lightning-icon>
+                                        Sub: {period.substituteTeacherName}
+                                    </div>
+                                </template>
+                                <template if:false={period.hasSubstitute}>
+                                    <button class="tt-assign-sub-btn"
+                                            data-day={dayRow.day}
+                                            data-period={period.num}
+                                            data-period-id={period.periodId}
+                                            onclick={handleLeaveCellClick}>
+                                        + Assign Substitute
+                                    </button>
+                                </template>
+
+                            </div>
+                        </template>
+
+                        <!-- ══ NORMAL CELL ══ -->
+                        <template if:false={period.isOnLeave}>
+                            <lightning-combobox
+                                value={period.subjectId}
+                                options={ttSubjectOptions}
+                                placeholder="Subject"
+                                data-day={dayRow.day}
+                                data-period={period.num}
+                                onchange={handleTTSubjectChange}
+                            ></lightning-combobox>
+                            <lightning-combobox
+                                value={period.teacherId}
+                                options={period.teacherOptions}
+                                placeholder={period.teacherPlaceholder}
+                                disabled={period.teacherDisabled}
+                                data-day={dayRow.day}
+                                data-period={period.num}
+                                onchange={handleTTTeacherChange}
+                            ></lightning-combobox>
+                        </template>
+
+                    </div>
+                </template>
+                <!-- end period cells -->
+
+            </div>
+        </template>
+        <!-- end day rows -->
+
+    </div>
+</template>
+<template if:true={showSubstituteModal}>
+    <section role="dialog" class="slds-modal slds-fade-in-open sub-modal-overlay">
+        <div class="slds-modal__container sub-modal-container">
+
+            <!-- Header -->
+            <header class="slds-modal__header sub-modal-header">
+                <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                        title="Close" onclick={handleCloseSubstituteModal}>
+                    <lightning-icon icon-name="utility:close" size="small"></lightning-icon>
+                </button>
+                <div class="sub-modal-header-content">
+                    <div class="sub-modal-leave-icon-wrap">
+                        <lightning-icon icon-name="utility:event" size="small"></lightning-icon>
+                    </div>
+                    <div>
+                        <h2 class="sub-modal-title">Assign Substitute Teacher</h2>
+                        <p class="sub-modal-subtitle">
+                            {subModalContext.day} · Period {subModalContext.periodNum} · {subModalContext.subjectName}
+                        </p>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Body -->
+            <div class="slds-modal__content sub-modal-body">
+
+                <!-- On-leave teacher info card -->
+                <div class="sub-modal-leave-card">
+                    <div class="sub-modal-leave-card-icon">
+                        <lightning-icon icon-name="utility:user" size="small"></lightning-icon>
+                    </div>
+                    <div class="sub-modal-leave-card-text">
+                        <span class="sub-modal-leave-label">Teacher on Leave</span>
+                        <span class="sub-modal-leave-name">{subModalContext.onLeaveTeacher}</span>
+                    </div>
+                    <div class="sub-modal-leave-badge">ON LEAVE</div>
+                </div>
+
+                <!-- Substitute picker -->
+                <div class="sub-modal-field-wrap">
+                    <template if:true={subModalLoading}>
+                        <div class="sub-modal-loading">
+                            <lightning-spinner alternative-text="Loading teachers" size="small"></lightning-spinner>
+                            <span>Loading available teachers…</span>
+                        </div>
+                    </template>
+                    <template if:false={subModalLoading}>
+                        <lightning-combobox
+                            label="Select Substitute Teacher"
+                            value={subModalTeacherId}
+                            options={subModalTeacherOptions}
+                            placeholder="Choose a substitute teacher"
+                            onchange={handleSubModalTeacherChange}
+                            class="sub-modal-combobox"
+                        ></lightning-combobox>
+                    </template>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <footer class="slds-modal__footer sub-modal-footer">
+                <button class="slds-button slds-button_neutral"
+                        onclick={handleCloseSubstituteModal}>Cancel</button>
+                <button class="slds-button slds-button_brand sub-modal-save-btn"
+                        onclick={handleSaveSubstitute}
+                        disabled={isLoading}>
+                    <template if:true={isLoading}>
+                        <lightning-spinner alternative-text="Saving" size="x-small"
+                                           class="sub-modal-spinner"></lightning-spinner>
+                    </template>
+                    Assign Substitute
+                </button>
+            </footer>
+
+        </div>
+    </section>
+    <div class="slds-backdrop slds-backdrop_open sub-backdrop"></div>
+</template>
+
+
+
+
+
+
+
+
+
+
+                    <template if:false={showTimetableGrid}>
+                        <div class="tt-empty-state">
+                            <div class="tt-empty-icon">📅</div>
+                            <p class="pe-text">Select class, academic year, frequency &amp; start date</p>
+                            <p class="pe-hint">Then click "Load Timetable" to begin scheduling</p>
+                        </div>
+                    </template>
+                    <!-- TIMETABLE FOOTER ACTIONS -->
+<template if:true={showTimetableGrid}>
+    <div class="tt-footer-actions">
+        <button class="action-pill action-pill-secondary" onclick={handleClearTimetable}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="1 4 1 10 7 10"/>
+                <path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+            </svg>
+            Clear Timetable
+        </button>
+        <button class="action-pill action-pill-primary" onclick={handleSaveTimetable}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Save Timetable
+        </button>
+    </div>
+</template>
+
+                </div>
+            </template>
+
+            <!-- REASSIGN MODAL -->
+            <template if:true={showReassignModal}>
+                <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                    <div class="slds-modal__container reassign-modal-container">
+                        <div class="reassign-modal">
+                            <div class="rm-top">
+                                <div class="rm-title-row">
+                                    <div class="rm-icon-wrap">
+                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="rm-title">Reassign Teacher</h3>
+                                        <p class="rm-sub">Subject: <strong>{reassignContext.subjectName}</strong></p>
+                                    </div>
+                                </div>
+                                <button class="dd-close" onclick={handleCloseReassign}>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                            </div>
+                            <div class="rm-body">
+                                <div class="rm-from-to">
+                                    <div class="rm-from">
+                                        <span class="rm-ft-label">FROM</span>
+                                        <div class="rm-teacher-chip">
+                                            <div class="rm-t-avatar">{reassignContext.currentInitials}</div>
+                                            <span>{reassignContext.currentTeacherName}</span>
+                                        </div>
+                                    </div>
+                                    <div class="rm-arrow-icon">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                                    </div>
+                                    <div class="rm-to">
+                                        <span class="rm-ft-label">TO</span>
+                                        <div class="rm-teacher-chip rm-teacher-chip-new">
+                                            <template if:true={reassignNewTeacherName}>
+                                                <div class="rm-t-avatar rm-t-avatar-new">{reassignNewInitials}</div>
+                                                <span>{reassignNewTeacherName}</span>
+                                            </template>
+                                            <template if:false={reassignNewTeacherName}>
+                                                <span class="rm-placeholder">Select below…</span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rm-fields">
+                                    <div class="rm-field-group">
+                                        <lightning-combobox label="Select New Teacher" value={reassignNewTeacherId} placeholder="Choose qualified teacher" options={reassignTeacherOptions} onchange={handleReassignTeacherChange} class="premium-input"></lightning-combobox>
+                                    </div>
+                                    <div class="rm-field-group">
+                                        <lightning-input label="Periods per Week" type="number" value={reassignPeriodsPerWeek} min="1" max="40" step="1" placeholder="e.g., 5" onchange={handleReassignPeriodsChange} class="premium-input"></lightning-input>
+                                        <p class="rm-hint">💡 Typical range: 5–8 periods / week per subject</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="rm-footer">
+                                <button class="rm-cancel" onclick={handleCloseReassign}>Cancel</button>
+                                <button class="rm-save" onclick={handleSaveReassign}>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                    Save Changes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+
+            <!-- SUCCESS MODAL -->
+            <template if:true={showSuccessModal}>
+                <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                    <div class="slds-modal__container success-modal">
+                        <div class="success-modal-content">
+                            <div class="success-icon-container"><lightning-icon icon-name="utility:success" size="large" class="success-icon"></lightning-icon></div>
+                            <h2 class="success-title">Class Section Created!</h2>
+                            <div class="success-details">
+                                <p class="success-class-info"><strong>{selectedClassName} — Section {selectedSectionName}</strong></p>
+                                <p class="success-stats">{successMessage}</p>
+                            </div>
+                            <div class="success-actions">
+                                <lightning-button label="Create Another" variant="brand" onclick={handleCreateAnother} class="success-button"></lightning-button>
+                                <lightning-button label="Done" onclick={handleDone} class="secondary-button"></lightning-button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+
+            <!-- TIMETABLE SUCCESS MODAL -->
+            <template if:true={showTimetableSuccessModal}>
+                <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                    <div class="slds-modal__container success-modal">
+                        <div class="success-modal-content">
+                            <div class="success-icon-container"><lightning-icon icon-name="utility:success" size="large" class="success-icon"></lightning-icon></div>
+                            <h2 class="success-title">Timetable Saved!</h2>
+                            <div class="success-details">
+                                <p class="success-class-info"><strong>{ttSelectedClassName}</strong></p>
+                                <p class="success-stats">{timetableSuccessMessage}</p>
+                            </div>
+                            <div class="success-actions">
+                                <lightning-button label="Edit Timetable" variant="brand" onclick={handleCloseTimetableSuccess} class="success-button"></lightning-button>
+                                <lightning-button label="Done" onclick={handleTimetableDone} class="secondary-button"></lightning-button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+
+            <!-- ==========================================
+                 MISSING ACTION MODALS
+                 ========================================== -->
+            <!-- Create Class Modal -->
+            <template if:true={showCreateClassModal}>
+                <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                    <div class="slds-modal__container">
+                        <header class="slds-modal__header">
+                            <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" onclick={handleCloseCreateClass} title="Close"><lightning-icon icon-name="utility:close" size="small" variant="inverse"></lightning-icon></button>
+                            <h2 class="slds-text-heading_medium">Create Class</h2>
+                        </header>
+                        <div class="slds-modal__content slds-p-around_medium">
+                            <!-- Dynamic Rows -->
+                            <template for:each={modalClasses} for:item="cls" for:index="index">
+                                <div key={cls.id} class="slds-grid slds-grid_vertical-align-center slds-m-bottom_x-small">
+                                    <div class="slds-grow">
+                                        <lightning-input label={cls.label} type="text" value={cls.name} data-id={cls.id} onchange={handleModalClassNameChange} required class="premium-input" placeholder="e.g., Grade 10"></lightning-input>
+                                    </div>
+                                    <div class="slds-p-left_xx-small slds-no-flex" style="padding-top: 20px;">
+                                        <template if:true={cls.showAdd}>
+                                            <lightning-button-icon icon-name="utility:add" variant="border-filled" size="small" onclick={handleAddClassModalRow} class="slds-m-right_xxx-small" title="Add another class"></lightning-button-icon>
+                                        </template>
+                                        <template if:true={cls.showDelete}>
+                                            <lightning-button-icon icon-name="utility:delete" alternative-text="Delete" size="small" variant="bare" data-id={cls.id} onclick={handleRemoveClassModalRow} title="Delete row"></lightning-button-icon>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                        <footer class="slds-modal__footer">
+                            <lightning-button label="Cancel" onclick={handleCloseCreateClass} class="slds-m-right_x-small"></lightning-button>
+                            <lightning-button label="Create" variant="brand" onclick={handleSaveNewClassBulk}></lightning-button>
+                        </footer>
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+
+            <!-- Create Section Modal -->
+            <template if:true={showCreateSectionModal}>
+    <div class="modal-portal-overlay">
+
+        <!-- Backdrop -->
+        <div class="modal-portal-backdrop" onclick={handleCloseCreateSection}></div>
+
+        <!-- Modal Container -->
+        <div class="modal-portal-container" style="max-width: 520px;">
+
+            <!-- Header -->
+            <div class="modal-portal-header">
+                <div class="modal-header-icon-wrap">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                </div>
+                <div class="modal-header-text">
+                    <h2 class="modal-portal-title">Create Section</h2>
+                    <p class="modal-portal-subtitle">Add one or more sections at once</p>
+                </div>
+                <button class="modal-portal-close" onclick={handleCloseCreateSection} title="Close">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="modal-portal-body">
+                <div class="modal-rows-container">
+                    <template for:each={modalSections} for:item="sec">
+                        <div key={sec.id} class="modal-input-row">
+
+                            <!-- Row number badge -->
+                            <div class="modal-row-num">{sec.rowNum}</div>
+
+                            <!-- Input -->
+                            <div class="modal-row-input">
+                                <lightning-input
+                                    label=""
+                                    type="text"
+                                    value={sec.name}
+                                    placeholder="e.g., Section A"
+                                    data-id={sec.id}
+                                    onchange={handleModalSectionNameChange}
+                                    class="premium-input">
+                                </lightning-input>
+                            </div>
+
+                            <!-- ADD button — only on last row -->
+                            <template if:true={sec.showAdd}>
+                                <button
+                                    class="modal-row-add-btn"
+                                    onclick={handleAddSectionModalRow}
+                                    title="Add another section">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                        <line x1="12" y1="5" x2="12" y2="19"/>
+                                        <line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
+                                </button>
+                            </template>
+
+                            <!-- DELETE button — all rows except first -->
+                            <!-- CRITICAL: data-id is on the button itself so currentTarget always has it -->
+                            <template if:true={sec.showDelete}>
+                                <button
+                                    class="modal-row-del-btn"
+                                    data-id={sec.id}
+                                    onclick={handleRemoveSectionModalRow}
+                                    title="Remove this section">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="pointer-events:none;">
+                                        <polyline points="3 6 5 6 21 6"/>
+                                        <path d="M19 6l-1 14H6L5 6"/>
+                                        <path d="M10 11v6"/>
+                                        <path d="M14 11v6"/>
+                                        <path d="M9 6V4h6v2"/>
+                                    </svg>
+                                </button>
+                            </template>
+
+                            <!-- Spacer: first row with no delete shown -->
+                            <template if:false={sec.showDelete}>
+                                <template if:false={sec.showAdd}>
+                                    <div class="modal-row-spacer"></div>
+                                </template>
+                            </template>
+
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Count indicator -->
+                <div class="modal-count-indicator">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <span>{modalSectionsCount} section(s) will be created</span>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="modal-portal-footer">
+                <button class="modal-btn-cancel" onclick={handleCloseCreateSection}>Cancel</button>
+                <button class="modal-btn-create" onclick={handleCreateSectionSubmit}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="pointer-events:none;">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    <template if:true={modalSectionsCountGt1}>
+                        Create ({modalSectionsCount})
+                    </template>
+                    <template if:false={modalSectionsCountGt1}>
+                        Create
+                    </template>
+                </button>
+            </div>
+
+        </div>
+    </div>
+</template>
+            <!-- Import Teachers Modal -->
+          <template if:true={showImportTeachersModal}>
+    <div class="modal-portal-overlay">
+ 
+        <!-- Backdrop -->
+        <div class="modal-portal-backdrop" onclick={handleCloseImportTeachers}></div>
+ 
+        <!-- Modal Container -->
+        <div class="modal-portal-container" style="max-width: 700px;">
+ 
+            <!-- Header -->
+            <div class="modal-portal-header">
+                <div class="modal-header-icon-wrap">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polyline points="16 16 12 12 8 16"/>
+                        <line x1="12" y1="12" x2="12" y2="21"/>
+                        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+                    </svg>
+                </div>
+                <div class="modal-header-text">
+                    <h2 class="modal-portal-title">Import Teachers (CSV)</h2>
+                    <p class="modal-portal-subtitle">Upload a CSV file with all teacher details</p>
+                </div>
+                <button class="modal-portal-close" onclick={handleCloseImportTeachers} title="Close">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+ 
+            <!-- Body -->
+            <div class="modal-portal-body">
+ 
+                <!-- File Upload -->
+                <div class="modal-field-group">
+                    <lightning-input
+                        type="file"
+                        label="Upload CSV File"
+                        accept=".csv"
+                        onchange={handleTeachersFileChange}>
+                    </lightning-input>
+                </div>
+ 
+                <!-- Template columns hint -->
+                <div class="modal-hint-box">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <div>
+                        <strong>Required columns:</strong>
+                        <code>firstName</code>, <code>lastName</code>, <code>email</code>
+                        <br/>
+                        <strong>Optional columns:</strong>
+                        <code>phone</code>, <code>gender</code>, <code>dateOfBirth</code>,
+                        <code>joiningDate</code>, <code>qualification</code>,
+                        <code>address</code>, <code>teachingType</code>,
+                        <code>basicSalary</code>, <code>allowances</code>, <code>deductions</code>,
+                        <code>subject1</code>, <code>skillLevel1</code>,
+                        <code>subject2</code>, <code>skillLevel2</code>
+                        (up to 5 subject/skillLevel pairs)
+                    </div>
+                </div>
+ 
+                <!-- Download Template -->
+                <div class="modal-template-row">
+                    <lightning-button
+                        label="Download Sample Template"
+                        icon-name="utility:download"
+                        variant="neutral"
+                        onclick={handleDownloadTeacherTemplate}>
+                    </lightning-button>
+                </div>
+ 
+                <!-- Preview Table -->
+                <template if:true={showTeachersPreview}>
+ 
+                    <div class="modal-success-banner">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        <span>Found <strong>{teachersCount}</strong> teacher(s) ready to import.</span>
+                    </div>
+ 
+                    <div class="modal-table-wrapper">
+                        <table class="modal-preview-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Contact</th>
+                                    <th>Personal</th>
+                                    <th>Salary (₹)</th>
+                                    <th>Qualification</th>
+                                    <th>Subject &amp; Skill</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={teachersCsvPayload} for:item="row">
+                                    <tr key={row.id}>
+                                        <!-- Name + Type -->
+                                        <td>
+                                            <div class="modal-table-name">{row.firstName} {row.lastName}</div>
+                                            <template if:true={row.teachingType}>
+                                                <span class="modal-badge modal-badge-blue">{row.teachingType}</span>
+                                            </template>
+                                        </td>
+                                        <!-- Contact -->
+                                        <td>
+                                            <div class="modal-contact-cell">
+                                                <div class="modal-contact-row">
+                                                    <lightning-icon icon-name="utility:email" size="xx-small"></lightning-icon>
+                                                    <span>{row.email}</span>
+                                                </div>
+                                                <template if:true={row.phone}>
+                                                    <div class="modal-contact-row">
+                                                        <lightning-icon icon-name="utility:call" size="xx-small"></lightning-icon>
+                                                        <span>{row.phone}</span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </td>
+                                        <!-- Personal -->
+                                        <td>
+                                            <div class="modal-contact-cell">
+                                                <template if:true={row.gender}>
+                                                    <div class="modal-contact-row">
+                                                        <lightning-icon icon-name="utility:people" size="xx-small"></lightning-icon>
+                                                        <span>{row.gender}</span>
+                                                    </div>
+                                                </template>
+                                                <template if:true={row.joiningDate}>
+                                                    <div class="modal-contact-row">
+                                                        <lightning-icon icon-name="utility:date_input" size="xx-small"></lightning-icon>
+                                                        <span>Joined: {row.joiningDate}</span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </td>
+                                        <!-- Salary -->
+                                        <td>
+                                            <template if:true={row.basicSalary}>
+                                                <div class="modal-contact-cell">
+                                                    <div class="modal-contact-row">
+                                                        <span class="import-salary-label">Basic:</span>
+                                                        <span>₹{row.basicSalary}</span>
+                                                    </div>
+                                                    <template if:true={row.allowances}>
+                                                        <div class="modal-contact-row">
+                                                            <span class="import-salary-label">Allow:</span>
+                                                            <span>+₹{row.allowances}</span>
+                                                        </div>
+                                                    </template>
+                                                    <template if:true={row.deductions}>
+                                                        <div class="modal-contact-row import-deduction-row">
+                                                            <span class="import-salary-label">Deduct:</span>
+                                                            <span>-₹{row.deductions}</span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                            <template if:false={row.basicSalary}>
+                                                <span class="modal-badge modal-badge-gray">—</span>
+                                            </template>
+                                        </td>
+                                        <!-- Qualification -->
+                                        <td>
+                                            <span class="modal-badge modal-badge-gray">{row.qualification}</span>
+                                        </td>
+                                        <!-- Subject & Skill -->
+                                        <td>
+                                            <div class="modal-subject-cell">
+                                                <template if:true={row.subject1}>
+                                                    <span class="modal-badge modal-badge-blue">{row.subject1}</span>
+                                                    <span class="modal-skill-level">({row.skillLevel1})</span>
+                                                </template>
+                                                <template if:true={row.subject2}>
+                                                    <span class="modal-badge modal-badge-blue">{row.subject2}</span>
+                                                    <span class="modal-skill-level">({row.skillLevel2})</span>
+                                                </template>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+ 
+                </template>
+            </div>
+ 
+            <!-- Footer -->
+            <div class="modal-portal-footer">
+                <button class="modal-btn-cancel" onclick={handleCloseImportTeachers}>Cancel</button>
+                <lightning-button
+                    label="Import Teachers"
+                    variant="brand"
+                    onclick={handleImportTeachersSubmit}>
+                </lightning-button>
+            </div>
+ 
+        </div>
+    </div>
+</template>
+
+            <!-- Add Subject Modal -->
+            <template if:true={showImportSubjectsModal}>
+                <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_small">
+                    <div class="slds-modal__container">
+                        <header class="slds-modal__header">
+                            <button class="slds-button slds-button_icon slds-modal__close" onclick={handleCloseImportSubjects} title="Close">
+                                <lightning-icon icon-name="utility:close" size="small"></lightning-icon>
+                            </button>
+                            <h2 class="slds-text-heading_medium">Add Subject</h2>
+                        </header>
+                        <div class="slds-modal__content slds-p-around_medium">
+                            <!-- Dynamic Rows -->
+                            <template for:each={modalSubjects} for:item="sub" for:index="index">
+                                <div key={sub.id} class="slds-grid slds-grid_vertical-align-center slds-m-bottom_x-small">
+                                    <div class="slds-grow">
+                                        <lightning-input label={sub.label} type="text" value={sub.name} data-id={sub.id} onchange={handleModalSubjectNameChange} required class="premium-input"></lightning-input>
+                                    </div>
+                                    <div class="slds-p-left_xx-small slds-no-flex" style="padding-top: 20px;">
+                                        <template if:true={sub.showAdd}>
+                                            <lightning-button-icon icon-name="utility:add" variant="border-filled" size="small" onclick={handleAddSubjectModalRow} class="slds-m-right_xxx-small" title="Add another subject"></lightning-button-icon>
+                                        </template>
+                                        <template if:true={sub.showDelete}>
+                                            <lightning-button-icon icon-name="utility:delete" alternative-text="Delete" size="small" variant="bare" data-id={sub.id} onclick={handleRemoveSubjectModalRow} title="Delete row"></lightning-button-icon>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                        <footer class="slds-modal__footer">
+                            <lightning-button label="Cancel" onclick={handleCloseImportSubjects} class="slds-m-right_x-small"></lightning-button>
+                            <lightning-button label="Save" variant="brand" onclick={handleSaveNewSubjectBulk}></lightning-button>
+                        </footer>
+                    </div>
+                </section>
+                <div class="slds-backdrop slds-backdrop_open"></div>
+            </template>
+
+        </div>
+    </lightning-card>
+</template>

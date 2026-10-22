@@ -1,0 +1,3 @@
+"Problem","Severity","File","Line","Column","Rule","Description","URL","Category","Engine"
+"1","3","C:\VikasSchool\build-clean\main\default\pages\CommunitiesLanding.page","1","90","VfCsrf","Avoid calling VF action upon page load","https://docs.pmd-code.org/pmd-doc-7.11.0/pmd_rules_visualforce_security.html#vfcsrf","Security","pmd"
+"2","3","C:\VikasSchool\build-clean\main\default\pages\CommunitiesLogin.page","1","75","VfCsrf","Avoid calling VF action upon page load","https://docs.pmd-code.org/pmd-doc-7.11.0/pmd_rules_visualforce_security.html#vfcsrf","Security","pmd"

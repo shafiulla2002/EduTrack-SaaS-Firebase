@@ -1,0 +1,422 @@
+<template>
+    <div class="form-card" data-v="2.0">
+        <!-- STEPPER BAR -->
+        <div class="card-stepper">
+            <div class="stepper-info">
+                <h2 id="stepTitle">{stepTitle}</h2>
+                <p id="stepSubtitle">{stepSubtitle}</p>
+            </div>
+            <div class="steps-row">
+                <div class={step1Class} id="si1">
+                    <div class="step-bubble" id="sb1">{step1Display}</div>
+                    <div class="step-label">Profile</div>
+                </div>
+                <div class={connector1Class} id="sc1"></div>
+                <div class={step2Class} id="si2">
+                    <div class="step-bubble" id="sb2">{step2Display}</div>
+                    <div class="step-label">Academics</div>
+                </div>
+                <div class={connector2Class} id="sc2"></div>
+                <div class={step3Class} id="si3">
+                    <div class="step-bubble" id="sb3">{step3Display}</div>
+                    <div class="step-label">Fees</div>
+                </div>
+                <div class={connector3Class} id="sc3"></div>
+                <div class={step4Class} id="si4">
+                    <div class="step-bubble" id="sb4">{step4Display}</div>
+                    <div class="step-label">Review</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROGRESS BAR -->
+        <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="progressFill" style={stepProgressStyle}></div>
+        </div>
+
+        <!-- ===== CARD BODY ===== -->
+        <div class="card-body">
+            <template lwc:if={isLoading}>
+                <div class="spinner-container">
+                    <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+                </div>
+            </template>
+
+            <!-- ── STEP 1 : STUDENT PROFILE ── -->
+            <div class={pane1Class}>
+                <div class="section-head">
+                    <div class="section-chip">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
+                        <span>Personal Information</span>
+                    </div>
+                    <div class="section-line"></div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="field">
+                        <label>First Name <span class="req">*</span></label>
+                        <input type="text" name="firstName" value={tempStudent.firstName} onchange={handleInputChange}
+                            placeholder="e.g. Arjun" required>
+                    </div>
+                    <div class="field">
+                        <label>Last Name <span class="req">*</span></label>
+                        <input type="text" name="lastName" value={tempStudent.lastName} onchange={handleInputChange}
+                            placeholder="e.g. Sharma" required>
+                    </div>
+                    <div class="field">
+                        <label>Father's Name <span class="req">*</span></label>
+                        <input type="text" name="fatherName" value={tempStudent.fatherName} onchange={handleInputChange}
+                            placeholder="Full name" required>
+                    </div>
+                    <div class="field">
+                        <label>Mother's Name</label>
+                        <input type="text" name="motherName" value={tempStudent.motherName} onchange={handleInputChange}
+                            placeholder="Full name">
+                    </div>
+                    <div class="field">
+                        <label>Date of Birth <span class="req">*</span></label>
+                        <input type="date" name="dob" value={tempStudent.dob} onchange={handleInputChange} required>
+                    </div>
+                    <div class="field">
+                        <label>Phone Number <span class="req">*</span></label>
+                        <input type="tel" name="phone" value={tempStudent.phone} onchange={handleInputChange}
+                            placeholder="+91 00000 00000" required>
+                    </div>
+                    <div class="field">
+                        <label>Emergency Contact</label>
+                        <input type="tel" name="emergencyContact" value={tempStudent.emergencyContact}
+                            onchange={handleInputChange} placeholder="Alternate number">
+                    </div>
+                    <div class="field">
+                        <label>Email Address</label>
+                        <input type="email" name="email" value={tempStudent.email} onchange={handleInputChange}
+                            placeholder="name@example.com">
+                    </div>
+                    <div class="field">
+                        <label>Aadhar Card No.</label>
+                        <input type="text" name="aadharNo" value={tempStudent.aadharNo} onchange={handleInputChange}
+                            placeholder="e.g. 1234 5678 9012" maxlength="14">
+                    </div>
+                </div>
+
+                <div class="block-divider">
+                    <div class="block-divider-line"></div>
+                    <div class="block-divider-label">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                            <circle cx="12" cy="10" r="3" />
+                        </svg>
+                        Residential Address
+                    </div>
+                    <div class="block-divider-line"></div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Village / City</label>
+                        <input type="text" name="village" value={tempStudent.village} onchange={handleInputChange}
+                            placeholder="Village or town">
+                    </div>
+                    <div class="field">
+                        <label>City (Official)</label>
+                        <input type="text" name="city" value={tempStudent.city} onchange={handleInputChange}
+                            placeholder="Official city name">
+                    </div>
+                    <div class="field">
+                        <label>Pincode</label>
+                        <input type="text" name="pincode" value={tempStudent.pincode} onchange={handleInputChange}
+                            placeholder="6-digit code" maxlength="6">
+                    </div>
+                    <div class="field">
+                        <label>State</label>
+                        <select name="state" class={stateSelectClass} onchange={handleInputChange}
+                            value={tempStudent.state}>
+                            <option value="">Select State</option>
+                            <template for:each={stateOptions} for:item="opt">
+                                <option key={opt.value} value={opt.value}>{opt.label}
+                                </option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Country</label>
+                        <select name="country" class={countrySelectClass} onchange={handleInputChange}
+                            value={tempStudent.country}>
+                            <option value="">Select Country</option>
+                            <template for:each={countryOptions} for:item="opt">
+                                <option key={opt.value} value={opt.value}>{opt.label}
+                                </option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── STEP 2 : ACADEMIC DETAILS ── -->
+            <div class={pane2Class}>
+                <div class="academic-banner">
+                    <div class="academic-banner-icon">📚</div>
+                    <div class="academic-banner-text">
+                        <h4>Academic Placement</h4>
+                        <p>Select the class, section and academic year for this student's enrollment.</p>
+                    </div>
+                </div>
+
+                <div class="section-head">
+                    <div class="section-chip">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+                            <path d="M6 12v5c3 3 9 3 12 0v-5" />
+                        </svg>
+                        <span>Enrollment Details</span>
+                    </div>
+                    <div class="section-line"></div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="field full">
+                        <label>Academic Year <span class="req">*</span></label>
+                        <select name="academicYear" class={yearSelectClass} onchange={handleInputChange} required>
+                            <option value="" disabled selected>Select Academic Year</option>
+                            <template for:each={yearOptions} for:item="opt">
+                                <option key={opt.value} value={opt.value} selected={opt.isSelected}>{opt.label}
+                                </option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Class <span class="req">*</span></label>
+                        <select name="selectedClass" class={classSelectClass} onchange={handleInputChange} required>
+                            <option value="" disabled selected>Select Class</option>
+                            <template for:each={classOptions} for:item="opt">
+                                <option key={opt.value} value={opt.value} selected={opt.isSelected}>{opt.label}
+                                </option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Section</label>
+                        <select name="selectedSection" class={sectionSelectClass} onchange={handleInputChange}>
+                            <option value="" disabled selected>Select Section</option>
+                            <template for:each={sectionOptions} for:item="opt">
+                                <option key={opt.value} value={opt.value} selected={opt.isSelected}>{opt.label}
+                                </option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── STEP 3 : FEE STRUCTURE ── -->
+            <div class={pane3Class}>
+                <div class="section-head">
+                    <div class="section-chip">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23" />
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                        </svg>
+                        <span>Fee Structure</span>
+                    </div>
+                    <div class="section-line"></div>
+                </div>
+
+                <template lwc:if={hasProducts}>
+                    <div class="fee-grid">
+                        <template for:each={displayProducts} for:item="p">
+                            <div key={p.Id} class={p.wrapperClass} data-id={p.Id} onclick={handleProductCardClick}>
+                                <div class="fee-card-check"></div>
+                                <div class="fee-card-icon">💰</div>
+                                <div class="fee-card-name">{p.Product2.Name}</div>
+                                <div class="fee-card-desc">{p.Product2.Description}</div>
+                                <div class="fee-card-price"><sup>₹</sup>{p.UnitPrice}</div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template lwc:else>
+                    <div class="empty-state">
+                        <span class="icon">🔍</span>
+                        <p>Select a Class to load available fee structures.</p>
+                    </div>
+                </template>
+
+                <div class="fee-selected-summary">
+                    <span>{selectedProductIds.length} item(s) selected</span>
+                    <div class="discount-block">
+                        <div class="discount-inputs">
+                            <lightning-input type="number" label="Discount (%)" value={concessionPercent}
+                                onchange={handleConcessionPercentChange} step="0.01" variant="label-inline"
+                                class="discount-input-pkg"></lightning-input>
+                            <lightning-input type="number" label="Discount (₹)" value={concessionAmount}
+                                onchange={handleConcessionChange} formatter="currency" step="1" variant="label-inline"
+                                class="discount-input-pkg"></lightning-input>
+                        </div>
+                        <template lwc:if={concessionSummary}>
+                            <div class="discount-summary-line">
+                                <span class="calc-label">Calculation:</span>
+                                <span class="calc-value">{concessionSummary}</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="fee-totals">
+                        <div class="fee-subtotal">Total: ₹ {selectedServicesTotal}</div>
+                        <div class="fee-net-total">Net Payable: ₹ {netFeeTotal}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── STEP 4 : REVIEW ── -->
+            <div class={pane4Class}>
+                <div class="review-header">
+                    <div class="review-avatar">{nameInitials}</div>
+                    <div>
+                        <div class="review-name">{tempStudent.firstName} {tempStudent.lastName}</div>
+                        <div class="review-sub">{tempStudent.selectedClass} · Section {tempStudent.selectedSection}
+                            · {selectedYearName}</div>
+                    </div>
+                </div>
+
+                <div class="review-section">
+                    <div class="review-section-head">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
+                        <span>Personal Details</span>
+                    </div>
+                    <div class="review-grid">
+                        <div class="review-cell">
+                            <div class="review-cell-label">Father</div>
+                            <div class="review-cell-value">{tempStudent.fatherName}</div>
+                        </div>
+                        <div class="review-cell">
+                            <div class="review-cell-label">Mother</div>
+                            <div class="review-cell-value">{tempStudent.motherName}</div>
+                        </div>
+                        <div class="review-cell">
+                            <div class="review-cell-label">DOB</div>
+                            <div class="review-cell-value">{tempStudent.dob}</div>
+                        </div>
+                        <div class="review-cell">
+                            <div class="review-cell-label">Phone</div>
+                            <div class="review-cell-value">{tempStudent.phone}</div>
+                        </div>
+                        <div class="review-cell">
+                            <div class="review-cell-label">Emergency</div>
+                            <div class="review-cell-value">{tempStudent.emergencyContact}</div>
+                        </div>
+                        <div class="review-cell">
+                            <div class="review-cell-label">Email</div>
+                            <div class="review-cell-value">{tempStudent.email}</div>
+                        </div>
+                        <div class="review-cell">
+                            <div class="review-cell-label">Aadhar No.</div>
+                            <div class="review-cell-value">{tempStudent.aadharNo}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="review-section">
+                    <div class="review-section-head">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23" />
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                        </svg>
+                        <span>Fee Breakdown</span>
+                    </div>
+                    <table class="fee-breakdown-table">
+                        <tbody>
+                            <template for:each={selectedServiceDetails} for:item="item">
+                                <tr key={item.id}>
+                                    <td>💰 {item.name}</td>
+                                    <td>₹ {item.price}</td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <div class="fee-total-row">
+                        <span class="fee-total-label">Subtotal</span>
+                        <span class="fee-total-amount">₹ {selectedServicesTotal}</span>
+                    </div>
+                    <template lwc:if={concessionSummary}>
+                        <div class="fee-total-row discount-row">
+                            <span class="fee-total-label">Discount Summary</span>
+                            <span class="fee-total-amount">{concessionSummary}</span>
+                        </div>
+                    </template>
+                    <div class="fee-total-row final-row">
+                        <span class="fee-total-label">Net Payable</span>
+                        <span class="fee-total-amount">₹ {netFeeTotal}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── STEP 5 : SUCCESS ── -->
+            <div class={paneSuccessClass}>
+                <div class="success-pane">
+                    <div class="success-ring">🎉</div>
+                    <h2>Admission Successful!</h2>
+                    <p>The student record has been created and the admission opportunity is ready. Proceed to
+                        complete
+                        the fee payment.</p>
+                    <div class="success-actions">
+                        <button class="btn btn-success" onclick={handlePayNow}>
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                                <line x1="1" y1="10" x2="23" y2="10" />
+                            </svg>
+                            Proceed to Fee Payment
+                        </button>
+                        <button class="btn btn-outline-blue" onclick={handleNewAdmissionAction}>
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            New Admission
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD FOOTER -->
+        <template lwc:if={showNavigationButtons}>
+            <div class="card-footer">
+                <div class="footer-secure">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    256-bit encrypted · data never shared
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-ghost" onclick={handleBack} disabled={isFirstStep}>
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                        Back
+                    </button>
+                    <button class="btn btn-primary" onclick={handleNext}>
+                        {nextButtonLabel}
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

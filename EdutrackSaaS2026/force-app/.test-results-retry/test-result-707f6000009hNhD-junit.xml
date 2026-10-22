@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+    <testsuite name="force.apex" timestamp="2026-05-01T19:09:47.000Z" hostname="https://developmentorg3-dev-ed.develop.my.salesforce.com" tests="2" failures="2"  errors="0"  time="0.00">
+        <properties>
+            <property name="outcome" value="Failed"/>
+            <property name="testsRan" value="2"/>
+            <property name="passing" value="0"/>
+            <property name="failing" value="2"/>
+            <property name="skipped" value="0"/>
+            <property name="passRate" value="0%"/>
+            <property name="failRate" value="100%"/>
+            <property name="testStartTime" value="Sat May 02 2026 12:39:47 am"/>
+            <property name="testSetupTimeInMs" value="416"/>
+            <property name="testExecutionTime" value="0.00 s"/>
+            <property name="testTotalTime" value="0.42 s"/>
+            <property name="commandTime" value="0.14 s"/>
+            <property name="hostname" value="https://developmentorg3-dev-ed.develop.my.salesforce.com"/>
+            <property name="orgId" value="00Df600000HKx70EAD"/>
+            <property name="username" value="shafi@devorg.com"/>
+            <property name="testRunId" value="707f6000009hNhD"/>
+            <property name="userId" value="005f6000003ojzVAAQ"/>
+        </properties>
+        <testcase name="testAllMethods" classname="EduTrack.EduProDashboardControllerTest" time="0.00">
+            <failure message="System.DmlException: Insert failed. First exception on row 0; first error: DUPLICATE_VALUE, Duplicate PermissionSetAssignment.  Assignee: 005f6000003ojzV; Permission Set: 0PSf6000004A9nh: [AssigneeId, PermissionSetId]"><![CDATA[Class.EduTrack.EduProDashboardControllerTest.setup: line 8, column 1]]></failure>
+        </testcase>
+    </testsuite>
+</testsuites>

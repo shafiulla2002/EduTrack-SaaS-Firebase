@@ -1,0 +1,277 @@
+<template>
+    <div class="main-container">
+        <!-- GLASS BLOBS -->
+        <div class="blob b1"></div>
+        <div class="blob b2"></div>
+        <!-- HEADER -->
+        <div class="header">
+            <div class="page-title"><span class="dot"></span>Grades & Marks</div>
+            <div class="filter-row">
+                <div class="global-search">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="6.5" cy="6.5" r="4.5" />
+                        <path d="M10.5 10.5l3 3" />
+                    </svg>
+                    <input type="text" id="gsearch" placeholder="Search student, roll no…" oninput={handleSearch} value={searchTerm}>
+                    <span class="kbd">⌘K</span>
+                </div>
+                <div class="filter-sep"></div>
+
+                <!-- Class Select -->
+                <div class={classSelectClass}>
+                    <svg class="icon" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M2 2h12v2H2zm1 4h10v2H3zm1 4h8v2H4z" />
+                    </svg>
+                    <select id="cf" onchange={handleClassChange} value={selectedClass}>
+                        <option value="">All Classes</option>
+                        <template for:each={classOptions} for:item="opt">
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        </template>
+                    </select>
+                    <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6l4 4 4-4" />
+                    </svg>
+                </div>
+
+                <!-- Section Select -->
+                <div class={sectionSelectClass}>
+                    <svg class="icon" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M1 3h6v2H1zm0 4h6v2H1zm0 4h6v2H1zm8-8h6v2H9zm0 4h6v2H9zm0 4h6v2H9z" />
+                    </svg>
+                    <select id="sf" onchange={handleSectionChange} value={selectedSection}>
+                        <option value="">All Sections</option>
+                        <template for:each={sectionOptions} for:item="opt">
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        </template>
+                    </select>
+                    <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6l4 4 4-4" />
+                    </svg>
+                </div>
+
+                <!-- Test Select -->
+                <div class={testSelectClass}>
+                    <svg class="icon" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M4 1h8l2 3v10a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1zm1 6v1h6V7H5zm0 3v1h4v-1H5z" />
+                    </svg>
+                    <select id="tf" onchange={handleTestChange} value={selectedTest}>
+                        <option value="">All Tests</option>
+                        <template for:each={testOptions} for:item="opt">
+                            <option key={opt} value={opt}>{opt}</option>
+                        </template>
+                    </select>
+                    <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6l4 4 4-4" />
+                    </svg>
+                </div>
+
+                <!-- Subject Select -->
+                <div class={subjectSelectClass}>
+                    <svg class="icon" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M3 1h10a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V2a1 1 0 011-1zm1 3v1h8V4H4zm0 3v1h8V7H4zm0 3v1h5v-1H4z" />
+                    </svg>
+                    <select id="sbf" onchange={handleSubjectChange} value={selectedSubject}>
+                        <option value="">All Subjects</option>
+                        <template for:each={subjectOptions} for:item="opt">
+                            <option key={opt} value={opt}>{opt}</option>
+                        </template>
+                    </select>
+                    <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6l4 4 4-4" />
+                    </svg>
+                </div>
+
+                <button class="btn" onclick={resetFilters}>
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M14 8A6 6 0 112 8a6 6 0 018-4.8l2-.8M12 1v4H8" />
+                    </svg>Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- STATS -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-label">Total Students</div>
+                <div class="stat-value blue">{totalStudents}</div>
+                <div class="stat-sub">Across {totalClasses} classes</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Class Average</div>
+                <div class="stat-value green">{classAverage}%</div>
+                <div class="stat-sub up">↑ {averageDiff}% vs last test</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Passed</div>
+                <div class="stat-value green">{totalPassed}</div>
+                <div class="stat-sub">{passRate}% pass rate</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Failed</div>
+                <div class="stat-value red">{totalFailed}</div>
+                <div class="stat-sub down">Below 35%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Top Scorer</div>
+                <div class="stat-value purple">{topScoreDisplay}</div>
+                <div class="stat-sub">
+                    <template for:each={topScorersList} for:item="ts">
+                        <span key={ts.Id} class="top-scorer-badge" onclick={openModal} data-id={ts.Id} data-test={ts.examType}>
+                            {ts.Name}
+                        </span>
+                    </template>
+                    • {topScorerClassLabel}
+                </div>
+            </div>
+        </div>
+
+        <!-- TABLE -->
+        <div class="table-area">
+            <div class="table-header">
+                <div style="display:flex;align-items:center">
+                    <div class="table-title">Student Performance</div>
+                    <span class="table-hint">— click a row to view all subject marks</span>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <template lwc:if={students.length}>
+                    <div class="table-scroll">
+                        <table>
+                        <thead>
+                            <tr>
+                                <th class="m-h-student">Student</th>
+                                <th class="m-h-class">Class</th>
+                                <th class="m-h-section">Section</th>
+                                <th class="m-h-test">Test</th>
+                                <th class="m-h-score">Score</th>
+                                <th class="m-h-grade">Grade</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template for:each={students} for:item="r">
+                                <tr key={r.Id} onclick={openModal} data-id={r.Id}>
+                                    <td>
+                                        <div class="scell">
+                                            <div class="avatar" data-style={r.avatarVars}>{r.initials}</div>
+                                            <div>
+                                                <div class="sname">
+                                                    <lightning-formatted-rich-text value={r.highlightedName}></lightning-formatted-rich-text>
+                                                </div>
+                                                <div class="sroll">
+                                                    <lightning-formatted-rich-text value={r.highlightedRoll}></lightning-formatted-rich-text>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span style="font-weight:600;color:var(--text2)">{r.Class__c}</span></td>
+                                    <td><span class="sectag">{r.Section__c}</span></td>
+                                    <td style="color:var(--text2)">{r.Exam_Type__c}</td>
+                                    <td>
+                                        <div class="sbar-wrap">
+                                            <div class="sbar">
+                                                <div class="sbar-fill" data-style={r.barStyle}></div>
+                                            </div>
+                                            <span class="snum">{r.displayScore}%</span>
+                                        </div>
+                                    </td>
+                                    <td><span class={r.gradeBadgeClass}>{r.grade}</span></td>
+                                    <td><span class="view-hint">
+                                            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"
+                                                stroke="currentColor" stroke-width="1.5">
+                                                <path d="M3 8h10M9 4l4 4-4 4" />
+                                            </svg>View marks</span></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+                <template lwc:else>
+                    <div class="empty-state">No results found</div>
+                </template>
+            </div>
+        </div>
+
+        <!-- MODAL -->
+        <template lwc:if={isModalOpen}>
+            <div class="gm-overlay open" onclick={bgClose}>
+                <div class="gm-modal" onclick={preventClose}>
+                    <div class="mhdr">
+                        <div class="mstu">
+                            <div class="mavatar" data-style={modalStudent.avatarVars}>{modalStudent.initials}</div>
+                            <div>
+                                <div class="mname">{modalStudent.Name}</div>
+                                <div class="mmeta">
+                                    <span>📋 {modalStudent.Roll_No__c}</span>
+                                    <span>🏫 {modalStudent.Class__c}</span>
+                                    <span>🔤 Section {modalStudent.Section__c}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="mclose" onclick={closeModal}>
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 3l10 10M13 3L3 13" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="mtabs">
+                        <template for:each={testOptionsMeta} for:item="t" for:index="idx">
+                            <div key={t.label} class={t.className} onclick={switchTab} data-index={idx}>{t.label}</div>
+                        </template>
+                    </div>
+                    <div class="mbody">
+                        <div class="mtable-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th class="h-subj">Subject</th>
+                                        <th class="h-obt">Marks Obtained</th>
+                                        <th class="h-max">Max Marks</th>
+                                        <th class="h-pct">Percentage</th>
+                                        <th class="h-grade">Grade</th>
+                                        <th class="h-status">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={modalMarks} for:item="m" for:index="idx">
+                                        <tr key={m.subj} class={m.rowClass}>
+                                            <td style="color:var(--text3);font-size:12px">{m.index}</td>
+                                            <td class="col-subj">
+                                                <span class="subj-label">{m.subj}</span>
+                                            </td>
+                                            <td class="col-obt"><span class="marks-val">{m.sc}</span></td>
+                                            <td class="col-max"><span class="marks-max">{m.mx}</span></td>
+                                            <td class="col-pct"><span>{m.pct}%</span></td>
+                                            <td class="col-grade"><span class={m.gradeClass}>{m.grade}</span></td>
+                                            <td class="col-status"><span data-style={m.statusStyle}>{m.statusLabel}</span></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="msummary">
+                            <div class="ms-item">
+                                <div class="ms-lbl blue">Total Marks</div>
+                                <div class="ms-val blue">{totObt} / {totMax}</div>
+                            </div>
+                            <div class="ms-item">
+                                <div class="ms-lbl orange">Overall %</div>
+                                <div class="ms-val orange">{modalOverallPct}%</div>
+                            </div>
+                            <div class="ms-item">
+                                <div class="ms-lbl purple">Overall Grade</div>
+                                <div class="ms-val purple">{modalOverallGrade}</div>
+                            </div>
+                            <div class="ms-item">
+                                <div class="ms-lbl green">Subjects Passed</div>
+                                <div class="ms-val green">{subjectsPassed} / {totalSubjectCount}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>

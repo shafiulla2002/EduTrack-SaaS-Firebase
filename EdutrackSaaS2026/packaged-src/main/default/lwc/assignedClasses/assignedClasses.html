@@ -1,0 +1,181 @@
+<template>
+    <div class="container">
+        <!-- Loading Spinner -->
+        <template lwc:if={loading}>
+            <lightning-spinner alternative-text="Loading" size="medium"></lightning-spinner>
+        </template>
+
+        <!-- Main Screen: Assigned Classes List -->
+        <template lwc:if={isMainScreen}>
+            <header class="page-header">
+                <div class="header-main">
+                    <div>
+                        <h1>Assigned Classes</h1>
+                        <p>Track your schedule and record teaching sessions for today.</p>
+                    </div>
+                    <button class="logout-btn" onclick={handleLogout}>Logout</button>
+                </div>
+            </header>
+
+            <!-- Summary Stats -->
+            <div class="stats-grid">
+                <div class="stat-card total">
+                    <div class="stat-content">
+                        <span class="stat-value">{summaryStats.total}</span>
+                        <span class="stat-label">Assigned Classes</span>
+                    </div>
+                </div>
+                <div class="stat-card students">
+                    <div class="stat-content">
+                        <span class="stat-value">{summaryStats.students}</span>
+                        <span class="stat-label">Total Students</span>
+                    </div>
+                </div>
+                <div class="stat-card completed">
+                    <div class="stat-content">
+                        <span class="stat-value">{summaryStats.completed}</span>
+                        <span class="stat-label">Completed</span>
+                    </div>
+                </div>
+                <div class="stat-card pending">
+                    <div class="stat-content">
+                        <span class="stat-value">{summaryStats.pending}</span>
+                        <span class="stat-label">Pending</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Classes List -->
+            <div class="classes-container">
+                <template for:each={assignedClasses} for:item="cls">
+                    <div key={cls.id} class={cls.cardClass} onclick={handleAssignedClassSelect} data-id={cls.id}>
+                        <div class="card-header">
+                            <span class={cls.statusClass}>{cls.statusLabel}</span>
+                            <span class="period-badge">{cls.periodInfo}</span>
+                        </div>
+                        <div class="card-body">
+                            <h2 class="class-name">{cls.displayName}</h2>
+                            <p class="section-info">{cls.displaySection}</p>
+                            <p class="subject-name">{cls.subjectName}</p>
+
+                            <div class="card-footer">
+                                <span class="footer-item">
+                                    <lightning-icon icon-name="utility:clock" size="xx-small"></lightning-icon>
+                                    {cls.displayTime}
+                                </span>
+                                <span class="footer-item">
+                                    <lightning-icon icon-name="utility:groups" size="xx-small"></lightning-icon>
+                                    {cls.studentCount} Students
+                                </span>
+                            </div>
+                        </div>
+                        <template lwc:if={cls.isCompleted}>
+                            <div class="completion-details">
+                                <p class="detail-row"><strong>Topic:</strong> {cls.discussedTopic}</p>
+                                <template lwc:if={cls.teachingNotes}>
+                                    <p class="detail-row"><strong>Notes:</strong> {cls.teachingNotes}</p>
+                                </template>
+                                <template lwc:if={cls.homeworkAssigned}>
+                                    <p class="detail-row"><strong>Homework:</strong> {cls.homeworkAssigned}</p>
+                                </template>
+                                <p class="detail-row performance-tag"><strong>Performance:</strong>
+                                    {cls.classPerformance}</p>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        <!-- Login Screen -->
+        <template lwc:if={isLoginScreen}>
+            <div class="login-container">
+                <div class="login-card card-glass">
+                    <header class="login-header">
+                        <h1>Teacher Login</h1>
+                        <p>Enter your details to access assigned classes</p>
+                    </header>
+                    <div class="login-form">
+                        <div class="input-group">
+                            <lightning-input label="Account Name" data-id="loginName" placeholder="Enter Teacher Name"
+                                required value={loginData.name} onchange={handleLoginInputChange}>
+                            </lightning-input>
+                        </div>
+                        <div class="input-group">
+                            <lightning-input label="Phone Number" data-id="loginPhone" type="tel"
+                                placeholder="Enter Phone Number" required value={loginData.phone}
+                                onchange={handleLoginInputChange}>
+                            </lightning-input>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn-primary full-width" onclick={handleLogin}>Login</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Session Recording Screen -->
+        <template lwc:if={isTeachingScreen}>
+            <div class="session-form-container">
+                <header class="form-header">
+                    <button class="back-btn" onclick={handleBackToClasses}>
+                        <lightning-icon icon-name="utility:chevronleft" size="small"></lightning-icon>
+                        Back
+                    </button>
+                    <div class="header-text">
+                        <h1>Record Teaching Session</h1>
+                        <p>{selectedClassForTeaching.displayName} • {selectedClassForTeaching.displaySection} •
+                            {selectedClassForTeaching.subjectName}</p>
+                        <p class="session-time">{selectedClassForTeaching.periodInfo} •
+                            {selectedClassForTeaching.displayTime}</p>
+                    </div>
+                </header>
+
+                <div class="form-content card-glass">
+                    <div class="input-group">
+                        <lightning-input label="Topic Discussed" name="topicDiscussed"
+                            value={teachingSessionData.topicDiscussed} onchange={handleInputChange} required
+                            placeholder="Enter the main topic taught today">
+                        </lightning-input>
+                    </div>
+
+                    <div class="input-group">
+                        <lightning-textarea label="Teaching Notes" name="teachingNotes"
+                            value={teachingSessionData.teachingNotes} onchange={handleInputChange}
+                            placeholder="Add any specific notes or highlights">
+                        </lightning-textarea>
+                    </div>
+
+                    <div class="input-group">
+                        <lightning-textarea label="Homework Assigned" name="homeworkAssigned"
+                            value={teachingSessionData.homeworkAssigned} onchange={handleInputChange}
+                            placeholder="List the homework tasks for students">
+                        </lightning-textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="input-group half">
+                            <lightning-combobox label="Class Performance" name="classPerformance"
+                                value={teachingSessionData.classPerformance} options={performanceOptions}
+                                onchange={handleInputChange}>
+                            </lightning-combobox>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <lightning-textarea label="Additional Comments" name="additionalComments"
+                            value={teachingSessionData.additionalComments} onchange={handleInputChange}
+                            placeholder="Any other observations?">
+                        </lightning-textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="btn-secondary" onclick={handleBackToClasses}>Cancel</button>
+                        <button class="btn-primary" onclick={handleSubmitSession}>Submit Session</button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</template>
