@@ -1,0 +1,645 @@
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma.service';
+import { TenantContext } from '../tenants/tenant.context';
+import { Prisma } from '@prisma/client';
+
+// ── Default grade ranges used when none are configured ────────────────────────
+export const DEFAULT_GRADE_RANGES: GradeRange[] = [
+  { min: 90, max: 100, grade: 'A+', gpa: 10, label: 'Outstanding' },
+  { min: 80, max:  89, grade: 'A',  gpa: 9,  label: 'Excellent'   },
+  { min: 70, max:  79, grade: 'B+', gpa: 8,  label: 'Very Good'   },
+  { min: 60, max:  69, grade: 'B',  gpa: 7,  label: 'Good'        },
+  { min: 50, max:  59, grade: 'C',  gpa: 6,  label: 'Average'     },
+  { min: 35, max:  49, grade: 'D',  gpa: 5,  label: 'Below Avg'   },
+  { min:  0, max:  34, grade: 'F',  gpa: 0,  label: 'Fail'        },
+];
+
+export interface GradeRange {
+  min: number;
+  max: number;
+  grade: string;
+  gpa: number;
+  label: string;
+}
+
+export interface ResolvedExamConfig {
+  passingPercentage: number;
+  maxMarks: number;
+  gradeRanges: GradeRange[];
+  /** Which config was resolved: 'exam-specific' | 'class-specific' | 'global' | 'system-default' */
+  source: 'exam-specific' | 'class-specific' | 'global' | 'system-default';
+  subjectConfigs?: any[];
+}
+
+function parseGradeRanges(raw: Prisma.JsonValue | null): GradeRange[] {
+  if (!raw || !Array.isArray(raw)) return DEFAULT_GRADE_RANGES;
+  return raw as unknown as GradeRange[];
+}
+
+@Injectable()
+export class ExamConfigService {
+  constructor(private prisma: PrismaService) {}
+
+  private configCache = new Map<string, { data: any; expiresAt: number }>();
+
+  invalidateCache(tenantId?: string) {
+    if (!tenantId) {
+      this.configCache.clear();
+      return;
+    }
+    for (const key of this.configCache.keys()) {
+      if (key.startsWith(`${tenantId}:`)) {
+        this.configCache.delete(key);
+      }
+    }
+  }
+
+  private getTenantId(): string {
+    const tenantId = TenantContext.getTenantId();
+    if (!tenantId) throw new BadRequestException('No active school tenant context found');
+    return tenantId;
+  }
+
+  // ── Core: resolve config for a specific exam type ──────────────────────────
+  async resolveConfig(examTypeName: string, classId?: string, academicYearId?: string, tenantId?: string, db?: any): Promise<ResolvedExamConfig> {
+    const prisma = db ?? this.prisma;
+    const tid = tenantId ?? this.getTenantId();
+    const cleanExamType = examTypeName ? examTypeName.trim() : '';
+
+    // 0. Try class-specific config (exact class + academic year + exam type)
+    if (classId) {
+      let classCfg = academicYearId
+        ? await prisma.examConfig.findFirst({
+            where: {
+              tenantId: tid,
+              examTypeName: { equals: cleanExamType, mode: 'insensitive' },
+              classId,
+              academicYearId,
+            },
+            include: { subjectConfigs: { include: { subject: true } } },
+          })
+        : null;
+
+      if (!classCfg) {
+        classCfg = await prisma.examConfig.findFirst({
+          where: {
+            tenantId: tid,
+            examTypeName: { equals: cleanExamType, mode: 'insensitive' },
+            classId,
+          },
+          include: { subjectConfigs: { include: { subject: true } } },
+        });
+      }
+
+      if (classCfg) {
+        return {
+          passingPercentage: Number(classCfg.passingPercentage),
+          maxMarks: classCfg.maxMarks,
+          gradeRanges: parseGradeRanges(classCfg.gradeRanges),
+          source: 'class-specific',
+          subjectConfigs: classCfg.subjectConfigs,
+        };
+      }
+    }
+
+    // 1. Try exam-specific config (global template for the specific Exam Type, classId/academicYearId = null)
+    const specific = await prisma.examConfig.findFirst({
+      where: {
+        tenantId: tid,
+        examTypeName: { equals: cleanExamType, mode: 'insensitive' },
+        classId: null,
+      },
+      include: { subjectConfigs: { include: { subject: true } } },
+    });
+    if (specific) {
+      return {
+        passingPercentage: Number(specific.passingPercentage),
+        maxMarks: specific.maxMarks,
+        gradeRanges: parseGradeRanges(specific.gradeRanges),
+        source: 'exam-specific',
+        subjectConfigs: specific.subjectConfigs,
+      };
+    }
+
+    // 2. Try global config (stored under key '__global__')
+    const globalCfg = await prisma.examConfig.findFirst({
+      where: { tenantId: tid, examTypeName: '__global__', classId: null },
+      include: { subjectConfigs: { include: { subject: true } } },
+    });
+    if (globalCfg) {
+      return {
+        passingPercentage: Number(globalCfg.passingPercentage),
+        maxMarks: globalCfg.maxMarks,
+        gradeRanges: parseGradeRanges(globalCfg.gradeRanges),
+        source: 'global',
+        subjectConfigs: globalCfg.subjectConfigs,
+      };
+    }
+
+    // 3. System default
+    return {
+      passingPercentage: 35,
+      maxMarks: 100,
+      gradeRanges: DEFAULT_GRADE_RANGES,
+      source: 'system-default',
+    };
+  }
+
+  async getClassSectionDetails(classSectionId: string) {
+    return this.prisma.classSection.findUnique({
+      where: { id: classSectionId },
+      include: { class: true },
+    });
+  }
+
+  async getSubjectById(subjectId: string) {
+    return this.prisma.subject.findUnique({
+      where: { id: subjectId },
+    });
+  }
+
+  /**
+   * Resolves the exact single-subject configuration (maxMarks, passMarks, passingPercentage)
+   * from a resolved ExamConfig template, ensuring a single subject NEVER inherits the aggregate
+   * total marks (e.g. 400) of the entire exam template.
+   */
+  resolveSubjectConfig(
+    cfg: ResolvedExamConfig,
+    subjectId?: string,
+    subjectType: string = 'Theory',
+    subjectName?: string,
+  ): { maxMarks: number; passMarks: number; passingPercentage: number } {
+    if (!cfg) {
+      return { maxMarks: 100, passMarks: 35, passingPercentage: 35 };
+    }
+    const cleanType = (subjectType || 'Theory').trim().toLowerCase();
+    const cleanSubName = subjectName ? subjectName.trim().toLowerCase() : '';
+
+    let matchedSc: any = null;
+
+    if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
+      // 1. Try exact subjectId + subjectType match
+      if (subjectId) {
+        matchedSc = cfg.subjectConfigs.find(
+          s => s.subjectId === subjectId && (s.subjectType || 'Theory').trim().toLowerCase() === cleanType
+        );
+        // Fallback: match by subjectId only
+        if (!matchedSc) {
+          matchedSc = cfg.subjectConfigs.find(s => s.subjectId === subjectId);
+        }
+      }
+
+      // 2. Try subject name match (case-insensitive) if subjectId didn't match
+      if (!matchedSc && cleanSubName) {
+        matchedSc = cfg.subjectConfigs.find(
+          s => (s.subject?.name?.trim().toLowerCase() === cleanSubName) &&
+               ((s.subjectType || 'Theory').trim().toLowerCase() === cleanType)
+        );
+        if (!matchedSc) {
+          matchedSc = cfg.subjectConfigs.find(
+            s => s.subject?.name?.trim().toLowerCase() === cleanSubName
+          );
+        }
+      }
+    }
+
+    if (matchedSc) {
+      const maxMarks = Number(matchedSc.maxMarks);
+      const passingPercentage = Number(matchedSc.passingPercentage);
+      const passMarks = matchedSc.passMarks !== null && matchedSc.passMarks !== undefined
+        ? Number(matchedSc.passMarks)
+        : Number(((passingPercentage / 100) * maxMarks).toFixed(2));
+      return { maxMarks, passMarks, passingPercentage };
+    }
+
+    // Default subject maxMarks calculation:
+    // If the template has subjectConfigs (e.g. 8 subjects @ 50 marks each, total 400),
+    // an individual subject must NOT get 400!
+    // It should get the first subject's maxMarks (e.g. 50), or 100 if default.
+    let defaultSubjectMax = 100;
+    if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
+      defaultSubjectMax = Number(cfg.subjectConfigs[0].maxMarks) || 100;
+    } else if (cfg.maxMarks > 0 && cfg.maxMarks <= 100) {
+      defaultSubjectMax = cfg.maxMarks;
+    }
+
+    const passingPercentage = Number(cfg.passingPercentage || 35);
+    const passMarks = Number(((passingPercentage / 100) * defaultSubjectMax).toFixed(2));
+
+    return {
+      maxMarks: defaultSubjectMax,
+      passMarks,
+      passingPercentage,
+    };
+  }
+
+  // ── Grade calculation ──────────────────────────────────────────────────────
+  calculateGrade(percentage: number, ranges: GradeRange[]): GradeRange {
+    const active = ranges && ranges.length > 0 ? ranges : DEFAULT_GRADE_RANGES;
+    const sorted = [...active].sort((a, b) => b.min - a.min);
+    return (
+      sorted.find(r => percentage >= r.min && percentage <= r.max) ??
+      { min: 0, max: 0, grade: 'F', gpa: 0, label: 'Fail' }
+    );
+  }
+
+  // ── List all configs for a tenant ─────────────────────────────────────────
+  async listConfigs() {
+    const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:exam-configs`;
+    const cached = this.configCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const configs = await this.prisma.examConfig.findMany({
+      where: { tenantId },
+      include: {
+        subjectConfigs: true,
+        class: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const mapped = configs.map(c => ({
+      id: c.id,
+      examTypeName: c.examTypeName === '__global__' ? null : c.examTypeName,
+      isGlobal: c.examTypeName === '__global__',
+      passingPercentage: Number(c.passingPercentage),
+      maxMarks: c.maxMarks,
+      gradeRanges: parseGradeRanges(c.gradeRanges),
+      academicYearId: c.academicYearId,
+      classId: c.classId,
+      className: c.class?.name || null,
+      subjectConfigs: c.subjectConfigs.map(sc => ({
+        ...sc,
+        passMarks: sc.passMarks ? Number(sc.passMarks) : null,
+        passingPercentage: Number(sc.passingPercentage),
+      })),
+      updatedAt: c.updatedAt,
+    }));
+
+    this.configCache.set(cacheKey, { data: mapped, expiresAt: now + 60000 });
+    return mapped;
+  }
+
+  // ── Upsert (create or update) ──────────────────────────────────────────────
+  async upsertConfig(dto: {
+    examTypeName: string | null;   // null = global
+    passingPercentage: number;
+    maxMarks?: number;
+    gradeRanges?: GradeRange[];
+    classId?: string;
+    academicYearId?: string;
+    subjectConfigs?: {
+      subjectId: string;
+      subjectType: string;
+      maxMarks: number;
+      passMarks?: number;
+      passingPercentage: number;
+      remarks?: string;
+    }[];
+  }) {
+    const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
+
+    if (dto.passingPercentage < 0 || dto.passingPercentage > 100) {
+      throw new BadRequestException('Passing percentage must be between 0 and 100');
+    }
+
+    const key = dto.examTypeName === null ? '__global__' : dto.examTypeName.trim();
+    const gradeRangesJson = dto.gradeRanges
+      ? (dto.gradeRanges as unknown as Prisma.InputJsonValue)
+      : Prisma.JsonNull;
+
+    return this.prisma.$transaction(async (tx) => {
+      // Find existing
+      let config = await tx.examConfig.findFirst({
+        where: {
+          tenantId,
+          examTypeName: key,
+          academicYearId: dto.academicYearId || null,
+          classId: dto.classId || null,
+        }
+      });
+
+      if (config) {
+        config = await tx.examConfig.update({
+          where: { id: config.id },
+          data: {
+            passingPercentage: dto.passingPercentage,
+            maxMarks: dto.maxMarks ?? 100,
+            gradeRanges: gradeRangesJson,
+          }
+        });
+      } else {
+        config = await tx.examConfig.create({
+          data: {
+            tenantId,
+            examTypeName: key,
+            passingPercentage: dto.passingPercentage,
+            maxMarks: dto.maxMarks ?? 100,
+            gradeRanges: gradeRangesJson,
+            academicYearId: dto.academicYearId || null,
+            classId: dto.classId || null,
+          }
+        });
+      }
+
+      if (dto.subjectConfigs) {
+        // Clear old configs
+        await tx.examConfigSubject.deleteMany({
+          where: { examConfigId: config.id }
+        });
+
+        // Insert new ones
+        if (dto.subjectConfigs.length > 0) {
+          await tx.examConfigSubject.createMany({
+            data: dto.subjectConfigs.map(s => ({
+              tenantId,
+              examConfigId: config.id,
+              subjectId: s.subjectId,
+              subjectType: s.subjectType || 'Theory',
+              maxMarks: s.maxMarks,
+              passingPercentage: s.passingPercentage,
+              passMarks: s.passMarks !== null && s.passMarks !== undefined
+                ? Number(s.passMarks)
+                : Number(((s.passingPercentage / 100) * s.maxMarks).toFixed(2)),
+              remarks: s.remarks,
+            }))
+          });
+        }
+      }
+
+      return config;
+    });
+  }
+
+  // ── Delete a specific config ───────────────────────────────────────────────
+  async deleteConfig(id: string) {
+    const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
+    const record = await this.prisma.examConfig.findUnique({ where: { id } });
+    if (!record || record.tenantId !== tenantId) {
+      throw new BadRequestException('Exam config not found');
+    }
+    return this.prisma.examConfig.delete({ where: { id } });
+  }
+
+  // ── Get default grade ranges (for frontend) ───────────────────────────────
+  getDefaultGradeRanges(): GradeRange[] {
+    return DEFAULT_GRADE_RANGES;
+  }
+
+  // ── Subject Component Management ──────────────────────────────────────────
+  async listComponents() {
+    const tenantId = this.getTenantId();
+    const cacheKey = `${tenantId}:subject-components`;
+    const cached = this.configCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+
+    const comps = await this.prisma.subjectComponent.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'asc' },
+    });
+    this.configCache.set(cacheKey, { data: comps, expiresAt: now + 60000 });
+    return comps;
+  }
+
+  async createComponent(name: string) {
+    const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
+    if (!name || name.trim() === '') throw new BadRequestException('Component name cannot be empty');
+    const existing = await this.prisma.subjectComponent.findUnique({
+      where: { name_tenantId: { name: name.trim(), tenantId } },
+    });
+    if (existing) throw new BadRequestException('Component already exists');
+    return this.prisma.subjectComponent.create({
+      data: { name: name.trim(), tenantId },
+    });
+  }
+
+  async deleteComponent(id: string) {
+    const tenantId = this.getTenantId();
+    this.invalidateCache(tenantId);
+    const comp = await this.prisma.subjectComponent.findUnique({ where: { id } });
+    if (!comp || comp.tenantId !== tenantId) throw new NotFoundException('Component not found');
+    return this.prisma.subjectComponent.delete({ where: { id } });
+  }
+
+  // ── ExamSubject Runtime Architecture ──────────────────────────────────────
+  async getOrInitializeExamSubject(examId: string, subjectId: string, subjectType: string = 'Theory', tenantId?: string, db?: any) {
+    const prisma = db ?? this.prisma;
+    const tid = tenantId ?? this.getTenantId();
+    
+    let examSubject = await prisma.examSubject.findUnique({
+      where: { examId_subjectId_subjectType: { examId, subjectId, subjectType } },
+      include: { subject: true },
+    });
+
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: { classSection: { include: { class: true } } }
+    });
+    if (!exam) throw new NotFoundException('Exam not found');
+
+    const classId = exam.classSection?.classId;
+    const academicYearId = exam.classSection?.class?.academicYearId;
+
+    const cfg = await this.resolveConfig(exam.type || exam.name, classId, academicYearId, tid, db);
+
+    let subName = examSubject?.subject?.name;
+    if (!subName && subjectId) {
+      const subRec = await prisma.subject.findUnique({ where: { id: subjectId } });
+      subName = subRec?.name;
+    }
+
+    const { maxMarks, passMarks, passingPercentage } = this.resolveSubjectConfig(cfg, subjectId, subjectType, subName);
+
+    if (!examSubject) {
+      try {
+        examSubject = await prisma.examSubject.create({
+          data: {
+            tenantId: tid,
+            examId,
+            subjectId,
+            subjectType,
+            maxMarks,
+            passingPercentage,
+            passMarks,
+          },
+          include: { subject: true },
+        });
+      } catch (err) {
+        examSubject = await prisma.examSubject.findUnique({
+          where: { examId_subjectId_subjectType: { examId, subjectId, subjectType } },
+          include: { subject: true },
+        });
+      }
+    } else if (
+      examSubject.maxMarks !== maxMarks ||
+      Number(examSubject.passingPercentage) !== Number(passingPercentage) ||
+      (examSubject.passMarks !== null && Number(examSubject.passMarks) !== passMarks)
+    ) {
+      examSubject = await prisma.examSubject.update({
+        where: { id: examSubject.id },
+        data: {
+          maxMarks,
+          passingPercentage,
+          passMarks,
+        },
+        include: { subject: true },
+      });
+    }
+
+    return examSubject;
+  }
+  
+  async getExamSubjects(examId: string) {
+    const tenantId = this.getTenantId();
+    return this.prisma.examSubject.findMany({
+      where: { examId, tenantId },
+      include: { subject: true },
+      orderBy: [
+        { subject: { name: 'asc' } },
+        { subjectType: 'asc' }
+      ]
+    });
+  }
+
+  async updateExamSubject(id: string, dto: { maxMarks?: number; passMarks?: number; passingPercentage?: number; subjectType?: string; remarks?: string; }) {
+    const tenantId = this.getTenantId();
+    const examSubject = await this.prisma.examSubject.findUnique({ where: { id } });
+    if (!examSubject || examSubject.tenantId !== tenantId) throw new NotFoundException('Exam Subject not found');
+
+    // If max marks change or subject type change, ensure no marks exist
+    if ((dto.maxMarks !== undefined && dto.maxMarks !== examSubject.maxMarks) || 
+        (dto.subjectType !== undefined && dto.subjectType !== examSubject.subjectType)) {
+      const existingMarks = await this.prisma.examMark.findFirst({
+        where: { examId: examSubject.examId, subjectId: examSubject.subjectId, subjectType: examSubject.subjectType }
+      });
+      if (existingMarks) {
+        throw new BadRequestException('Cannot modify Max Marks or Component Type because student marks have already been recorded for this component.');
+      }
+    }
+
+    const updateData: any = {};
+    if (dto.maxMarks !== undefined) updateData.maxMarks = dto.maxMarks;
+    if (dto.passingPercentage !== undefined) updateData.passingPercentage = dto.passingPercentage;
+    if (dto.passMarks !== undefined) updateData.passMarks = dto.passMarks;
+    if (dto.subjectType !== undefined) updateData.subjectType = dto.subjectType;
+    if (dto.remarks !== undefined) updateData.remarks = dto.remarks;
+
+    return this.prisma.examSubject.update({
+      where: { id },
+      data: updateData,
+    });
+  }
+
+  async createExamSubjectsForExam(examId: string, classSectionId: string, tenantId?: string, db?: any) {
+    const prisma = db ?? this.prisma;
+    const tid = tenantId ?? this.getTenantId();
+    const exam = await prisma.exam.findUnique({ where: { id: examId } });
+    if (!exam) return;
+
+    // Get all subjects assigned to the class section, and get class details
+    const classSection = await prisma.classSection.findUnique({
+      where: { id: classSectionId },
+      include: {
+        class: true,
+      }
+    });
+
+    if (!classSection) return;
+
+    const classSubjects = await prisma.classSubject.findMany({
+      where: { classSectionId },
+      include: { subject: true },
+    });
+
+    // Resolve template config for this exam type + class
+    const cfg = await this.resolveConfig(exam.type || exam.name, classSection.classId, classSection.class.academicYearId, tid, db);
+
+    if (cfg.subjectConfigs && cfg.subjectConfigs.length > 0) {
+      // Create specific components defined in the class template
+      for (const cs of classSubjects) {
+        // Find if template has this subject specifically by ID or Name
+        const subConfigs = cfg.subjectConfigs.filter(
+          sc => sc.subjectId === cs.subjectId ||
+                (cs.subject?.name && sc.subject?.name?.toLowerCase() === cs.subject.name.toLowerCase())
+        );
+        
+        if (subConfigs.length > 0) {
+          for (const sc of subConfigs) {
+            const passM = sc.passMarks !== null && sc.passMarks !== undefined
+              ? Number(sc.passMarks)
+              : Number(((Number(sc.passingPercentage) / 100) * sc.maxMarks).toFixed(2));
+            await prisma.examSubject.upsert({
+              where: { examId_subjectId_subjectType: { examId, subjectId: cs.subjectId, subjectType: sc.subjectType } },
+              create: {
+                tenantId: tid,
+                examId,
+                subjectId: cs.subjectId,
+                subjectType: sc.subjectType,
+                maxMarks: sc.maxMarks,
+                passingPercentage: Number(sc.passingPercentage),
+                passMarks: passM,
+                remarks: sc.remarks,
+              },
+              update: {
+                maxMarks: sc.maxMarks,
+                passingPercentage: Number(sc.passingPercentage),
+                passMarks: passM,
+              }
+            });
+          }
+        } else {
+          // Fallback using resolveSubjectConfig (never aggregate 400!)
+          const resolved = this.resolveSubjectConfig(cfg, cs.subjectId, 'Theory', cs.subject?.name);
+          await prisma.examSubject.upsert({
+            where: { examId_subjectId_subjectType: { examId, subjectId: cs.subjectId, subjectType: 'Theory' } },
+            create: {
+              tenantId: tid,
+              examId,
+              subjectId: cs.subjectId,
+              subjectType: 'Theory',
+              maxMarks: resolved.maxMarks,
+              passingPercentage: resolved.passingPercentage,
+              passMarks: resolved.passMarks,
+            },
+            update: {
+              maxMarks: resolved.maxMarks,
+              passingPercentage: resolved.passingPercentage,
+              passMarks: resolved.passMarks,
+            }
+          });
+        }
+      }
+    } else {
+      // Create default 'Theory' component for all subjects using resolveSubjectConfig
+      for (const cs of classSubjects) {
+        const resolved = this.resolveSubjectConfig(cfg, cs.subjectId, 'Theory', cs.subject?.name);
+        await prisma.examSubject.upsert({
+          where: { examId_subjectId_subjectType: { examId, subjectId: cs.subjectId, subjectType: 'Theory' } },
+          create: {
+            tenantId: tid,
+            examId,
+            subjectId: cs.subjectId,
+            subjectType: 'Theory',
+            maxMarks: resolved.maxMarks,
+            passingPercentage: resolved.passingPercentage,
+            passMarks: resolved.passMarks,
+          },
+          update: {
+            maxMarks: resolved.maxMarks,
+            passingPercentage: resolved.passingPercentage,
+            passMarks: resolved.passMarks,
+          }
+        });
+      }
+    }
+  }
+}

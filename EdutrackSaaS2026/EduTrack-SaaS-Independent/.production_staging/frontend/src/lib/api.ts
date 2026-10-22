@@ -1,0 +1,676 @@
+import axios from 'axios';
+
+// In production (Vercel): use the Next.js API proxy route /api/* which forwards to the backend.
+// In local dev: use NEXT_PUBLIC_API_URL env var, or fall back to localhost:3001 directly.
+const isServer = typeof window === 'undefined';
+const isProd = process.env.NODE_ENV === 'production';
+const DEFAULT_PROD_API = 'https://api.edutrackapplication.covenantsynergy.in';
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL
+  ? process.env.NEXT_PUBLIC_API_URL
+  : isProd
+    ? DEFAULT_PROD_API
+    : isServer
+      ? (process.env.BACKEND_INTERNAL_URL || 'http://localhost:3001')
+      : 'http://localhost:3001';
+
+export function getActiveRole(): 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' {
+  if (typeof window === 'undefined') return 'SCHOOL_ADMIN';
+
+  // 1. If stored_current_user exists, determine role directly from authentic login session
+  try {
+    const rawUser = localStorage.getItem('stored_current_user');
+    if (rawUser) {
+      const u = JSON.parse(rawUser);
+      const roleStr = String(u.role || '').toUpperCase();
+      if (roleStr === 'PARENT') {
+        sessionStorage.setItem('active_role', 'PARENT');
+        return 'PARENT';
+      }
+      if (roleStr === 'DRIVER') {
+        sessionStorage.setItem('active_role', 'DRIVER');
+        return 'DRIVER';
+      }
+      if (roleStr === 'TEACHER' || roleStr === 'STAFF') {
+        sessionStorage.setItem('active_role', 'TEACHER');
+        return 'TEACHER';
+      }
+      if (roleStr === 'SCHOOL_ADMIN' || roleStr === 'SUPER_ADMIN') {
+        sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+        return 'SCHOOL_ADMIN';
+      }
+    }
+  } catch {}
+
+  // 2. Check explicit route hints
+  const pathname = window.location.pathname || '';
+  if (pathname.startsWith('/parent')) {
+    if (localStorage.getItem('parent_token')) {
+      sessionStorage.setItem('active_role', 'PARENT');
+      return 'PARENT';
+    }
+  } else if (pathname.startsWith('/teacher')) {
+    if (localStorage.getItem('teacher_token')) {
+      sessionStorage.setItem('active_role', 'TEACHER');
+      return 'TEACHER';
+    }
+  }
+
+  // 3. Check sessionStorage active_role
+  const sessionRole = sessionStorage.getItem('active_role') as 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' | null;
+  if (sessionRole) {
+    return sessionRole;
+  }
+
+  // 4. Token presence fallback
+  if (localStorage.getItem('teacher_token') && !localStorage.getItem('admin_token')) {
+    sessionStorage.setItem('active_role', 'TEACHER');
+    return 'TEACHER';
+  }
+  if (localStorage.getItem('parent_token') && !localStorage.getItem('admin_token')) {
+    sessionStorage.setItem('active_role', 'PARENT');
+    return 'PARENT';
+  }
+
+  sessionStorage.setItem('active_role', 'SCHOOL_ADMIN');
+  return 'SCHOOL_ADMIN';
+}
+
+export function setStoredAuth(
+  role: 'TEACHER' | 'SCHOOL_ADMIN' | 'PARENT' | 'DRIVER' | 'SUPER_ADMIN' | 'STAFF' | string,
+  token: string,
+  tenantId?: string,
+  phone?: string,
+  userProfile?: { id?: string; name?: string; email?: string; phone?: string; role?: string; avatarUrl?: string },
+  tenantBranding?: { schoolName?: string; schoolType?: string; adminName?: string; logoUrl?: string | null }
+) {
+  if (typeof window === 'undefined') return;
+
+  const normalizedRole = (role === 'STAFF' || role === 'TEACHER') ? 'TEACHER' :
+                         (role === 'DRIVER') ? 'DRIVER' :
+                         (role === 'PARENT') ? 'PARENT' : 'SCHOOL_ADMIN';
+
+  sessionStorage.setItem('active_role', normalizedRole);
+
+  if (normalizedRole === 'PARENT') {
+    localStorage.setItem('parent_token', token);
+    if (tenantId) localStorage.setItem('parent_tenantId', tenantId);
+    if (phone) localStorage.setItem('parent_userPhone', phone);
+    if (userProfile?.name) localStorage.setItem('parent_userName', userProfile.name);
+    localStorage.removeItem('teacher_token');
+    localStorage.removeItem('admin_token');
+  } else if (normalizedRole === 'TEACHER' || normalizedRole === 'DRIVER') {
+    localStorage.setItem('teacher_token', token);
+    if (tenantId) localStorage.setItem('teacher_tenantId', tenantId);
+    if (phone) localStorage.setItem('teacher_userPhone', phone);
+    if (userProfile?.name) localStorage.setItem('teacher_userName', userProfile.name);
+    localStorage.removeItem('parent_token');
+    localStorage.removeItem('admin_token');
+  } else {
+    localStorage.setItem('admin_token', token);
+    if (tenantId) localStorage.setItem('admin_tenantId', tenantId);
+    if (phone) localStorage.setItem('admin_userPhone', phone);
+    if (userProfile?.name) localStorage.setItem('admin_userName', userProfile.name);
+    localStorage.removeItem('teacher_token');
+    localStorage.removeItem('parent_token');
+  }
+
+  if (userProfile) {
+    try {
+      localStorage.setItem('stored_current_user', JSON.stringify(userProfile));
+    } catch {}
+  }
+
+  if (tenantBranding) {
+    if (tenantBranding.schoolName) {
+      localStorage.setItem('stored_school_name', tenantBranding.schoolName);
+      sessionStorage.setItem('otp_schoolName', tenantBranding.schoolName);
+    }
+    if (tenantBranding.schoolType) {
+      localStorage.setItem('stored_school_type', tenantBranding.schoolType);
+    }
+    if (tenantBranding.logoUrl) {
+      localStorage.setItem('stored_school_logo', tenantBranding.logoUrl);
+      sessionStorage.setItem('otp_logoUrl', tenantBranding.logoUrl);
+    }
+  }
+
+  // Pre-seed the setup-status SWR cache so the upcoming Dashboard load has 0ms delay
+  if (tenantId) {
+    try {
+      const schoolName = tenantBranding?.schoolName || sessionStorage.getItem('otp_schoolName') || localStorage.getItem('stored_school_name') || '';
+      const schoolType = tenantBranding?.schoolType || localStorage.getItem('stored_school_type') || 'School';
+      const adminName = tenantBranding?.adminName || userProfile?.name || '';
+      const logoUrl = tenantBranding?.logoUrl || sessionStorage.getItem('otp_logoUrl') || localStorage.getItem('stored_school_logo') || null;
+
+      const initialSetupStatus = {
+        setupCompleted: false,
+        completionPercentage: 0,
+        classesCount: 0,
+        teachersCount: 0,
+        studentsCount: 0,
+        setup: {
+          id: '',
+          tenantId,
+          schoolName,
+          schoolType,
+          adminName,
+          mobileNumber: phone || '',
+          email: userProfile?.email || '',
+          address: '',
+          academicYear: '2026-2027',
+          schoolLogo: logoUrl,
+          isCompleted: false,
+        },
+        tenantName: schoolName,
+        tenantLogo: logoUrl,
+        currentUser: userProfile || {
+          name: adminName,
+          role: normalizedRole,
+          phone: phone || '',
+          tenantId,
+        },
+        subscription: null,
+      };
+
+      const cachePayload = {
+        data: initialSetupStatus,
+        timestamp: Date.now(),
+        tenantId,
+      };
+      sessionStorage.setItem(`edutrack_swr:${tenantId}:/tenant/setup-status:`, JSON.stringify(cachePayload));
+      localStorage.setItem(`edutrack_tenant_cache_${tenantId}`, JSON.stringify(initialSetupStatus));
+    } catch {}
+  }
+}
+
+export function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  const role = getActiveRole();
+  if (role === 'PARENT') return localStorage.getItem('parent_token');
+  if (role === 'TEACHER' || role === 'DRIVER') return localStorage.getItem('teacher_token');
+  return localStorage.getItem('admin_token');
+}
+
+export function getStoredTenantId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const role = getActiveRole();
+  let tid = role === 'PARENT' ? localStorage.getItem('parent_tenantId') :
+            (role === 'TEACHER' || role === 'DRIVER') ? localStorage.getItem('teacher_tenantId') :
+            localStorage.getItem('admin_tenantId');
+  if (!tid) {
+    // Convenience fallback: extract tenantId from the user's stored token
+    const token = getStoredToken();
+    if (token) {
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload.tenantId && typeof payload.tenantId === 'string') {
+            const extractedTenantId: string = payload.tenantId;
+            tid = extractedTenantId;
+            // Save to localStorage to avoid repeating JWT decode
+            if (role === 'PARENT') localStorage.setItem('parent_tenantId', extractedTenantId);
+            else if (role === 'TEACHER' || role === 'DRIVER') localStorage.setItem('teacher_tenantId', extractedTenantId);
+            else localStorage.setItem('admin_tenantId', extractedTenantId);
+          }
+        }
+      } catch {}
+    }
+  }
+  return tid || null;
+}
+
+export function getStoredUserPhone(): string | null {
+  if (typeof window === 'undefined') return null;
+  const role = getActiveRole();
+  if (role === 'PARENT') return localStorage.getItem('parent_userPhone');
+  if (role === 'TEACHER' || role === 'DRIVER') return localStorage.getItem('teacher_userPhone');
+  return localStorage.getItem('admin_userPhone');
+}
+
+export function clearStoredAuth() {
+  if (typeof window === 'undefined') return;
+  const role = getActiveRole();
+  if (role === 'PARENT') {
+    localStorage.removeItem('parent_token');
+    localStorage.removeItem('parent_tenantId');
+    localStorage.removeItem('parent_userPhone');
+    localStorage.removeItem('parent_userName');
+  } else if (role === 'TEACHER' || role === 'DRIVER') {
+    localStorage.removeItem('teacher_token');
+    localStorage.removeItem('teacher_tenantId');
+    localStorage.removeItem('teacher_userPhone');
+    localStorage.removeItem('teacher_userName');
+  } else {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_tenantId');
+    localStorage.removeItem('admin_userPhone');
+    localStorage.removeItem('admin_userName');
+  }
+  sessionStorage.removeItem('active_role');
+  sessionStorage.removeItem('otp_schoolName');
+  sessionStorage.removeItem('otp_logoUrl');
+  localStorage.removeItem('stored_current_user');
+  localStorage.removeItem('stored_school_name');
+  localStorage.removeItem('stored_school_type');
+  localStorage.removeItem('stored_school_logo');
+  
+  // Clean all persistent SWR cache entries on logout
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && (key.startsWith('edutrack_swr:') || key.startsWith('edutrack_tenant_cache_'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => sessionStorage.removeItem(k));
+  } catch {}
+}
+
+const PLATFORM_HOSTS = new Set([
+  'www',
+  'api',
+  'app',
+  'localhost',
+  'edutrack-live-app',
+  'edutrack-liveapi-app',
+  'edutrack-live',
+  'edutrack-frontend-live',
+  'edutrack-backend-live',
+  'edutrack-frontend',
+  'edutrack-platform',
+  'edu-track-saa-s-orcin',
+  'edutrack-saas',
+  'edutrack-saas-independent',
+  'edutrack-app',
+  'edutrack-api',
+  'edutrack-backend',
+  'covenantsynergy',
+]);
+
+export function getTenantFromHostname(): string {
+  if (typeof window === 'undefined') return '';
+
+  // Prefer stored tenant ID (from successful login) over hostname detection
+  const stored = getStoredTenantId();
+  if (stored) return stored;
+
+  const hostname = window.location.hostname;
+  
+  if (
+    hostname === 'edutrackapplication.covenantsynergy.in' ||
+    hostname === 'api.edutrackapplication.covenantsynergy.in' ||
+    hostname === 'edutrack.covenantsynergy.in'
+  ) {
+    return '';
+  } else if (hostname.endsWith('.edutrackapplication.covenantsynergy.in') || hostname.endsWith('.edutrack.covenantsynergy.in')) {
+    const parts = hostname.replace('.edutrackapplication.covenantsynergy.in', '').replace('.edutrack.covenantsynergy.in', '').split('.');
+    const sub = parts[parts.length - 1];
+    if (!PLATFORM_HOSTS.has(sub)) {
+      return sub;
+    }
+  } else if (hostname === 'edutrack.com' || hostname === 'www.edutrack.com' || hostname === 'app.edutrack.com') {
+    return '';
+  } else if (hostname.endsWith('.edutrack.com')) {
+    const parts = hostname.replace('.edutrack.com', '').split('.');
+    const sub = parts[parts.length - 1];
+    if (!PLATFORM_HOSTS.has(sub)) {
+      return sub;
+    }
+  } else if (hostname.endsWith('.vercel.app')) {
+    const parts = hostname.replace('.vercel.app', '').split('.');
+    if (parts.length > 1 && !PLATFORM_HOSTS.has(parts[0])) {
+      return parts[0];
+    }
+  } else {
+    const parts = hostname.split('.');
+    if (parts.length > 1 && !PLATFORM_HOSTS.has(parts[0]) && isNaN(Number(parts[0]))) {
+      return parts[0];
+    }
+  }
+
+  return '';
+}
+
+export const api = axios.create({
+  baseURL: BACKEND_URL,
+  headers: {
+    'Content-Type': 'application/json',
+    // X‑Tenant‑ID will be injected dynamically by the request interceptor.
+  },
+});
+
+// Interceptor to inject JWT Token and correct Tenant ID
+api.interceptors.request.use(
+  (config) => {
+    if (typeof window !== 'undefined') {
+      const token = getStoredToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      // Inject resolved tenant ID if present
+      const tenantId = getTenantFromHostname() || getStoredTenantId();
+      if (tenantId) {
+        config.headers['X-Tenant-ID'] = tenantId;
+      }
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// ── In-Flight Request Deduplication & Tenant-Scoped SWR Cache ─────────────
+const inFlightRequests = new Map<string, Promise<any>>();
+const lookupCache = new Map<string, { data: any; expiresAt: number; cachedAt: number }>();
+
+function getPersistedSWR<T>(cacheKey: string, tenantId: string): { data: T; expiresAt: number; cachedAt: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(`edutrack_swr:${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Strict tenant verification: never serve cache if tenantId does not match
+    if (!parsed || parsed.tenantId !== tenantId) {
+      sessionStorage.removeItem(`edutrack_swr:${cacheKey}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function setPersistedSWR<T>(cacheKey: string, tenantId: string, data: T, ttlMs: number) {
+  if (typeof window === 'undefined') return;
+  try {
+    const entry = {
+      data,
+      expiresAt: Date.now() + ttlMs,
+      cachedAt: Date.now(),
+      tenantId,
+    };
+    sessionStorage.setItem(`edutrack_swr:${cacheKey}`, JSON.stringify(entry));
+  } catch {}
+}
+
+/**
+ * Synchronously retrieves cached SWR data if available in memory or persisted sessionStorage.
+ * Use inside useState(() => getCachedData(...)) for instant 0ms initial render without blank spinners.
+ */
+export function getCachedData<T = any>(url: string, params?: any): T | null {
+  if (typeof window === 'undefined') return null;
+  const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
+  const paramStr = params ? JSON.stringify(params) : '';
+  const cacheKey = `${tenantId}:${url}:${paramStr}`;
+  const cached = lookupCache.get(cacheKey);
+  if (cached && cached.data !== undefined) return cached.data;
+  const persisted = getPersistedSWR<T>(cacheKey, tenantId);
+  if (persisted && persisted.data !== undefined) {
+    lookupCache.set(cacheKey, persisted);
+    return persisted.data;
+  }
+  return null;
+}
+
+/**
+ * Synchronously populates the SWR cache in memory and sessionStorage.
+ * Useful for pre-seeding detail views from list views or pre-warming routes on hover.
+ */
+export function setCachedData<T = any>(url: string, data: T, params?: any, ttlMs = 60000): void {
+  if (typeof window === 'undefined' || data === undefined) return;
+  const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
+  const paramStr = params ? JSON.stringify(params) : '';
+  const cacheKey = `${tenantId}:${url}:${paramStr}`;
+  const entry = {
+    data,
+    expiresAt: Date.now() + ttlMs,
+    cachedAt: Date.now(),
+  };
+  lookupCache.set(cacheKey, entry);
+  setPersistedSWR(cacheKey, tenantId, data, ttlMs);
+}
+
+export function invalidateLookupCache(tenantId?: string, urlPrefix?: string) {
+  const tid = tenantId || getTenantFromHostname() || getStoredTenantId() || '';
+  if (urlPrefix) {
+    lookupCache.forEach((_, key) => {
+      if ((!tid || key.startsWith(`${tid}:`)) && key.includes(urlPrefix)) {
+        lookupCache.delete(key);
+      }
+    });
+    // Invalidate matching sessionStorage keys
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith('edutrack_swr:') && (!tid || key.includes(`:${tid}:`)) && key.includes(urlPrefix)) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      } catch {}
+    }
+  } else if (tid) {
+    lookupCache.forEach((_, key) => {
+      if (key.startsWith(`${tid}:`)) {
+        lookupCache.delete(key);
+      }
+    });
+    // Invalidate all keys for this tenant in sessionStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && key.startsWith('edutrack_swr:') && key.includes(`:${tid}:`)) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => sessionStorage.removeItem(k));
+      } catch {}
+    }
+  } else {
+    lookupCache.clear();
+  }
+}
+
+export function invalidateCachePrefix(prefix: string) {
+  const tid = getTenantFromHostname() || getStoredTenantId() || '';
+  invalidateLookupCache(tid, prefix);
+}
+
+// Interceptor to handle responses, 401s, and targeted auto-invalidation on mutations
+api.interceptors.response.use(
+  (response) => {
+    // Automatically purge targeted cached data on state-mutating requests (POST, PUT, PATCH, DELETE)
+    const method = response.config.method?.toUpperCase();
+    if (method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      const url = response.config.url || '';
+      const tid = getTenantFromHostname() || getStoredTenantId() || '';
+      
+      // Determine affected cache domain
+      if (url.includes('/students') || url.includes('/admissions') || url.includes('/promotions')) {
+        invalidateLookupCache(tid, '/students');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/billing') || url.includes('/invoices') || url.includes('/payments')) {
+        invalidateLookupCache(tid, '/billing');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/teachers') || url.includes('/staff') || url.includes('/timetable')) {
+        invalidateLookupCache(tid, '/teachers');
+        invalidateLookupCache(tid, '/timetable');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/attendance')) {
+        invalidateLookupCache(tid, '/attendance');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/expenses')) {
+        invalidateLookupCache(tid, '/expenses');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/exams') || url.includes('/exam-config') || url.includes('/grades')) {
+        invalidateLookupCache(tid, '/exams');
+        invalidateLookupCache(tid, '/grades');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/leave')) {
+        invalidateLookupCache(tid, '/leave');
+        invalidateLookupCache(tid, '/dashboard/summary');
+      } else if (url.includes('/announcements')) {
+        invalidateLookupCache(tid, '/announcements');
+      } else {
+        // Fallback: purge module cache while preserving static metadata
+        invalidateLookupCache(tid, url);
+        invalidateLookupCache(tid, '/dashboard/summary');
+      }
+    }
+    return response;
+  },
+  async (error) => {
+    if (error.response?.status === 401) {
+      if (typeof window !== 'undefined') {
+        const path = window.location.pathname;
+        if (!path.includes('/auth/login') && !path.includes('/auth/otp') && !path.includes('/auth/callback') && !path.includes('/register-school')) {
+          clearStoredAuth();
+          window.location.href = '/auth/login';
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const updateStudent = (id: string, data: Partial<any>) => api.patch(`/students/${id}`, data);
+
+// Invalidate on school setup update events
+if (typeof window !== 'undefined') {
+  window.addEventListener('schoolSetupUpdated', () => {
+    const tid = getTenantFromHostname() || getStoredTenantId() || '';
+    invalidateLookupCache(tid, '/dashboard/summary');
+    invalidateLookupCache(tid, '/tenant/setup-status');
+  });
+}
+
+export interface FastGetOptions<T = any> {
+  ttlMs?: number;
+  onRevalidate?: (fresh: any) => void;
+  forceRefresh?: boolean;
+}
+
+/**
+ * Fast SWR (Stale-While-Revalidate) GET request engine:
+ * 1. Checks in-memory cache, then checks persisted tenant-scoped sessionStorage SWR cache.
+ * 2. If cached data exists, returns immediately in 0ms without UI delay.
+ * 3. Concurrently in the background, fetches fresh data from the server.
+ * 4. Calls `onRevalidate` with fresh data if changes are detected, keeping UI 100% accurate.
+ */
+export async function fastGet<T = any>(
+  url: string,
+  configOrOptions?: any,
+  maybeOptions?: FastGetOptions<T>
+): Promise<{ data: T; isFromCache: boolean }> {
+  let config: any = undefined;
+  let options: FastGetOptions<T> = {};
+
+  if (maybeOptions) {
+    config = configOrOptions;
+    options = maybeOptions;
+  } else if (configOrOptions) {
+    if (
+      'ttlMs' in configOrOptions ||
+      'onRevalidate' in configOrOptions ||
+      'forceRefresh' in configOrOptions
+    ) {
+      options = configOrOptions;
+      config = undefined;
+    } else {
+      config = configOrOptions;
+    }
+  }
+
+  const { ttlMs = 60000, onRevalidate, forceRefresh = false } = options;
+  const tenantId = getTenantFromHostname() || getStoredTenantId() || 'global';
+  const paramStr = config?.params ? JSON.stringify(config.params) : '';
+  const cacheKey = `${tenantId}:${url}:${paramStr}`;
+
+  let cached = lookupCache.get(cacheKey);
+  const now = Date.now();
+
+  // If not in memory, check persistent sessionStorage SWR cache (cold start / hard refresh recovery)
+  if (!cached && !forceRefresh) {
+    const persisted = getPersistedSWR<T>(cacheKey, tenantId);
+    if (persisted) {
+      cached = persisted;
+      lookupCache.set(cacheKey, persisted);
+    }
+  }
+
+  // Background fetch helper with deduplication
+  const fetchFresh = (): Promise<{ data: T }> => {
+    const flightKey = `${tenantId}:flight:${url}:${paramStr}`;
+    if (inFlightRequests.has(flightKey)) {
+      return inFlightRequests.get(flightKey)!;
+    }
+
+    const promise = api.get<T>(url, config)
+      .then((res) => {
+        const freshData = res.data;
+        const entry = {
+          data: freshData,
+          expiresAt: Date.now() + ttlMs,
+          cachedAt: Date.now(),
+        };
+        lookupCache.set(cacheKey, entry);
+        setPersistedSWR(cacheKey, tenantId, freshData, ttlMs);
+
+        if (onRevalidate && cached) {
+          try {
+            if (JSON.stringify(freshData) !== JSON.stringify(cached.data)) {
+              onRevalidate(freshData);
+            }
+          } catch {
+            onRevalidate(freshData);
+          }
+        }
+        return res;
+      })
+      .finally(() => {
+        inFlightRequests.delete(flightKey);
+      });
+
+    inFlightRequests.set(flightKey, promise);
+    return promise;
+  };
+
+  // If valid cache exists and not forced refresh, return cached data immediately and revalidate in background
+  if (!forceRefresh && cached && cached.expiresAt > now) {
+    // Non-blocking background revalidation if data is older than 5 seconds
+    if (now - cached.cachedAt > 5000) {
+      fetchFresh().catch(() => {});
+    }
+    return { data: cached.data, isFromCache: true };
+  }
+
+  // If stale cache exists, return it immediately while fetching fresh data
+  if (!forceRefresh && cached) {
+    fetchFresh().catch(() => {});
+    return { data: cached.data, isFromCache: true };
+  }
+
+  // Cold cache: await network request
+  const freshRes = await fetchFresh();
+  return { data: freshRes.data, isFromCache: false };
+}
+
+/**
+ * Legacy cachedGet for backward compatibility.
+ */
+export async function cachedGet<T = any>(
+  url: string,
+  config?: any,
+  ttlMs = 60000
+): Promise<{ data: T }> {
+  const result = await fastGet<T>(url, config, { ttlMs });
+  return { data: result.data };
+}
+
+export const swrGet = fastGet;

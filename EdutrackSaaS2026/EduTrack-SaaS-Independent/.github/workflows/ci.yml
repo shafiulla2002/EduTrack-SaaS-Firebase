@@ -1,0 +1,65 @@
+name: EduTrack SaaS CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, staging, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Validate Prisma Schema
+        working-directory: ./backend
+        run: npx prisma validate
+
+      - name: Generate Prisma Client
+        working-directory: ./backend
+        run: npx prisma generate
+
+      - name: Compile TypeScript Build
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Run Unit Tests
+        working-directory: ./backend
+        run: npm run test --if-present
+
+  deploy-staging:
+    if: github.ref == 'refs/heads/staging'
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy Staging to Fly.io
+        working-directory: ./backend
+        run: flyctl deploy --app edutrack-staging
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy Production to Fly.io
+        working-directory: ./backend
+        run: flyctl deploy --app edutrack-prod
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
