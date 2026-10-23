@@ -7,3 +7,7 @@ edutrack-mobile/android/app/build/
 *.zip
 *.7z
 *.tar.gz
+*.apk
+*.aab
+keystore-backup/
+edutrack-mobile/keystore-backup/
