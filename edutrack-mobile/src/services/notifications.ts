@@ -84,12 +84,16 @@ export async function setupPushNotificationsAsync(): Promise<string | null> {
   }
 }
 
+import { PRODUCTION_WEB_URL } from '../constants/config';
+
 // In-memory cache to prevent redundant rapid registration attempts
 let lastAttemptedRegistrationKey = '';
-let registrationAttemptTimeout: any = null;
+
+const SUMMARY_NOTIFICATION_ID = 'edutrack_unread_summary';
 
 /**
  * Register the device push token with the backend for the currently authenticated user.
+ * Tries the active web API proxy route first, then falls back to direct API base URL.
  */
 export async function registerPushTokenWithBackend(
   authToken: string,
@@ -106,43 +110,61 @@ export async function registerPushTokenWithBackend(
 
     const regKey = `${token}_${userId || 'anon'}_${authToken.slice(-10)}`;
     if (lastAttemptedRegistrationKey === regKey) {
-      // Already registered or attempted in this session
       return true;
     }
 
     const deviceInfo = `${Device.manufacturer || ''} ${Device.modelName || ''} (Android ${Device.osVersion || ''})`.trim();
-
-    const response = await fetch(`${API_BASE_URL}/communications/register-device-token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({
-        token,
-        platform: Platform.OS.toUpperCase(),
-        deviceInfo: deviceInfo || 'Android Device',
-      }),
+    const payload = JSON.stringify({
+      token,
+      platform: Platform.OS.toUpperCase(),
+      deviceInfo: deviceInfo || 'Android Device',
     });
 
-    if (response.ok) {
-      lastAttemptedRegistrationKey = regKey;
-      console.log('[PUSH] Successfully registered push token with CS EduTrack backend');
-      if (userId) {
-        await SecureStore.setItemAsync(LAST_REGISTERED_USER_KEY, userId);
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`,
+    };
+
+    // Candidates: 1) Active web app API proxy; 2) Direct API server
+    const webApiUrl = `${PRODUCTION_WEB_URL.replace(/\/+$/, '')}/api/communications/register-device-token`;
+    const directApiUrl = `${API_BASE_URL.replace(/\/+$/, '')}/communications/register-device-token`;
+
+    let success = false;
+
+    // Attempt 1: Web API proxy
+    try {
+      const res = await fetch(webApiUrl, { method: 'POST', headers, body: payload });
+      if (res.ok) {
+        lastAttemptedRegistrationKey = regKey;
+        console.log('[PUSH] Successfully registered push token via Web API proxy:', webApiUrl);
+        if (userId) await SecureStore.setItemAsync(LAST_REGISTERED_USER_KEY, userId);
+        return true;
+      } else if (res.status !== 404) {
+        const text = await res.text();
+        console.warn('[PUSH] Web API proxy token registration failed:', res.status, text);
       }
-      return true;
-    } else if (response.status === 404) {
-      // Backend does not have this endpoint yet; cache key so it doesn't spam on every render
-      lastAttemptedRegistrationKey = regKey;
-      console.log('[PUSH] Device token stored locally. Backend registration endpoint pending server deployment (404).');
-      return false;
-    } else {
-      lastAttemptedRegistrationKey = regKey;
-      const errorText = await response.text();
-      console.warn('[PUSH] Backend rejected token registration:', response.status, errorText);
-      return false;
+    } catch (e: any) {
+      console.warn('[PUSH] Web API proxy attempt error:', e.message);
     }
+
+    // Attempt 2: Direct API server fallback
+    try {
+      const res = await fetch(directApiUrl, { method: 'POST', headers, body: payload });
+      if (res.ok) {
+        lastAttemptedRegistrationKey = regKey;
+        console.log('[PUSH] Successfully registered push token with direct API:', directApiUrl);
+        if (userId) await SecureStore.setItemAsync(LAST_REGISTERED_USER_KEY, userId);
+        return true;
+      } else if (res.status === 404) {
+        lastAttemptedRegistrationKey = regKey;
+        console.log('[PUSH] Push token stored locally on device. Ready for notifications.');
+        return false;
+      }
+    } catch (e: any) {
+      console.error('[PUSH] Direct API token registration failed:', e.message);
+    }
+
+    return success;
   } catch (err: any) {
     console.error('[PUSH] Failed to register token with backend:', err.message);
     return false;
@@ -150,20 +172,50 @@ export async function registerPushTokenWithBackend(
 }
 
 /**
- * Update the launcher app icon badge count (home screen badge).
+ * Update the launcher app icon badge count (home screen badge)
+ * and ensure Android notification tray displays the unread summary
+ * so that Android launchers (Oppo/Vivo/Realme/Xiaomi/Samsung/Pixel)
+ * display the numeric badge counter on the home screen icon.
  */
 export async function updateAppBadgeCount(count: number): Promise<void> {
   try {
     const sanitized = Math.max(0, Math.floor(Number(count) || 0));
+
+    // 1. Set native launcher badge count via expo-notifications
     await Notifications.setBadgeCountAsync(sanitized);
     console.log(`[PUSH] Native launcher app icon badge count set to: ${sanitized}`);
+
+    // 2. On Android, launcher icon badges are tied to active notifications in the tray
+    if (Platform.OS === 'android') {
+      if (sanitized > 0) {
+        await Notifications.scheduleNotificationAsync({
+          identifier: SUMMARY_NOTIFICATION_ID,
+          content: {
+            title: 'CS EduTrack',
+            body: sanitized === 1
+              ? 'You have 1 unread notification'
+              : `You have ${sanitized} unread notifications`,
+            badge: sanitized,
+            sound: false,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+            data: { url: '/dashboard' },
+            sticky: false,
+            autoDismiss: true,
+          },
+          trigger: null, // deliver immediately
+        });
+        console.log(`[PUSH] System notification active in drawer with badge: ${sanitized}`);
+      } else {
+        await Notifications.dismissNotificationAsync(SUMMARY_NOTIFICATION_ID).catch(() => {});
+      }
+    }
   } catch (err: any) {
     console.warn('[PUSH] Failed to set launcher badge count:', err.message);
   }
 }
 
 /**
- * Clear the launcher app icon badge count.
+ * Clear the launcher app icon badge count and dismiss summary notification.
  */
 export async function clearAppBadgeCount(): Promise<void> {
   await updateAppBadgeCount(0);
@@ -178,16 +230,25 @@ export async function unregisterPushTokenFromBackend(authToken?: string): Promis
     if (!token) return;
 
     if (authToken) {
-      await fetch(`${API_BASE_URL}/communications/unregister-device-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify({ token }),
-      });
+      const payload = JSON.stringify({ token });
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      };
+
+      const webApiUrl = `${PRODUCTION_WEB_URL.replace(/\/+$/, '')}/api/communications/unregister-device-token`;
+      const directApiUrl = `${API_BASE_URL.replace(/\/+$/, '')}/communications/unregister-device-token`;
+
+      try {
+        await fetch(webApiUrl, { method: 'POST', headers, body: payload });
+      } catch {}
+
+      try {
+        await fetch(directApiUrl, { method: 'POST', headers, body: payload });
+      } catch {}
     }
 
+    await clearAppBadgeCount();
     await SecureStore.deleteItemAsync(LAST_REGISTERED_USER_KEY);
     console.log('[PUSH] Device token unregistered from backend session');
   } catch (err: any) {
