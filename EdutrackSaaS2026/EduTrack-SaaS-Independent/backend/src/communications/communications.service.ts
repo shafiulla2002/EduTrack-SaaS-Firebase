@@ -219,20 +219,7 @@ export class CommunicationsService {
       },
     });
 
-    // Dispatch FCM push in background
-    this.sendPushToUser(data.recipientId, tenantId, {
-      title: data.title,
-      body: data.message,
-      data: {
-        notificationId: notification.id,
-        tenantId,
-        url: data.metadata?.url || data.url || '/dashboard',
-        type: data.type || 'IN_APP',
-      },
-    }).catch(err => {
-      this.logger.warn(`Push delivery error: ${err.message}`);
-    });
-
+    // Universal real-time push dispatch is handled automatically by PrismaService middleware for all notification creations
     this.logger.log(`[NOTIFICATION_CREATED] [${data.type || 'IN_APP'}] Tenant: ${tenantId} Recipient: ${data.recipientId}`);
     return notification;
   }

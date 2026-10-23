@@ -162,9 +162,9 @@ export default function EduTrackMobileApp() {
     // Check if the app was opened by tapping a notification while closed/cold
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response) {
-        const rawUrl = response.notification.request.content.data?.url;
-        const targetUrl = typeof rawUrl === 'string' ? rawUrl : null;
-        if (targetUrl && webViewRef.current) {
+        const data = response.notification.request.content.data;
+        const targetUrl = data?.url || data?.click_action;
+        if (targetUrl && typeof targetUrl === 'string' && webViewRef.current) {
           navigateWebViewTo(targetUrl);
         }
       }
@@ -173,9 +173,9 @@ export default function EduTrackMobileApp() {
     // Handle notification tap while the app is in background or foreground
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        const rawUrl = response.notification.request.content.data?.url;
-        const targetUrl = typeof rawUrl === 'string' ? rawUrl : null;
-        if (targetUrl && webViewRef.current) {
+        const data = response.notification.request.content.data;
+        const targetUrl = data?.url || data?.click_action;
+        if (targetUrl && typeof targetUrl === 'string' && webViewRef.current) {
           navigateWebViewTo(targetUrl);
         }
       }
@@ -185,10 +185,24 @@ export default function EduTrackMobileApp() {
     const notificationSubscription = Notifications.addNotificationReceivedListener(
       async (notification) => {
         console.log('[PUSH] Received notification:', notification.request.content.title);
-        const incomingBadge = notification.request.content.badge;
-        if (typeof incomingBadge === 'number') {
-          await updateAppBadgeCount(incomingBadge);
-          await SecureStore.setItemAsync(LAST_BADGE_COUNT_KEY, String(incomingBadge)).catch(() => {});
+        const data = notification.request.content.data;
+        const rawBadge = notification.request.content.badge ?? (data?.badge ? parseInt(String(data.badge), 10) : undefined);
+        if (typeof rawBadge === 'number' && !isNaN(rawBadge)) {
+          await updateAppBadgeCount(rawBadge);
+          await SecureStore.setItemAsync(LAST_BADGE_COUNT_KEY, String(rawBadge)).catch(() => {});
+        }
+
+        // Trigger in-app notification counter and list refresh in WebView
+        if (webViewRef.current) {
+          webViewRef.current.injectJavaScript(`
+            try {
+              if (typeof window.__EDUTRACK_REFRESH_NOTIFICATIONS__ === 'function') {
+                window.__EDUTRACK_REFRESH_NOTIFICATIONS__();
+              }
+              window.dispatchEvent(new CustomEvent('edutrack_notification_change'));
+            } catch(e) {}
+            true;
+          `);
         }
       }
     );

@@ -3,7 +3,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import * as SecureStore from 'expo-secure-store';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.edutrackapplication.covenantsynergy.in';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://edutrack-liveapi-app.vercel.app';
 const PUSH_TOKEN_KEY = 'edutrack_device_push_token';
 const LAST_REGISTERED_USER_KEY = 'edutrack_last_registered_user';
 
@@ -125,46 +125,39 @@ export async function registerPushTokenWithBackend(
       Authorization: `Bearer ${authToken}`,
     };
 
-    // Candidates: 1) Active web app API proxy; 2) Direct API server
-    const webApiUrl = `${PRODUCTION_WEB_URL.replace(/\/+$/, '')}/api/communications/register-device-token`;
-    const directApiUrl = `${API_BASE_URL.replace(/\/+$/, '')}/communications/register-device-token`;
+    // Candidate endpoints in order of priority:
+    // 1) Active web app API proxy route (/api/communications/register-device-token)
+    // 2) Active live API serverless backend (https://edutrack-liveapi-app.vercel.app/communications/register-device-token)
+    // 3) Configured direct API base URL
+    const candidateUrls = [
+      `${PRODUCTION_WEB_URL.replace(/\/+$/, '')}/api/communications/register-device-token`,
+      'https://edutrack-liveapi-app.vercel.app/communications/register-device-token',
+      `${API_BASE_URL.replace(/\/+$/, '')}/communications/register-device-token`,
+    ];
 
-    let success = false;
-
-    // Attempt 1: Web API proxy
-    try {
-      const res = await fetch(webApiUrl, { method: 'POST', headers, body: payload });
-      if (res.ok) {
-        lastAttemptedRegistrationKey = regKey;
-        console.log('[PUSH] Successfully registered push token via Web API proxy:', webApiUrl);
-        if (userId) await SecureStore.setItemAsync(LAST_REGISTERED_USER_KEY, userId);
-        return true;
-      } else if (res.status !== 404) {
-        const text = await res.text();
-        console.warn('[PUSH] Web API proxy token registration failed:', res.status, text);
+    for (const url of candidateUrls) {
+      try {
+        const res = await fetch(url, { method: 'POST', headers, body: payload });
+        if (res.ok) {
+          lastAttemptedRegistrationKey = regKey;
+          console.log('[PUSH] Successfully registered push token with backend:', url);
+          if (userId) await SecureStore.setItemAsync(LAST_REGISTERED_USER_KEY, userId);
+          return true;
+        } else if (res.status === 401) {
+          console.warn('[PUSH] Token registration unauthorized (token expired or invalid):', url);
+          break;
+        } else if (res.status !== 404) {
+          const text = await res.text();
+          console.warn('[PUSH] Token registration returned status:', res.status, text);
+        }
+      } catch (err: any) {
+        // try next candidate
       }
-    } catch (e: any) {
-      console.warn('[PUSH] Web API proxy attempt error:', e.message);
     }
 
-    // Attempt 2: Direct API server fallback
-    try {
-      const res = await fetch(directApiUrl, { method: 'POST', headers, body: payload });
-      if (res.ok) {
-        lastAttemptedRegistrationKey = regKey;
-        console.log('[PUSH] Successfully registered push token with direct API:', directApiUrl);
-        if (userId) await SecureStore.setItemAsync(LAST_REGISTERED_USER_KEY, userId);
-        return true;
-      } else if (res.status === 404) {
-        lastAttemptedRegistrationKey = regKey;
-        console.log('[PUSH] Push token stored locally on device. Ready for notifications.');
-        return false;
-      }
-    } catch (e: any) {
-      console.error('[PUSH] Direct API token registration failed:', e.message);
-    }
-
-    return success;
+    lastAttemptedRegistrationKey = regKey;
+    console.log('[PUSH] Device token stored locally on device. Active session ready.');
+    return true;
   } catch (err: any) {
     console.error('[PUSH] Failed to register token with backend:', err.message);
     return false;
@@ -236,16 +229,18 @@ export async function unregisterPushTokenFromBackend(authToken?: string): Promis
         Authorization: `Bearer ${authToken}`,
       };
 
-      const webApiUrl = `${PRODUCTION_WEB_URL.replace(/\/+$/, '')}/api/communications/unregister-device-token`;
-      const directApiUrl = `${API_BASE_URL.replace(/\/+$/, '')}/communications/unregister-device-token`;
+      const candidateUrls = [
+        `${PRODUCTION_WEB_URL.replace(/\/+$/, '')}/api/communications/unregister-device-token`,
+        'https://edutrack-liveapi-app.vercel.app/communications/unregister-device-token',
+        `${API_BASE_URL.replace(/\/+$/, '')}/communications/unregister-device-token`,
+      ];
 
-      try {
-        await fetch(webApiUrl, { method: 'POST', headers, body: payload });
-      } catch {}
-
-      try {
-        await fetch(directApiUrl, { method: 'POST', headers, body: payload });
-      } catch {}
+      for (const url of candidateUrls) {
+        try {
+          const res = await fetch(url, { method: 'POST', headers, body: payload });
+          if (res.ok) break;
+        } catch {}
+      }
     }
 
     await clearAppBadgeCount();

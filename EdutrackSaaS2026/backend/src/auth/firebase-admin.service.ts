@@ -76,118 +76,143 @@ export class FirebaseAdminService implements OnModuleInit {
         this.logger.log('Firebase Admin: Loaded credentials from default fallback configuration.');
       }
 
-      // Require firebase-admin root package
-      const admin = require('firebase-admin');
+    // Store singleton instance
+    FirebaseAdminService.instance = this;
 
-      // Reuse existing app instance if already initialized to prevent duplicate app errors
-      if (admin.apps && admin.apps.length > 0) {
-        this.firebaseApp = admin.apps[0];
-        this.logger.log('Firebase Admin: Reusing already initialized Firebase App instance.');
-      } else {
-        this.firebaseApp = admin.initializeApp({
-          credential: admin.cert(serviceAccount),
-        });
-        this.logger.log('Firebase Admin: SDK successfully initialized.');
-      }
-    } catch (error: any) {
-      this.logger.error('Firebase Admin Initialization Failure:', error.stack || error.message);
-    }
-  }
+    // Use modular firebase-admin/app to avoid undefined admin.apps in v14+
+    const { initializeApp, cert, getApps } = require('firebase-admin/app');
 
-  async verifyIdToken(idToken: string): Promise<string> {
-    if (!this.firebaseApp) {
-      throw new UnauthorizedException('Firebase Admin SDK is not initialized.');
-    }
-
-    try {
-      const { getAuth } = require('firebase-admin/auth');
-      const decodedToken = await getAuth(this.firebaseApp).verifyIdToken(idToken);
-      const phone = decodedToken.phone_number;
-      if (!phone) {
-        throw new UnauthorizedException('Firebase token verified, but no phone number found in claims.');
-      }
-      return phone;
-    } catch (error: any) {
-      this.logger.error('Firebase token verification failed:', error.message);
-      if (error.code === 'auth/id-token-expired') {
-        throw new UnauthorizedException('OTP token has expired. Please request a new one.');
-      }
-      if (error.code === 'auth/argument-error') {
-        throw new UnauthorizedException('Invalid verification token argument.');
-      }
-      throw new UnauthorizedException(`OTP token verification failed: ${error.message}`);
-    }
-  }
-
-  isInitialized(): boolean {
-    return !!this.firebaseApp;
-  }
-
-  async sendPushNotification(
-    tokens: string[],
-    notification: { title: string; body: string },
-    data?: Record<string, string>
-  ): Promise<{ successCount: number; failureCount: number; invalidTokens: string[] }> {
-    if (!this.firebaseApp || !tokens || tokens.length === 0) {
-      return { successCount: 0, failureCount: 0, invalidTokens: [] };
-    }
-
-    try {
-      const { getMessaging } = require('firebase-admin/messaging');
-      const messaging = getMessaging(this.firebaseApp);
-
-      const safeData: Record<string, string> = {};
-      if (data) {
-        for (const [key, value] of Object.entries(data)) {
-          safeData[key] = typeof value === 'string' ? value : JSON.stringify(value);
-        }
-      }
-
-      const messagePayload = {
-        tokens,
-        notification: {
-          title: notification.title,
-          body: notification.body,
-        },
-        data: safeData,
-        android: {
-          priority: 'high' as const,
-          notification: {
-            channelId: 'edutrack_notifications',
-            sound: 'default',
-            priority: 'high' as const,
-            defaultVibrateTimings: true,
-          },
-        },
-      };
-
-      const response = await messaging.sendEachForMulticast(messagePayload);
-      const invalidTokens: string[] = [];
-
-      response.responses.forEach((resp: any, idx: number) => {
-        if (!resp.success) {
-          const errCode = resp.error?.code;
-          if (
-            errCode === 'messaging/registration-token-not-registered' ||
-            errCode === 'messaging/invalid-registration-token' ||
-            errCode === 'messaging/invalid-argument'
-          ) {
-            invalidTokens.push(tokens[idx]);
-          }
-          this.logger.warn(`Push dispatch failed for token[${idx}]: ${errCode} - ${resp.error?.message}`);
-        }
+    // Reuse existing app instance if already initialized to prevent duplicate app errors
+    const existingApps = getApps();
+    if (existingApps.length > 0) {
+      this.firebaseApp = existingApps[0];
+      this.logger.log('Firebase Admin: Reusing already initialized Firebase App instance.');
+    } else {
+      this.firebaseApp = initializeApp({
+        credential: cert(serviceAccount),
       });
-
-      this.logger.log(`FCM Multicast result: ${response.successCount} sent, ${response.failureCount} failed.`);
-      return {
-        successCount: response.successCount,
-        failureCount: response.failureCount,
-        invalidTokens,
-      };
-    } catch (error: any) {
-      this.logger.error(`Error sending push notification via Firebase Admin: ${error.message}`, error.stack);
-      return { successCount: 0, failureCount: tokens.length, invalidTokens: [] };
+      this.logger.log('Firebase Admin: SDK successfully initialized.');
     }
+  } catch (error: any) {
+    this.logger.error('Firebase Admin Initialization Failure:', error.stack || error.message);
   }
+}
+
+private static instance: FirebaseAdminService | null = null;
+
+public static getInstance(): FirebaseAdminService | null {
+  return FirebaseAdminService.instance;
+}
+
+async verifyIdToken(idToken: string): Promise<string> {
+  if (!this.firebaseApp) {
+    throw new UnauthorizedException('Firebase Admin SDK is not initialized.');
+  }
+
+  try {
+    const { getAuth } = require('firebase-admin/auth');
+    const decodedToken = await getAuth(this.firebaseApp).verifyIdToken(idToken);
+    const phone = decodedToken.phone_number;
+    if (!phone) {
+      throw new UnauthorizedException('Firebase token verified, but no phone number found in claims.');
+    }
+    return phone;
+  } catch (error: any) {
+    this.logger.error('Firebase token verification failed:', error.message);
+    if (error.code === 'auth/id-token-expired') {
+      throw new UnauthorizedException('OTP token has expired. Please request a new one.');
+    }
+    if (error.code === 'auth/argument-error') {
+      throw new UnauthorizedException('Invalid verification token argument.');
+    }
+    throw new UnauthorizedException(`OTP token verification failed: ${error.message}`);
+  }
+}
+
+isInitialized(): boolean {
+  return !!this.firebaseApp;
+}
+
+async sendPushNotification(
+  tokens: string[],
+  notification: { title: string; body: string },
+  data?: Record<string, string>,
+  badgeCount?: number
+): Promise<{ successCount: number; failureCount: number; invalidTokens: string[] }> {
+  if (!this.firebaseApp || !tokens || tokens.length === 0) {
+    return { successCount: 0, failureCount: 0, invalidTokens: [] };
+  }
+
+  try {
+    const { getMessaging } = require('firebase-admin/messaging');
+    const messaging = getMessaging(this.firebaseApp);
+
+    const safeData: Record<string, string> = {};
+    if (data) {
+      for (const [key, value] of Object.entries(data)) {
+        safeData[key] = typeof value === 'string' ? value : JSON.stringify(value);
+      }
+    }
+
+    // Ensure title and body are also present in data payload
+    if (!safeData.title) safeData.title = notification.title;
+    if (!safeData.body) safeData.body = notification.body;
+    if (typeof badgeCount === 'number' && !safeData.badge) {
+      safeData.badge = String(badgeCount);
+    }
+
+    const androidNotification: any = {
+      channelId: 'edutrack_notifications',
+      priority: 'high' as const,
+      defaultVibrateTimings: true,
+      defaultSound: true,
+      visibility: 'public' as const,
+    };
+
+    if (typeof badgeCount === 'number') {
+      androidNotification.notificationCount = badgeCount;
+    }
+
+    const messagePayload = {
+      tokens,
+      notification: {
+        title: notification.title,
+        body: notification.body,
+      },
+      data: safeData,
+      android: {
+        priority: 'high' as const,
+        notification: androidNotification,
+      },
+    };
+
+    const response = await messaging.sendEachForMulticast(messagePayload);
+    const invalidTokens: string[] = [];
+
+    response.responses.forEach((resp: any, idx: number) => {
+      if (!resp.success) {
+        const errCode = resp.error?.code;
+        if (
+          errCode === 'messaging/registration-token-not-registered' ||
+          errCode === 'messaging/invalid-registration-token' ||
+          errCode === 'messaging/invalid-argument'
+        ) {
+          invalidTokens.push(tokens[idx]);
+        }
+        this.logger.warn(`Push dispatch failed for token[${idx}]: ${errCode} - ${resp.error?.message}`);
+      }
+    });
+
+    this.logger.log(`FCM Multicast result: ${response.successCount} sent, ${response.failureCount} failed.`);
+    return {
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+      invalidTokens,
+    };
+  } catch (error: any) {
+    this.logger.error(`Error sending push notification via Firebase Admin: ${error.message}`, error.stack);
+    return { successCount: 0, failureCount: tokens.length, invalidTokens: [] };
+  }
+}
 }
 
