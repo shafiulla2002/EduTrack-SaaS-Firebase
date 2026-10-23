@@ -36,6 +36,17 @@ export async function setupPushNotificationsAsync(): Promise<string | null> {
       enableVibrate: true,
       showBadge: true,
     });
+
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'General Alerts',
+      description: 'General system notifications',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#4f46e5',
+      enableLights: true,
+      enableVibrate: true,
+      showBadge: true,
+    });
   }
 
   if (!Device.isDevice) {

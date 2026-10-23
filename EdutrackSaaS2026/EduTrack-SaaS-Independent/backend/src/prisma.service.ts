@@ -115,11 +115,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           }
 
           if (notificationsToDispatch.length > 0) {
-            setImmediate(() => {
-              this.dispatchPushForNotifications(notificationsToDispatch).catch((err) => {
-                console.warn('[PrismaService] Push dispatch failed:', err?.message || err);
-              });
-            });
+            try {
+              await this.dispatchPushForNotifications(notificationsToDispatch);
+            } catch (dispatchErr: any) {
+              console.warn('[PrismaService] Push dispatch error:', dispatchErr?.message || dispatchErr);
+            }
           }
         } catch (hookErr: any) {
           console.warn('[PrismaService] Push middleware hook error:', hookErr?.message || hookErr);
@@ -188,8 +188,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         const unreadCount = await this.notification.count({
           where: {
             recipientId: item.recipientId,
-            tenantId,
             isRead: false,
+            OR: [
+              { tenantId },
+              { tenantId: null },
+            ],
           },
         });
 

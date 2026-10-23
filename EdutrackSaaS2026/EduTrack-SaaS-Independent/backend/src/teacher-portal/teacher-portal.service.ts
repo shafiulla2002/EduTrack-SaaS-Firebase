@@ -2152,6 +2152,7 @@ export class TeacherPortalService {
     if (admins.length > 0) {
       await this.prisma.notification.createMany({
         data: admins.map((admin) => ({
+          tenantId,
           title: `Leave Application: ${applicantName}`,
           message: `Type: ${data.leaveType}\nFrom: ${data.startDate}\nTo: ${data.endDate}\nReason: ${data.reason}\nLeaveRequestId: ${leave.id}`,
           type: 'LEAVE_APPROVAL',
