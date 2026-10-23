@@ -187,6 +187,14 @@ export default function EduTrackMobileApp() {
     // Update badge count whenever a new remote notification is received
     const notificationSubscription = Notifications.addNotificationReceivedListener(
       async (notification) => {
+        // Prevent feedback loop from internal summary badge notifications
+        if (
+          notification.request.identifier === 'edutrack_unread_summary' ||
+          notification.request.content.title === 'CS EduTrack'
+        ) {
+          return;
+        }
+
         console.log('[PUSH] Received notification:', notification.request.content.title);
         const data = notification.request.content.data;
         const rawBadge = notification.request.content.badge ?? (data?.badge ? parseInt(String(data.badge), 10) : undefined);

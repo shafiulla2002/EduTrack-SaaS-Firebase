@@ -7,16 +7,20 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://edutrack-liveap
 const PUSH_TOKEN_KEY = 'edutrack_device_push_token';
 const LAST_REGISTERED_USER_KEY = 'edutrack_last_registered_user';
 
+export const SUMMARY_NOTIFICATION_ID = 'edutrack_unread_summary';
+
 // Configure how notifications are displayed when the app is foregrounded
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    priority: Notifications.AndroidNotificationPriority.HIGH,
-  }),
+  handleNotification: async (notification) => {
+    const isSummary = notification.request.identifier === SUMMARY_NOTIFICATION_ID;
+    return {
+      shouldPlaySound: !isSummary,
+      shouldSetBadge: true,
+      shouldShowBanner: !isSummary,
+      shouldShowList: !isSummary,
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+    };
+  },
 });
 
 /**
@@ -100,7 +104,7 @@ import { PRODUCTION_WEB_URL } from '../constants/config';
 // In-memory cache to prevent redundant rapid registration attempts
 let lastAttemptedRegistrationKey = '';
 
-const SUMMARY_NOTIFICATION_ID = 'edutrack_unread_summary';
+let lastSetBadgeCount = -1;
 
 /**
  * Register the device push token with the backend for the currently authenticated user.
@@ -184,6 +188,10 @@ export async function registerPushTokenWithBackend(
 export async function updateAppBadgeCount(count: number): Promise<void> {
   try {
     const sanitized = Math.max(0, Math.floor(Number(count) || 0));
+    if (lastSetBadgeCount === sanitized) {
+      return;
+    }
+    lastSetBadgeCount = sanitized;
 
     // 1. Set native launcher badge count via expo-notifications
     await Notifications.setBadgeCountAsync(sanitized);
