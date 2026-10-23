@@ -69,7 +69,7 @@ async function bootstrap() {
     });
 
     expressApp.get('/health', (req, res) => {
-      res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+      res.status(200).json({ status: 'ok', buildId: 'push-sync-check-v1', timestamp: new Date().toISOString() });
     });
 
     try {
