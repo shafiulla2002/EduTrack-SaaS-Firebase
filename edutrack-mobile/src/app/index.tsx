@@ -8,6 +8,7 @@ import {
   BackHandler,
   Platform,
   Linking,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, WebViewNavigation } from 'react-native-webview';
@@ -17,9 +18,11 @@ import { PRODUCTION_WEB_URL } from '../constants/config';
 import {
   initPushNotifications,
   unregisterPushTokenFromBackend,
+  updateAppBadgeCount,
 } from '../services/notifications';
 
 const LAST_AUTHENTICATED_URL_KEY = 'edutrack_last_authenticated_url';
+const LAST_BADGE_COUNT_KEY = 'edutrack_last_badge_count';
 
 const INJECTED_STABILIZING_JS = `
   (function() {
@@ -59,11 +62,65 @@ const INJECTED_STABILIZING_JS = `
         } catch(e) {}
       }
 
+      // Sync unread notification count to React Native wrapper for app icon badge
+      function reportNotificationCount() {
+        try {
+          var count = 0;
+          if (typeof window.__EDUTRACK_UNREAD_COUNT__ === 'number') {
+            count = window.__EDUTRACK_UNREAD_COUNT__;
+          } else {
+            // Find badge elements rendered in header (e.g. red/rose counter on notification bell)
+            var badgeEls = document.querySelectorAll('span');
+            for (var i = 0; i < badgeEls.length; i++) {
+              var el = badgeEls[i];
+              var cls = el.className || '';
+              if (
+                (cls.indexOf('bg-rose') !== -1 || cls.indexOf('bg-red') !== -1) &&
+                el.closest('button, header, nav')
+              ) {
+                var text = (el.textContent || '').trim();
+                var num = parseInt(text, 10);
+                if (!isNaN(num) && num >= 0) {
+                  count = num;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (window.ReactNativeWebView && count !== window.__LAST_REPORTED_COUNT__) {
+            window.__LAST_REPORTED_COUNT__ = count;
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'EDUTRACK_BADGE_COUNT',
+              count: count
+            }));
+          }
+        } catch(e) {}
+      }
+
       reportAuthState();
-      window.addEventListener('storage', reportAuthState);
+      reportNotificationCount();
+
+      window.addEventListener('storage', function() {
+        reportAuthState();
+        reportNotificationCount();
+      });
       window.addEventListener('edutrack_auth_change', reportAuthState);
+      window.addEventListener('edutrack_notification_change', reportNotificationCount);
+
+      // Periodically sync and observe DOM changes
       setTimeout(reportAuthState, 1500);
-      setTimeout(reportAuthState, 4000);
+      setTimeout(reportNotificationCount, 1500);
+      setInterval(reportNotificationCount, 4000);
+
+      try {
+        var observer = new MutationObserver(function() {
+          reportNotificationCount();
+        });
+        if (document.body) {
+          observer.observe(document.body, { childList: true, subtree: true });
+        }
+      } catch(e) {}
     } catch(e) {}
   })();
   true;
@@ -100,9 +157,8 @@ export default function EduTrackMobileApp() {
     restoreSessionUrl();
   }, []);
 
-  // 2. Initialize Push Notifications & Handle Tap Actions
+  // 2. Initialize Push Notifications, Handle Tap Actions, and Manage Launcher Badge
   useEffect(() => {
-    // Push notification setup will be triggered after auth state is received
     // Check if the app was opened by tapping a notification while closed/cold
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response) {
@@ -125,8 +181,37 @@ export default function EduTrackMobileApp() {
       }
     );
 
+    // Update badge count whenever a new remote notification is received
+    const notificationSubscription = Notifications.addNotificationReceivedListener(
+      async (notification) => {
+        console.log('[PUSH] Received notification:', notification.request.content.title);
+        const incomingBadge = notification.request.content.badge;
+        if (typeof incomingBadge === 'number') {
+          await updateAppBadgeCount(incomingBadge);
+          await SecureStore.setItemAsync(LAST_BADGE_COUNT_KEY, String(incomingBadge)).catch(() => {});
+        }
+      }
+    );
+
+    // Keep badge count consistent when app is sent to background / minimized
+    const appStateSubscription = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        try {
+          const savedCountStr = await SecureStore.getItemAsync(LAST_BADGE_COUNT_KEY);
+          if (savedCountStr !== null) {
+            const count = parseInt(savedCountStr, 10);
+            if (!isNaN(count)) {
+              await updateAppBadgeCount(count);
+            }
+          }
+        } catch {}
+      }
+    });
+
     return () => {
       responseSubscription.remove();
+      notificationSubscription.remove();
+      appStateSubscription.remove();
     };
   }, []);
 
@@ -188,9 +273,16 @@ export default function EduTrackMobileApp() {
         console.log('[AUTH_BRIDGE] Received authenticated session from WebView');
         const cleanup = await initPushNotifications(data.token);
         setPushCleanup(() => cleanup);
+      } else if (data?.type === 'EDUTRACK_BADGE_COUNT' && typeof data.count === 'number') {
+        const count = Math.max(0, Math.floor(data.count));
+        console.log('[AUTH_BRIDGE] Synchronizing native launcher badge count:', count);
+        await updateAppBadgeCount(count);
+        await SecureStore.setItemAsync(LAST_BADGE_COUNT_KEY, String(count)).catch(() => {});
       } else if (data?.type === 'EDUTRACK_LOGOUT') {
-        console.log('[AUTH_BRIDGE] User logged out, cleaning up device push tokens');
+        console.log('[AUTH_BRIDGE] User logged out, cleaning up device push tokens and badge');
         await unregisterPushTokenFromBackend(data.token);
+        await updateAppBadgeCount(0);
+        await SecureStore.deleteItemAsync(LAST_BADGE_COUNT_KEY).catch(() => {});
         // Clean up push token listener if present
         if (pushCleanup) {
           pushCleanup();

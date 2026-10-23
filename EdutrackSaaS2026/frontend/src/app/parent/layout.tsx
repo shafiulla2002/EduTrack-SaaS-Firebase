@@ -545,6 +545,21 @@ function ParentNotificationBell() {
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__EDUTRACK_UNREAD_COUNT__ = unreadCount;
+      window.dispatchEvent(new CustomEvent('edutrack_notification_change', { detail: { count: unreadCount } }));
+      if ((window as any).ReactNativeWebView) {
+        try {
+          (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'EDUTRACK_BADGE_COUNT',
+            count: unreadCount,
+          }));
+        } catch {}
+      }
+    }
+  }, [unreadCount]);
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button

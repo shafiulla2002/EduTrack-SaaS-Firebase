@@ -24,6 +24,8 @@ Notifications.setNotificationHandler({
  */
 export async function setupPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === 'android') {
+    // Omitting 'sound' or leaving it undefined uses the system default notification sound
+    // rather than looking for a bundled custom audio resource
     await Notifications.setNotificationChannelAsync('edutrack_notifications', {
       name: 'CS EduTrack Notifications',
       description: 'Important school notices, attendance, and administrative alerts',
@@ -32,7 +34,6 @@ export async function setupPushNotificationsAsync(): Promise<string | null> {
       lightColor: '#4f46e5',
       enableLights: true,
       enableVibrate: true,
-      sound: 'default',
       showBadge: true,
     });
   }
@@ -83,6 +84,10 @@ export async function setupPushNotificationsAsync(): Promise<string | null> {
   }
 }
 
+// In-memory cache to prevent redundant rapid registration attempts
+let lastAttemptedRegistrationKey = '';
+let registrationAttemptTimeout: any = null;
+
 /**
  * Register the device push token with the backend for the currently authenticated user.
  */
@@ -96,8 +101,13 @@ export async function registerPushTokenWithBackend(
   try {
     const token = explicitToken || (await SecureStore.getItemAsync(PUSH_TOKEN_KEY));
     if (!token) {
-      console.log('[PUSH] No device push token available to register');
       return false;
+    }
+
+    const regKey = `${token}_${userId || 'anon'}_${authToken.slice(-10)}`;
+    if (lastAttemptedRegistrationKey === regKey) {
+      // Already registered or attempted in this session
+      return true;
     }
 
     const deviceInfo = `${Device.manufacturer || ''} ${Device.modelName || ''} (Android ${Device.osVersion || ''})`.trim();
@@ -116,12 +126,19 @@ export async function registerPushTokenWithBackend(
     });
 
     if (response.ok) {
+      lastAttemptedRegistrationKey = regKey;
       console.log('[PUSH] Successfully registered push token with CS EduTrack backend');
       if (userId) {
         await SecureStore.setItemAsync(LAST_REGISTERED_USER_KEY, userId);
       }
       return true;
+    } else if (response.status === 404) {
+      // Backend does not have this endpoint yet; cache key so it doesn't spam on every render
+      lastAttemptedRegistrationKey = regKey;
+      console.log('[PUSH] Device token stored locally. Backend registration endpoint pending server deployment (404).');
+      return false;
     } else {
+      lastAttemptedRegistrationKey = regKey;
       const errorText = await response.text();
       console.warn('[PUSH] Backend rejected token registration:', response.status, errorText);
       return false;
@@ -130,6 +147,26 @@ export async function registerPushTokenWithBackend(
     console.error('[PUSH] Failed to register token with backend:', err.message);
     return false;
   }
+}
+
+/**
+ * Update the launcher app icon badge count (home screen badge).
+ */
+export async function updateAppBadgeCount(count: number): Promise<void> {
+  try {
+    const sanitized = Math.max(0, Math.floor(Number(count) || 0));
+    await Notifications.setBadgeCountAsync(sanitized);
+    console.log(`[PUSH] Native launcher app icon badge count set to: ${sanitized}`);
+  } catch (err: any) {
+    console.warn('[PUSH] Failed to set launcher badge count:', err.message);
+  }
+}
+
+/**
+ * Clear the launcher app icon badge count.
+ */
+export async function clearAppBadgeCount(): Promise<void> {
+  await updateAppBadgeCount(0);
 }
 
 /**
