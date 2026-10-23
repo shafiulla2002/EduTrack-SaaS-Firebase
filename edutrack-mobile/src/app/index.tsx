@@ -138,12 +138,15 @@ export default function EduTrackMobileApp() {
   useEffect(() => {
     async function restoreSessionUrl() {
       try {
-        const savedUrl = await SecureStore.getItemAsync(LAST_AUTHENTICATED_URL_KEY);
+        let savedUrl = await SecureStore.getItemAsync(LAST_AUTHENTICATED_URL_KEY);
         if (
           savedUrl &&
           !savedUrl.includes('/auth/login') &&
           !savedUrl.includes('/register-school')
         ) {
+          if (savedUrl.includes('edutrackapplication.covenantsynergy.in')) {
+            savedUrl = savedUrl.replace('https://edutrackapplication.covenantsynergy.in', PRODUCTION_WEB_URL.replace(/\/+$/, ''));
+          }
           console.log('[SESSION] Restoring last authenticated portal URL:', savedUrl);
           setInitialUrl(savedUrl);
           return;
