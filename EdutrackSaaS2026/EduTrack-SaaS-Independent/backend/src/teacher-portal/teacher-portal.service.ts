@@ -1753,32 +1753,140 @@ export class TeacherPortalService {
       },
     });
 
-    // Create notifications for all students in classSection or entire school (Institution)
-    let recipientUserIds: string[] = [];
-    if (data.audienceType === 'INSTITUTION' || data.audienceType === 'STUDENTS' || data.audienceType === 'PARENTS') {
-      const roles = data.audienceType === 'STUDENTS' ? [Role.STUDENT] :
-                    data.audienceType === 'PARENTS' ? [Role.PARENT] :
-                    [Role.STUDENT, Role.PARENT];
-      const allUsers = await this.prisma.user.findMany({
-        where: { tenantId, role: { in: roles } },
-        select: { id: true },
-      });
-      recipientUserIds = allUsers.map(u => u.id);
-    } else if (data.classSectionId) {
-      const classStudents = await this.prisma.studentProfile.findMany({
-        where: { tenantId, classSectionId: data.classSectionId },
-        select: { userId: true },
-      });
-      recipientUserIds = classStudents.map(s => s.userId);
+    // ── Role-Based Recipient Targeting & Push Notifications ─────────────────
+    const audienceType = (data.audienceType || 'CLASS').toUpperCase();
+    const targetRolesParam: string[] = Array.isArray(data.targetRoles)
+      ? data.targetRoles.map((r: string) => r.toUpperCase())
+      : [];
+
+    let targetRoles: Role[] = [];
+    if (targetRolesParam.length > 0) {
+      if (targetRolesParam.includes('ALL') || targetRolesParam.includes('ALL_USERS')) {
+        targetRoles = [Role.TEACHER, Role.STUDENT, Role.PARENT];
+      } else {
+        if (targetRolesParam.includes('STUDENT') || targetRolesParam.includes('STUDENTS')) targetRoles.push(Role.STUDENT);
+        if (targetRolesParam.includes('TEACHER') || targetRolesParam.includes('TEACHERS')) targetRoles.push(Role.TEACHER);
+        if (targetRolesParam.includes('PARENT') || targetRolesParam.includes('PARENTS')) targetRoles.push(Role.PARENT);
+      }
+    } else {
+      switch (audienceType) {
+        case 'STUDENTS':
+          targetRoles = [Role.STUDENT];
+          break;
+        case 'TEACHERS':
+          targetRoles = [Role.TEACHER];
+          break;
+        case 'PARENTS':
+          targetRoles = [Role.PARENT];
+          break;
+        case 'STUDENTS_AND_PARENTS':
+          targetRoles = [Role.STUDENT, Role.PARENT];
+          break;
+        case 'TEACHERS_AND_STUDENTS':
+          targetRoles = [Role.TEACHER, Role.STUDENT];
+          break;
+        case 'TEACHERS_AND_PARENTS':
+          targetRoles = [Role.TEACHER, Role.PARENT];
+          break;
+        case 'INSTITUTION':
+        case 'ALL':
+        case 'ALL_USERS':
+          targetRoles = [Role.TEACHER, Role.STUDENT, Role.PARENT];
+          break;
+        case 'CLASS':
+        default:
+          targetRoles = [Role.STUDENT, Role.PARENT];
+          break;
+      }
     }
 
-    if (recipientUserIds.length > 0) {
+    let recipientUserIds: string[] = [];
+
+    if (data.classSectionId) {
+      // 1. Specific Class Section Targeting
+      if (targetRoles.includes(Role.STUDENT)) {
+        const classStudents = await this.prisma.studentProfile.findMany({
+          where: { tenantId, classSectionId: data.classSectionId },
+          select: { userId: true },
+        });
+        recipientUserIds.push(...classStudents.map(s => s.userId).filter(Boolean));
+      }
+
+      if (targetRoles.includes(Role.PARENT)) {
+        const classStudentParents = await this.prisma.studentProfile.findMany({
+          where: { tenantId, classSectionId: data.classSectionId },
+          select: {
+            parentProfile: { select: { userId: true } },
+            parentStudents: { select: { parent: { select: { userId: true } } } },
+          },
+        });
+        for (const sp of classStudentParents) {
+          if (sp.parentProfile?.userId) recipientUserIds.push(sp.parentProfile.userId);
+          if (sp.parentStudents) {
+            for (const ps of sp.parentStudents) {
+              if (ps.parent?.userId) recipientUserIds.push(ps.parent.userId);
+            }
+          }
+        }
+      }
+
+      if (targetRoles.includes(Role.TEACHER)) {
+        const cs = await this.prisma.classSection.findUnique({
+          where: { id: data.classSectionId },
+          select: {
+            teacher: { select: { userId: true } },
+            teacherAssigns: { select: { teacher: { select: { userId: true } } } },
+          },
+        });
+        if (cs?.teacher?.userId) recipientUserIds.push(cs.teacher.userId);
+        if (cs?.teacherAssigns) {
+          for (const ta of cs.teacherAssigns) {
+            if (ta.teacher?.userId) recipientUserIds.push(ta.teacher.userId);
+          }
+        }
+      }
+    } else {
+      // 2. School-wide / Entire School Targeting
+      if (targetRoles.length > 0) {
+        const users = await this.prisma.user.findMany({
+          where: {
+            tenantId,
+            role: { in: targetRoles },
+            isActive: true,
+          },
+          select: { id: true },
+        });
+        recipientUserIds.push(...users.map(u => u.id));
+
+        if (targetRoles.includes(Role.PARENT)) {
+          const parentProfiles = await this.prisma.parentProfile.findMany({
+            where: {
+              user: { tenantId, isActive: true },
+            },
+            select: { userId: true },
+          });
+          recipientUserIds.push(...parentProfiles.map(p => p.userId));
+        }
+      }
+    }
+
+    // Deduplicate and filter non-null user IDs
+    const uniqueRecipientUserIds = Array.from(new Set(recipientUserIds.filter(Boolean)));
+
+    if (uniqueRecipientUserIds.length > 0) {
       await this.prisma.notification.createMany({
-        data: recipientUserIds.map(uid => ({
-          title: `Announcement: ${data.title}`,
-          message: data.content.substring(0, 150),
-          type: 'IN_APP',
+        data: uniqueRecipientUserIds.map(uid => ({
+          title: `📢 Announcement: ${data.title}`,
+          message: data.content.substring(0, 180),
+          type: 'ANNOUNCEMENT',
+          url: '/parent/announcements',
           recipientId: uid,
+          tenantId: tenantId,
+          metadata: {
+            announcementId: announcement.id,
+            audienceType: data.audienceType,
+            classSectionId: data.classSectionId || null,
+          },
         })),
       });
     }

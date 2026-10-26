@@ -43,6 +43,24 @@ export class StudentsController {
     );
   }
 
+  @Post('notify-fee-due')
+  async notifyFeeDue(
+    @Req() req: any,
+    @Body() body: {
+      studentIds?: string[];
+      classId?: string;
+      className?: string;
+      sectionId?: string;
+      sectionName?: string;
+      academicYearId?: string;
+      financialStatus?: string;
+      search?: string;
+    },
+  ) {
+    const tenantId = req.user?.tenantId;
+    return this.studentsService.notifyFeeDue(body, tenantId);
+  }
+
   @Get('promotion-candidates')
   async getPromotionCandidates(
     @Query('sourceYearId') sourceYearId: string,

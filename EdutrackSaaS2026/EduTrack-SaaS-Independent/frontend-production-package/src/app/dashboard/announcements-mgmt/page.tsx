@@ -58,11 +58,48 @@ export default function AnnouncementsMgmtPage() {
   // Form states
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [audienceType, setAudienceType] = useState('CLASS'); // INSTITUTION, CLASS
+  const [audienceType, setAudienceType] = useState('ALL');
+  const [targetScope, setTargetScope] = useState<'ALL_CLASSES' | 'SPECIFIC_CLASS'>('ALL_CLASSES');
   const [classSectionId, setClassSectionId] = useState('');
   const [priority, setPriority] = useState('Medium'); // High, Medium, Low
   const [expiryDate, setExpiryDate] = useState('');
   const [pinned, setPinned] = useState(false);
+
+  // Deduplicate classes
+  const uniqueClasses = React.useMemo(() => {
+    const seen = new Set<string>();
+    const list: any[] = [];
+    for (const c of classes) {
+      const id = c.classSectionId || c.id;
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        list.push({ ...c, classSectionId: id });
+      }
+    }
+    return list;
+  }, [classes]);
+
+  const getAudienceLabel = (type: string) => {
+    switch (type) {
+      case 'ALL':
+      case 'INSTITUTION':
+        return 'All Relevant Users (Students, Parents & Teachers)';
+      case 'STUDENTS':
+        return 'Students';
+      case 'TEACHERS':
+        return 'Teachers';
+      case 'PARENTS':
+        return 'Parents';
+      case 'STUDENTS_AND_PARENTS':
+        return 'Students & Parents';
+      case 'TEACHERS_AND_STUDENTS':
+        return 'Teachers & Students';
+      case 'STAFF':
+        return 'Non-Teaching Staff';
+      default:
+        return 'Selected Audience';
+    }
+  };
 
   async function loadData() {
     try {
@@ -98,7 +135,8 @@ export default function AnnouncementsMgmtPage() {
   const openCreateModal = () => {
     setTitle('');
     setContent('');
-    setAudienceType('CLASS');
+    setAudienceType('ALL');
+    setTargetScope('ALL_CLASSES');
     setClassSectionId('');
     setPriority('Medium');
     setExpiryDate('');
@@ -108,13 +146,17 @@ export default function AnnouncementsMgmtPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (targetScope === 'SPECIFIC_CLASS' && !classSectionId) {
+      alert('Please select a class section to target.');
+      return;
+    }
     setSubmitting(true);
 
     const payload = {
       title,
       content,
       audienceType,
-      classSectionId: audienceType === 'CLASS' ? classSectionId : null,
+      classSectionId: targetScope === 'SPECIFIC_CLASS' && classSectionId ? classSectionId : null,
       priority,
       expiryDate: expiryDate || null,
       pinned,
@@ -292,12 +334,17 @@ export default function AnnouncementsMgmtPage() {
                   <span className="flex items-center gap-1 min-w-0 break-words">
                     <Users className="w-3 h-3 text-slate-400 shrink-0" />
                     Target:{' '}
-                    {ann.audienceType === 'INSTITUTION' ? 'Entire School' :
-                     ann.audienceType === 'TEACHERS' ? 'Teaching Staff' :
+                    {ann.audienceType === 'INSTITUTION' || ann.audienceType === 'ALL' ? 'Entire School' :
+                     ann.audienceType === 'STUDENTS' ? 'Students Only' :
+                     ann.audienceType === 'TEACHERS' ? 'Teachers Only' :
+                     ann.audienceType === 'PARENTS' ? 'Parents Only' :
+                     ann.audienceType === 'STUDENTS_AND_PARENTS' ? 'Students & Parents' :
+                     ann.audienceType === 'TEACHERS_AND_STUDENTS' ? 'Teachers & Students' :
                      ann.audienceType === 'STAFF' ? 'Non-Teaching Staff' :
-                     ann.audienceType === 'PARENTS' ? 'Parents' :
-                     ann.audienceType === 'STUDENTS' ? 'Students' :
                      ann.classSection ? `${ann.classSection.class.name} - ${ann.classSection.section.name}` : 'Class Section'}
+                    {ann.classSection && ann.audienceType && ann.audienceType !== 'CLASS' && (
+                      <span className="ml-1 text-slate-400">({ann.classSection.class.name} - {ann.classSection.section.name})</span>
+                    )}
                   </span>
                   {ann.expiryDate && (
                     <span className="flex items-center gap-1 shrink-0">
@@ -344,20 +391,20 @@ export default function AnnouncementsMgmtPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Audience Scope</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Audience Roles *</label>
               <select
                 value={audienceType}
                 onChange={(e) => setAudienceType(e.target.value)}
-                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-xs sm:text-sm font-semibold"
               >
-                <option value="CLASS" className="dark:bg-slate-800">Specific Class Section</option>
-                <option value="INSTITUTION" className="dark:bg-slate-800">Entire School</option>
-                <option value="TEACHERS" className="dark:bg-slate-800">Teaching Staff (Teachers)</option>
-                <option value="STAFF" className="dark:bg-slate-800">Non-Teaching Staff (Staff)</option>
-                <option value="PARENTS" className="dark:bg-slate-800">Parents</option>
-                <option value="STUDENTS" className="dark:bg-slate-800">Students</option>
+                <option value="ALL" className="dark:bg-slate-800">All Relevant Users (School-wide)</option>
+                <option value="STUDENTS" className="dark:bg-slate-800">Students Only</option>
+                <option value="TEACHERS" className="dark:bg-slate-800">Teachers Only</option>
+                <option value="PARENTS" className="dark:bg-slate-800">Parents Only</option>
+                <option value="STUDENTS_AND_PARENTS" className="dark:bg-slate-800">Students and Parents</option>
+                <option value="TEACHERS_AND_STUDENTS" className="dark:bg-slate-800">Teachers and Students</option>
               </select>
             </div>
             <div>
@@ -365,7 +412,7 @@ export default function AnnouncementsMgmtPage() {
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-xs sm:text-sm font-semibold"
               >
                 <option value="High" className="dark:bg-slate-800">🔴 High</option>
                 <option value="Medium" className="dark:bg-slate-800">🟡 Medium</option>
@@ -374,20 +421,53 @@ export default function AnnouncementsMgmtPage() {
             </div>
           </div>
 
-          {audienceType === 'CLASS' && (
+          <div>
+            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Class Reach / Scope *</label>
+            <select
+              value={targetScope}
+              onChange={(e) => {
+                const scope = e.target.value as 'ALL_CLASSES' | 'SPECIFIC_CLASS';
+                setTargetScope(scope);
+                if (scope === 'ALL_CLASSES') setClassSectionId('');
+              }}
+              className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-xs sm:text-sm font-semibold"
+            >
+              <option value="ALL_CLASSES" className="dark:bg-slate-800">Entire School (All Classes)</option>
+              <option value="SPECIFIC_CLASS" className="dark:bg-slate-800">Specific Class Section Only</option>
+            </select>
+          </div>
+
+          {targetScope === 'SPECIFIC_CLASS' && (
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Target Class Section</label>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Target Class Section *</label>
               <select
                 value={classSectionId}
                 onChange={(e) => setClassSectionId(e.target.value)}
-                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
+                className="block w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-202 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-xs sm:text-sm font-semibold"
                 required
               >
                 <option value="" className="dark:bg-slate-800">Select Class Section...</option>
-                {classes.map(c => <option key={c.classSectionId} value={c.classSectionId} className="dark:bg-slate-800">{c.className}</option>)}
+                {uniqueClasses.map(c => <option key={c.classSectionId} value={c.classSectionId} className="dark:bg-slate-800">{c.className}</option>)}
               </select>
             </div>
           )}
+
+          {/* Targeted Push Notification Indicator */}
+          <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 flex items-start gap-2.5 text-xs">
+            <div className="w-2 h-2 rounded-full bg-blue-600 mt-1 shrink-0 animate-pulse" />
+            <div className="min-w-0">
+              <span className="font-bold text-blue-900 dark:text-blue-300 block text-xs">
+                Targeted Push Notification Delivery
+              </span>
+              <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-0.5 leading-relaxed">
+                {targetScope === 'SPECIFIC_CLASS' && classSectionId
+                  ? `Push notification will be sent strictly to ${getAudienceLabel(audienceType)} of ${uniqueClasses.find(c => c.classSectionId === classSectionId)?.className || 'the selected class'}. Other classes & schools are excluded.`
+                  : targetScope === 'SPECIFIC_CLASS'
+                  ? `Please select a class section above to target.`
+                  : `Push notification will be broadcast to ${getAudienceLabel(audienceType)} across the entire school.`}
+              </p>
+            </div>
+          </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Expiry Date (Optional)</label>

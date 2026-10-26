@@ -15,6 +15,11 @@ import { PDFService } from '@/lib/pdf';
 interface ClassSectionOption {
   value: string; // classSectionId
   label: string; // name
+  classId?: string;
+  className?: string;
+  sectionId?: string;
+  sectionName?: string;
+  academicYearId?: string;
 }
 
 interface SubjectOption {
@@ -103,6 +108,8 @@ export default function ExamSchedulePage() {
   const [formExamName, setFormExamName] = useState('');
   const [formClassSectionId, setFormClassSectionId] = useState('');
   const [formAcademicYearId, setFormAcademicYearId] = useState('');
+  const [selectedFormClass, setSelectedFormClass] = useState<string>('');
+  const [selectedFormSectionId, setSelectedFormSectionId] = useState<string>('ALL');
   const [formRows, setFormRows] = useState<Array<{
     subjectId: string;
     examDate: string;
@@ -113,6 +120,25 @@ export default function ExamSchedulePage() {
   }>>([
     { subjectId: '', examDate: '', startTime: '10:00', endTime: '13:00', examHall: '', instructions: '' }
   ]);
+
+  // Extract distinct classes and sections for cascading filters
+  const distinctClasses = React.useMemo(() => {
+    const seen = new Set<string>();
+    const list: { id: string; name: string }[] = [];
+    for (const c of classes) {
+      const name = c.className || c.label.split(' - ')[0].trim();
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        list.push({ id: c.classId || name, name });
+      }
+    }
+    return list;
+  }, [classes]);
+
+  const sectionsForSelectedClass = React.useMemo(() => {
+    if (!selectedFormClass) return [];
+    return classes.filter(c => (c.className || c.label.split(' - ')[0].trim()) === selectedFormClass);
+  }, [classes, selectedFormClass]);
 
   // Editing state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -181,6 +207,9 @@ export default function ExamSchedulePage() {
         setFormAcademicYearId(activeYear.id);
       }
       if (classData.length > 0) {
+        const firstClassName = classData[0].className || classData[0].label.split(' - ')[0].trim();
+        setSelectedFormClass(firstClassName);
+        setSelectedFormSectionId('ALL');
         setFormClassSectionId(classData[0].value);
       }
 
@@ -241,10 +270,36 @@ export default function ExamSchedulePage() {
     );
   };
 
+  const handleClassChange = (newClassName: string) => {
+    setSelectedFormClass(newClassName);
+    setSelectedFormSectionId('ALL');
+    const classSections = classes.filter(c => (c.className || c.label.split(' - ')[0].trim()) === newClassName);
+    if (classSections.length > 0) {
+      setFormClassSectionId(classSections[0].value);
+    }
+  };
+
+  const handleSectionChange = (val: string) => {
+    setSelectedFormSectionId(val);
+    if (val === 'ALL') {
+      if (sectionsForSelectedClass.length > 0) {
+        setFormClassSectionId(sectionsForSelectedClass[0].value);
+      }
+    } else {
+      setFormClassSectionId(val);
+    }
+  };
+
   // CRUD API Calls
   const handleOpenCreateForm = () => {
     setEditingId(null);
     setFormExamName('');
+    if (classes.length > 0) {
+      const firstClassName = classes[0].className || classes[0].label.split(' - ')[0].trim();
+      setSelectedFormClass(firstClassName);
+      setSelectedFormSectionId('ALL');
+      setFormClassSectionId(classes[0].value);
+    }
     setFormRows([{ subjectId: '', examDate: '', startTime: '10:00', endTime: '13:00', examHall: '', instructions: '' }]);
     setIsFormOpen(true);
   };
@@ -253,6 +308,17 @@ export default function ExamSchedulePage() {
     setEditingId(null);
     setFormExamName(item.examName);
     setFormClassSectionId(item.classSectionId);
+
+    const matchingOption = classes.find(c => c.value === item.classSectionId);
+    if (matchingOption) {
+      const clsName = matchingOption.className || matchingOption.label.split(' - ')[0].trim();
+      setSelectedFormClass(clsName);
+      setSelectedFormSectionId(matchingOption.value);
+    } else if (item.classSection?.class?.name) {
+      setSelectedFormClass(item.classSection.class.name);
+      setSelectedFormSectionId(item.classSectionId);
+    }
+
     setFormAcademicYearId(item.academicYearId);
     setFormRows([{
       subjectId: item.subjectId,
@@ -270,6 +336,17 @@ export default function ExamSchedulePage() {
     setEditingId(item.id);
     setFormExamName(item.examName);
     setFormClassSectionId(item.classSectionId);
+
+    const matchingOption = classes.find(c => c.value === item.classSectionId);
+    if (matchingOption) {
+      const clsName = matchingOption.className || matchingOption.label.split(' - ')[0].trim();
+      setSelectedFormClass(clsName);
+      setSelectedFormSectionId(matchingOption.value);
+    } else if (item.classSection?.class?.name) {
+      setSelectedFormClass(item.classSection.class.name);
+      setSelectedFormSectionId(item.classSectionId);
+    }
+
     setFormAcademicYearId(item.academicYearId);
     setFormRows([{
       subjectId: item.subjectId,
@@ -299,8 +376,13 @@ export default function ExamSchedulePage() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formExamName.trim() || !formClassSectionId || !formAcademicYearId) {
+    if (!formExamName.trim() || !formAcademicYearId || !selectedFormClass) {
       showToastMessage('Please fill out all general schedule fields.', 'error');
+      return;
+    }
+
+    if (sectionsForSelectedClass.length === 0) {
+      showToastMessage('No valid sections found for the selected class.', 'error');
       return;
     }
 
@@ -316,10 +398,14 @@ export default function ExamSchedulePage() {
       setIsLoading(true);
       if (editingId) {
         // Single update
+        const targetClassSectionId = selectedFormSectionId === 'ALL'
+          ? (sectionsForSelectedClass[0]?.value || formClassSectionId)
+          : selectedFormSectionId;
+
         const row = formRows[0];
         await api.patch(`/exam-schedule/${editingId}`, {
           examName: formExamName,
-          classSectionId: formClassSectionId,
+          classSectionId: targetClassSectionId,
           academicYearId: formAcademicYearId,
           subjectId: row.subjectId,
           examDate: row.examDate,
@@ -330,21 +416,37 @@ export default function ExamSchedulePage() {
         });
         showToastMessage('Exam schedule updated successfully.', 'success');
       } else {
-        // Bulk creation
-        const payload = formRows.map(row => ({
-          examName: formExamName,
-          classSectionId: formClassSectionId,
-          academicYearId: formAcademicYearId,
-          subjectId: row.subjectId,
-          examDate: row.examDate,
-          startTime: row.startTime,
-          endTime: row.endTime,
-          examHall: row.examHall || undefined,
-          instructions: row.instructions || undefined,
-          status: 'Draft' // Defaults to Draft
-        }));
+        // Bulk creation or multi-section creation
+        const targetSections = selectedFormSectionId === 'ALL'
+          ? sectionsForSelectedClass
+          : sectionsForSelectedClass.filter(s => s.value === selectedFormSectionId);
+
+        const targetList = targetSections.length > 0
+          ? targetSections
+          : [{ value: formClassSectionId, label: '' }];
+
+        const payload: any[] = [];
+        for (const sec of targetList) {
+          for (const row of formRows) {
+            payload.push({
+              examName: formExamName,
+              classSectionId: sec.value,
+              academicYearId: formAcademicYearId,
+              subjectId: row.subjectId,
+              examDate: row.examDate,
+              startTime: row.startTime,
+              endTime: row.endTime,
+              examHall: row.examHall || undefined,
+              instructions: row.instructions || undefined,
+              status: 'Draft' // Defaults to Draft
+            });
+          }
+        }
         await api.post('/exam-schedule/bulk', { schedules: payload });
-        showToastMessage(`Successfully created ${payload.length} exam schedule(s).`, 'success');
+        const sectionNote = selectedFormSectionId === 'ALL'
+          ? `across all sections of ${selectedFormClass}`
+          : `for ${selectedFormClass}`;
+        showToastMessage(`Successfully created ${payload.length} exam schedule(s) ${sectionNote}.`, 'success');
       }
       setIsFormOpen(false);
       await fetchSchedules();
@@ -879,17 +981,58 @@ export default function ExamSchedulePage() {
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Class & Section *</label>
-                <select
-                  value={formClassSectionId}
-                  onChange={(e) => setFormClassSectionId(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white"
-                >
-                  {classes.map(cls => (
-                    <option key={cls.value} value={cls.value} className="dark:bg-slate-800">{cls.label}</option>
-                  ))}
-                </select>
+              {/* Cascading Class and Section Selectors */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Class *</label>
+                  <select
+                    value={selectedFormClass}
+                    onChange={(e) => handleClassChange(e.target.value)}
+                    required
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white"
+                  >
+                    <option value="" disabled>Select Class...</option>
+                    {distinctClasses.map(cls => (
+                      <option key={cls.name} value={cls.name} className="dark:bg-slate-800">{cls.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Section *</label>
+                  <select
+                    value={selectedFormSectionId}
+                    onChange={(e) => handleSectionChange(e.target.value)}
+                    disabled={!selectedFormClass}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500 focus:bg-white disabled:opacity-50"
+                  >
+                    {!editingId && (
+                      <option value="ALL" className="dark:bg-slate-800 font-bold">
+                        All Sections (Entire {selectedFormClass || 'Class'})
+                      </option>
+                    )}
+                    {sectionsForSelectedClass.map(sec => (
+                      <option key={sec.value} value={sec.value} className="dark:bg-slate-800">
+                        Section {sec.sectionName || sec.label.split(' - ')[1] || sec.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Recipient Targeting Notification Indicator */}
+              <div className="p-3 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 flex items-start gap-2.5 text-xs">
+                <div className="w-2 h-2 rounded-full bg-blue-600 mt-1 shrink-0 animate-pulse" />
+                <div className="min-w-0">
+                  <span className="font-bold text-blue-900 dark:text-blue-300 block text-xs">
+                    Targeted Push Notification Scope
+                  </span>
+                  <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-0.5 leading-relaxed">
+                    {selectedFormSectionId === 'ALL'
+                      ? `When published, push notifications will be dispatched to all students & parents of ${selectedFormClass || 'selected class'}, plus assigned teachers. Unrelated classes are never notified.`
+                      : `When published, push notifications will strictly reach only Section ${sectionsForSelectedClass.find(s => s.value === selectedFormSectionId)?.sectionName || 'selected'} students & parents, plus assigned teachers.`}
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-1.5">

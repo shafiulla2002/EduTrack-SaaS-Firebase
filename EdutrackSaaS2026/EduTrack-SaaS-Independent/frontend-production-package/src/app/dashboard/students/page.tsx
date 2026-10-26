@@ -6,7 +6,7 @@ import {
   Search, ArrowLeft, Plus, X, Phone, Mail, Award, Receipt, 
   CheckCircle, AlertTriangle, ChevronDown, ChevronUp, User, 
   MapPin, Calendar as CalendarIcon, DollarSign, BookOpen, ShieldAlert,
-  Percent, Trash2, FileText, Download
+  Percent, Trash2, FileText, Download, Bell, Loader2
 } from 'lucide-react';
 import { api, fastGet } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
@@ -97,6 +97,22 @@ export default function StudentsDirectory() {
   });
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  
+  // Push Notification States for Fee Dues
+  const [notifyingFeeDues, setNotifyingFeeDues] = useState(false);
+  const [notifyingStudentId, setNotifyingStudentId] = useState<string | null>(null);
+  const [feeDueModal, setFeeDueModal] = useState<{
+    show: boolean;
+    dueCount: number;
+    totalDueAmount: number;
+    targetStudentIds?: string[];
+    isBulkFiltered?: boolean;
+    studentName?: string;
+  }>({
+    show: false,
+    dueCount: 0,
+    totalDueAmount: 0,
+  });
   
   // Pagination States
   const [page, setPage] = useState(1);
@@ -662,6 +678,127 @@ export default function StudentsDirectory() {
     }
   };
 
+  // ── Fee Due Push Notifications ───────────────────────────────────────────
+  const visibleDueStudents = useMemo(() => {
+    return students.filter(s => Number(s.balanceDue) > 0);
+  }, [students]);
+
+  const visibleTotalDueAmount = useMemo(() => {
+    return visibleDueStudents.reduce((sum, s) => sum + Number(s.balanceDue), 0);
+  }, [visibleDueStudents]);
+
+  // Single student fee due notification
+  const handleNotifySingleStudent = async (student: Student) => {
+    if (Number(student.balanceDue) <= 0) {
+      showToast(`${student.name} has fully paid fees (₹0 due). No due notification sent.`, 'info');
+      return;
+    }
+
+    setNotifyingStudentId(student.id);
+    try {
+      const res = await api.post('/students/notify-fee-due', {
+        studentIds: [student.id],
+        academicYearId: selectedYear === 'All' ? undefined : selectedYear,
+      });
+
+      if (res.data?.success) {
+        showToast(
+          res.data.notifiedCount > 0
+            ? `Fee due push notification sent to parents of ${student.name} (Due: ₹${Number(student.balanceDue).toLocaleString('en-IN')})`
+            : res.data.message || `Notification already dispatched recently for ${student.name}`,
+          'success'
+        );
+      } else {
+        showToast(res.data?.message || 'Failed to dispatch fee notification', 'error');
+      }
+    } catch (err: any) {
+      console.error('Error sending fee due notification:', err);
+      showToast(err.response?.data?.message || 'Failed to send fee due push notification', 'error');
+    } finally {
+      setNotifyingStudentId(null);
+    }
+  };
+
+  // Open modal for filtered bulk due notifications
+  const handleOpenFeeDueModal = () => {
+    if (selectedFinancialStatus === 'FULLY_PAID') {
+      showToast('Fully paid students have ₹0 balance due. Due notifications cannot be sent to fully paid students.', 'info');
+      return;
+    }
+
+    // If checkboxes are checked, filter only selected students with dues
+    if (selectedIds.length > 0) {
+      const selectedDueList = students.filter(s => selectedIds.includes(s.id) && Number(s.balanceDue) > 0);
+      const selectedTotalDue = selectedDueList.reduce((sum, s) => sum + Number(s.balanceDue), 0);
+
+      if (selectedDueList.length === 0) {
+        showToast('None of the selected students have pending fee dues. Fully paid students are excluded.', 'info');
+        return;
+      }
+
+      setFeeDueModal({
+        show: true,
+        dueCount: selectedDueList.length,
+        totalDueAmount: selectedTotalDue,
+        targetStudentIds: selectedDueList.map(s => s.id),
+        isBulkFiltered: false,
+      });
+      return;
+    }
+
+    setFeeDueModal({
+      show: true,
+      dueCount: visibleDueStudents.length,
+      totalDueAmount: visibleTotalDueAmount,
+      isBulkFiltered: true,
+    });
+  };
+
+  // Confirm sending push reminders
+  const handleConfirmSendDuePush = async () => {
+    setNotifyingFeeDues(true);
+    try {
+      let payload: any = {};
+
+      if (feeDueModal.targetStudentIds && feeDueModal.targetStudentIds.length > 0) {
+        payload = {
+          studentIds: feeDueModal.targetStudentIds,
+          academicYearId: selectedYear === 'All' ? undefined : selectedYear,
+        };
+      } else {
+        const qp = buildStudentQueryParams();
+        payload = {
+          search: qp.search,
+          classId: qp.classId,
+          className: qp.className,
+          sectionId: qp.sectionId,
+          sectionName: qp.sectionName,
+          academicYearId: qp.academicYearId,
+          financialStatus: qp.financialStatus,
+        };
+      }
+
+      const res = await api.post('/students/notify-fee-due', payload);
+
+      if (res.data?.success) {
+        showToast(
+          res.data.notifiedCount > 0
+            ? `Successfully sent fee due push notifications to parents of ${res.data.dueStudentsCount} student(s)!`
+            : res.data.message || 'Fee due push notifications processed.',
+          'success'
+        );
+        setFeeDueModal({ show: false, dueCount: 0, totalDueAmount: 0 });
+      } else {
+        showToast(res.data?.message || 'Failed to send fee notifications', 'error');
+      }
+    } catch (err: any) {
+      console.error('Failed to notify fee due:', err);
+      showToast(err.response?.data?.message || 'Failed to dispatch fee due notifications', 'error');
+    } finally {
+      setNotifyingFeeDues(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in pb-12">
       {/* ================= HEADER VIEW ================= */}
@@ -746,18 +883,43 @@ export default function StudentsDirectory() {
           ))}
         </select>
 
-        <select
-          value={selectedFinancialStatus}
-          onChange={(e) => handleFinancialStatusChange(e.target.value)}
-          className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
-        >
-          <option value="All">All Financial Status</option>
-          <option value="FULLY_PAID">Fully Paid (100%)</option>
-          <option value="ABOVE_75">Above 75% Paid</option>
-          <option value="PAID_50_75">50%–75% Paid</option>
-          <option value="BELOW_50">Below 50% Paid</option>
-          <option value="PENDING_BALANCE">Pending Balance</option>
-        </select>
+        <div className="flex items-center gap-1.5">
+          <select
+            value={selectedFinancialStatus}
+            onChange={(e) => handleFinancialStatusChange(e.target.value)}
+            className="bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-slate-700 focus:outline-none focus:border-[#2E5BFF] shadow-xs"
+          >
+            <option value="All">All Financial Status</option>
+            <option value="FULLY_PAID">Fully Paid (100%)</option>
+            <option value="ABOVE_75">Above 75% Paid</option>
+            <option value="PAID_50_75">50%–75% Paid</option>
+            <option value="BELOW_50">Below 50% Paid</option>
+            <option value="PENDING_BALANCE">Pending Balance</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={handleOpenFeeDueModal}
+            disabled={notifyingFeeDues || selectedFinancialStatus === 'FULLY_PAID'}
+            title={
+              selectedFinancialStatus === 'FULLY_PAID'
+                ? 'Fully paid students have ₹0 due balance (notifications disabled)'
+                : 'Send Fee Due Push Notification to Parents of Students with Pending Dues'
+            }
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-bold border transition-all shadow-xs cursor-pointer ${
+              selectedFinancialStatus === 'FULLY_PAID'
+                ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                : 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-800 hover:shadow-xs'
+            }`}
+          >
+            {notifyingFeeDues ? (
+              <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+            ) : (
+              <Bell className="w-4 h-4 text-amber-600" />
+            )}
+            <span className="hidden sm:inline">Notify Dues</span>
+          </button>
+        </div>
       </div>
 
       {/* Directory Table / Cards Container */}
@@ -873,18 +1035,37 @@ export default function StudentsDirectory() {
                         <div className="text-[11px] text-slate-400 font-medium mt-0.5">{student.phone}</div>
                       </td>
                       <td className="px-3.5 py-3">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 whitespace-nowrap ${
-                          hasDue 
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                          {hasDue ? (
-                            <span>Pending <strong className="font-extrabold text-amber-800">₹{Number(student.balanceDue).toLocaleString('en-IN')}</strong> Due</span>
-                          ) : (
-                            <span>Fully Paid <strong className="font-extrabold text-emerald-800">₹0</strong> Balance</span>
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 ${
+                            hasDue 
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                            {hasDue ? (
+                              <span>Pending <strong className="font-extrabold text-amber-800">₹{Number(student.balanceDue).toLocaleString('en-IN')}</strong> Due</span>
+                            ) : (
+                              <span>Fully Paid <strong className="font-extrabold text-emerald-800">₹0</strong> Balance</span>
+                            )}
+                          </span>
+
+                          {/* STRICT RULE: Only students with dues get the Notify Bell icon! Fully paid students do NOT get it */}
+                          {hasDue && (
+                            <button
+                              type="button"
+                              onClick={() => handleNotifySingleStudent(student)}
+                              disabled={notifyingStudentId === student.id}
+                              title={`Send fee due push notification to parent of ${student.name} (Due: ₹${Number(student.balanceDue).toLocaleString('en-IN')})`}
+                              className="p-1 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 hover:text-amber-900 transition-all shadow-2xs cursor-pointer flex items-center justify-center"
+                            >
+                              {notifyingStudentId === student.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Bell className="w-3.5 h-3.5" />
+                              )}
+                            </button>
                           )}
-                        </span>
+                        </div>
                       </td>
                       <td className="px-3.5 py-3 text-right">
                         <div className="flex justify-end items-center gap-1.5 whitespace-nowrap">
@@ -975,18 +1156,35 @@ export default function StudentsDirectory() {
                         <p className="text-xs text-slate-400 font-medium mt-0.5 truncate">{student.email}</p>
                       </div>
                     </div>
-                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
-                      hasDue 
-                        ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                      {hasDue ? (
-                        <span>Pending ₹{Number(student.balanceDue).toLocaleString('en-IN')} Due</span>
-                      ) : (
-                        <span>Fully Paid ₹0 Balance</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5 whitespace-nowrap ${
+                        hasDue 
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                        {hasDue ? (
+                          <span>Pending ₹{Number(student.balanceDue).toLocaleString('en-IN')} Due</span>
+                        ) : (
+                          <span>Fully Paid ₹0 Balance</span>
+                        )}
+                      </span>
+                      {hasDue && (
+                        <button
+                          type="button"
+                          onClick={() => handleNotifySingleStudent(student)}
+                          disabled={notifyingStudentId === student.id}
+                          title={`Send fee due push notification to parent of ${student.name}`}
+                          className="p-1 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 transition-all shadow-2xs"
+                        >
+                          {notifyingStudentId === student.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Bell className="w-3.5 h-3.5" />
+                          )}
+                        </button>
                       )}
-                    </span>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-250/10">
@@ -1232,6 +1430,100 @@ export default function StudentsDirectory() {
             await loadStudents(page);
           }}
         />
+      )}
+
+      {/* Fee Due Push Notification Modal */}
+      {feeDueModal.show && (
+        <>
+          <div 
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 transition-opacity"
+            onClick={() => !notifyingFeeDues && setFeeDueModal(prev => ({ ...prev, show: false }))}
+          />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl p-6 w-[92%] max-w-md z-50 shadow-2xl border border-slate-100 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4 border-4 border-amber-50">
+              <Bell className="w-6 h-6 text-amber-600" />
+            </div>
+            
+            <h3 className="text-lg font-bold text-slate-850 mb-1">
+              Send Fee Due Push Reminders
+            </h3>
+            
+            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+              Dispatch real-time push notifications directly to registered parent mobile apps for students with outstanding fee dues.
+            </p>
+
+            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 mb-4 text-xs space-y-2 text-left">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-semibold">Scope:</span>
+                <span className="text-slate-800 font-bold">
+                  {feeDueModal.targetStudentIds 
+                    ? `${feeDueModal.targetStudentIds.length} Selected Students`
+                    : selectedFinancialStatus !== 'All' 
+                      ? `Filter: ${selectedFinancialStatus.replace('_', ' ')}` 
+                      : 'All Filtered Students With Dues'}
+                </span>
+              </div>
+              {selectedYear !== 'All' && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold">Academic Year:</span>
+                  <span className="text-slate-800 font-bold">
+                    {academicYears.find(ay => ay.id === selectedYear)?.name || selectedYear}
+                  </span>
+                </div>
+              )}
+              {selectedClass !== 'All' && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold">Class / Grade:</span>
+                  <span className="text-slate-800 font-bold">{selectedClass}</span>
+                </div>
+              )}
+              {selectedSection !== 'All' && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold">Section:</span>
+                  <span className="text-slate-800 font-bold">{selectedSection}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 bg-amber-50/80 border border-amber-200/70 text-amber-850 text-xs font-semibold rounded-xl text-left leading-relaxed mb-5">
+              <div className="flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong>Strict Exemption Rule:</strong> Students who have fully paid (₹0 balance due) are automatically skipped. Push notifications are ONLY sent to parents of students who have an active pending fee due.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={notifyingFeeDues}
+                onClick={() => setFeeDueModal(prev => ({ ...prev, show: false }))}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs hover:bg-slate-50 transition-all cursor-pointer min-h-[38px] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={notifyingFeeDues}
+                onClick={handleConfirmSendDuePush}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition-all cursor-pointer min-h-[38px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {notifyingFeeDues ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Sending Push...</span>
+                  </>
+                ) : (
+                  <>
+                    <Bell className="w-4 h-4 text-white" />
+                    <span>Send Push Reminders</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

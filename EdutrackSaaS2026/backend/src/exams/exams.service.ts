@@ -625,7 +625,7 @@ export class ExamsService {
       );
     }
 
-    return this.prisma.$transaction(
+    const result = await this.prisma.$transaction(
       async (tx) => {
         // Find or create Exam
         let exam = await tx.exam.findFirst({
@@ -698,6 +698,14 @@ export class ExamsService {
       },
       { timeout: 30000 },
     );
+
+    // Non-blocking exam marks push notification dispatch to parents
+    if (result && result.count > 0 && marksDataList && marksDataList.length > 0) {
+      this.sendMarksUpdatedNotifications(tenantId, classSectionId, subjectId, examName, marksDataList, subjectType)
+        .catch((err) => console.warn('[ExamsService] Marks notification dispatch error:', err?.message || err));
+    }
+
+    return result;
   }
 
   // ── GRADES & REPORT CARD COMPILATION ────────────────────────────────────────
@@ -1169,5 +1177,182 @@ export class ExamsService {
       totalStudents: studentRows.length,
       students: studentRows,
     };
+  }
+
+  /**
+   * Dispatches push notifications to parents when a teacher submits or updates exam marks.
+   * Runs asynchronously and non-blockingly without disturbing marks save.
+   */
+  private async sendMarksUpdatedNotifications(
+    tenantId: string,
+    classSectionId: string,
+    subjectId: string,
+    examName: string,
+    marksDataList: any[],
+    subjectType: string = 'Theory',
+  ): Promise<void> {
+    try {
+      const validEntries = marksDataList.filter(
+        (row) => row && row.studentId && row.marksObtained !== null && row.marksObtained !== undefined && row.marksObtained !== ''
+      );
+
+      if (validEntries.length === 0) return;
+
+      // 1. Resolve subject details and class-section details in parallel
+      const [subject, classSection] = await Promise.all([
+        this.prisma.subject.findUnique({
+          where: { id: subjectId },
+          select: { name: true },
+        }),
+        this.prisma.classSection.findUnique({
+          where: { id: classSectionId },
+          select: {
+            class: { select: { name: true } },
+            section: { select: { name: true } },
+          },
+        }),
+      ]);
+
+      const subjectName = subject?.name || 'Subject';
+      const classLabel = classSection
+        ? `${classSection.class?.name || ''} - ${classSection.section?.name || ''}`.replace(/^ - | - $/g, '')
+        : '';
+
+      // 2. Fetch maximum marks if configured
+      let maxMarks: number | null = null;
+      try {
+        const exam = await this.prisma.exam.findFirst({
+          where: { tenantId, classSectionId, name: { equals: examName, mode: 'insensitive' } },
+          select: { id: true },
+        });
+        if (exam) {
+          const examSub = await this.prisma.examSubject.findFirst({
+            where: { tenantId, examId: exam.id, subjectId, subjectType },
+            select: { maxMarks: true },
+          });
+          if (examSub?.maxMarks) {
+            maxMarks = examSub.maxMarks;
+          }
+        }
+      } catch (e) {
+        // maxMarks fallback if not configured
+      }
+
+      // 3. Fetch student profiles with linked parent user IDs
+      const studentIds = Array.from(new Set(validEntries.map((e) => e.studentId)));
+      const students = await this.prisma.studentProfile.findMany({
+        where: {
+          id: { in: studentIds },
+          tenantId,
+        },
+        select: {
+          id: true,
+          user: { select: { id: true, name: true } },
+          parentProfile: { select: { userId: true } },
+          parentStudents: {
+            select: {
+              parent: { select: { userId: true } },
+            },
+          },
+        },
+      });
+
+      if (!students || students.length === 0) return;
+
+      const studentMap = new Map(students.map((s) => [s.id, s]));
+
+      // 4. Query recent marks notifications (last 10 minutes) to prevent redundant duplicate notifications
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      const recentNotifications = await this.prisma.notification.findMany({
+        where: {
+          tenantId,
+          type: 'EXAM_MARKS',
+          createdAt: { gte: tenMinutesAgo },
+        },
+        select: { recipientId: true, metadata: true },
+      });
+
+      const recentSet = new Set<string>();
+      for (const notif of recentNotifications) {
+        const meta: any = notif.metadata;
+        if (meta && meta.studentId && meta.subjectId && meta.examName && meta.marksObtained !== undefined) {
+          recentSet.add(`${notif.recipientId}_${meta.studentId}_${meta.subjectId}_${meta.examName}_${meta.marksObtained}`);
+        }
+      }
+
+      // 5. Build notifications to create
+      const notificationsToCreate: Array<{
+        tenantId: string;
+        recipientId: string;
+        title: string;
+        message: string;
+        type: string;
+        metadata: any;
+      }> = [];
+
+      for (const entry of validEntries) {
+        const student = studentMap.get(entry.studentId);
+        if (!student) continue;
+
+        const studentName = student.user?.name || 'Student';
+        const numScore = Number(entry.marksObtained);
+        const scoreDisplay = maxMarks ? `${numScore} / ${maxMarks}` : `${numScore}`;
+
+        // Collect parent user IDs
+        const recipientUserIds = new Set<string>();
+        if (student.parentProfile?.userId) {
+          recipientUserIds.add(student.parentProfile.userId);
+        }
+        if (student.parentStudents && student.parentStudents.length > 0) {
+          for (const ps of student.parentStudents) {
+            if (ps.parent?.userId) {
+              recipientUserIds.add(ps.parent.userId);
+            }
+          }
+        }
+
+        // Fallback: If no parent profile mapped yet, send to student user account
+        if (recipientUserIds.size === 0 && student.user?.id) {
+          recipientUserIds.add(student.user.id);
+        }
+
+        for (const recipientId of recipientUserIds) {
+          const uniqueKey = `${recipientId}_${student.id}_${subjectId}_${examName}_${numScore}`;
+          if (recentSet.has(uniqueKey)) {
+            continue; // Skip duplicate notification if same score sent recently
+          }
+
+          notificationsToCreate.push({
+            tenantId,
+            recipientId,
+            title: `📊 Marks Updated: ${subjectName}`,
+            message: `Marks updated for ${studentName} in ${subjectName} (${examName}): ${scoreDisplay}.${classLabel ? ` Class: ${classLabel}.` : ''}`,
+            type: 'EXAM_MARKS',
+            metadata: {
+              url: '/parent/exams',
+              studentId: student.id,
+              studentName,
+              subjectId,
+              subjectName,
+              examName,
+              marksObtained: numScore,
+              maxMarks,
+              type: 'EXAM_MARKS',
+            },
+          });
+
+          recentSet.add(uniqueKey);
+        }
+      }
+
+      if (notificationsToCreate.length > 0) {
+        await this.prisma.notification.createMany({
+          data: notificationsToCreate,
+        });
+        console.log(`[ExamsService] Dispatched ${notificationsToCreate.length} exam marks push notifications for ${subjectName} (${examName})`);
+      }
+    } catch (err: any) {
+      console.warn('[ExamsService] sendMarksUpdatedNotifications error:', err?.message || err);
+    }
   }
 }

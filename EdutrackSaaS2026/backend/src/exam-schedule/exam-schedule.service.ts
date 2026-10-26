@@ -191,6 +191,233 @@ export class ExamScheduleService {
         }
       });
     }
+
+    // Trigger class-wise push notifications to assigned teachers, parents, and students
+    await this.notifyExamRecipients(schedule, actionName);
+  }
+
+  /**
+   * Dispatches push notifications for exam scheduling to teachers, parents, and students of the scheduled class.
+   * Restricts notifications strictly to recipients belonging to this class/section and tenant.
+   * Avoids duplicate notifications on rapid edits or re-saves.
+   */
+  private async notifyExamRecipients(schedule: any, actionName: 'scheduled' | 'updated' | 'cancelled') {
+    try {
+      const tenantId = schedule.tenantId || this.getTenantId();
+
+      // Only notify students & parents if the exam is published or cancelled
+      if (schedule.status === 'Draft' && actionName !== 'cancelled') {
+        return;
+      }
+
+      const fullSchedule = await this.prisma.examSchedule.findUnique({
+        where: { id: schedule.id },
+        include: {
+          classSection: {
+            include: {
+              class: true,
+              section: true,
+            },
+          },
+          subject: true,
+          tenant: true,
+        },
+      });
+
+      if (!fullSchedule || fullSchedule.tenantId !== tenantId) return;
+
+      const schoolName = fullSchedule.tenant?.name || 'School';
+      const className = fullSchedule.classSection
+        ? `${fullSchedule.classSection.class?.name || ''} - ${fullSchedule.classSection.section?.name || ''}`.replace(/^ - | - $/g, '')
+        : 'Class';
+      const subjName = fullSchedule.subject?.name || 'Subject';
+      const dateStr = new Date(fullSchedule.examDate).toLocaleDateString('en-US', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+      const timings = `${fullSchedule.startTime} - ${fullSchedule.endTime}`;
+      const hallStr = fullSchedule.examHall ? ` | Room: ${fullSchedule.examHall}` : '';
+      const instructionsSnippet = fullSchedule.instructions
+        ? ` Note: ${fullSchedule.instructions.substring(0, 100)}`
+        : '';
+
+      // Check for duplicate notifications sent within the last 15 minutes for this schedule & action
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+      const recentNotifs = await this.prisma.notification.findMany({
+        where: {
+          tenantId,
+          type: 'EXAM_SCHEDULE',
+          createdAt: { gte: fifteenMinutesAgo },
+        },
+        select: { recipientId: true, metadata: true },
+      });
+
+      const recentRecipientSet = new Set<string>();
+      for (const n of recentNotifs) {
+        const meta: any = n.metadata;
+        if (meta?.examScheduleId === schedule.id && meta?.action === actionName) {
+          recentRecipientSet.add(n.recipientId);
+        }
+      }
+
+      // 1. Resolve Students of this class/section
+      const students = await this.prisma.studentProfile.findMany({
+        where: { tenantId, classSectionId: fullSchedule.classSectionId },
+        select: { userId: true },
+      });
+      const studentIds = Array.from(new Set(students.map(s => s.userId).filter(Boolean)))
+        .filter(id => !recentRecipientSet.has(id));
+
+      // 2. Resolve Parents of students in this class/section
+      const studentParents = await this.prisma.studentProfile.findMany({
+        where: { tenantId, classSectionId: fullSchedule.classSectionId },
+        select: {
+          parentProfile: { select: { userId: true } },
+          parentStudents: { select: { parent: { select: { userId: true } } } },
+        },
+      });
+      const parentIdsList: string[] = [];
+      for (const sp of studentParents) {
+        if (sp.parentProfile?.userId) parentIdsList.push(sp.parentProfile.userId);
+        if (sp.parentStudents) {
+          for (const ps of sp.parentStudents) {
+            if (ps.parent?.userId) parentIdsList.push(ps.parent.userId);
+          }
+        }
+      }
+      const parentIds = Array.from(new Set(parentIdsList.filter(Boolean)))
+        .filter(id => !recentRecipientSet.has(id));
+
+      // 3. Resolve Teachers assigned to this class/section & subject
+      const cs = await this.prisma.classSection.findUnique({
+        where: { id: fullSchedule.classSectionId },
+        select: {
+          teacher: { select: { userId: true } },
+          teacherAssigns: {
+            where: {
+              OR: [
+                { subjectId: fullSchedule.subjectId },
+                { subjectId: undefined },
+              ],
+            },
+            select: { teacher: { select: { userId: true } } },
+          },
+        },
+      });
+      const teacherIdsList: string[] = [];
+      if (cs?.teacher?.userId) teacherIdsList.push(cs.teacher.userId);
+      if (cs?.teacherAssigns) {
+        for (const ta of cs.teacherAssigns) {
+          if (ta.teacher?.userId) teacherIdsList.push(ta.teacher.userId);
+        }
+      }
+      const teacherIds = Array.from(new Set(teacherIdsList.filter(Boolean)))
+        .filter(id => !recentRecipientSet.has(id));
+
+      const notifRecords: any[] = [];
+
+      // Construct Parent notifications
+      for (const pId of parentIds) {
+        const title = actionName === 'cancelled'
+          ? `❌ Exam Cancelled: ${fullSchedule.examName}`
+          : actionName === 'updated'
+          ? `📢 Exam Rescheduled: ${fullSchedule.examName}`
+          : `📝 Exam Scheduled: ${fullSchedule.examName}`;
+
+        const message = actionName === 'cancelled'
+          ? `${schoolName}: The ${fullSchedule.examName} (${subjName}) for ${className} on ${dateStr} has been cancelled.`
+          : actionName === 'updated'
+          ? `${schoolName}: ${fullSchedule.examName} (${subjName}) for ${className} has been rescheduled to ${dateStr} (${timings})${hallStr}.${instructionsSnippet}`
+          : `${schoolName}: ${fullSchedule.examName} (${subjName}) for ${className} is scheduled on ${dateStr} (${timings})${hallStr}.${instructionsSnippet}`;
+
+        notifRecords.push({
+          title,
+          message,
+          type: 'EXAM_SCHEDULE',
+          url: '/parent/exams',
+          recipientId: pId,
+          tenantId,
+          metadata: {
+            examScheduleId: schedule.id,
+            action: actionName,
+            classSectionId: fullSchedule.classSectionId,
+            examDate: fullSchedule.examDate,
+            startTime: fullSchedule.startTime,
+          },
+        });
+      }
+
+      // Construct Student notifications
+      for (const sId of studentIds) {
+        const title = actionName === 'cancelled'
+          ? `❌ Exam Cancelled: ${fullSchedule.examName}`
+          : actionName === 'updated'
+          ? `📢 Exam Rescheduled: ${fullSchedule.examName}`
+          : `📝 Exam Schedule: ${fullSchedule.examName}`;
+
+        const message = actionName === 'cancelled'
+          ? `${fullSchedule.examName} for ${subjName} on ${dateStr} has been cancelled.`
+          : actionName === 'updated'
+          ? `${fullSchedule.examName} (${subjName}) has been rescheduled to ${dateStr} (${timings})${hallStr}.${instructionsSnippet}`
+          : `${fullSchedule.examName} (${subjName}) is scheduled on ${dateStr} (${timings})${hallStr}.${instructionsSnippet}`;
+
+        notifRecords.push({
+          title,
+          message,
+          type: 'EXAM_SCHEDULE',
+          url: '/parent/exams',
+          recipientId: sId,
+          tenantId,
+          metadata: {
+            examScheduleId: schedule.id,
+            action: actionName,
+            classSectionId: fullSchedule.classSectionId,
+            examDate: fullSchedule.examDate,
+            startTime: fullSchedule.startTime,
+          },
+        });
+      }
+
+      // Construct Teacher notifications
+      for (const tId of teacherIds) {
+        const title = actionName === 'cancelled'
+          ? `❌ Exam Duty Cancelled: ${fullSchedule.examName}`
+          : actionName === 'updated'
+          ? `📢 Exam Schedule Updated: ${fullSchedule.examName}`
+          : `📋 Exam Scheduled: ${fullSchedule.examName}`;
+
+        const message = actionName === 'cancelled'
+          ? `Exam duty for ${className} - ${subjName} on ${dateStr} has been cancelled.`
+          : actionName === 'updated'
+          ? `Exam duty updated for ${className} - ${subjName} on ${dateStr} (${timings})${hallStr}.`
+          : `Exam scheduled for ${className} - ${subjName} on ${dateStr} (${timings})${hallStr}.`;
+
+        notifRecords.push({
+          title,
+          message,
+          type: 'EXAM_SCHEDULE',
+          url: '/dashboard/exams/schedule',
+          recipientId: tId,
+          tenantId,
+          metadata: {
+            examScheduleId: schedule.id,
+            action: actionName,
+            classSectionId: fullSchedule.classSectionId,
+            examDate: fullSchedule.examDate,
+            startTime: fullSchedule.startTime,
+          },
+        });
+      }
+
+      if (notifRecords.length > 0) {
+        await this.prisma.notification.createMany({
+          data: notifRecords,
+        });
+      }
+    } catch (err: any) {
+      console.warn('[ExamScheduleService] Failed to dispatch exam push notifications:', err?.message || err);
+    }
   }
 
   // --- CRUD Core APIs ---

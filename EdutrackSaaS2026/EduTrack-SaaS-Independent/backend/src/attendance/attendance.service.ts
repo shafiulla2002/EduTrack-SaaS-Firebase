@@ -710,6 +710,12 @@ export class AttendanceService {
       return { classVal, sectionVal, dateStr: data.dateStr || data.date };
     }, { timeout: 45000 });
 
+    // Non-blocking absent student push notification dispatch to parents
+    if (absentStudentIds && absentStudentIds.length > 0) {
+      this.sendAbsentNotifications(tenantId, classVal, sectionVal, dateStr, absentStudentIds)
+        .catch((err) => console.warn('[AttendanceService] Absent notification dispatch error:', err?.message || err));
+    }
+
     // Run outside the database write lock transaction to avoid transaction deadlocks
     return this.getSessionData(result.classVal, result.sectionVal, result.dateStr);
   }
@@ -943,5 +949,140 @@ export class AttendanceService {
     const present = records.filter(r => r.status === AttendanceStatus.PRESENT).length;
     const absent = records.filter(r => r.status === AttendanceStatus.ABSENT).length;
     return { total, present, absent };
+  }
+
+  /**
+   * Dispatches push notifications to parents when a student is marked Absent.
+   * Runs asynchronously and non-blockingly without disturbing attendance save.
+   */
+  private async sendAbsentNotifications(
+    tenantId: string,
+    classVal: string,
+    sectionVal: string,
+    dateStr: string,
+    absentStudentIds: string[],
+  ): Promise<void> {
+    try {
+      const todayStr = getTodayDateString();
+      if (dateStr !== todayStr) {
+        return; // Only dispatch real-time push alerts for today's attendance to avoid alerting on historical edits
+      }
+
+      const uniqueAbsentIds = Array.from(new Set(absentStudentIds.filter(Boolean)));
+      if (uniqueAbsentIds.length === 0) {
+        return;
+      }
+
+      // 1. Fetch absent student profiles with linked parent user IDs
+      const students = await this.prisma.studentProfile.findMany({
+        where: {
+          id: { in: uniqueAbsentIds },
+          tenantId,
+        },
+        select: {
+          id: true,
+          user: { select: { id: true, name: true } },
+          parentProfile: { select: { userId: true } },
+          parentStudents: {
+            select: {
+              parent: { select: { userId: true } },
+            },
+          },
+        },
+      });
+
+      if (!students || students.length === 0) {
+        return;
+      }
+
+      // 2. Query today's existing attendance notifications to prevent duplicate alerts if attendance is saved multiple times
+      const [year, month, day] = todayStr.split('-').map(Number);
+      const startOfDayDate = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+
+      const existingNotifications = await this.prisma.notification.findMany({
+        where: {
+          tenantId,
+          type: 'ATTENDANCE_ALERT',
+          createdAt: { gte: startOfDayDate },
+        },
+        select: { recipientId: true, metadata: true },
+      });
+
+      const alreadySentSet = new Set<string>();
+      for (const notif of existingNotifications) {
+        const meta: any = notif.metadata;
+        if (meta && meta.studentId && meta.date) {
+          alreadySentSet.add(`${notif.recipientId}_${meta.studentId}_${meta.date}`);
+        }
+      }
+
+      // 3. Assemble notification payloads
+      const classLabel = sectionVal ? `${classVal}-${sectionVal}` : classVal;
+      const notificationsToCreate: Array<{
+        tenantId: string;
+        recipientId: string;
+        title: string;
+        message: string;
+        type: string;
+        metadata: any;
+      }> = [];
+
+      for (const student of students) {
+        const studentName = student.user?.name || 'Student';
+
+        // Gather all parent user IDs linked to this student
+        const recipientUserIds = new Set<string>();
+        if (student.parentProfile?.userId) {
+          recipientUserIds.add(student.parentProfile.userId);
+        }
+        if (student.parentStudents && student.parentStudents.length > 0) {
+          for (const ps of student.parentStudents) {
+            if (ps.parent?.userId) {
+              recipientUserIds.add(ps.parent.userId);
+            }
+          }
+        }
+
+        // Fallback: If no parent profile is mapped yet, send to student user account
+        if (recipientUserIds.size === 0 && student.user?.id) {
+          recipientUserIds.add(student.user.id);
+        }
+
+        for (const recipientId of recipientUserIds) {
+          const uniqueKey = `${recipientId}_${student.id}_${dateStr}`;
+          if (alreadySentSet.has(uniqueKey)) {
+            continue; // Already notified today, skip duplicate
+          }
+
+          notificationsToCreate.push({
+            tenantId,
+            recipientId,
+            title: 'Attendance Alert: Absent',
+            message: `Alert: ${studentName} was marked Absent today in Class ${classLabel}.`,
+            type: 'ATTENDANCE_ALERT',
+            metadata: {
+              url: '/parent/attendance',
+              studentId: student.id,
+              studentName,
+              class: classVal,
+              section: sectionVal,
+              date: dateStr,
+              status: 'ABSENT',
+            },
+          });
+
+          alreadySentSet.add(uniqueKey);
+        }
+      }
+
+      if (notificationsToCreate.length > 0) {
+        await this.prisma.notification.createMany({
+          data: notificationsToCreate,
+        });
+        console.log(`[AttendanceService] Dispatched ${notificationsToCreate.length} absent attendance push notifications for Class ${classLabel} (${dateStr})`);
+      }
+    } catch (err: any) {
+      console.warn('[AttendanceService] sendAbsentNotifications error:', err?.message || err);
+    }
   }
 }

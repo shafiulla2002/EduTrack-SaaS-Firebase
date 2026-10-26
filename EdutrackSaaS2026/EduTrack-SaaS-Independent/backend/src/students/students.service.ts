@@ -3095,6 +3095,216 @@ export class StudentsService implements OnModuleInit {
       }))
     };
   }
+
+  /**
+   * Dispatches fee due push notifications to parents of students with outstanding dues.
+   * Fully paid students (balanceDue <= 0) are strictly excluded.
+   */
+  async notifyFeeDue(
+    params: {
+      studentIds?: string[];
+      classId?: string;
+      className?: string;
+      sectionId?: string;
+      sectionName?: string;
+      academicYearId?: string;
+      financialStatus?: string;
+      search?: string;
+    },
+    reqTenantId?: string,
+  ) {
+    const tenantId = reqTenantId || this.getTenantId();
+
+    const studentDueMap = new Map<string, { studentName: string; classLabel: string; balanceDue: number }>();
+
+    if (params.studentIds && params.studentIds.length > 0) {
+      // 1A. Direct student IDs supplied
+      const targetStudentIds = Array.from(new Set(params.studentIds.filter(Boolean)));
+      const billingMap = await this.getStudentsBillingInfoBatch(targetStudentIds, tenantId, params.academicYearId);
+
+      const studentProfiles = await this.prisma.studentProfile.findMany({
+        where: { id: { in: targetStudentIds }, tenantId },
+        include: {
+          user: { select: { name: true } },
+          classSection: {
+            include: {
+              class: { select: { name: true } },
+              section: { select: { name: true } },
+            },
+          },
+        },
+      });
+
+      for (const sp of studentProfiles) {
+        const billing = billingMap[sp.id];
+        const balanceDue = Number(billing?.totalPendingBalance ?? 0);
+        // STRICT RULE: Only students with balanceDue > 0 get notified!
+        if (balanceDue > 0) {
+          const classLabel = sp.classSection
+            ? `${sp.classSection.class?.name || ''} - ${sp.classSection.section?.name || ''}`.replace(/^ - | - $/g, '')
+            : '';
+          studentDueMap.set(sp.id, {
+            studentName: sp.user?.name || 'Student',
+            classLabel,
+            balanceDue,
+          });
+        }
+      }
+    } else {
+      // 1B. Filter-based resolution
+      const results = await this.searchStudents(
+        params.search,
+        params.classId,
+        params.sectionId,
+        params.academicYearId,
+        1,
+        10000,
+        params.financialStatus,
+        params.className,
+        params.sectionName,
+      );
+
+      const rawList: any[] = Array.isArray(results) ? results : ((results as any)?.data || []);
+      for (const s of rawList) {
+        const balanceDue = Number(s.balanceDue ?? 0);
+        // STRICT RULE: Fully paid students (balanceDue <= 0) are strictly excluded!
+        if (balanceDue > 0) {
+          const classLabel = s.classSection
+            ? `${s.classSection.class?.name || s.class || ''} - ${s.classSection.section?.name || s.section || ''}`.replace(/^ - | - $/g, '')
+            : (s.class && s.section ? `${s.class} - ${s.section}` : s.class || '');
+          studentDueMap.set(s.id, {
+            studentName: s.name || s.user?.name || 'Student',
+            classLabel,
+            balanceDue,
+          });
+        }
+      }
+    }
+
+    const dueStudentIds = Array.from(studentDueMap.keys());
+    if (dueStudentIds.length === 0) {
+      return {
+        success: true,
+        notifiedCount: 0,
+        dueStudentsCount: 0,
+        message: 'No students with pending fee dues found in the current selection.',
+      };
+    }
+
+    // 2. Fetch linked parents for students with dues
+    const studentsWithParents = await this.prisma.studentProfile.findMany({
+      where: {
+        id: { in: dueStudentIds },
+        tenantId,
+      },
+      select: {
+        id: true,
+        user: { select: { id: true, name: true } },
+        parentProfile: { select: { userId: true } },
+        parentStudents: {
+          select: {
+            parent: { select: { userId: true } },
+          },
+        },
+      },
+    });
+
+    // 3. Query recent notifications (within last 30 minutes) to avoid accidental rapid duplicates
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const recentNotifs = await this.prisma.notification.findMany({
+      where: {
+        tenantId,
+        type: 'FEE_REMINDER',
+        createdAt: { gte: thirtyMinutesAgo },
+      },
+      select: { recipientId: true, metadata: true },
+    });
+
+    const recentNotifSet = new Set<string>();
+    for (const notif of recentNotifs) {
+      const meta: any = notif.metadata;
+      if (meta && meta.studentId) {
+        recentNotifSet.add(`${notif.recipientId}_${meta.studentId}`);
+      }
+    }
+
+    // 4. Assemble notification records
+    const notificationsToCreate: Array<{
+      tenantId: string;
+      recipientId: string;
+      title: string;
+      message: string;
+      type: string;
+      metadata: any;
+    }> = [];
+
+    const alreadyAddedKeys = new Set<string>();
+
+    for (const sp of studentsWithParents) {
+      const dueInfo = studentDueMap.get(sp.id);
+      if (!dueInfo) continue;
+
+      const formattedDue = `₹${Math.round(dueInfo.balanceDue).toLocaleString('en-IN')}`;
+      const title = '🔔 Fee Payment Due Reminder';
+      const message = `Dear Parent, a fee balance of ${formattedDue} is pending for your child ${dueInfo.studentName}${dueInfo.classLabel ? ` (${dueInfo.classLabel})` : ''}. Kindly clear the dues at your earliest convenience.`;
+
+      // Gather parent user IDs
+      const recipientUserIds = new Set<string>();
+      if (sp.parentProfile?.userId) {
+        recipientUserIds.add(sp.parentProfile.userId);
+      }
+      if (sp.parentStudents && sp.parentStudents.length > 0) {
+        for (const ps of sp.parentStudents) {
+          if (ps.parent?.userId) {
+            recipientUserIds.add(ps.parent.userId);
+          }
+        }
+      }
+
+      // Fallback: If no parent profile mapped yet, send to student user account
+      if (recipientUserIds.size === 0 && sp.user?.id) {
+        recipientUserIds.add(sp.user.id);
+      }
+
+      for (const recipientId of recipientUserIds) {
+        const uniqueKey = `${recipientId}_${sp.id}`;
+        if (recentNotifSet.has(uniqueKey) || alreadyAddedKeys.has(uniqueKey)) {
+          continue; // Skip duplicate if notified recently
+        }
+
+        notificationsToCreate.push({
+          tenantId,
+          recipientId,
+          title,
+          message,
+          type: 'FEE_REMINDER',
+          metadata: {
+            url: '/parent/fees',
+            studentId: sp.id,
+            studentName: dueInfo.studentName,
+            balanceDue: dueInfo.balanceDue,
+            type: 'FEE_REMINDER',
+          },
+        });
+
+        alreadyAddedKeys.add(uniqueKey);
+      }
+    }
+
+    if (notificationsToCreate.length > 0) {
+      await this.prisma.notification.createMany({
+        data: notificationsToCreate,
+      });
+      console.log(`[StudentsService] Dispatched ${notificationsToCreate.length} fee due push notifications for ${dueStudentIds.length} students`);
+    }
+
+    return {
+      success: true,
+      notifiedCount: notificationsToCreate.length,
+      dueStudentsCount: dueStudentIds.length,
+      message: `Dispatched fee due push notifications to parents of ${dueStudentIds.length} students (${notificationsToCreate.length} parent devices notified).`,
+    };
+  }
 }
 
 function getNextClass(currentClass: string): string {
