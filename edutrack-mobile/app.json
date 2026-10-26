@@ -21,7 +21,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 4
+      "versionCode": 4,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ]
     },
     "web": {
       "output": "static",

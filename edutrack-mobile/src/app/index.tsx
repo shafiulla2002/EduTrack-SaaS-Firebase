@@ -9,6 +9,8 @@ import {
   Platform,
   Linking,
   AppState,
+  PermissionsAndroid,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, WebViewNavigation } from 'react-native-webview';
@@ -303,6 +305,9 @@ export default function EduTrackMobileApp() {
         console.log('[AUTH_BRIDGE] Synchronizing native launcher badge count:', count);
         await updateAppBadgeCount(count);
         await SecureStore.setItemAsync(LAST_BADGE_COUNT_KEY, String(count)).catch(() => {});
+      } else if (data?.type === 'EDUTRACK_REQUEST_CAMERA') {
+        console.log('[CAMERA_BRIDGE] Received camera permission request from Teacher Portal');
+        await ensureCameraPermission();
       } else if (data?.type === 'EDUTRACK_LOGOUT') {
         console.log('[AUTH_BRIDGE] User logged out, cleaning up device push tokens and badge');
         await unregisterPushTokenFromBackend(data.token);
@@ -316,6 +321,75 @@ export default function EduTrackMobileApp() {
         await SecureStore.deleteItemAsync(LAST_AUTHENTICATED_URL_KEY);
       }
     } catch {}
+  };
+
+  // Camera Permission Bridge for Teacher Attendance QR Scanning
+  const ensureCameraPermission = async (isRetry = false): Promise<boolean> => {
+    if (Platform.OS !== 'android') return true;
+    try {
+      const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+      if (hasPermission) {
+        if (webViewRef.current) {
+          webViewRef.current.injectJavaScript(`
+            try {
+              window.__EDUTRACK_CAMERA_GRANTED__ = true;
+              window.dispatchEvent(new CustomEvent('edutrack_camera_granted'));
+            } catch(e) {}
+            true;
+          `);
+        }
+        return true;
+      }
+
+      const status = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        {
+          title: 'Camera Access for Attendance QR',
+          message: 'CS EduTrack requires camera permission so teachers can scan the attendance QR code.',
+          buttonPositive: 'Allow Camera',
+          buttonNegative: 'Deny',
+        }
+      );
+
+      if (status === PermissionsAndroid.RESULTS.GRANTED) {
+        if (webViewRef.current) {
+          webViewRef.current.injectJavaScript(`
+            try {
+              window.__EDUTRACK_CAMERA_GRANTED__ = true;
+              window.dispatchEvent(new CustomEvent('edutrack_camera_granted'));
+            } catch(e) {}
+            true;
+          `);
+        }
+        return true;
+      }
+
+      // If denied, prompt until allowed as requested
+      Alert.alert(
+        'Camera Permission Required',
+        'Camera access is required for teachers to scan attendance QR codes. Please allow camera permission to proceed.',
+        [
+          {
+            text: 'Allow Camera',
+            onPress: () => {
+              if (status === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+                Linking.openSettings();
+              } else {
+                ensureCameraPermission(true);
+              }
+            },
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+      return false;
+    } catch (err) {
+      console.warn('Camera permission request failed:', err);
+      return false;
+    }
   };
 
   const handleShouldStartLoad = (request: { url: string }) => {
@@ -365,6 +439,9 @@ export default function EduTrackMobileApp() {
             sharedCookiesEnabled={true}
             allowFileAccess={true}
             allowsInlineMediaPlayback={true}
+            mediaPlaybackRequiresUserAction={false}
+            mediaCapturePermissionGrantType="grant"
+            geolocationEnabled={true}
             pullToRefreshEnabled={true}
             showsVerticalScrollIndicator={false}
             showsHorizontalScrollIndicator={false}

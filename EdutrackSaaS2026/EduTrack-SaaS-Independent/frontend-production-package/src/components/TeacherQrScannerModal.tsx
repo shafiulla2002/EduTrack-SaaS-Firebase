@@ -28,13 +28,27 @@ export default function TeacherQrScannerModal({
   onClose,
   onAttendanceSuccess,
 }: TeacherQrScannerModalProps) {
-  const [scannerState, setScannerState] = useState<'IDLE' | 'SCANNING' | 'VALIDATING' | 'SUCCESS' | 'ERROR'>('IDLE');
+  const [scannerState, setScannerState] = useState<
+    'IDLE' | 'PERMISSION_REQUIRED' | 'SCANNING' | 'VALIDATING' | 'SUCCESS' | 'ERROR'
+  >('IDLE');
   const [errorMessage, setErrorMessage] = useState('');
   const [successData, setSuccessData] = useState<any>(null);
   const [locationStatus, setLocationStatus] = useState<string>('Requesting location...');
   const [coords, setCoords] = useState<{ lat?: number; lng?: number }>({});
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const isScanningRef = useRef(false);
+
+  // Listen for native mobile app camera permission event
+  useEffect(() => {
+    const handleNativeCameraGranted = () => {
+      console.log('[TEACHER_SCANNER] Native camera permission granted, starting scanner...');
+      startScanner();
+    };
+    window.addEventListener('edutrack_camera_granted', handleNativeCameraGranted);
+    return () => {
+      window.removeEventListener('edutrack_camera_granted', handleNativeCameraGranted);
+    };
+  }, []);
 
   // Request Geolocation early when modal opens
   useEffect(() => {
@@ -88,12 +102,49 @@ export default function TeacherQrScannerModal({
     }
   };
 
+  const requestCameraAccess = async (): Promise<boolean> => {
+    // Notify native mobile app bridge if inside React Native WebView
+    if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
+      try {
+        (window as any).ReactNativeWebView.postMessage(
+          JSON.stringify({
+            type: 'EDUTRACK_REQUEST_CAMERA',
+          })
+        );
+      } catch (e) {}
+    }
+
+    // Direct browser/webview getUserMedia check
+    if (navigator?.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+        });
+        // Immediately stop test tracks so html5-qrcode can acquire cleanly
+        stream.getTracks().forEach((track) => track.stop());
+        return true;
+      } catch (err: any) {
+        console.warn('Camera getUserMedia check error:', err);
+        return false;
+      }
+    }
+    return true;
+  };
+
   const startScanner = async () => {
-    setScannerState('SCANNING');
     setErrorMessage('');
 
-    // Wait for DOM node to be present
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Check / prompt camera permission
+    const hasPermission = await requestCameraAccess();
+    if (!hasPermission) {
+      setScannerState('PERMISSION_REQUIRED');
+      return;
+    }
+
+    setScannerState('SCANNING');
+
+    // Wait for DOM layout
+    await new Promise((resolve) => setTimeout(resolve, 250));
     const container = document.getElementById('qr-reader-container');
     if (!container) return;
 
@@ -109,33 +160,63 @@ export default function TeacherQrScannerModal({
         aspectRatio: 1.0,
       };
 
-      await html5QrCode.start(
-        { facingMode: 'environment' },
-        config,
-        async (decodedText) => {
-          if (!isScanningRef.current) return;
-          isScanningRef.current = false;
+      const onScanSuccess = async (decodedText: string) => {
+        if (!isScanningRef.current) return;
+        isScanningRef.current = false;
 
-          // Stop camera stream immediately upon detection
-          try {
-            await html5QrCode.stop();
-          } catch {}
+        try {
+          await html5QrCode.stop();
+        } catch {}
 
-          handleQrScanned(decodedText);
-        },
-        (errorMessage) => {
-          // Frame decode pass (silent)
-        },
-      );
+        handleQrScanned(decodedText);
+      };
+
+      // Try environment (back) camera first
+      try {
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          config,
+          onScanSuccess,
+          () => {}
+        );
+      } catch (envErr) {
+        console.warn('FacingMode environment failed, checking device cameras list:', envErr);
+        const cameras = await Html5Qrcode.getCameras();
+        if (cameras && cameras.length > 0) {
+          const backCam =
+            cameras.find(
+              (c) =>
+                c.label.toLowerCase().includes('back') ||
+                c.label.toLowerCase().includes('rear') ||
+                c.label.toLowerCase().includes('environment')
+            ) || cameras[cameras.length - 1];
+
+          await html5QrCode.start(
+            backCam.id,
+            config,
+            onScanSuccess,
+            () => {}
+          );
+        } else {
+          throw envErr;
+        }
+      }
 
       isScanningRef.current = true;
     } catch (err: any) {
       console.error('Camera start error:', err);
-      setScannerState('ERROR');
-      if (err.name === 'NotAllowedError' || String(err).includes('Permission')) {
-        setErrorMessage('Camera permission is required to scan the attendance QR code.');
+      if (
+        err?.name === 'NotAllowedError' ||
+        err?.name === 'PermissionDeniedError' ||
+        String(err).toLowerCase().includes('permission')
+      ) {
+        setScannerState('PERMISSION_REQUIRED');
       } else {
-        setErrorMessage('Unable to start camera. Please check your camera settings or try on mobile.');
+        setScannerState('ERROR');
+        setErrorMessage(
+          err?.message ||
+            'Unable to start camera. Please verify camera settings and try again.'
+        );
       }
     }
   };
@@ -208,34 +289,89 @@ export default function TeacherQrScannerModal({
 
         {/* Content Body */}
         <div className="p-6 flex flex-col items-center justify-center overflow-y-auto">
-          {scannerState === 'SCANNING' && (
-            <div className="w-full flex flex-col items-center">
-              {/* Scanner Viewfinder Box */}
-              <div className="relative w-full max-w-[280px] aspect-square rounded-2xl overflow-hidden bg-black shadow-inner border-2 border-dashed border-blue-400">
-                <div id="qr-reader-container" className="w-full h-full object-cover"></div>
-                {/* Visual Target Reticle */}
-                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                  <div className="w-48 h-48 border-2 border-[#2E5BFF] rounded-xl relative shadow-[0_0_15px_rgba(46,91,255,0.4)] animate-pulse">
-                    <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-[#2E5BFF] -mt-1 -ml-1"></div>
-                    <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-[#2E5BFF] -mt-1 -mr-1"></div>
-                    <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-[#2E5BFF] -mb-1 -ml-1"></div>
-                    <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-[#2E5BFF] -mb-1 -mr-1"></div>
-                  </div>
+          {/* Scanner Viewfinder Box - Kept in DOM to avoid race conditions */}
+          <div className={`w-full flex flex-col items-center ${scannerState === 'SCANNING' ? 'block' : 'hidden'}`}>
+            <div className="relative w-full max-w-[280px] aspect-square rounded-2xl overflow-hidden bg-black shadow-inner border-2 border-dashed border-blue-400">
+              <div id="qr-reader-container" className="w-full h-full object-cover"></div>
+              {/* Visual Target Reticle */}
+              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                <div className="w-48 h-48 border-2 border-[#2E5BFF] rounded-xl relative shadow-[0_0_15px_rgba(46,91,255,0.4)] animate-pulse">
+                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-[#2E5BFF] -mt-1 -ml-1"></div>
+                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-[#2E5BFF] -mt-1 -mr-1"></div>
+                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-[#2E5BFF] -mb-1 -ml-1"></div>
+                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-[#2E5BFF] -mb-1 -mr-1"></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 text-center">
+              <p className="text-xs font-semibold text-slate-700">
+                Position the school attendance QR inside the frame
+              </p>
+              <div className="flex items-center justify-center gap-1.5 mt-2 text-[11px] text-slate-400">
+                <MapPin className="w-3.5 h-3.5 text-blue-500" />
+                <span>{locationStatus}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* PERMISSION REQUIRED SCREEN */}
+          {scannerState === 'PERMISSION_REQUIRED' && (
+            <div className="py-4 w-full flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-3xl bg-blue-50 border border-blue-200 text-[#2E5BFF] flex items-center justify-center shadow-lg shadow-blue-500/10">
+                  <Camera className="w-8 h-8" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold border-2 border-white">
+                  !
                 </div>
               </div>
 
-              <div className="mt-4 text-center">
-                <p className="text-xs font-semibold text-slate-700">
-                  Position the school attendance QR inside the frame
+              <div>
+                <h4 className="text-base font-bold text-slate-900">Camera Permission Required</h4>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs leading-relaxed">
+                  CS EduTrack requires camera access so you can scan the attendance QR code. Please allow camera access to continue.
                 </p>
-                <div className="flex items-center justify-center gap-1.5 mt-2 text-[11px] text-slate-400">
-                  <MapPin className="w-3.5 h-3.5 text-blue-500" />
-                  <span>{locationStatus}</span>
+              </div>
+
+              {/* Step-by-step guidance card */}
+              <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-left text-xs text-slate-600 space-y-2 leading-relaxed">
+                <div className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                  <ShieldCheck className="w-4 h-4 text-[#2E5BFF]" /> How to enable camera:
                 </div>
+                <div className="text-[11px] text-slate-600 space-y-1">
+                  <p>1. Tap the <strong>Allow Camera Access</strong> button below.</p>
+                  <p>2. When prompted by your phone or browser, select <strong>Allow</strong> or <strong>While using the app</strong>.</p>
+                  <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-200/60 mt-1.5">
+                    If blocked in your browser: tap the lock or camera icon in the URL bar, or open App Settings &gt; Permissions &gt; Camera.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 w-full mt-2">
+                <button
+                  type="button"
+                  onClick={startScanner}
+                  className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer active:scale-98"
+                >
+                  <Camera className="w-4 h-4" />
+                  Allow Camera Access
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cleanupScanner();
+                    onClose();
+                  }}
+                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}
 
+          {/* VALIDATING SCREEN */}
           {scannerState === 'VALIDATING' && (
             <div className="py-12 flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95">
               <div className="relative">
@@ -252,6 +388,7 @@ export default function TeacherQrScannerModal({
             </div>
           )}
 
+          {/* SUCCESS SCREEN */}
           {scannerState === 'SUCCESS' && successData && (
             <div className="py-4 w-full flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95 duration-200">
               <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center shadow-lg shadow-emerald-500/15">
@@ -329,6 +466,7 @@ export default function TeacherQrScannerModal({
             </div>
           )}
 
+          {/* ERROR SCREEN */}
           {scannerState === 'ERROR' && (
             <div className="py-6 w-full flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95">
               <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center">
@@ -338,7 +476,7 @@ export default function TeacherQrScannerModal({
               <div>
                 <h4 className="text-base font-bold text-slate-800">Scan Failed</h4>
                 <p className="text-xs text-rose-600 mt-1 max-w-xs leading-relaxed font-medium">
-                  {errorMessage || 'Unable to verify attendance QR.'}
+                  {errorMessage || 'Unable to start camera or verify attendance QR.'}
                 </p>
               </div>
 
