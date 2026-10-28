@@ -1146,11 +1146,12 @@ export class BillingService {
   async createInvoice(
     opportunityId: string,
     studentId: string,
-    selectedItems: { oliId: string; productId: string; amount: number }[],
+    selectedItems: { oliId: string; productId: string; amount: number; name?: string }[],
     paymentMethod: string,
     bankDetails?: any,
+    overrideTenantId?: string,
   ) {
-    const tenantId = this.getTenantId();
+    const tenantId = this.getTenantId(overrideTenantId);
 
     if (!selectedItems || selectedItems.length === 0) {
       throw new BadRequestException('No fee items selected for payment.');
@@ -1163,7 +1164,9 @@ export class BillingService {
 
     // Map string payment method to Prisma enum
     let method: PaymentMethod = PaymentMethod.CASH;
-    if (paymentMethod === 'GPAY_UPI' || paymentMethod === 'PHONEPE_UPI' || paymentMethod === 'UPI') {
+    if (paymentMethod === 'RAZORPAY') {
+      method = PaymentMethod.RAZORPAY;
+    } else if (paymentMethod === 'GPAY_UPI' || paymentMethod === 'PHONEPE_UPI' || paymentMethod === 'UPI') {
       method = PaymentMethod.UPI;
     } else if (paymentMethod === 'NET_BANKING' || paymentMethod === 'BANK_TRANSFER') {
       method = PaymentMethod.BANK_TRANSFER;
@@ -1172,18 +1175,25 @@ export class BillingService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const opportunity = await tx.opportunity.findUnique({
+      let opportunity = await tx.opportunity.findUnique({
         where: { id: opportunityId },
         include: { academicYear: true }
       });
-      if (!opportunity) {
-        throw new NotFoundException('Opportunity not found');
+      if (!opportunity && studentId) {
+        opportunity = await tx.opportunity.findFirst({
+          where: { studentId, tenantId },
+          include: { academicYear: true }
+        });
       }
+      if (!opportunity) {
+        throw new NotFoundException('Opportunity fee record not found');
+      }
+      const actualOppId = opportunity.id;
 
       // Create Invoice
       const invoice = await tx.invoice.create({
         data: {
-          opportunityId,
+          opportunityId: actualOppId,
           studentId,
           status: PaymentStatus.PAID,
           invoiceDate: new Date(),
@@ -1254,14 +1264,30 @@ export class BillingService {
             tenantId,
           });
         } else {
-          // Fetch product name
-          const p = await tx.product.findUnique({ where: { id: item.productId } });
-          const name = p ? p.name : 'School Fee Item';
+          // Fetch product name and safely check foreign key references
+          let name = (item as any).name || 'School Fee Item';
+          let validProductId: string | null = null;
+          let validOliId: string | null = null;
+
+          if (item.productId && item.productId !== 'public_fee' && item.productId !== 'razorpay_webhook') {
+            const p = await tx.product.findUnique({ where: { id: item.productId } });
+            if (p) {
+              name = p.name;
+              validProductId = p.id;
+            }
+          }
+
+          if (item.oliId && item.oliId !== 'public_fee' && item.oliId !== 'razorpay_webhook') {
+            const oli = await tx.opportunityLineItem.findUnique({ where: { id: item.oliId } });
+            if (oli) {
+              validOliId = oli.id;
+            }
+          }
 
           invoiceItemsToCreate.push({
             invoiceId: invoice.id,
-            opportunityLineItemId: item.oliId,
-            productId: item.productId,
+            opportunityLineItemId: validOliId,
+            productId: validProductId,
             name,
             amount: item.amount,
             tenantId,
@@ -1274,7 +1300,7 @@ export class BillingService {
       });
 
       // Recalculate Opportunity paid amount (Equivalent to Apex triggers)
-      await this.recalculatePaidAmount(opportunityId, tx);
+      await this.recalculatePaidAmount(actualOppId, tx);
 
       return invoice.id;
     }, { timeout: 30000 });
@@ -3589,7 +3615,35 @@ export class BillingService {
       },
     });
 
-    const parentPhone = student.fatherPhone || student.motherPhone || student.guardianPhone || student.user?.phone || '';
+    const rawParentPhone = student.fatherPhone || student.motherPhone || student.guardianPhone || student.user?.phone || '';
+    const cleanDigits = String(rawParentPhone).replace(/[^0-9]/g, '');
+    const cleanPhone = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+
+    let paymentLinkUrl = '';
+    try {
+      const plink = await razorpay.paymentLink.create({
+        amount: amountInPaise,
+        currency: 'INR',
+        accept_partial: false,
+        description: `School Fee - ${student.user?.name || 'Student'} (${student.classSection?.class?.name || ''})`.slice(0, 50),
+        customer: {
+          name: student.user?.name || 'Student',
+          contact: cleanPhone ? `+91${cleanPhone}` : undefined,
+          email: student.user?.email || undefined,
+        },
+        notify: { sms: false, email: false },
+        reminder_enable: false,
+        notes: {
+          tenantId,
+          studentId,
+          opportunityId,
+          orderId: order.id,
+        },
+      });
+      paymentLinkUrl = plink.short_url || '';
+    } catch (plErr: any) {
+      console.warn('Optional Razorpay payment link creation note:', plErr.message || plErr);
+    }
 
     return {
       orderId: order.id,
@@ -3600,9 +3654,10 @@ export class BillingService {
       isTestMode: tenant.razorpayIsTestMode ?? true,
       schoolName: tenant.schoolSetup?.schoolName || tenant.name,
       studentName: student.user?.name || 'Student',
-      parentPhone,
+      parentPhone: cleanPhone,
       studentRoll: student.rollNo || '',
       className: student.classSection?.class?.name || '',
+      paymentLinkUrl,
     };
   }
 
@@ -3610,7 +3665,7 @@ export class BillingService {
     tenantId: string,
     opportunityId: string,
     studentId: string,
-    items: { oliId: string; productId: string; amount: number }[],
+    items: { oliId: string; productId: string; amount: number; name?: string }[],
     razorpayOrderId: string,
     razorpayPaymentId: string,
     razorpaySignature: string,
@@ -3667,7 +3722,7 @@ export class BillingService {
       };
     }
 
-    // 4. Create and process invoice atomically
+    // 4. Create and process invoice atomically with tenant context
     const invoiceId = await this.createInvoice(
       opportunityId,
       studentId,
@@ -3679,6 +3734,7 @@ export class BillingService {
         bankIfsc: 'RAZORPAY',
         bankBranch: tenant.razorpayIsTestMode ? 'Test Mode' : 'Live Mode',
       },
+      tenantId,
     );
 
     // 5. Audit Razorpay Transaction Details on Invoice
@@ -3807,12 +3863,50 @@ export class BillingService {
 
     if (event === 'payment.captured' || event === 'order.paid') {
       const razorpayPaymentId = paymentEntity.id;
+      const razorpayOrderId = paymentEntity.order_id || '';
       const existing = await this.prisma.invoice.findFirst({
         where: { tenantId, razorpayPaymentId },
       });
       if (existing) {
         return { status: 'already_processed', invoiceId: existing.id };
       }
+
+      // If notes contains opportunityId and studentId, record the fee payment
+      const opportunityId = notes.opportunityId;
+      const studentId = notes.studentId;
+      if (opportunityId && studentId) {
+        try {
+          const paidAmount = Number(paymentEntity.amount || 0) / 100;
+          const invoiceId = await this.createInvoice(
+            opportunityId,
+            studentId,
+            [{ oliId: 'razorpay_webhook', productId: 'razorpay_webhook', amount: paidAmount, name: 'Razorpay Online Gateway Fee' }],
+            'RAZORPAY',
+            {
+              bankName: 'Razorpay Online Gateway',
+              bankAccountNumber: razorpayPaymentId,
+              bankIfsc: 'RAZORPAY',
+              bankBranch: 'Webhook Auto-Capture',
+            },
+            tenantId,
+          );
+
+          await this.prisma.invoice.update({
+            where: { id: invoiceId },
+            data: {
+              razorpayOrderId,
+              razorpayPaymentId,
+              razorpaySignature: signature || 'WEBHOOK_VERIFIED',
+            },
+          });
+
+          invalidateStudentBillingCache(studentId, tenantId);
+          return { status: 'recorded_via_webhook', invoiceId, paymentId: razorpayPaymentId };
+        } catch (invErr: any) {
+          console.error('Webhook invoice creation error:', invErr.message || invErr);
+        }
+      }
+
       return { status: 'verified', event, paymentId: razorpayPaymentId };
     }
 

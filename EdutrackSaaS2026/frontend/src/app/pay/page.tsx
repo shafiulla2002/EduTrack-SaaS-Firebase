@@ -93,13 +93,18 @@ function PaymentPageContent() {
         studentId: searchParams.get('sid') || '',
         pa,
         items: [{
-          oliId: 'public_fee',
+          oliId: searchParams.get('opp') || 'public_fee',
           productId: 'public_fee',
           amount: parsedAmount,
+          name: particulars || 'School Tuition Fee',
         }],
       });
 
       const orderData = orderRes.data;
+
+      const rawContact = orderData.parentPhone || searchParams.get('phone') || '';
+      const cleanContactDigits = String(rawContact).replace(/[^0-9]/g, '');
+      const validContact = cleanContactDigits.length >= 10 ? cleanContactDigits.slice(-10) : '';
 
       const options = {
         key: orderData.keyId,
@@ -110,7 +115,19 @@ function PaymentPageContent() {
         order_id: orderData.orderId,
         prefill: {
           name: student,
-          contact: orderData.parentPhone || '',
+          contact: validContact,
+          email: 'student@school.edu',
+        },
+        config: {
+          display: {
+            preferences: {
+              show_default_blocks: true,
+            },
+          },
+        },
+        retry: {
+          enabled: true,
+          max_count: 4,
         },
         theme: {
           color: '#2E5BFF',
@@ -132,9 +149,10 @@ function PaymentPageContent() {
               studentId: searchParams.get('sid') || '',
               pa,
               items: [{
-                oliId: 'public_fee',
+                oliId: searchParams.get('opp') || 'public_fee',
                 productId: 'public_fee',
                 amount: parsedAmount,
+                name: particulars || 'School Tuition Fee',
               }],
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -429,111 +447,178 @@ function PaymentPageContent() {
               </div>
             )}
 
-            {/* Primary PhonePe Button */}
-            <a
-              href={phonepeUrl}
-              onClick={(e) => {
-                e.preventDefault();
-                handlePayWithPhonePe();
-              }}
-              className="w-full py-3.5 px-4 rounded-xl bg-[#5f259f] hover:bg-[#501c87] active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-purple-400/30"
-            >
-              <Smartphone className="w-5 h-5" />
-              <span>Pay ₹{formattedAmount} with PhonePe</span>
-              <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
-            </a>
-
-            {/* Google Pay Button */}
-            <a
-              href={gpayUrl}
-              onClick={(e) => {
-                e.preventDefault();
-                handlePayWithGPay();
-              }}
-              className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-750 active:scale-[0.99] text-white font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <span className="text-base">⚡</span>
-              <span>Pay via Google Pay</span>
-            </a>
-
-            {/* Paytm Button */}
-            <a
-              href={paytmUrl}
-              onClick={(e) => {
-                e.preventDefault();
-                handlePayWithPaytm();
-              }}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-750 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <span className="text-sm"> Paytm </span>
-              <span>Pay via Paytm UPI</span>
-            </a>
-
-            {/* Any UPI App Button */}
-            <a
-              href={upiUrl}
-              onClick={(e) => {
-                e.preventDefault();
-                handlePayWithAnyUpi();
-              }}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
-            >
-              <span className="text-sm">💳</span>
-              <span>Pay with Other UPI Apps (BHIM, Cred, etc.)</span>
-            </a>
-          </div>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3 text-slate-500 text-xs py-1">
-            <div className="flex-1 h-px bg-slate-700/60"></div>
-            <span className="uppercase text-[10px] tracking-wider font-bold">Or Scan Standee QR</span>
-            <div className="flex-1 h-px bg-slate-700/60"></div>
-          </div>
-
-          {/* QR Code Section for Desktop / Secondary device */}
-          <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center space-y-3">
-            <div className="w-44 h-44 bg-white p-2 rounded-xl shadow-md flex items-center justify-center overflow-hidden">
-              <img 
-                src={qrCodeUrl} 
-                alt="PhonePe UPI QR Code" 
-                className="w-40 h-40 object-contain"
-              />
-            </div>
-            
-            <div className="space-y-1 w-full">
-              <span className="text-[10px] text-slate-400 block font-semibold uppercase">
-                Merchant UPI ID
-              </span>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200">
-                <span className="truncate max-w-[220px]">{pa}</span>
+            {/* Payment Actions & Gateway Options */}
+            {gatewayParam === 'razorpay' ? (
+              <div className="space-y-4 pt-1">
                 <button
                   type="button"
-                  onClick={handleCopyUpi}
-                  className="text-blue-400 hover:text-blue-300 p-1 cursor-pointer"
-                  title="Copy UPI ID"
+                  onClick={handlePayWithRazorpay}
+                  disabled={isRazorpayProcessing}
+                  className="w-full py-4 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-extrabold text-sm shadow-xl shadow-blue-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-blue-400/40 disabled:opacity-50"
                 >
-                  {copiedUpi ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <CreditCard className="w-5 h-5 text-blue-200" />
+                  <span>
+                    {isRazorpayProcessing ? 'Opening Razorpay Checkout...' : `Pay ₹${formattedAmount} Online (Cards / NetBanking / UPI)`}
+                  </span>
+                  <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
                 </button>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3 text-slate-500 text-xs py-1">
+                  <div className="flex-1 h-px bg-slate-700/60"></div>
+                  <span className="uppercase text-[10px] tracking-wider font-bold">Or Scan Razorpay Dynamic QR</span>
+                  <div className="flex-1 h-px bg-slate-700/60"></div>
+                </div>
+
+                {/* QR Code Section for Desktop / Secondary device */}
+                <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center space-y-3">
+                  <div className="w-44 h-44 bg-white p-2 rounded-xl shadow-md flex items-center justify-center overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                      alt="Razorpay Online Payment QR Code" 
+                      className="w-40 h-40 object-contain"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1 w-full">
+                    <span className="text-[10px] text-blue-400 block font-bold uppercase tracking-wider">
+                      Official Razorpay Online Gateway
+                    </span>
+                    <span className="text-xs text-slate-200 font-mono">
+                      Allotted: ₹{formattedAmount}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400">
+                    Scan with any UPI app (Google Pay, PhonePe, Paytm, BHIM) or phone camera to pay directly.
+                  </p>
+                </div>
+
+                {/* Instructions Box */}
+                <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-400">
+                  <h4 className="font-bold text-slate-300 flex items-center gap-1.5 text-xs">
+                    <AlertCircle className="w-3.5 h-3.5 text-blue-400" />
+                    <span>How to Complete Online Payment:</span>
+                  </h4>
+                  <ol className="list-decimal pl-4 space-y-1">
+                    <li>Tap <strong>Pay ₹{formattedAmount} Online</strong> above.</li>
+                    <li>Select your payment method: UPI, Credit/Debit Card, Net Banking (all banks), or Wallets.</li>
+                    <li>Authorize the transaction in your banking app.</li>
+                    <li>Payment is verified in real-time and recorded directly into the school records!</li>
+                  </ol>
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Primary PhonePe Button */}
+                <a
+                  href={phonepeUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePayWithPhonePe();
+                  }}
+                  className="w-full py-3.5 px-4 rounded-xl bg-[#5f259f] hover:bg-[#501c87] active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-purple-400/30"
+                >
+                  <Smartphone className="w-5 h-5" />
+                  <span>Pay ₹{formattedAmount} with PhonePe</span>
+                  <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
+                </a>
 
-            <p className="text-[11px] text-slate-400">
-              Open PhonePe or any camera UPI scanner to pay directly from your bank.
-            </p>
-          </div>
+                {/* Google Pay Button */}
+                <a
+                  href={gpayUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePayWithGPay();
+                  }}
+                  className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-750 active:scale-[0.99] text-white font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span className="text-base">⚡</span>
+                  <span>Pay via Google Pay</span>
+                </a>
 
-          {/* Instructions Box */}
-          <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-400">
-            <h4 className="font-bold text-slate-300 flex items-center gap-1.5 text-xs">
-              <AlertCircle className="w-3.5 h-3.5 text-blue-400" />
-              <span>Payment Details & Steps:</span>
-            </h4>
-            <ol className="list-decimal pl-4 space-y-1">
-              <li>Tap <strong>Open & Pay in PhonePe</strong> above to complete transaction.</li>
-              <li>Confirm the allotted amount <strong>₹{formattedAmount}</strong> and payee details.</li>
-              <li>Enter your secure UPI PIN to finalize payment.</li>
-              <li>Save a screenshot or UTR number once completed.</li>
-            </ol>
+                {/* Paytm Button */}
+                <a
+                  href={paytmUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePayWithPaytm();
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-750 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span className="text-sm"> Paytm </span>
+                  <span>Pay via Paytm UPI</span>
+                </a>
+
+                {/* Any UPI App Button */}
+                <a
+                  href={upiUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePayWithAnyUpi();
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <span className="text-sm">💳</span>
+                  <span>Pay with Other UPI Apps (BHIM, Cred, etc.)</span>
+                </a>
+
+                {/* Divider */}
+                <div className="flex items-center gap-3 text-slate-500 text-xs py-1">
+                  <div className="flex-1 h-px bg-slate-700/60"></div>
+                  <span className="uppercase text-[10px] tracking-wider font-bold">Or Scan Standee QR</span>
+                  <div className="flex-1 h-px bg-slate-700/60"></div>
+                </div>
+
+                {/* QR Code Section for Desktop / Secondary device */}
+                <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center space-y-3">
+                  <div className="w-44 h-44 bg-white p-2 rounded-xl shadow-md flex items-center justify-center overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img 
+                      src={qrCodeUrl} 
+                      alt="PhonePe UPI QR Code" 
+                      className="w-40 h-40 object-contain"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1 w-full">
+                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">
+                      Merchant UPI ID
+                    </span>
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200">
+                      <span className="truncate max-w-[220px]">{pa}</span>
+                      <button
+                        type="button"
+                        onClick={handleCopyUpi}
+                        className="text-blue-400 hover:text-blue-300 p-1 cursor-pointer"
+                        title="Copy UPI ID"
+                      >
+                        {copiedUpi ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400">
+                    Open PhonePe or any camera UPI scanner to pay directly from your bank.
+                  </p>
+                </div>
+
+                {/* Instructions Box */}
+                <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-400">
+                  <h4 className="font-bold text-slate-300 flex items-center gap-1.5 text-xs">
+                    <AlertCircle className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Payment Details & Steps:</span>
+                  </h4>
+                  <ol className="list-decimal pl-4 space-y-1">
+                    <li>Tap <strong>Open & Pay in PhonePe</strong> above to complete transaction.</li>
+                    <li>Confirm the allotted amount <strong>₹{formattedAmount}</strong> and payee details.</li>
+                    <li>Enter your secure UPI PIN to finalize payment.</li>
+                    <li>Save a screenshot or UTR number once completed.</li>
+                  </ol>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Post Payment Confirmation Action */}

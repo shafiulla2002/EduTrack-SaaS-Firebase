@@ -228,6 +228,8 @@ export default function FeesBillingPage() {
   const [successPaymentDate, setSuccessPaymentDate] = useState('');
   const [sharePhoneNumber, setSharePhoneNumber] = useState('');
   const [isPaymentLinkCopied, setIsPaymentLinkCopied] = useState(false);
+  const [officialRazorpayLink, setOfficialRazorpayLink] = useState('');
+  const [isGeneratingOfficialLink, setIsGeneratingOfficialLink] = useState(false);
 
   // Load initial options & recent invoices
   useEffect(() => {
@@ -351,7 +353,10 @@ export default function FeesBillingPage() {
       setSearch('');
       setMatchingStudents([]);
       const parentContact = studentData?.account?.parentPhone || studentData?.account?.fatherPhone || studentData?.account?.motherPhone || studentData?.account?.phone || '';
-      setSharePhoneNumber(parentContact);
+      const cleanDigits = String(parentContact).replace(/[^0-9]/g, '');
+      const cleanContact = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+      setSharePhoneNumber(cleanContact);
+      setOfficialRazorpayLink('');
 
       if (openOpp) {
         setSelectedYear(openOpp.academicYearId);
@@ -540,6 +545,14 @@ export default function FeesBillingPage() {
 
       const orderData = orderRes.data;
 
+      if (orderData.paymentLinkUrl) {
+        setOfficialRazorpayLink(orderData.paymentLinkUrl);
+      }
+
+      const rawContact = orderData.parentPhone || sharePhoneNumber || '';
+      const cleanContactDigits = String(rawContact).replace(/[^0-9]/g, '');
+      const validContact = cleanContactDigits.length >= 10 ? cleanContactDigits.slice(-10) : '';
+
       // 2. Open supported Razorpay Checkout modal
       const options = {
         key: orderData.keyId,
@@ -550,7 +563,19 @@ export default function FeesBillingPage() {
         order_id: orderData.orderId,
         prefill: {
           name: orderData.studentName,
-          contact: orderData.parentPhone || '',
+          contact: validContact,
+          email: selectedStudent?.account?.email || selectedStudent?.user?.email || 'fees@school.edu',
+        },
+        config: {
+          display: {
+            preferences: {
+              show_default_blocks: true,
+            },
+          },
+        },
+        retry: {
+          enabled: true,
+          max_count: 4,
         },
         theme: {
           color: '#2E5BFF',
@@ -769,7 +794,6 @@ export default function FeesBillingPage() {
       // Clear select & reload history
       setSelectedStudent(null);
       setFeeItems([]);
-      setNotes('');
       
       const txRes = await api.get('/billing/invoices/recent');
       setTransactions(txRes.data);
@@ -1556,7 +1580,8 @@ export default function FeesBillingPage() {
                 const studentId = selectedStudent?.account?.id || '';
 
                 // Razorpay Dynamic Online Payment Link & QR Code
-                const razorpayOnlinePaymentUrl = `${origin}/pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&gateway=razorpay&tr=${encodeURIComponent(txnRef)}&tenantId=${encodeURIComponent(tenant?.id || '')}${oppId ? `&opp=${encodeURIComponent(oppId)}` : ''}${studentId ? `&sid=${encodeURIComponent(studentId)}` : ''}`;
+                const razorpayPortalUrl = `${origin}/pay?gateway=razorpay&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&school=${encodeURIComponent(merchantName)}&tr=${encodeURIComponent(txnRef)}&tenantId=${encodeURIComponent(tenant?.id || '')}${oppId ? `&opp=${encodeURIComponent(oppId)}` : ''}${studentId ? `&sid=${encodeURIComponent(studentId)}` : ''}`;
+                const razorpayOnlinePaymentUrl = officialRazorpayLink || razorpayPortalUrl;
                 const razorpayQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(razorpayOnlinePaymentUrl)}`;
 
                 // Standee UPI direct payload
@@ -1887,7 +1912,9 @@ export default function FeesBillingPage() {
                 const oppId = selectedStudent?.account?.opportunities?.[0]?.id || '';
                 const studentId = selectedStudent?.account?.id || '';
 
-                const razorpayOnlinePaymentUrl = `${origin}/pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&gateway=razorpay&tr=${encodeURIComponent(txnRef)}&tenantId=${encodeURIComponent(tenant?.id || '')}${oppId ? `&opp=${encodeURIComponent(oppId)}` : ''}${studentId ? `&sid=${encodeURIComponent(studentId)}` : ''}`;
+                const razorpayPortalPaymentUrl = `${origin}/pay?gateway=razorpay&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&school=${encodeURIComponent(merchantName)}&tr=${encodeURIComponent(txnRef)}&tenantId=${encodeURIComponent(tenant?.id || '')}${oppId ? `&opp=${encodeURIComponent(oppId)}` : ''}${studentId ? `&sid=${encodeURIComponent(studentId)}` : ''}`;
+
+                const razorpayOnlinePaymentUrl = officialRazorpayLink || razorpayPortalPaymentUrl;
                 const razorpayQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(razorpayOnlinePaymentUrl)}`;
 
                 return (
@@ -1960,9 +1987,49 @@ export default function FeesBillingPage() {
                               <CreditCard className="w-3.5 h-3.5 text-blue-600" />
                               <span>Parent Razorpay Payment Link</span>
                             </label>
-                            <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                              Cards • NetBanking • UPI
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {officialRazorpayLink ? (
+                                <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                  Official rzp.io Link
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!selectedStudent || billingTotal <= 0 || isGeneratingOfficialLink) return;
+                                    const openOpp = selectedStudent.account.opportunities?.[0];
+                                    const itemsToPay = feeItems
+                                      .filter(item => item.isSelected && item.input > 0)
+                                      .map(item => ({ oliId: item.id, productId: item.productId, amount: item.input }));
+                                    if (itemsToPay.length === 0) return;
+                                    setIsGeneratingOfficialLink(true);
+                                    try {
+                                      const res = await api.post('/billing/razorpay/create-order', {
+                                        opportunityId: openOpp?.id || '',
+                                        studentId: selectedStudent.account.id,
+                                        items: itemsToPay,
+                                      });
+                                      if (res.data?.paymentLinkUrl) {
+                                        setOfficialRazorpayLink(res.data.paymentLinkUrl);
+                                        setToastMessage('Official Razorpay short link generated!');
+                                        setTimeout(() => setToastMessage(null), 3000);
+                                      }
+                                    } catch (e: any) {
+                                      console.warn('Could not generate official link:', e);
+                                    } finally {
+                                      setIsGeneratingOfficialLink(false);
+                                    }
+                                  }}
+                                  disabled={isGeneratingOfficialLink}
+                                  className="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer disabled:opacity-50"
+                                >
+                                  {isGeneratingOfficialLink ? 'Generating...' : '⚡ Get rzp.io Link'}
+                                </button>
+                              )}
+                              <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                Cards • NetBanking • UPI
+                              </span>
+                            </div>
                           </div>
                           
                           <div className="flex items-center gap-1.5">
@@ -2049,7 +2116,8 @@ export default function FeesBillingPage() {
                                 }
 
                                 const cleanPhone = (sharePhoneNumber || selectedStudent?.account?.parentPhone || '').replace(/[^0-9]/g, '');
-                                const targetPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+                                const valid10 = cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone;
+                                const targetPhone = valid10.length === 10 ? `91${valid10}` : valid10;
 
                                 const shareMsg = 
                                   `*🔔 ONLINE FEE PAYMENT REQUEST - ${merchantName.toUpperCase()}*\n\n` +
