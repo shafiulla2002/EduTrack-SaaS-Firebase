@@ -1356,10 +1356,15 @@ export default function FeesBillingPage() {
                 const studentClass = (selectedStudent?.account?.class || '') + (selectedStudent?.account?.section ? ` - ${selectedStudent?.account?.section}` : '');
                 const selectedItemsNames = feeItems.filter(f => f.isSelected && f.input > 0).map(f => `${f.name} (₹${f.input.toLocaleString()})`).join(', ') || 'Tuition Fee';
 
-                const preferredApp = selectedChannel === 'PHONEPE_UPI' ? 'phonepe' : 'gpay';
-                const publicPaymentUrl = `${origin}/pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&app=${preferredApp}`;
+                // Standardized transaction reference preserving student and payment context
+                const safeStudentCode = (studentRoll || selectedStudent?.account?.id?.slice(-4) || 'STU').replace(/[^a-zA-Z0-9]/g, '');
+                const txnRef = `EDUTRACK-${safeStudentCode}-${billingTotal}`;
 
-                const phonepeDirectUrl = `phonepe://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(`Fee: ${studentName}${studentClass ? ` (${studentClass})` : ''}`)}`;
+                const preferredApp = selectedChannel === 'PHONEPE_UPI' ? 'phonepe' : 'gpay';
+                const publicPaymentUrl = `${origin}/pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&app=${preferredApp}&tr=${encodeURIComponent(txnRef)}`;
+
+                const phonepeDirectUrl = `phonepe://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(`Fee: ${studentName}${studentClass ? ` (${studentClass})` : ''}`)}&tr=${encodeURIComponent(txnRef)}`;
+                const upiDirectUrl = `upi://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(`Fee: ${studentName}${studentClass ? ` (${studentClass})` : ''}`)}&tr=${encodeURIComponent(txnRef)}`;
 
                 return (
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
@@ -1525,9 +1530,11 @@ export default function FeesBillingPage() {
                                   (studentClass ? `🏫 *Class:* ${studentClass}\n` : '') +
                                   `💰 *Allotted Fee Amount:* ₹${billingTotal.toLocaleString()}\n` +
                                   `📝 *Fee Particulars:* ${selectedItemsNames}\n\n` +
-                                  `👉 *Click Link to Pay via PhonePe / UPI:*\n` +
+                                  `👉 *Pay via PhonePe / UPI:*\n` +
                                   `${publicPaymentUrl}\n\n` +
-                                  `_(Tapping the link will automatically open PhonePe with the allotted amount ₹${billingTotal.toLocaleString()} and school details ready to complete payment)._\n\n` +
+                                  `📱 *Direct UPI App Link:* \n` +
+                                  `${upiDirectUrl}\n\n` +
+                                  `_(Tapping either link will open PhonePe directly with the allotted amount ₹${billingTotal.toLocaleString()} and school details ready to complete payment)._\n\n` +
                                   `Thank you,\n` +
                                   `*${merchantName}*`;
 

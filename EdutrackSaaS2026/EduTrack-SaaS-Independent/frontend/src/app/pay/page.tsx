@@ -21,81 +21,114 @@ function PaymentPageContent() {
   const particulars = searchParams.get('particulars') || 'School Tuition Fees';
   const appParam = searchParams.get('app') || 'phonepe';
   const customTn = searchParams.get('tn');
+  const tr = searchParams.get('tr') || '';
+  const isFallback = searchParams.get('fallback') === '1';
 
   const parsedAmount = parseFloat(am) || 0;
   const formattedAmount = parsedAmount.toLocaleString('en-IN');
   const transactionNote = customTn || `Fee: ${student}${className ? ` (${className})` : ''}`;
 
-  // UPI Deep Links
-  const phonepeUrl = `phonepe://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${am}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
-  const gpayUrl = `gpay://upi/pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${am}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
-  const upiUrl = `upi://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${am}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
-  const paytmUrl = `paytmmp://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${am}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
+  // ── UPI & Intent URIs ────────────────────────────────────────────────────────
+  // 1. Android Chrome Intent targeted explicitly to PhonePe package
+  const phonepeIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}#Intent;scheme=upi;package=com.phonepe.app;end`;
+
+  // 2. Direct PhonePe custom scheme (for native app bridges and iOS)
+  const phonepeSchemeUrl = `phonepe://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}`;
+
+  // 3. Android Chrome Intent for Google Pay
+  const gpayIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
+  const gpaySchemeUrl = `gpay://upi/pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}`;
+
+  // 4. Android Chrome Intent for Paytm
+  const paytmIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}#Intent;scheme=upi;package=net.one97.paytm;end`;
+  const paytmSchemeUrl = `paytmmp://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}`;
+
+  // 5. Universal standard UPI URI (NPCI standard)
+  const upiUrl = `upi://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}`;
 
   // QR Code URL
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiUrl)}`;
 
   const [copiedUpi, setCopiedUpi] = useState(false);
-  const [autoRedirectAttempted, setAutoRedirectAttempted] = useState(false);
-  const [redirectCountdown, setRedirectCountdown] = useState(2);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [utrNumber, setUtrNumber] = useState('');
   const [confirmedSuccess, setConfirmedSuccess] = useState(false);
+  const [redirectTriggered, setRedirectTriggered] = useState(false);
 
-  // Trigger auto-redirection to PhonePe on mobile devices on page load
+  // Immediate PhonePe Intent Dispatch on Android (Zero Delay)
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (parsedAmount <= 0 || isFallback || redirectTriggered) return;
 
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (!isMobile || parsedAmount <= 0) {
-      setAutoRedirectAttempted(true);
-      return;
-    }
+    const ua = navigator.userAgent || '';
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
 
-    const timer = setInterval(() => {
-      setRedirectCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          setAutoRedirectAttempted(true);
-          // Navigate to PhonePe
-          try {
-            if (appParam === 'gpay') {
-              window.location.href = gpayUrl;
-            } else {
-              window.location.href = phonepeUrl;
-            }
-          } catch (e) {
-            console.warn('Auto navigation to UPI app failed:', e);
-          }
-          return 0;
+    setRedirectTriggered(true);
+
+    if (isAndroid) {
+      if (appParam === 'gpay') {
+        try {
+          window.location.replace(gpayIntentUrl);
+        } catch {
+          window.location.href = gpaySchemeUrl;
         }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [appParam, phonepeUrl, gpayUrl, parsedAmount]);
+      } else if (appParam === 'paytm') {
+        try {
+          window.location.replace(paytmIntentUrl);
+        } catch {
+          window.location.href = paytmSchemeUrl;
+        }
+      } else {
+        // Direct intent launch targeted specifically to PhonePe package
+        try {
+          window.location.replace(phonepeIntentUrl);
+        } catch {
+          window.location.href = phonepeSchemeUrl;
+        }
+      }
+    } else if (isIOS) {
+      if (appParam === 'gpay') {
+        window.location.replace(gpaySchemeUrl);
+      } else {
+        window.location.replace(phonepeSchemeUrl);
+      }
+    }
+  }, [phonepeIntentUrl, gpayIntentUrl, paytmIntentUrl, phonepeSchemeUrl, gpaySchemeUrl, paytmSchemeUrl, appParam, parsedAmount, isFallback, redirectTriggered]);
 
   const handlePayWithPhonePe = () => {
-    try {
-      window.location.href = phonepeUrl;
-      // Fallback to standard UPI intent if PhonePe does not catch
+    const isAndroid = typeof window !== 'undefined' && /Android/i.test(navigator.userAgent);
+    if (isAndroid) {
+      window.location.href = phonepeIntentUrl;
+    } else {
+      window.location.href = phonepeSchemeUrl;
       setTimeout(() => {
         window.location.href = upiUrl;
       }, 1500);
-    } catch {
-      window.location.href = upiUrl;
     }
   };
 
   const handlePayWithGPay = () => {
-    try {
-      window.location.href = gpayUrl;
+    const isAndroid = typeof window !== 'undefined' && /Android/i.test(navigator.userAgent);
+    if (isAndroid) {
+      window.location.href = gpayIntentUrl;
+    } else {
+      window.location.href = gpaySchemeUrl;
       setTimeout(() => {
         window.location.href = upiUrl;
       }, 1500);
-    } catch {
-      window.location.href = upiUrl;
+    }
+  };
+
+  const handlePayWithPaytm = () => {
+    const isAndroid = typeof window !== 'undefined' && /Android/i.test(navigator.userAgent);
+    if (isAndroid) {
+      window.location.href = paytmIntentUrl;
+    } else {
+      window.location.href = paytmSchemeUrl;
+      setTimeout(() => {
+        window.location.href = upiUrl;
+      }, 1500);
     }
   };
 
@@ -118,6 +151,7 @@ function PaymentPageContent() {
       `I have completed the fee payment for *${student}* (${className ? `Class: ${className}` : ''}).\n\n` +
       `💰 *Amount Paid:* ₹${formattedAmount}\n` +
       (utrNumber ? `🔢 *UTR / Transaction Ref:* ${utrNumber}\n` : '') +
+      (tr ? `📌 *Payment Ref:* ${tr}\n` : '') +
       `📝 *Particulars:* ${particulars}\n\n` +
       `Please acknowledge receipt.\nThank you!`;
 
@@ -128,7 +162,7 @@ function PaymentPageContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-850 to-slate-950 text-slate-100 flex flex-col justify-between py-6 px-4 sm:px-6">
-      <div className="max-w-md w-full mx-auto space-y-5">
+      <div className="max-w-md w-full mx-auto space-y-4">
         
         {/* Top Header & Trust Badge */}
         <div className="text-center space-y-2">
@@ -145,24 +179,35 @@ function PaymentPageContent() {
           </p>
         </div>
 
-        {/* Auto Redirect Banner (on mobile countdown) */}
-        {!autoRedirectAttempted && redirectCountdown > 0 && parsedAmount > 0 && (
-          <div className="p-3.5 rounded-xl bg-purple-950/60 border border-purple-500/30 text-purple-200 text-xs flex items-center justify-between animate-pulse">
-            <div className="flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
-              <span>Opening PhonePe app in <strong>{redirectCountdown}s</strong>...</span>
-            </div>
-            <button
-              onClick={handlePayWithPhonePe}
-              className="text-xs font-bold text-white bg-purple-600 px-2.5 py-1 rounded-lg"
-            >
-              Open Now
-            </button>
+        {/* Direct Action Banner (zero delay, instant tap to PhonePe) */}
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/90 to-[#5f259f]/90 border border-purple-400/40 text-white shadow-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
+              <Smartphone className="w-4 h-4 text-purple-300" />
+              <span>Direct PhonePe Payment</span>
+            </span>
+            <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full text-white">
+              Allotted: ₹{formattedAmount}
+            </span>
           </div>
-        )}
+          <a
+            href={phonepeIntentUrl}
+            onClick={(e) => {
+              handlePayWithPhonePe();
+            }}
+            className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.99] text-[#5f259f] font-black text-sm flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+          >
+            <Smartphone className="w-5 h-5 text-[#5f259f]" />
+            <span>Open & Pay ₹{formattedAmount} in PhonePe</span>
+            <ArrowRight className="w-4 h-4 ml-auto text-[#5f259f]" />
+          </a>
+          <p className="text-[10px] text-purple-200/80 text-center">
+            If PhonePe didn&apos;t open automatically, tap the button above to launch PhonePe immediately.
+          </p>
+        </div>
 
         {/* Main Fee Card */}
-        <div className="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-5 shadow-2xl shadow-black/40 space-y-5">
+        <div className="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-5 shadow-2xl shadow-black/40 space-y-4">
           
           {/* Student Info Bar */}
           <div className="flex items-center gap-3.5 pb-4 border-b border-slate-700/60">
@@ -193,41 +238,68 @@ function PaymentPageContent() {
             <div className="text-[11px] text-slate-400 font-medium pt-1 line-clamp-2">
               Particulars: <span className="text-slate-300">{particulars}</span>
             </div>
+            {tr && (
+              <div className="text-[10px] text-slate-500 font-mono pt-0.5">
+                Ref: {tr}
+              </div>
+            )}
           </div>
 
           {/* Action Buttons: PhonePe is Primary */}
-          <div className="space-y-3 pt-1">
+          <div className="space-y-2.5 pt-1">
             
             {/* Primary PhonePe Button */}
-            <button
-              type="button"
-              onClick={handlePayWithPhonePe}
+            <a
+              href={phonepeIntentUrl}
+              onClick={(e) => {
+                e.preventDefault();
+                handlePayWithPhonePe();
+              }}
               className="w-full py-3.5 px-4 rounded-xl bg-[#5f259f] hover:bg-[#501c87] active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-purple-400/30"
             >
               <Smartphone className="w-5 h-5" />
               <span>Pay ₹{formattedAmount} with PhonePe</span>
               <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
-            </button>
+            </a>
 
             {/* Google Pay Button */}
-            <button
-              type="button"
-              onClick={handlePayWithGPay}
+            <a
+              href={gpayIntentUrl}
+              onClick={(e) => {
+                e.preventDefault();
+                handlePayWithGPay();
+              }}
               className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-750 active:scale-[0.99] text-white font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <span className="text-base">⚡</span>
               <span>Pay via Google Pay</span>
-            </button>
+            </a>
+
+            {/* Paytm Button */}
+            <a
+              href={paytmIntentUrl}
+              onClick={(e) => {
+                e.preventDefault();
+                handlePayWithPaytm();
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-750 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            >
+              <span className="text-sm"> Paytm </span>
+              <span>Pay via Paytm UPI</span>
+            </a>
 
             {/* Any UPI App Button */}
-            <button
-              type="button"
-              onClick={handlePayWithAnyUpi}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-750 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
+            <a
+              href={upiUrl}
+              onClick={(e) => {
+                e.preventDefault();
+                handlePayWithAnyUpi();
+              }}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
             >
               <span className="text-sm">💳</span>
-              <span>Pay with Paytm, BHIM, or Other UPI Apps</span>
-            </button>
+              <span>Pay with Other UPI Apps (BHIM, Cred, etc.)</span>
+            </a>
           </div>
 
           {/* Divider */}
@@ -273,13 +345,13 @@ function PaymentPageContent() {
           <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-400">
             <h4 className="font-bold text-slate-300 flex items-center gap-1.5 text-xs">
               <AlertCircle className="w-3.5 h-3.5 text-blue-400" />
-              <span>How it works:</span>
+              <span>Payment Details & Steps:</span>
             </h4>
             <ol className="list-decimal pl-4 space-y-1">
-              <li>Tap <strong>Pay with PhonePe</strong> to launch your installed UPI app.</li>
-              <li>Confirm the allotted amount <strong>₹{formattedAmount}</strong> and school payee details.</li>
+              <li>Tap <strong>Open & Pay in PhonePe</strong> above to complete transaction.</li>
+              <li>Confirm the allotted amount <strong>₹{formattedAmount}</strong> and payee details.</li>
               <li>Enter your secure UPI PIN to finalize payment.</li>
-              <li>Save a screenshot or reference number once completed.</li>
+              <li>Save a screenshot or UTR number once completed.</li>
             </ol>
           </div>
 
@@ -383,7 +455,7 @@ export default function PublicPaymentPage() {
     <Suspense fallback={
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white text-xs">
         <RefreshCw className="w-5 h-5 animate-spin text-blue-400 mr-2" />
-        <span>Loading secure payment gateway...</span>
+        <span>Connecting to PhonePe UPI Gateway...</span>
       </div>
     }>
       <PaymentPageContent />
