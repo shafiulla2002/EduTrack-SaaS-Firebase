@@ -7,17 +7,15 @@ import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '@/app/providers/TenantContext';
 import { formatDateDDMMYYYY } from '@/lib/date';
 import { 
-  Receipt, Search, CreditCard, Sparkles, X, CheckCircle2, 
-  QrCode, User, ArrowRight, CornerDownRight, RotateCcw,
-  BookOpen, Calendar, Printer, ShieldCheck, AlertCircle, MessageCircle, RefreshCw,
+  Search, CreditCard, Sparkles, X, CheckCircle2, 
+  User, RotateCcw,
+  Printer, AlertCircle, MessageCircle, RefreshCw,
   Copy, Check, ExternalLink, Smartphone
 } from 'lucide-react';
 import {
   PencilSpinner,
   TableSkeleton,
   EmptyState,
-  ErrorState,
-  LoadingButton,
 } from '@/components/loading';
 
 interface StagedInvoice {
@@ -191,7 +189,6 @@ export default function FeesBillingPage() {
   const [feeItems, setFeeItems] = useState<any[]>([]);
 
   // Payment Channels
-  const isRazorpayConfigured = !!setupStats?.setup?.tenant?.razorpayEnabled;
   const paymentChannels = [
     { value: 'RAZORPAY', label: 'Razorpay Gateway', icon: '💳' },
     { value: 'GPAY_UPI', label: 'GPay UPI', icon: '⚡' },
@@ -225,7 +222,6 @@ export default function FeesBillingPage() {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [notes, setNotes] = useState('');
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [isSharingWhatsApp, setIsSharingWhatsApp] = useState(false);
   const [successRemainingBalance, setSuccessRemainingBalance] = useState(0);
@@ -269,15 +265,14 @@ export default function FeesBillingPage() {
 
   // Search students
   useEffect(() => {
-    if (search.trim().length >= 2) {
-      setIsSearching(true);
-    } else {
+    if (search.trim().length < 2) {
       setIsSearching(false);
       setMatchingStudents([]);
       return;
     }
 
     const delayDebounce = setTimeout(async () => {
+      setIsSearching(true);
       try {
         const res = await fastGet(`/billing/students/search`, {
           params: { searchTerm: search.trim() }
@@ -417,7 +412,7 @@ export default function FeesBillingPage() {
       };
       reloadBillingData();
     }
-  }, [selectedYear, selectedStudent]);
+  }, [selectedYear, selectedStudent, loadedBillingKey]);
 
   const handleCheckboxChange = (id: string) => {
     setFeeItems(prev => prev.map(item => {
@@ -1003,7 +998,9 @@ export default function FeesBillingPage() {
     document.body.appendChild(container);
     await new Promise(resolve => setTimeout(resolve, 300));
 
+    // @ts-ignore
     const html2canvas = (await import('html2canvas')).default;
+    // @ts-ignore
     const { jsPDF } = await import('jspdf');
 
     const canvas = await html2canvas(container, {
@@ -1633,6 +1630,7 @@ export default function FeesBillingPage() {
                         </span>
 
                         <div className="w-36 h-36 bg-white p-2 border border-slate-200 rounded-xl shadow-xs flex items-center justify-center overflow-hidden">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img 
                             src={activeQrCodeUrl} 
                             alt="Payment QR Code" 
@@ -1875,8 +1873,7 @@ export default function FeesBillingPage() {
                 const merchantName = setupStats?.setup?.schoolName || tenant?.name || 'School Merchant';
                 const isTestMode = tenant?.razorpayIsTestMode ?? true;
 
-                let activeUpiId = tenant?.googlePayId || tenant?.phonePeId || tenant?.upiQrId || 'gpay-vikas-edu@okaxis';
-                const displayUpiId = activeUpiId;
+                const displayUpiId = tenant?.googlePayId || tenant?.phonePeId || tenant?.upiQrId || 'gpay-vikas-edu@okaxis';
 
                 const origin = typeof window !== 'undefined' ? window.location.origin : 'https://edutrack-live-app.vercel.app';
                 const studentName = selectedStudent?.account?.name || 'Student';
@@ -1910,7 +1907,7 @@ export default function FeesBillingPage() {
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-500 mt-0.5">
-                          Collect fees through cards, net banking, UPI, and wallets directly into the school's merchant account via dynamic QR or payment link.
+                          Collect fees through cards, net banking, UPI, and wallets directly into the school&apos;s merchant account via dynamic QR or payment link.
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -1927,6 +1924,7 @@ export default function FeesBillingPage() {
                         </span>
 
                         <div className="w-36 h-36 bg-white p-2 border border-slate-200 rounded-xl shadow-xs flex items-center justify-center overflow-hidden">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img 
                             src={razorpayQrCodeUrl} 
                             alt="Razorpay Online QR Code" 
