@@ -37,6 +37,7 @@ enum PaymentMethod {
   UPI
   BANK_TRANSFER
   CARD
+  RAZORPAY
 }
 
 enum ExpenseStatus {
@@ -97,6 +98,13 @@ model Tenant {
   googlePayId   String?
   phonePeId     String?
   upiQrId       String?
+
+  // Razorpay Gateway Setup (Multi-Tenant School Fee Collection)
+  razorpayEnabled       Boolean  @default(false)
+  razorpayIsTestMode    Boolean  @default(true)
+  razorpayKeyId         String?
+  razorpayKeySecret     String?
+  razorpayWebhookSecret String?
 
   users          User[]
   academicYears  AcademicYear[]
@@ -587,6 +595,9 @@ model Invoice {
   bankIFSC          String?
   bankAccountNumber String?
   bankBranch        String?
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
 
   @@index([tenantId])
   @@index([studentId])
@@ -595,6 +606,7 @@ model Invoice {
   @@index([tenantId, studentId])
   @@index([tenantId, status, invoiceDate])
   @@index([tenantId, studentId, status])
+  @@index([razorpayPaymentId])
 }
 
 model InvoiceItem {

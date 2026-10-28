@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Res, Req, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Res, Req, Headers, HttpException, HttpStatus, BadRequestException } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -196,4 +196,118 @@ export class BillingController {
       collectionStatus,
     });
   }
+
+  // ── RAZORPAY FEE COLLECTION ENDPOINTS (Admin / Cashier Portal) ──────────────
+
+  @Post('razorpay/create-order')
+  async createRazorpayOrder(
+    @Req() req: any,
+    @Body('opportunityId') opportunityId: string,
+    @Body('studentId') studentId: string,
+    @Body('items') items: { oliId: string; productId: string; amount: number }[],
+  ) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant not identified in session.');
+    }
+    return this.billingService.createRazorpayFeeOrder(tenantId, opportunityId, studentId, items);
+  }
+
+  @Post('razorpay/verify-payment')
+  async verifyRazorpayPayment(
+    @Req() req: any,
+    @Body('opportunityId') opportunityId: string,
+    @Body('studentId') studentId: string,
+    @Body('items') items: { oliId: string; productId: string; amount: number }[],
+    @Body('razorpay_order_id') razorpayOrderId: string,
+    @Body('razorpay_payment_id') razorpayPaymentId: string,
+    @Body('razorpay_signature') razorpaySignature: string,
+  ) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant not identified in session.');
+    }
+    return this.billingService.verifyRazorpayFeePayment(
+      tenantId,
+      opportunityId,
+      studentId,
+      items,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    );
+  }
 }
+
+// ── PUBLIC BILLING CONTROLLER (Parents Payment Link - No Login Required) ──────
+@Controller('billing/public')
+export class PublicBillingController {
+  constructor(private billingService: BillingService) {}
+
+  @Get('payment-info')
+  async getPublicPaymentInfo(
+    @Query('pa') pa?: string,
+    @Query('tenantId') tenantId?: string,
+  ) {
+    return this.billingService.getPublicSchoolPaymentInfo(pa, tenantId);
+  }
+
+  @Post('razorpay/create-order')
+  async createPublicRazorpayOrder(
+    @Body('tenantId') tenantId: string,
+    @Body('opportunityId') opportunityId: string,
+    @Body('studentId') studentId: string,
+    @Body('items') items: { oliId: string; productId: string; amount: number }[],
+    @Body('pa') pa?: string,
+  ) {
+    let resolvedTenantId = tenantId;
+    if (!resolvedTenantId && pa) {
+      const info = await this.billingService.getPublicSchoolPaymentInfo(pa);
+      resolvedTenantId = (info as any).tenantId;
+    }
+    if (!resolvedTenantId) {
+      throw new BadRequestException('School identifier not found.');
+    }
+    return this.billingService.createRazorpayFeeOrder(resolvedTenantId, opportunityId, studentId, items);
+  }
+
+  @Post('razorpay/verify-payment')
+  async verifyPublicRazorpayPayment(
+    @Body('tenantId') tenantId: string,
+    @Body('opportunityId') opportunityId: string,
+    @Body('studentId') studentId: string,
+    @Body('items') items: { oliId: string; productId: string; amount: number }[],
+    @Body('razorpay_order_id') razorpayOrderId: string,
+    @Body('razorpay_payment_id') razorpayPaymentId: string,
+    @Body('razorpay_signature') razorpaySignature: string,
+    @Body('pa') pa?: string,
+  ) {
+    let resolvedTenantId = tenantId;
+    if (!resolvedTenantId && pa) {
+      const info = await this.billingService.getPublicSchoolPaymentInfo(pa);
+      resolvedTenantId = (info as any).tenantId;
+    }
+    if (!resolvedTenantId) {
+      throw new BadRequestException('School identifier not found.');
+    }
+    return this.billingService.verifyRazorpayFeePayment(
+      resolvedTenantId,
+      opportunityId,
+      studentId,
+      items,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature,
+    );
+  }
+
+  @Post('razorpay/webhook')
+  async handleRazorpayWebhook(
+    @Body() body: any,
+    @Headers('x-razorpay-signature') signature: string,
+    @Req() req: any,
+  ) {
+    return this.billingService.handleRazorpayWebhook(body, signature, req.rawBody);
+  }
+}
+

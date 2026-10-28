@@ -535,19 +535,53 @@ export class TenantController {
   @UseGuards(JwtAuthGuard)
   @Put('banking-upi')
   async updateBankingUpi(@Req() req: any, @Body() body: any) {
-    const tenantId = req.user.tenantId;
-    return this.prisma.tenant.update({
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('Tenant not identified in session.');
+
+    const dataToUpdate: any = {};
+    if (body.bankName !== undefined) dataToUpdate.bankName = body.bankName ? String(body.bankName).trim() : null;
+    if (body.bankBranch !== undefined) dataToUpdate.bankBranch = body.bankBranch ? String(body.bankBranch).trim() : null;
+    if (body.bankIFSC !== undefined) dataToUpdate.bankIFSC = body.bankIFSC ? String(body.bankIFSC).trim().toUpperCase() : null;
+    if (body.bankAccountNo !== undefined) dataToUpdate.bankAccountNo = body.bankAccountNo ? String(body.bankAccountNo).trim() : null;
+    if (body.googlePayId !== undefined) dataToUpdate.googlePayId = body.googlePayId ? String(body.googlePayId).trim() : null;
+    if (body.phonePeId !== undefined) dataToUpdate.phonePeId = body.phonePeId ? String(body.phonePeId).trim() : null;
+    if (body.upiQrId !== undefined) dataToUpdate.upiQrId = body.upiQrId ? String(body.upiQrId).trim() : null;
+
+    // Support Razorpay configuration updates via banking-upi
+    if (body.razorpayEnabled !== undefined || body.enabled !== undefined) {
+      dataToUpdate.razorpayEnabled = Boolean(body.razorpayEnabled ?? body.enabled);
+    }
+    if (body.razorpayIsTestMode !== undefined || body.isTestMode !== undefined) {
+      dataToUpdate.razorpayIsTestMode = Boolean(body.razorpayIsTestMode ?? body.isTestMode);
+    }
+    if (body.razorpayKeyId !== undefined || body.keyId !== undefined) {
+      const kId = body.razorpayKeyId ?? body.keyId;
+      dataToUpdate.razorpayKeyId = kId ? String(kId).trim() : null;
+    }
+
+    const encryptionKey = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'edutrack_saas_secure_encryption_key_32_bytes_!';
+    const rawSecret = body.razorpayKeySecret || body.keySecret;
+    if (rawSecret && !String(rawSecret).includes('•••')) {
+      dataToUpdate.razorpayKeySecret = encrypt(String(rawSecret).trim(), encryptionKey);
+    }
+    const rawWebhook = body.razorpayWebhookSecret || body.webhookSecret;
+    if (rawWebhook && !String(rawWebhook).includes('•••')) {
+      dataToUpdate.razorpayWebhookSecret = encrypt(String(rawWebhook).trim(), encryptionKey);
+    }
+
+    const updated = await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: {
-        bankName: body.bankName ? String(body.bankName).trim() : null,
-        bankBranch: body.bankBranch ? String(body.bankBranch).trim() : null,
-        bankIFSC: body.bankIFSC ? String(body.bankIFSC).trim().toUpperCase() : null,
-        bankAccountNo: body.bankAccountNo ? String(body.bankAccountNo).trim() : null,
-        googlePayId: body.googlePayId ? String(body.googlePayId).trim() : null,
-        phonePeId: body.phonePeId ? String(body.phonePeId).trim() : null,
-        upiQrId: body.upiQrId ? String(body.upiQrId).trim() : null,
-      },
+      data: dataToUpdate,
     });
+
+    TenantController.setupStatusCache.clear();
+
+    return {
+      success: true,
+      message: 'Payment gateway settings updated successfully.',
+      hasKeySecret: !!updated.razorpayKeySecret,
+      hasWebhookSecret: !!updated.razorpayWebhookSecret,
+    };
   }
 
   @UseGuards(JwtAuthGuard)

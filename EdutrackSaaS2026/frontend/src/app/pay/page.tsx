@@ -24,6 +24,7 @@ function PaymentPageContent() {
   const customTn = searchParams.get('tn');
   const tr = searchParams.get('tr') || '';
   const tenantIdParam = searchParams.get('tenantId') || '';
+  const gatewayParam = searchParams.get('gateway') || '';
   const isFallback = searchParams.get('fallback') === '1';
 
   const [schoolGateway, setSchoolGateway] = useState<any>(null);
@@ -190,7 +191,7 @@ function PaymentPageContent() {
   // Immediate Native App Dispatch (Zero Delay, Never routes to Google Play)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (parsedAmount <= 0 || isFallback || redirectTriggered) return;
+    if (parsedAmount <= 0 || isFallback || redirectTriggered || gatewayParam === 'razorpay') return;
 
     setRedirectTriggered(true);
 
@@ -296,32 +297,59 @@ function PaymentPageContent() {
           </p>
         </div>
 
-        {/* Direct Action Banner (zero delay, instant tap to PhonePe) */}
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/90 to-[#5f259f]/90 border border-purple-400/40 text-white shadow-xl space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
-              <Smartphone className="w-4 h-4 text-purple-300" />
-              <span>Direct PhonePe Payment</span>
-            </span>
-            <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full text-white">
-              Allotted: ₹{formattedAmount}
-            </span>
+        {/* Direct Action Banner: Razorpay Online Checkout OR Direct PhonePe App */}
+        {gatewayParam === 'razorpay' ? (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-blue-800/90 border border-blue-400/40 text-white shadow-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-blue-300" />
+                <span>Online Razorpay Payment Gateway</span>
+              </span>
+              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full text-white">
+                Allotted: ₹{formattedAmount}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handlePayWithRazorpay}
+              disabled={isRazorpayProcessing}
+              className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.99] text-[#2E5BFF] font-black text-sm flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
+            >
+              <CreditCard className="w-5 h-5 text-[#2E5BFF]" />
+              <span>{isRazorpayProcessing ? 'Launching Razorpay Checkout...' : `Pay ₹${formattedAmount} via Cards / NetBanking / UPI`}</span>
+              <ArrowRight className="w-4 h-4 ml-auto text-[#2E5BFF]" />
+            </button>
+            <p className="text-[10px] text-blue-200/80 text-center">
+              Supports Credit/Debit Cards (Visa/Mastercard/RuPay), Net Banking (all banks), UPI, and Wallets.
+            </p>
           </div>
-          <a
-            href={phonepeUrl}
-            onClick={(e) => {
-              handlePayWithPhonePe();
-            }}
-            className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.99] text-[#5f259f] font-black text-sm flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
-          >
-            <Smartphone className="w-5 h-5 text-[#5f259f]" />
-            <span>Open & Pay ₹{formattedAmount} in PhonePe</span>
-            <ArrowRight className="w-4 h-4 ml-auto text-[#5f259f]" />
-          </a>
-          <p className="text-[10px] text-purple-200/80 text-center">
-            If PhonePe didn&apos;t open automatically, tap the button above to launch PhonePe immediately.
-          </p>
-        </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/90 to-[#5f259f]/90 border border-purple-400/40 text-white shadow-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4 text-purple-300" />
+                <span>Direct PhonePe Payment</span>
+              </span>
+              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full text-white">
+                Allotted: ₹{formattedAmount}
+              </span>
+            </div>
+            <a
+              href={phonepeUrl}
+              onClick={(e) => {
+                handlePayWithPhonePe();
+              }}
+              className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.99] text-[#5f259f] font-black text-sm flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+            >
+              <Smartphone className="w-5 h-5 text-[#5f259f]" />
+              <span>Open & Pay ₹{formattedAmount} in PhonePe</span>
+              <ArrowRight className="w-4 h-4 ml-auto text-[#5f259f]" />
+            </a>
+            <p className="text-[10px] text-purple-200/80 text-center">
+              If PhonePe didn&apos;t open automatically, tap the button above to launch PhonePe immediately.
+            </p>
+          </div>
+        )}
 
         {/* Main Fee Card */}
         <div className="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-5 shadow-2xl shadow-black/40 space-y-4">

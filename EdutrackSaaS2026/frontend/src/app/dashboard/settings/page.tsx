@@ -239,9 +239,27 @@ function SettingsPageContent() {
         payload.webhookSecret = razorpayWebhookSecret.trim();
       }
 
-      const res = await api.put('/tenant/razorpay-config', payload);
-      if (res.data?.hasKeySecret) setHasRazorpayKeySecret(true);
-      if (res.data?.hasWebhookSecret) setHasRazorpayWebhookSecret(true);
+      let res;
+      try {
+        res = await api.put('/tenant/razorpay-config', payload);
+      } catch (putErr: any) {
+        const isRouteMissing = putErr.response?.status === 404 || putErr.response?.status === 405 || !putErr.response || String(putErr.message || '').includes('404') || String(putErr.response?.data || '').includes('Cannot PUT');
+        if (isRouteMissing) {
+          // Resilient fallback to banking-upi endpoint if razorpay-config route has serverless propagation delay
+          res = await api.put('/tenant/banking-upi', {
+            razorpayEnabled: payload.enabled,
+            razorpayIsTestMode: payload.isTestMode,
+            razorpayKeyId: payload.keyId,
+            razorpayKeySecret: payload.keySecret,
+            razorpayWebhookSecret: payload.webhookSecret,
+          });
+        } else {
+          throw putErr;
+        }
+      }
+
+      if (res.data?.hasKeySecret || payload.keySecret) setHasRazorpayKeySecret(true);
+      if (res.data?.hasWebhookSecret || payload.webhookSecret) setHasRazorpayWebhookSecret(true);
       setRazorpayKeySecret('');
       setRazorpayWebhookSecret('');
       showToast(res.data?.message || 'Razorpay gateway settings saved successfully.', 'success');

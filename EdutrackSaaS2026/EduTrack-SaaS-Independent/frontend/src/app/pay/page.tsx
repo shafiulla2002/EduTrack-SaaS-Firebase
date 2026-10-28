@@ -5,8 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import { 
   ShieldCheck, Smartphone, CheckCircle2, Copy, Check, 
   ExternalLink, ArrowRight, Building2, User, BookOpen, 
-  AlertCircle, RefreshCw, QrCode, MessageCircle
+  AlertCircle, RefreshCw, QrCode, MessageCircle, CreditCard
 } from 'lucide-react';
+import { api } from '@/lib/api';
 
 function PaymentPageContent() {
   const searchParams = useSearchParams();
@@ -22,13 +23,153 @@ function PaymentPageContent() {
   const appParam = searchParams.get('app') || 'phonepe';
   const customTn = searchParams.get('tn');
   const tr = searchParams.get('tr') || '';
+  const tenantIdParam = searchParams.get('tenantId') || '';
+  const gatewayParam = searchParams.get('gateway') || '';
   const isFallback = searchParams.get('fallback') === '1';
+
+  const [schoolGateway, setSchoolGateway] = useState<any>(null);
+  const [isRazorpayProcessing, setIsRazorpayProcessing] = useState(false);
+  const [razorpaySuccess, setRazorpaySuccess] = useState<any>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  // Load public gateway configuration
+  useEffect(() => {
+    const fetchGateway = async () => {
+      try {
+        const query = new URLSearchParams();
+        if (pa) query.append('pa', pa);
+        if (tenantIdParam) query.append('tenantId', tenantIdParam);
+        const res = await api.get(`/billing/public/payment-info?${query.toString()}`);
+        setSchoolGateway(res.data);
+      } catch (e) {
+        console.warn('Could not load public gateway details:', e);
+      }
+    };
+    fetchGateway();
+  }, [pa, tenantIdParam]);
 
   const parsedAmount = parseFloat(am) || 0;
   const formattedAmount = parsedAmount.toLocaleString('en-IN');
   const cleanStudentClass = (className || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
   const cleanStudent = (student || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
   const transactionNote = customTn || `Fee ${cleanStudent}${cleanStudentClass ? ` ${cleanStudentClass}` : ''}`.slice(0, 50);
+
+  // Helper to load Razorpay Checkout SDK
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined') return resolve(false);
+      if ((window as any).Razorpay) return resolve(true);
+
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handlePayWithRazorpay = async () => {
+    if (parsedAmount <= 0) {
+      alert('Payment amount must be greater than zero.');
+      return;
+    }
+
+    setIsRazorpayProcessing(true);
+    setPaymentError(null);
+
+    try {
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded) {
+        alert('Could not load Razorpay Checkout. Please check your internet connection.');
+        setIsRazorpayProcessing(false);
+        return;
+      }
+
+      const effectiveTenantId = tenantIdParam || schoolGateway?.tenantId;
+      const orderRes = await api.post('/billing/public/razorpay/create-order', {
+        tenantId: effectiveTenantId,
+        opportunityId: searchParams.get('opp') || '',
+        studentId: searchParams.get('sid') || '',
+        pa,
+        items: [{
+          oliId: 'public_fee',
+          productId: 'public_fee',
+          amount: parsedAmount,
+        }],
+      });
+
+      const orderData = orderRes.data;
+
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amountPaise,
+        currency: orderData.currency || 'INR',
+        name: orderData.schoolName || pn,
+        description: `Fee Payment - ${student}${cleanStudentClass ? ` (${cleanStudentClass})` : ''}`,
+        order_id: orderData.orderId,
+        prefill: {
+          name: student,
+          contact: orderData.parentPhone || '',
+        },
+        theme: {
+          color: '#2E5BFF',
+        },
+        modal: {
+          ondismiss: () => {
+            setIsRazorpayProcessing(false);
+          },
+        },
+        handler: async (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) => {
+          try {
+            const verifyRes = await api.post('/billing/public/razorpay/verify-payment', {
+              tenantId: effectiveTenantId,
+              opportunityId: searchParams.get('opp') || '',
+              studentId: searchParams.get('sid') || '',
+              pa,
+              items: [{
+                oliId: 'public_fee',
+                productId: 'public_fee',
+                amount: parsedAmount,
+              }],
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+
+            setRazorpaySuccess({
+              paymentId: response.razorpay_payment_id,
+              orderId: response.razorpay_order_id,
+              invoiceId: verifyRes.data.invoiceId,
+              amount: parsedAmount,
+            });
+            setConfirmedSuccess(true);
+          } catch (vErr: any) {
+            console.error('Online payment verification error:', vErr);
+            setPaymentError(vErr.response?.data?.message || 'Payment verification failed on the server.');
+          } finally {
+            setIsRazorpayProcessing(false);
+          }
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', (resp: any) => {
+        console.error('Razorpay payment failed:', resp.error);
+        setIsRazorpayProcessing(false);
+        setPaymentError(resp.error?.description || 'The Razorpay payment was cancelled or declined.');
+      });
+      rzp.open();
+    } catch (err: any) {
+      console.error('Error starting Razorpay payment:', err);
+      setIsRazorpayProcessing(false);
+      setPaymentError(err.response?.data?.message || 'Failed to initialize payment gateway.');
+    }
+  };
 
   // ── UPI Deep Links (Direct Native App URIs) ──────────────────────────────────
   // Note: Using direct schemes (phonepe://, gpay://, etc.) instead of Chrome package intent
@@ -50,7 +191,7 @@ function PaymentPageContent() {
   // Immediate Native App Dispatch (Zero Delay, Never routes to Google Play)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (parsedAmount <= 0 || isFallback || redirectTriggered) return;
+    if (parsedAmount <= 0 || isFallback || redirectTriggered || gatewayParam === 'razorpay') return;
 
     setRedirectTriggered(true);
 
@@ -156,32 +297,59 @@ function PaymentPageContent() {
           </p>
         </div>
 
-        {/* Direct Action Banner (zero delay, instant tap to PhonePe) */}
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/90 to-[#5f259f]/90 border border-purple-400/40 text-white shadow-xl space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
-              <Smartphone className="w-4 h-4 text-purple-300" />
-              <span>Direct PhonePe Payment</span>
-            </span>
-            <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full text-white">
-              Allotted: ₹{formattedAmount}
-            </span>
+        {/* Direct Action Banner: Razorpay Online Checkout OR Direct PhonePe App */}
+        {gatewayParam === 'razorpay' ? (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-blue-800/90 border border-blue-400/40 text-white shadow-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-blue-300" />
+                <span>Online Razorpay Payment Gateway</span>
+              </span>
+              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full text-white">
+                Allotted: ₹{formattedAmount}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handlePayWithRazorpay}
+              disabled={isRazorpayProcessing}
+              className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.99] text-[#2E5BFF] font-black text-sm flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
+            >
+              <CreditCard className="w-5 h-5 text-[#2E5BFF]" />
+              <span>{isRazorpayProcessing ? 'Launching Razorpay Checkout...' : `Pay ₹${formattedAmount} via Cards / NetBanking / UPI`}</span>
+              <ArrowRight className="w-4 h-4 ml-auto text-[#2E5BFF]" />
+            </button>
+            <p className="text-[10px] text-blue-200/80 text-center">
+              Supports Credit/Debit Cards (Visa/Mastercard/RuPay), Net Banking (all banks), UPI, and Wallets.
+            </p>
           </div>
-          <a
-            href={phonepeUrl}
-            onClick={(e) => {
-              handlePayWithPhonePe();
-            }}
-            className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.99] text-[#5f259f] font-black text-sm flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
-          >
-            <Smartphone className="w-5 h-5 text-[#5f259f]" />
-            <span>Open & Pay ₹{formattedAmount} in PhonePe</span>
-            <ArrowRight className="w-4 h-4 ml-auto text-[#5f259f]" />
-          </a>
-          <p className="text-[10px] text-purple-200/80 text-center">
-            If PhonePe didn&apos;t open automatically, tap the button above to launch PhonePe immediately.
-          </p>
-        </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/90 to-[#5f259f]/90 border border-purple-400/40 text-white shadow-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4 text-purple-300" />
+                <span>Direct PhonePe Payment</span>
+              </span>
+              <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full text-white">
+                Allotted: ₹{formattedAmount}
+              </span>
+            </div>
+            <a
+              href={phonepeUrl}
+              onClick={(e) => {
+                handlePayWithPhonePe();
+              }}
+              className="w-full py-3.5 px-4 rounded-xl bg-white hover:bg-slate-100 active:scale-[0.99] text-[#5f259f] font-black text-sm flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer"
+            >
+              <Smartphone className="w-5 h-5 text-[#5f259f]" />
+              <span>Open & Pay ₹{formattedAmount} in PhonePe</span>
+              <ArrowRight className="w-4 h-4 ml-auto text-[#5f259f]" />
+            </a>
+            <p className="text-[10px] text-purple-200/80 text-center">
+              If PhonePe didn&apos;t open automatically, tap the button above to launch PhonePe immediately.
+            </p>
+          </div>
+        )}
 
         {/* Main Fee Card */}
         <div className="bg-slate-800/80 backdrop-blur-md border border-slate-700/80 rounded-2xl p-5 shadow-2xl shadow-black/40 space-y-4">
@@ -222,9 +390,45 @@ function PaymentPageContent() {
             )}
           </div>
 
-          {/* Action Buttons: PhonePe is Primary */}
+          {/* Action Buttons */}
           <div className="space-y-2.5 pt-1">
-            
+            {/* Razorpay Online Payment Option */}
+            {schoolGateway?.razorpay?.enabled && (
+              <button
+                type="button"
+                onClick={handlePayWithRazorpay}
+                disabled={isRazorpayProcessing}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-blue-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-blue-400/40 disabled:opacity-50"
+              >
+                <CreditCard className="w-5 h-5 text-blue-200" />
+                <span>
+                  {isRazorpayProcessing ? 'Opening Razorpay Checkout...' : `Pay ₹${formattedAmount} Online (Cards / NetBanking / UPI)`}
+                </span>
+                <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
+              </button>
+            )}
+
+            {paymentError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{paymentError}</span>
+              </div>
+            )}
+
+            {razorpaySuccess && (
+              <div className="p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs space-y-2">
+                <div className="flex items-center gap-2 font-bold text-sm text-emerald-400">
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>Payment Verified & Recorded Successfully!</span>
+                </div>
+                <div className="text-slate-200 space-y-1">
+                  <div>Payment ID: <strong className="font-mono text-white">{razorpaySuccess.paymentId}</strong></div>
+                  <div>Invoice ID: <strong className="font-mono text-white">{razorpaySuccess.invoiceId}</strong></div>
+                  <div>Amount Paid: <strong className="text-emerald-400 font-bold">₹{formattedAmount}</strong></div>
+                </div>
+              </div>
+            )}
+
             {/* Primary PhonePe Button */}
             <a
               href={phonepeUrl}
