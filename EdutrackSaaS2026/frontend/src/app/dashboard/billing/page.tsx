@@ -191,9 +191,11 @@ export default function FeesBillingPage() {
   const [feeItems, setFeeItems] = useState<any[]>([]);
 
   // Payment Channels
+  const isRazorpayConfigured = !!setupStats?.setup?.tenant?.razorpayEnabled;
   const paymentChannels = [
     { value: 'GPAY_UPI', label: 'GPay UPI', icon: '⚡' },
     { value: 'PHONEPE_UPI', label: 'PhonePe UPI', icon: '📱' },
+    ...(isRazorpayConfigured ? [{ value: 'RAZORPAY', label: 'Razorpay Gateway', icon: '💳' }] : []),
     { value: 'CASH', label: 'Physical Cash', icon: '💵' },
     { value: 'NET_BANKING', label: 'Net Banking', icon: '🏦' }
   ];
@@ -482,8 +484,200 @@ export default function FeesBillingPage() {
     setConfirmModalOpen(true);
   };
 
+  // Helper to dynamically load Razorpay Checkout SDK
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (typeof window === 'undefined') return resolve(false);
+      if ((window as any).Razorpay) return resolve(true);
+
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  // Dedicated Razorpay fee collection handler
+  const handleRazorpayPayment = async () => {
+    if (!selectedStudent || billingTotal <= 0 || isSubmittingPayment) return;
+
+    const openOpp = selectedStudent.account.opportunities?.[0];
+    if (!openOpp) {
+      setErrorMessage('Student active fee record not found.');
+      setErrorModalOpen(true);
+      return;
+    }
+
+    const itemsToPay = feeItems
+      .filter(item => item.isSelected && item.input > 0)
+      .map(item => ({
+        oliId: item.id,
+        productId: item.productId,
+        amount: item.input,
+      }));
+
+    if (itemsToPay.length === 0) {
+      alert('Please select at least one fee product before processing payment.');
+      return;
+    }
+
+    setIsSubmittingPayment(true);
+    setIsLoading(true);
+
+    try {
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded) {
+        alert('Could not load Razorpay payment gateway SDK. Please check your internet connection.');
+        setIsSubmittingPayment(false);
+        setIsLoading(false);
+        return;
+      }
+
+      // 1. Create order on backend with strict tenant isolation
+      const orderRes = await api.post('/billing/razorpay/create-order', {
+        opportunityId: openOpp.id,
+        studentId: selectedStudent.account.id,
+        items: itemsToPay,
+      });
+
+      const orderData = orderRes.data;
+
+      // 2. Open supported Razorpay Checkout modal
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amountPaise,
+        currency: orderData.currency || 'INR',
+        name: orderData.schoolName || schoolName || 'CS EduTrack',
+        description: `Fee Payment - ${orderData.studentName} (${orderData.className || ''})`,
+        order_id: orderData.orderId,
+        prefill: {
+          name: orderData.studentName,
+          contact: orderData.parentPhone || '',
+        },
+        theme: {
+          color: '#2E5BFF',
+        },
+        modal: {
+          ondismiss: () => {
+            setIsSubmittingPayment(false);
+            setIsLoading(false);
+          },
+        },
+        handler: async (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) => {
+          try {
+            // 3. Cryptographic server-side verification using school secret
+            const verifyRes = await api.post('/billing/razorpay/verify-payment', {
+              opportunityId: openOpp.id,
+              studentId: selectedStudent.account.id,
+              items: itemsToPay,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+
+            const createdInvoiceId = verifyRes.data.invoiceId;
+            const nextBalance = Math.max(0, (selectedStudent.totalPendingBalance || 0) - billingTotal);
+            const paymentDateFormatted = new Date().toLocaleString('en-IN');
+
+            const parentPhoneResolved = selectedStudent.account.parentPhone 
+              || selectedStudent.fatherPhone 
+              || selectedStudent.motherPhone 
+              || selectedStudent.guardianPhone 
+              || selectedStudent.account.phone 
+              || '';
+
+            const paymentRecord: PaymentSuccessRecord = {
+              invoiceId: createdInvoiceId,
+              receiptNumber: createdInvoiceId,
+              transactionId: response.razorpay_payment_id,
+              studentId: selectedStudent.account.id,
+              studentName: selectedStudent.account.name,
+              rollNo: selectedStudent.account.rollNo || '',
+              className: selectedStudent.account.class || '',
+              sectionName: selectedStudent.account.section || '',
+              fatherName: selectedStudent.account.fatherName || '',
+              motherName: selectedStudent.account.motherName || '',
+              parentPhone: parentPhoneResolved,
+              fatherPhone: selectedStudent.fatherPhone || '',
+              motherPhone: selectedStudent.motherPhone || '',
+              guardianPhone: selectedStudent.guardianPhone || '',
+              amountPaid: billingTotal,
+              totalInvoiceAmount: billingTotal,
+              remainingBalance: nextBalance,
+              paymentMethod: 'RAZORPAY',
+              paymentMethodLabel: 'Razorpay Online Gateway',
+              paymentDate: paymentDateFormatted,
+              schoolName: schoolName || 'CS EduTrack',
+              items: itemsToPay.map(item => {
+                const matchedFee = feeItems.find(f => f.id === item.oliId);
+                return {
+                  particulars: matchedFee?.name || 'Fee Component',
+                  amount: item.amount,
+                };
+              }),
+            };
+
+            setLastPaymentSuccess(paymentRecord);
+            setLastPaidStudentName(selectedStudent.account.name);
+            setLastPaidAmount(billingTotal);
+            setSuccessInvoiceId(createdInvoiceId);
+            setSuccessRemainingBalance(nextBalance);
+            setSuccessPaymentDate(paymentDateFormatted);
+
+            const initialSharePhone = normalizeWhatsAppNumber(parentPhoneResolved).normalized || parentPhoneResolved;
+            setSharePhoneNumber(initialSharePhone);
+
+            // Refetch recent invoices
+            try {
+              const txRes = await fastGet('/billing/invoices/recent', undefined, { ttlMs: 0 });
+              if (txRes && Array.isArray(txRes)) setTransactions(txRes);
+            } catch {}
+
+            setConfirmModalOpen(false);
+            setSuccessModalOpen(true);
+          } catch (verifyErr: any) {
+            console.error('Razorpay verification error:', verifyErr);
+            setErrorMessage(verifyErr.response?.data?.message || 'Payment verification failed on the server.');
+            setErrorModalOpen(true);
+          } finally {
+            setIsSubmittingPayment(false);
+            setIsLoading(false);
+          }
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (resp: any) {
+        console.error('Razorpay payment failed:', resp.error);
+        setIsSubmittingPayment(false);
+        setIsLoading(false);
+        setErrorMessage(resp.error?.description || 'The Razorpay payment transaction was declined or failed.');
+        setErrorModalOpen(true);
+      });
+      rzp.open();
+    } catch (err: any) {
+      console.error('Failed to initiate Razorpay order:', err);
+      setIsSubmittingPayment(false);
+      setIsLoading(false);
+      setErrorMessage(err.response?.data?.message || 'Failed to initiate Razorpay order.');
+      setErrorModalOpen(true);
+    }
+  };
+
   const handleFinalizePayment = async () => {
     if (!selectedStudent || billingTotal <= 0 || isSubmittingPayment) return;
+
+    if (selectedChannel === 'RAZORPAY') {
+      setConfirmModalOpen(false);
+      await handleRazorpayPayment();
+      return;
+    }
 
     const openOpp = selectedStudent.account.opportunities?.[0];
     if (!openOpp) {
@@ -1365,7 +1559,7 @@ export default function FeesBillingPage() {
                 const directTn = `Fee ${cleanNameForTn}${cleanClassForTn ? ` ${cleanClassForTn}` : ''}`.slice(0, 50);
 
                 const preferredApp = selectedChannel === 'PHONEPE_UPI' ? 'phonepe' : 'gpay';
-                const publicPaymentUrl = `${origin}/pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&app=${preferredApp}&tr=${encodeURIComponent(txnRef)}`;
+                const publicPaymentUrl = `${origin}/pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&app=${preferredApp}&tr=${encodeURIComponent(txnRef)}&tenantId=${encodeURIComponent(tenant?.id || '')}`;
 
                 const phonepeDirectUrl = `phonepe://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(directTn)}`;
                 const upiDirectUrl = `upi://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(directTn)}`;
@@ -1570,6 +1764,94 @@ export default function FeesBillingPage() {
                           </a>
                         </div>
 
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* RAZORPAY GATEWAY COLLECTION CARD */}
+              {selectedChannel === 'RAZORPAY' && (() => {
+                const tenant = setupStats?.setup?.tenant;
+                const isTestMode = tenant?.razorpayIsTestMode ?? true;
+                return (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                            💳 Razorpay Online Gateway Collection
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            isTestMode 
+                              ? 'text-amber-700 bg-amber-50 border-amber-200' 
+                              : 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                          }`}>
+                            {isTestMode ? 'Test Sandbox Mode' : 'Live Production Mode'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Collect fees through cards, net banking, UPI, and wallets directly into the school's merchant account.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs text-slate-500 font-medium">Allotted Fee:</span>
+                        <span className="text-base font-black text-blue-700 font-mono">₹{billingTotal.toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-xs">
+                        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
+                          Transaction Summary
+                        </span>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between py-1 border-b border-slate-100">
+                            <span className="text-slate-500">Student:</span>
+                            <span className="font-bold text-slate-800">{selectedStudent?.account?.name}</span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-slate-100">
+                            <span className="text-slate-500">Class & Roll:</span>
+                            <span className="font-semibold text-slate-700">
+                              {selectedStudent?.account?.class || 'N/A'} {selectedStudent?.account?.section ? `(${selectedStudent?.account?.section})` : ''} • Roll #{selectedStudent?.account?.rollNo || 'N/A'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between py-1 border-b border-slate-100">
+                            <span className="text-slate-500">Gateway Key ID:</span>
+                            <span className="font-mono text-slate-600 text-[11px]">{tenant?.razorpayKeyId || 'Configured'}</span>
+                          </div>
+                          <div className="flex justify-between py-1">
+                            <span className="text-slate-500">Total Payable:</span>
+                            <span className="font-black text-blue-600 text-sm font-mono">₹{billingTotal.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3 shadow-xs">
+                        <div>
+                          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-1">
+                            Instant Online Checkout
+                          </span>
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            Opens the secure Razorpay Checkout modal with Credit/Debit Cards, Net Banking (all Indian banks), and Wallets. Payments are cryptographically verified before receipts are issued.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleRazorpayPayment}
+                          disabled={isSubmittingPayment || billingTotal <= 0}
+                          className="w-full py-3 px-4 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-sm shadow-md shadow-blue-500/10 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isSubmittingPayment ? (
+                            <span>Processing Payment...</span>
+                          ) : (
+                            <>
+                              <span>💳</span>
+                              <span>Pay ₹{billingTotal.toLocaleString()} via Razorpay Checkout</span>
+                            </>
+                          )}
+                        </button>
                       </div>
                     </div>
                   </div>

@@ -4,6 +4,9 @@ import { TenantContext } from '../tenants/tenant.context';
 import { PaymentStatus, PaymentMethod, Role, ExpenseStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { StorageService } from '../common/storage.service';
+import Razorpay from 'razorpay';
+import * as crypto from 'crypto';
+import { decrypt } from '../common/utils/encryption.util';
 
 // High-speed in-memory cache for Student Billing Details (60s TTL)
 const studentBillingMemoryCache = new Map<string, { data: any; expiresAt: number }>();
@@ -3504,4 +3507,316 @@ export class BillingService {
       academicYears: academicYearsList.map(y => ({ id: y.id, name: y.name })),
     };
   }
+
+  // ── RAZORPAY INTEGRATION (Multi-Tenant School Online Fee Collection) ────────
+
+  async createRazorpayFeeOrder(
+    tenantId: string,
+    opportunityId: string,
+    studentId: string,
+    items: { oliId: string; productId: string; amount: number }[],
+  ) {
+    if (!items || items.length === 0) {
+      throw new BadRequestException('No fee items selected for payment.');
+    }
+
+    const totalAmount = items.reduce((sum, item) => sum + Number(item.amount), 0);
+    if (totalAmount <= 0) {
+      throw new BadRequestException('The total payment amount must be greater than zero.');
+    }
+
+    // 1. Fetch School Tenant & Razorpay Config
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: { schoolSetup: true },
+    });
+    if (!tenant) throw new NotFoundException('School tenant not found.');
+
+    if (!tenant.razorpayEnabled || !tenant.razorpayKeyId || !tenant.razorpayKeySecret) {
+      throw new BadRequestException('Razorpay is not enabled or configured for this school. Please contact the school administration.');
+    }
+
+    // 2. Decrypt Key Secret with server-side encryption key
+    const encryptionKey = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'edutrack_saas_secure_encryption_key_32_bytes_!';
+    let decryptedSecret = '';
+    try {
+      decryptedSecret = decrypt(tenant.razorpayKeySecret, encryptionKey);
+    } catch {
+      throw new BadRequestException('Failed to decrypt school Razorpay credentials. Please verify school gateway keys.');
+    }
+
+    // 3. Verify student and opportunity belong to this tenant
+    const student = await this.prisma.studentProfile.findFirst({
+      where: { id: studentId, tenantId },
+      include: {
+        user: true,
+        classSection: {
+          include: {
+            class: true,
+            section: true,
+          },
+        },
+      },
+    });
+    if (!student) throw new NotFoundException('Student record not found in this school.');
+
+    const opportunity = await this.prisma.opportunity.findFirst({
+      where: { id: opportunityId, studentId, tenantId },
+    });
+    if (!opportunity) throw new NotFoundException('Student active fee record not found.');
+
+    // 4. Initialize Razorpay with the specific school's credentials (Strict Tenant Isolation)
+    const razorpay = new Razorpay({
+      key_id: tenant.razorpayKeyId,
+      key_secret: decryptedSecret,
+    });
+
+    const safeStudentCode = (student.rollNo || student.id.slice(-4) || 'STU').replace(/[^a-zA-Z0-9]/g, '');
+    const receipt = `FEE-${safeStudentCode}-${Date.now()}`.slice(0, 40);
+    const amountInPaise = Math.round(totalAmount * 100);
+
+    const order = await razorpay.orders.create({
+      amount: amountInPaise,
+      currency: 'INR',
+      receipt,
+      notes: {
+        tenantId,
+        studentId,
+        opportunityId,
+        studentName: student.user?.name || 'Student',
+        rollNo: student.rollNo || '',
+        schoolName: tenant.schoolSetup?.schoolName || tenant.name,
+      },
+    });
+
+    const parentPhone = student.fatherPhone || student.motherPhone || student.guardianPhone || student.user?.phone || '';
+
+    return {
+      orderId: order.id,
+      amount: totalAmount,
+      amountPaise: amountInPaise,
+      currency: 'INR',
+      keyId: tenant.razorpayKeyId,
+      isTestMode: tenant.razorpayIsTestMode ?? true,
+      schoolName: tenant.schoolSetup?.schoolName || tenant.name,
+      studentName: student.user?.name || 'Student',
+      parentPhone,
+      studentRoll: student.rollNo || '',
+      className: student.classSection?.class?.name || '',
+    };
+  }
+
+  async verifyRazorpayFeePayment(
+    tenantId: string,
+    opportunityId: string,
+    studentId: string,
+    items: { oliId: string; productId: string; amount: number }[],
+    razorpayOrderId: string,
+    razorpayPaymentId: string,
+    razorpaySignature: string,
+  ) {
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      throw new BadRequestException('Missing required Razorpay payment verification parameters.');
+    }
+
+    // 1. Fetch School Tenant & Key Secret
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+    if (!tenant) throw new NotFoundException('School tenant not found.');
+
+    if (!tenant.razorpayKeySecret) {
+      throw new BadRequestException('Razorpay credentials not configured for this school.');
+    }
+
+    const encryptionKey = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'edutrack_saas_secure_encryption_key_32_bytes_!';
+    let decryptedSecret = '';
+    try {
+      decryptedSecret = decrypt(tenant.razorpayKeySecret, encryptionKey);
+    } catch {
+      throw new BadRequestException('Failed to decrypt school Razorpay credentials.');
+    }
+
+    // 2. Cryptographic signature verification using HMAC-SHA256
+    const expectedSignature = crypto
+      .createHmac('sha256', decryptedSecret)
+      .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+      .digest('hex');
+
+    const signatureBuffer = Buffer.from(razorpaySignature, 'utf8');
+    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+      throw new BadRequestException('Payment verification failed: Invalid transaction signature.');
+    }
+
+    // 3. Idempotency Check: Prevent duplicate payment and double fee deduction
+    const existingInvoice = await this.prisma.invoice.findFirst({
+      where: {
+        tenantId,
+        razorpayPaymentId,
+      },
+    });
+
+    if (existingInvoice) {
+      return {
+        success: true,
+        invoiceId: existingInvoice.id,
+        alreadyProcessed: true,
+        message: 'Payment was already verified and logged into records.',
+      };
+    }
+
+    // 4. Create and process invoice atomically
+    const invoiceId = await this.createInvoice(
+      opportunityId,
+      studentId,
+      items,
+      'RAZORPAY',
+      {
+        bankName: 'Razorpay Online Gateway',
+        bankAccountNumber: razorpayPaymentId,
+        bankIfsc: 'RAZORPAY',
+        bankBranch: tenant.razorpayIsTestMode ? 'Test Mode' : 'Live Mode',
+      },
+    );
+
+    // 5. Audit Razorpay Transaction Details on Invoice
+    await this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        razorpayOrderId,
+        razorpayPaymentId,
+        razorpaySignature,
+      },
+    });
+
+    // Invalidate caches
+    invalidateStudentBillingCache(studentId, tenantId);
+
+    return {
+      success: true,
+      invoiceId,
+      message: 'Razorpay fee transaction verified and payment recorded successfully.',
+    };
+  }
+
+  async getPublicSchoolPaymentInfo(pa?: string, tenantId?: string) {
+    let tenant: any = null;
+
+    if (tenantId) {
+      tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        include: { schoolSetup: true },
+      });
+    }
+
+    if (!tenant && pa) {
+      const cleanPa = pa.trim();
+      tenant = await this.prisma.tenant.findFirst({
+        where: {
+          OR: [
+            { googlePayId: cleanPa },
+            { phonePeId: cleanPa },
+            { upiQrId: cleanPa },
+          ],
+        },
+        include: { schoolSetup: true },
+      });
+    }
+
+    if (!tenant) {
+      tenant = await this.prisma.tenant.findFirst({
+        include: { schoolSetup: true },
+      });
+    }
+
+    if (!tenant) {
+      return {
+        schoolName: 'CS EduTrack Academy',
+        upi: {
+          googlePayId: 'gpay-vikas-edu@okaxis',
+          phonePeId: 'gpay-vikas-edu@okaxis',
+          upiQrId: 'gpay-vikas-edu@okaxis',
+        },
+        razorpay: {
+          enabled: false,
+          isTestMode: true,
+          keyId: '',
+        },
+      };
+    }
+
+    return {
+      tenantId: tenant.id,
+      schoolName: tenant.schoolSetup?.schoolName || tenant.name,
+      upi: {
+        googlePayId: tenant.googlePayId || '',
+        phonePeId: tenant.phonePeId || '',
+        upiQrId: tenant.upiQrId || '',
+      },
+      razorpay: {
+        enabled: !!tenant.razorpayEnabled,
+        isTestMode: tenant.razorpayIsTestMode ?? true,
+        keyId: tenant.razorpayEnabled ? (tenant.razorpayKeyId || '') : '',
+      },
+    };
+  }
+
+  async handleRazorpayWebhook(payload: any, signature: string, rawBody?: string) {
+    if (!payload || !signature) {
+      throw new BadRequestException('Invalid webhook request: missing payload or signature.');
+    }
+
+    const event = payload.event;
+    const paymentEntity = payload.payload?.payment?.entity || payload.payload?.order?.entity;
+    const notes = paymentEntity?.notes || {};
+    const tenantId = notes.tenantId;
+
+    if (!tenantId) {
+      return { status: 'ignored', message: 'No tenant context in webhook notes.' };
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+    if (!tenant || !tenant.razorpayWebhookSecret) {
+      return { status: 'ignored', message: 'Tenant or webhook secret not configured.' };
+    }
+
+    const encryptionKey = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'edutrack_saas_secure_encryption_key_32_bytes_!';
+    let decryptedSecret = '';
+    try {
+      decryptedSecret = decrypt(tenant.razorpayWebhookSecret, encryptionKey);
+    } catch {
+      throw new BadRequestException('Webhook decryption failed.');
+    }
+
+    const bodyToVerify = rawBody || JSON.stringify(payload);
+    const expectedSignature = crypto
+      .createHmac('sha256', decryptedSecret)
+      .update(bodyToVerify)
+      .digest('hex');
+
+    const sigBuf = Buffer.from(signature, 'utf8');
+    const expBuf = Buffer.from(expectedSignature, 'utf8');
+
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      throw new BadRequestException('Invalid webhook signature.');
+    }
+
+    if (event === 'payment.captured' || event === 'order.paid') {
+      const razorpayPaymentId = paymentEntity.id;
+      const existing = await this.prisma.invoice.findFirst({
+        where: { tenantId, razorpayPaymentId },
+      });
+      if (existing) {
+        return { status: 'already_processed', invoiceId: existing.id };
+      }
+      return { status: 'verified', event, paymentId: razorpayPaymentId };
+    }
+
+    return { status: 'handled', event };
+  }
 }
+
