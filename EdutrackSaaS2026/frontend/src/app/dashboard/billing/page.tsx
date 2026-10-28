@@ -1536,8 +1536,8 @@ export default function FeesBillingPage() {
                                   `📝 *Fee Particulars:* ${selectedItemsNames}\n\n` +
                                   `👉 *Pay via PhonePe / UPI:*\n` +
                                   `${publicPaymentUrl}\n\n` +
-                                  `📱 *Direct UPI App Link:* \n` +
-                                  `${upiDirectUrl}\n\n` +
+                                  `📱 *Direct PhonePe App Link:* \n` +
+                                  `${phonepeDirectUrl}\n\n` +
                                   `_(Tapping either link will open PhonePe directly with the allotted amount ₹${billingTotal.toLocaleString()} and school details ready to complete payment)._\n\n` +
                                   `Thank you,\n` +
                                   `*${merchantName}*`;

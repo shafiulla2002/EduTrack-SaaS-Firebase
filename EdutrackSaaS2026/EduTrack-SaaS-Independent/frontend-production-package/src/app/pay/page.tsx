@@ -30,21 +30,12 @@ function PaymentPageContent() {
   const cleanStudent = (student || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
   const transactionNote = customTn || `Fee ${cleanStudent}${cleanStudentClass ? ` ${cleanStudentClass}` : ''}`.slice(0, 50);
 
-  // ── UPI & Intent URIs ────────────────────────────────────────────────────────
-  // Note: 'tr' (Transaction Reference) is deliberately NOT passed in the UPI deep link
-  // for personal VPAs (@ybl, @okaxis, etc.) because NPCI and remitter banks (like Axis Bank)
-  // reject P2P transactions containing 'tr' with error "You've exceeded the bank limit for this payment".
-  // 'tr' is preserved on the web page for invoice reference.
-  const phonepeIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}#Intent;scheme=upi;package=com.phonepe.app;end`;
-
-  const phonepeSchemeUrl = `phonepe://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
-
-  const gpayIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
-  const gpaySchemeUrl = `gpay://upi/pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
-
-  const paytmIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}#Intent;scheme=upi;package=net.one97.paytm;end`;
-  const paytmSchemeUrl = `paytmmp://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
-
+  // ── UPI Deep Links (Direct Native App URIs) ──────────────────────────────────
+  // Note: Using direct schemes (phonepe://, gpay://, etc.) instead of Chrome package intent
+  // ensures Android launches the native app directly and NEVER redirects to Google Play Store.
+  const phonepeUrl = `phonepe://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
+  const gpayUrl = `gpay://upi/pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
+  const paytmUrl = `paytmmp://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
   const upiUrl = `upi://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
 
   // QR Code URL
@@ -56,80 +47,65 @@ function PaymentPageContent() {
   const [confirmedSuccess, setConfirmedSuccess] = useState(false);
   const [redirectTriggered, setRedirectTriggered] = useState(false);
 
-  // Immediate PhonePe Intent Dispatch on Android (Zero Delay)
+  // Immediate Native App Dispatch (Zero Delay, Never routes to Google Play)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (parsedAmount <= 0 || isFallback || redirectTriggered) return;
 
-    const ua = navigator.userAgent || '';
-    const isAndroid = /Android/i.test(ua);
-    const isIOS = /iPhone|iPad|iPod/i.test(ua);
-
     setRedirectTriggered(true);
 
-    if (isAndroid) {
-      if (appParam === 'gpay') {
-        try {
-          window.location.replace(gpayIntentUrl);
-        } catch {
-          window.location.href = gpaySchemeUrl;
-        }
-      } else if (appParam === 'paytm') {
-        try {
-          window.location.replace(paytmIntentUrl);
-        } catch {
-          window.location.href = paytmSchemeUrl;
-        }
-      } else {
-        // Direct intent launch targeted specifically to PhonePe package
-        try {
-          window.location.replace(phonepeIntentUrl);
-        } catch {
-          window.location.href = phonepeSchemeUrl;
-        }
+    if (appParam === 'gpay') {
+      try {
+        window.location.href = gpayUrl;
+      } catch {
+        window.location.href = upiUrl;
       }
-    } else if (isIOS) {
-      if (appParam === 'gpay') {
-        window.location.replace(gpaySchemeUrl);
-      } else {
-        window.location.replace(phonepeSchemeUrl);
+    } else if (appParam === 'paytm') {
+      try {
+        window.location.href = paytmUrl;
+      } catch {
+        window.location.href = upiUrl;
+      }
+    } else {
+      // Direct PhonePe App Launch
+      try {
+        window.location.href = phonepeUrl;
+      } catch {
+        window.location.href = upiUrl;
       }
     }
-  }, [phonepeIntentUrl, gpayIntentUrl, paytmIntentUrl, phonepeSchemeUrl, gpaySchemeUrl, paytmSchemeUrl, appParam, parsedAmount, isFallback, redirectTriggered]);
+  }, [phonepeUrl, gpayUrl, paytmUrl, upiUrl, appParam, parsedAmount, isFallback, redirectTriggered]);
 
   const handlePayWithPhonePe = () => {
-    const isAndroid = typeof window !== 'undefined' && /Android/i.test(navigator.userAgent);
-    if (isAndroid) {
-      window.location.href = phonepeIntentUrl;
-    } else {
-      window.location.href = phonepeSchemeUrl;
+    try {
+      window.location.href = phonepeUrl;
       setTimeout(() => {
         window.location.href = upiUrl;
       }, 1500);
+    } catch {
+      window.location.href = upiUrl;
     }
   };
 
   const handlePayWithGPay = () => {
-    const isAndroid = typeof window !== 'undefined' && /Android/i.test(navigator.userAgent);
-    if (isAndroid) {
-      window.location.href = gpayIntentUrl;
-    } else {
-      window.location.href = gpaySchemeUrl;
+    try {
+      window.location.href = gpayUrl;
       setTimeout(() => {
         window.location.href = upiUrl;
       }, 1500);
+    } catch {
+      window.location.href = upiUrl;
     }
   };
 
   const handlePayWithPaytm = () => {
-    const isAndroid = typeof window !== 'undefined' && /Android/i.test(navigator.userAgent);
-    if (isAndroid) {
-      window.location.href = paytmIntentUrl;
-    } else {
-      window.location.href = paytmSchemeUrl;
+    try {
+      window.location.href = paytmUrl;
       setTimeout(() => {
         window.location.href = upiUrl;
       }, 1500);
+    } catch {
+      window.location.href = upiUrl;
     }
   };
 
@@ -192,7 +168,7 @@ function PaymentPageContent() {
             </span>
           </div>
           <a
-            href={phonepeIntentUrl}
+            href={phonepeUrl}
             onClick={(e) => {
               handlePayWithPhonePe();
             }}
@@ -251,7 +227,7 @@ function PaymentPageContent() {
             
             {/* Primary PhonePe Button */}
             <a
-              href={phonepeIntentUrl}
+              href={phonepeUrl}
               onClick={(e) => {
                 e.preventDefault();
                 handlePayWithPhonePe();
@@ -265,7 +241,7 @@ function PaymentPageContent() {
 
             {/* Google Pay Button */}
             <a
-              href={gpayIntentUrl}
+              href={gpayUrl}
               onClick={(e) => {
                 e.preventDefault();
                 handlePayWithGPay();
@@ -278,7 +254,7 @@ function PaymentPageContent() {
 
             {/* Paytm Button */}
             <a
-              href={paytmIntentUrl}
+              href={paytmUrl}
               onClick={(e) => {
                 e.preventDefault();
                 handlePayWithPaytm();
