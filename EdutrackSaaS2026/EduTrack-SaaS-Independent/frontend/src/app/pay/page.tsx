@@ -26,25 +26,26 @@ function PaymentPageContent() {
 
   const parsedAmount = parseFloat(am) || 0;
   const formattedAmount = parsedAmount.toLocaleString('en-IN');
-  const transactionNote = customTn || `Fee: ${student}${className ? ` (${className})` : ''}`;
+  const cleanStudentClass = (className || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
+  const cleanStudent = (student || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
+  const transactionNote = customTn || `Fee ${cleanStudent}${cleanStudentClass ? ` ${cleanStudentClass}` : ''}`.slice(0, 50);
 
   // ── UPI & Intent URIs ────────────────────────────────────────────────────────
-  // 1. Android Chrome Intent targeted explicitly to PhonePe package
-  const phonepeIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}#Intent;scheme=upi;package=com.phonepe.app;end`;
+  // Note: 'tr' (Transaction Reference) is deliberately NOT passed in the UPI deep link
+  // for personal VPAs (@ybl, @okaxis, etc.) because NPCI and remitter banks (like Axis Bank)
+  // reject P2P transactions containing 'tr' with error "You've exceeded the bank limit for this payment".
+  // 'tr' is preserved on the web page for invoice reference.
+  const phonepeIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}#Intent;scheme=upi;package=com.phonepe.app;end`;
 
-  // 2. Direct PhonePe custom scheme (for native app bridges and iOS)
-  const phonepeSchemeUrl = `phonepe://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}`;
+  const phonepeSchemeUrl = `phonepe://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
 
-  // 3. Android Chrome Intent for Google Pay
-  const gpayIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
-  const gpaySchemeUrl = `gpay://upi/pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}`;
+  const gpayIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
+  const gpaySchemeUrl = `gpay://upi/pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
 
-  // 4. Android Chrome Intent for Paytm
-  const paytmIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}#Intent;scheme=upi;package=net.one97.paytm;end`;
-  const paytmSchemeUrl = `paytmmp://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}`;
+  const paytmIntentUrl = `intent://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}#Intent;scheme=upi;package=net.one97.paytm;end`;
+  const paytmSchemeUrl = `paytmmp://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
 
-  // 5. Universal standard UPI URI (NPCI standard)
-  const upiUrl = `upi://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}${tr ? `&tr=${encodeURIComponent(tr)}` : ''}`;
+  const upiUrl = `upi://pay?pa=${encodeURIComponent(pa)}&pn=${encodeURIComponent(pn)}&am=${encodeURIComponent(am)}&cu=INR&tn=${encodeURIComponent(transactionNote)}`;
 
   // QR Code URL
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiUrl)}`;

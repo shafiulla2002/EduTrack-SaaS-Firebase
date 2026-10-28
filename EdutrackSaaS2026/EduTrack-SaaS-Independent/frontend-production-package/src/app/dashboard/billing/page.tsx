@@ -2,14 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { useTenant } from '@/app/providers/TenantContext';
 import { formatDateDDMMYYYY } from '@/lib/date';
 import { 
   Receipt, Search, CreditCard, Sparkles, X, CheckCircle2, 
   QrCode, User, ArrowRight, CornerDownRight, RotateCcw,
-  BookOpen, Calendar, Printer, ShieldCheck, AlertCircle, MessageCircle,
+  BookOpen, Calendar, Printer, ShieldCheck, AlertCircle, MessageCircle, RefreshCw,
   Copy, Check, ExternalLink, Smartphone
 } from 'lucide-react';
 import {
@@ -180,8 +180,12 @@ export default function FeesBillingPage() {
   const { setupStats, currentUser, schoolName } = useTenant();
   const [search, setSearch] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [selectedYear, setSelectedYear] = useState('');
-  const [academicYears, setAcademicYears] = useState<{ label: string; value: string }[]>([]);
+  
+  const initialYears = getCachedData<{ label: string; value: string }[]>('/billing/options/years') || [];
+  const initialInvoices = getCachedData<StagedInvoice[]>('/billing/invoices/recent') || [];
+
+  const [selectedYear, setSelectedYear] = useState(() => initialYears.length > 0 ? initialYears[0].value : '');
+  const [academicYears, setAcademicYears] = useState<{ label: string; value: string }[]>(initialYears);
 
   // Fee particulars checklist states
   const [feeItems, setFeeItems] = useState<any[]>([]);
@@ -201,8 +205,8 @@ export default function FeesBillingPage() {
   const [accountNo, setAccountNo] = useState('50100239485729');
 
   // History logs
-  const [transactions, setTransactions] = useState<StagedInvoice[]>([]);
-  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [transactions, setTransactions] = useState<StagedInvoice[]>(initialInvoices);
+  const [transactionsLoading, setTransactionsLoading] = useState(() => initialInvoices.length === 0);
   const [matchingStudents, setMatchingStudents] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isStudentLoading, setIsStudentLoading] = useState(false);
@@ -229,7 +233,6 @@ export default function FeesBillingPage() {
   // Load initial options & recent invoices
   useEffect(() => {
     const fetchInit = async () => {
-      setTransactionsLoading(true);
       try {
         const [yRes, txRes] = await Promise.all([
           fastGet('/billing/options/years', undefined, { ttlMs: 60000 }),
@@ -238,6 +241,7 @@ export default function FeesBillingPage() {
             onRevalidate: (fresh) => {
               if (fresh && Array.isArray(fresh)) {
                 setTransactions(fresh);
+                setTransactionsLoading(false);
               }
             }
           })
@@ -245,7 +249,7 @@ export default function FeesBillingPage() {
         if (yRes?.data) {
           setAcademicYears(yRes.data);
           if (yRes.data.length > 0) {
-            setSelectedYear(yRes.data[0].value);
+            setSelectedYear(prev => prev || yRes.data[0].value);
           }
         }
         if (txRes?.data) {
@@ -916,55 +920,22 @@ export default function FeesBillingPage() {
 
     const whatsappUrl = `https://wa.me/${phoneClean}?text=${encodeURIComponent(shareText)}`;
 
-    // Desktop Chrome Popup-Blocker Prevention:
-    // Synchronously open blank window reference on user click gesture
-    let popupWindow: Window | null = null;
-    try {
-      popupWindow = window.open('about:blank', '_blank');
-      if (popupWindow) {
-        popupWindow.document.write(`
-          <html>
-            <head><title>Opening WhatsApp...</title></head>
-            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f8fafc; color: #1e293b;">
-              <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; text-align: center; max-width: 400px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05);">
-                <div style="width: 48px; height: 48px; background: #ecfdf5; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
-                  <span style="font-size: 24px;">💬</span>
-                </div>
-                <h3 style="margin: 0 0 8px; font-size: 16px; font-weight: 700;">Opening WhatsApp Chat</h3>
-                <p style="margin: 0; font-size: 13px; color: #64748b;">Preparing receipt PDF and redirecting to WhatsApp...</p>
-              </div>
-            </body>
-          </html>
-        `);
-      }
-    } catch (popupErr) {
-      console.warn('Could not pre-open popup window:', popupErr);
-    }
-
     setIsSharingWhatsApp(true);
 
     try {
-      // 1. Generate and download the official high-resolution PDF
+      // 1. Generate and download the official high-resolution PDF directly on the same page
       const { pdf, filename } = await generateInvoicePDFInstance(invoiceId, record);
       pdf.save(filename);
 
-      // 2. Redirect popup window to WhatsApp deep-link
-      if (popupWindow && !popupWindow.closed) {
-        popupWindow.location.href = whatsappUrl;
-      } else {
-        window.open(whatsappUrl, '_blank');
-      }
+      // 2. Open WhatsApp via deeplink after PDF creation completes
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
 
-      setToastMessage('WhatsApp chat opened. Please attach the downloaded receipt PDF to the chat if needed.');
+      setToastMessage('Receipt PDF downloaded! Opening WhatsApp to share with parent.');
       setTimeout(() => setToastMessage(null), 6000);
     } catch (err: any) {
       console.error('Failed to generate PDF during WhatsApp share:', err);
-      // Fallback: still redirect to WhatsApp with prefilled details even if PDF generation throws
-      if (popupWindow && !popupWindow.closed) {
-        popupWindow.location.href = whatsappUrl;
-      } else {
-        window.open(whatsappUrl, '_blank');
-      }
+      // Fallback: still open WhatsApp with prefilled details even if PDF generation throws
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
       setToastMessage('WhatsApp chat opened with receipt details.');
       setTimeout(() => setToastMessage(null), 6000);
     } finally {
@@ -1389,11 +1360,15 @@ export default function FeesBillingPage() {
                 const safeStudentCode = (studentRoll || selectedStudent?.account?.id?.slice(-4) || 'STU').replace(/[^a-zA-Z0-9]/g, '');
                 const txnRef = `EDUTRACK-${safeStudentCode}-${billingTotal}`;
 
+                const cleanClassForTn = (studentClass || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
+                const cleanNameForTn = (studentName || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
+                const directTn = `Fee ${cleanNameForTn}${cleanClassForTn ? ` ${cleanClassForTn}` : ''}`.slice(0, 50);
+
                 const preferredApp = selectedChannel === 'PHONEPE_UPI' ? 'phonepe' : 'gpay';
                 const publicPaymentUrl = `${origin}/pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&app=${preferredApp}&tr=${encodeURIComponent(txnRef)}`;
 
-                const phonepeDirectUrl = `phonepe://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(`Fee: ${studentName}${studentClass ? ` (${studentClass})` : ''}`)}&tr=${encodeURIComponent(txnRef)}`;
-                const upiDirectUrl = `upi://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(`Fee: ${studentName}${studentClass ? ` (${studentClass})` : ''}`)}&tr=${encodeURIComponent(txnRef)}`;
+                const phonepeDirectUrl = `phonepe://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(directTn)}`;
+                const upiDirectUrl = `upi://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(directTn)}`;
 
                 return (
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
@@ -1863,12 +1838,21 @@ export default function FeesBillingPage() {
                 }}
                 className={`w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm border-none ${
                   isSharingWhatsApp 
-                    ? 'bg-emerald-400 cursor-not-allowed' 
+                    ? 'bg-emerald-500 cursor-not-allowed opacity-90' 
                     : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
                 }`}
               >
-                <MessageCircle className="w-4 h-4" />
-                {isSharingWhatsApp ? 'Preparing PDF...' : 'Share WhatsApp'}
+                {isSharingWhatsApp ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Preparing PDF & WhatsApp...</span>
+                  </>
+                ) : (
+                  <>
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Share WhatsApp</span>
+                  </>
+                )}
               </button>
               <button
                 type="button"

@@ -1360,11 +1360,15 @@ export default function FeesBillingPage() {
                 const safeStudentCode = (studentRoll || selectedStudent?.account?.id?.slice(-4) || 'STU').replace(/[^a-zA-Z0-9]/g, '');
                 const txnRef = `EDUTRACK-${safeStudentCode}-${billingTotal}`;
 
+                const cleanClassForTn = (studentClass || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
+                const cleanNameForTn = (studentName || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
+                const directTn = `Fee ${cleanNameForTn}${cleanClassForTn ? ` ${cleanClassForTn}` : ''}`.slice(0, 50);
+
                 const preferredApp = selectedChannel === 'PHONEPE_UPI' ? 'phonepe' : 'gpay';
                 const publicPaymentUrl = `${origin}/pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&app=${preferredApp}&tr=${encodeURIComponent(txnRef)}`;
 
-                const phonepeDirectUrl = `phonepe://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(`Fee: ${studentName}${studentClass ? ` (${studentClass})` : ''}`)}&tr=${encodeURIComponent(txnRef)}`;
-                const upiDirectUrl = `upi://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(`Fee: ${studentName}${studentClass ? ` (${studentClass})` : ''}`)}&tr=${encodeURIComponent(txnRef)}`;
+                const phonepeDirectUrl = `phonepe://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(directTn)}`;
+                const upiDirectUrl = `upi://pay?pa=${encodeURIComponent(displayUpiId)}&pn=${encodeURIComponent(merchantName)}&am=${billingTotal}&cu=INR&tn=${encodeURIComponent(directTn)}`;
 
                 return (
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
