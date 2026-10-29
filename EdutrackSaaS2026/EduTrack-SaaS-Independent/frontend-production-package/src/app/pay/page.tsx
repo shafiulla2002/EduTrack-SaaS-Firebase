@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { 
   ShieldCheck, Smartphone, CheckCircle2, Copy, Check, 
   ExternalLink, ArrowRight, Building2, User, BookOpen, 
-  AlertCircle, RefreshCw, QrCode, MessageCircle, CreditCard
+  AlertCircle, RefreshCw, QrCode, MessageCircle, CreditCard,
+  Printer, Download
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -27,10 +28,21 @@ function PaymentPageContent() {
   const gatewayParam = searchParams.get('gateway') || '';
   const isFallback = searchParams.get('fallback') === '1';
 
+  // Razorpay redirect detection parameters
+  const isPaymentCompleteParam = searchParams.get('payment_complete') === '1' || searchParams.get('razorpay_payment_link_status') === 'paid';
+  const rzpPaymentId = searchParams.get('razorpay_payment_id');
+  const rzpPaymentLinkId = searchParams.get('razorpay_payment_link_id');
+  const rzpOrderId = searchParams.get('order_id') || searchParams.get('razorpay_order_id');
+  const oppParam = searchParams.get('opp') || '';
+  const sidParam = searchParams.get('sid') || '';
+
   const [schoolGateway, setSchoolGateway] = useState<any>(null);
   const [isRazorpayProcessing, setIsRazorpayProcessing] = useState(false);
   const [razorpaySuccess, setRazorpaySuccess] = useState<any>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [isVerifyingReturnPayment, setIsVerifyingReturnPayment] = useState(false);
+  const [returnPaymentChecked, setReturnPaymentChecked] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   // Load public gateway configuration
   useEffect(() => {
@@ -53,6 +65,92 @@ function PaymentPageContent() {
   const cleanStudentClass = (className || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
   const cleanStudent = (student || '').replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
   const transactionNote = customTn || `Fee ${cleanStudent}${cleanStudentClass ? ` ${cleanStudentClass}` : ''}`.slice(0, 50);
+
+  // Auto-verify payment if returning from Razorpay Link or Callback
+  useEffect(() => {
+    if (returnPaymentChecked) return;
+    if (isPaymentCompleteParam || rzpPaymentId || rzpPaymentLinkId) {
+      setReturnPaymentChecked(true);
+      setIsVerifyingReturnPayment(true);
+
+      const verifyStatus = async () => {
+        try {
+          const effectiveTenantId = tenantIdParam || schoolGateway?.tenantId;
+          const res = await api.post('/billing/public/razorpay/check-status', {
+            tenantId: effectiveTenantId,
+            orderId: rzpOrderId || undefined,
+            paymentLinkId: rzpPaymentLinkId || undefined,
+            paymentId: rzpPaymentId || undefined,
+            studentId: sidParam || undefined,
+            opportunityId: oppParam || undefined,
+            pa,
+            items: [{
+              oliId: oppParam || 'public_fee',
+              productId: 'public_fee',
+              amount: parsedAmount,
+              name: particulars || 'School Tuition Fee',
+            }],
+          });
+
+          if (res.data?.isPaid) {
+            setRazorpaySuccess({
+              paymentId: res.data.paymentId || rzpPaymentId || 'PAID',
+              orderId: res.data.orderId || rzpOrderId,
+              invoiceId: res.data.invoiceId,
+              invoiceNumber: res.data.invoiceNumber || res.data.invoiceId,
+              amount: res.data.amount || parsedAmount,
+              studentName: cleanStudent || res.data.studentName,
+            });
+            setConfirmedSuccess(true);
+          }
+        } catch (err: any) {
+          console.warn('Could not verify redirect payment status:', err);
+        } finally {
+          setIsVerifyingReturnPayment(false);
+        }
+      };
+
+      verifyStatus();
+    }
+  }, [
+    isPaymentCompleteParam,
+    rzpPaymentId,
+    rzpPaymentLinkId,
+    rzpOrderId,
+    returnPaymentChecked,
+    tenantIdParam,
+    schoolGateway?.tenantId,
+    sidParam,
+    oppParam,
+    pa,
+    parsedAmount,
+    particulars,
+    cleanStudent,
+  ]);
+
+  const handleDownloadPdf = async (invoiceId: string) => {
+    if (!invoiceId) return;
+    setIsDownloadingPdf(true);
+    try {
+      const res = await api.get(`/billing/public/invoices/${invoiceId}/pdf/download`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', `SchoolFeeReceipt_${invoiceId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (e) {
+      console.warn('Direct PDF download failed, falling back to window.open:', e);
+      window.open(`${api.defaults.baseURL}/billing/public/invoices/${invoiceId}/pdf/download`, '_blank');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   // Helper to load Razorpay Checkout SDK
   const loadRazorpayScript = (): Promise<boolean> => {
@@ -163,7 +261,9 @@ function PaymentPageContent() {
               paymentId: response.razorpay_payment_id,
               orderId: response.razorpay_order_id,
               invoiceId: verifyRes.data.invoiceId,
+              invoiceNumber: verifyRes.data.invoiceNumber || verifyRes.data.invoiceId,
               amount: parsedAmount,
+              studentName: cleanStudent,
             });
             setConfirmedSuccess(true);
           } catch (vErr: any) {
@@ -316,7 +416,15 @@ function PaymentPageContent() {
         </div>
 
         {/* Direct Action Banner: Razorpay Online Checkout OR Direct PhonePe App */}
-        {gatewayParam === 'razorpay' ? (
+        {isVerifyingReturnPayment ? (
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-blue-900/90 to-indigo-900/90 border border-blue-400/50 text-white text-center space-y-3 shadow-xl">
+            <RefreshCw className="w-8 h-8 animate-spin text-blue-300 mx-auto" />
+            <h3 className="font-bold text-sm">Verifying Online Payment...</h3>
+            <p className="text-xs text-blue-200">
+              Confirming transaction with Razorpay, deducting student fee, and generating your official receipt...
+            </p>
+          </div>
+        ) : razorpaySuccess ? null : gatewayParam === 'razorpay' ? (
           <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-blue-800/90 border border-blue-400/40 text-white shadow-xl space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
@@ -393,7 +501,7 @@ function PaymentPageContent() {
           {/* Amount Due Card */}
           <div className="bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-xl p-4 text-center space-y-1">
             <span className="text-[11px] font-bold text-blue-300 uppercase tracking-wider">
-              Allotted Payment Amount
+              {razorpaySuccess ? 'Amount Paid' : 'Allotted Payment Amount'}
             </span>
             <div className="text-3xl sm:text-4xl font-black text-white font-mono tracking-tight">
               ₹{formattedAmount}
@@ -408,24 +516,8 @@ function PaymentPageContent() {
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-2.5 pt-1">
-            {/* Razorpay Online Payment Option */}
-            {schoolGateway?.razorpay?.enabled && (
-              <button
-                type="button"
-                onClick={handlePayWithRazorpay}
-                disabled={isRazorpayProcessing}
-                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-blue-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-blue-400/40 disabled:opacity-50"
-              >
-                <CreditCard className="w-5 h-5 text-blue-200" />
-                <span>
-                  {isRazorpayProcessing ? 'Opening Razorpay Checkout...' : `Pay ₹${formattedAmount} Online (Cards / NetBanking / UPI)`}
-                </span>
-                <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
-              </button>
-            )}
-
+          {/* Action Buttons / Official Receipt Card */}
+          <div className="space-y-3 pt-1">
             {paymentError && (
               <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
@@ -433,190 +525,286 @@ function PaymentPageContent() {
               </div>
             )}
 
-            {razorpaySuccess && (
-              <div className="p-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs space-y-2">
-                <div className="flex items-center gap-2 font-bold text-sm text-emerald-400">
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span>Payment Verified & Recorded Successfully!</span>
-                </div>
-                <div className="text-slate-200 space-y-1">
-                  <div>Payment ID: <strong className="font-mono text-white">{razorpaySuccess.paymentId}</strong></div>
-                  <div>Invoice ID: <strong className="font-mono text-white">{razorpaySuccess.invoiceId}</strong></div>
-                  <div>Amount Paid: <strong className="text-emerald-400 font-bold">₹{formattedAmount}</strong></div>
-                </div>
-              </div>
-            )}
-
-            {/* Payment Actions & Gateway Options */}
-            {gatewayParam === 'razorpay' ? (
-              <div className="space-y-4 pt-1">
-                <button
-                  type="button"
-                  onClick={handlePayWithRazorpay}
-                  disabled={isRazorpayProcessing}
-                  className="w-full py-4 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-extrabold text-sm shadow-xl shadow-blue-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-blue-400/40 disabled:opacity-50"
-                >
-                  <CreditCard className="w-5 h-5 text-blue-200" />
-                  <span>
-                    {isRazorpayProcessing ? 'Opening Razorpay Checkout...' : `Pay ₹${formattedAmount} Online (Cards / NetBanking / UPI)`}
-                  </span>
-                  <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
-                </button>
-
-                {/* Divider */}
-                <div className="flex items-center gap-3 text-slate-500 text-xs py-1">
-                  <div className="flex-1 h-px bg-slate-700/60"></div>
-                  <span className="uppercase text-[10px] tracking-wider font-bold">Or Scan Razorpay Dynamic QR</span>
-                  <div className="flex-1 h-px bg-slate-700/60"></div>
-                </div>
-
-                {/* QR Code Section for Desktop / Secondary device */}
-                <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center space-y-3">
-                  <div className="w-44 h-44 bg-white p-2 rounded-xl shadow-md flex items-center justify-center overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
-                      alt="Razorpay Online Payment QR Code" 
-                      className="w-40 h-40 object-contain"
-                    />
+            {razorpaySuccess ? (
+              <div className="p-5 rounded-2xl bg-gradient-to-b from-emerald-950/90 via-slate-900 to-slate-900 border-2 border-emerald-500 text-white shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center gap-3 pb-3 border-b border-emerald-500/30">
+                  <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                   </div>
-                  
-                  <div className="space-y-1 w-full">
-                    <span className="text-[10px] text-blue-400 block font-bold uppercase tracking-wider">
-                      Official Razorpay Online Gateway
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 block">
+                      Payment Verified & Fee Deducted
                     </span>
-                    <span className="text-xs text-slate-200 font-mono">
-                      Allotted: ₹{formattedAmount}
+                    <h3 className="text-lg font-black text-white">
+                      ₹{Number(razorpaySuccess.amount || parsedAmount).toLocaleString('en-IN')} Paid
+                    </h3>
+                    <span className="text-[11px] text-slate-300">
+                      Receipt #{razorpaySuccess.invoiceNumber || razorpaySuccess.invoiceId}
                     </span>
                   </div>
-
-                  <p className="text-[11px] text-slate-400">
-                    Scan with any UPI app (Google Pay, PhonePe, Paytm, BHIM) or phone camera to pay directly.
-                  </p>
                 </div>
 
-                {/* Instructions Box */}
-                <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-400">
-                  <h4 className="font-bold text-slate-300 flex items-center gap-1.5 text-xs">
-                    <AlertCircle className="w-3.5 h-3.5 text-blue-400" />
-                    <span>How to Complete Online Payment:</span>
-                  </h4>
-                  <ol className="list-decimal pl-4 space-y-1">
-                    <li>Tap <strong>Pay ₹{formattedAmount} Online</strong> above.</li>
-                    <li>Select your payment method: UPI, Credit/Debit Card, Net Banking (all banks), or Wallets.</li>
-                    <li>Authorize the transaction in your banking app.</li>
-                    <li>Payment is verified in real-time and recorded directly into the school records!</li>
-                  </ol>
+                <div className="bg-slate-950/80 rounded-xl p-3.5 border border-emerald-500/30 text-xs space-y-2 font-mono">
+                  <div className="flex justify-between text-slate-400">
+                    <span>Student:</span>
+                    <span className="text-white font-sans font-bold">{cleanStudent}</span>
+                  </div>
+                  {roll && (
+                    <div className="flex justify-between text-slate-400">
+                      <span>Roll No:</span>
+                      <span className="text-white">{roll}</span>
+                    </div>
+                  )}
+                  {cleanStudentClass && (
+                    <div className="flex justify-between text-slate-400">
+                      <span>Class:</span>
+                      <span className="text-white">{cleanStudentClass}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-400">
+                    <span>Particulars:</span>
+                    <span className="text-white font-sans truncate max-w-[200px]">{particulars}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>Payment ID:</span>
+                    <span className="text-emerald-400 truncate max-w-[180px]">{razorpaySuccess.paymentId}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>Status:</span>
+                    <span className="text-emerald-400 font-bold">PAID & CREDITED TO SCHOOL</span>
+                  </div>
                 </div>
+
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPdf(razorpaySuccess.invoiceId)}
+                    disabled={isDownloadingPdf}
+                    className="w-full py-3.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-98 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/25 cursor-pointer disabled:opacity-50"
+                  >
+                    <Download className="w-4 h-4 text-slate-950" />
+                    <span>{isDownloadingPdf ? 'Downloading Receipt...' : 'Download Official Fee Receipt (PDF)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const shareMsg = 
+                        `*🧾 OFFICIAL SCHOOL FEE RECEIPT - ${(pn || 'CS EduTrack').toUpperCase()}*\n\n` +
+                        `Dear Parent / School Admin,\n` +
+                        `Fee payment has been successfully completed:\n\n` +
+                        `👤 *Student:* ${cleanStudent}\n` +
+                        (roll ? `🔢 *Roll No:* ${roll}\n` : '') +
+                        (cleanStudentClass ? `🏫 *Class:* ${cleanStudentClass}\n` : '') +
+                        `💰 *Amount Paid:* ₹${Number(razorpaySuccess.amount || parsedAmount).toLocaleString('en-IN')}\n` +
+                        `📋 *Receipt No:* ${razorpaySuccess.invoiceNumber || razorpaySuccess.invoiceId}\n` +
+                        `🆔 *Razorpay Payment Ref:* ${razorpaySuccess.paymentId}\n` +
+                        `📝 *Particulars:* ${particulars}\n\n` +
+                        `Status: *PAID & VERIFIED*\n` +
+                        `Thank you!`;
+                      window.open(`https://wa.me/?text=${encodeURIComponent(shareMsg)}`, '_blank', 'noopener,noreferrer');
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 transition-all cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4 text-emerald-400" />
+                    <span>Share Receipt on WhatsApp</span>
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-emerald-300/80 text-center">
+                  Fee records have been updated in the school management system.
+                </p>
               </div>
             ) : (
               <>
-                {/* Primary PhonePe Button */}
-                <a
-                  href={phonepeUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handlePayWithPhonePe();
-                  }}
-                  className="w-full py-3.5 px-4 rounded-xl bg-[#5f259f] hover:bg-[#501c87] active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-purple-400/30"
-                >
-                  <Smartphone className="w-5 h-5" />
-                  <span>Pay ₹{formattedAmount} with PhonePe</span>
-                  <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
-                </a>
-
-                {/* Google Pay Button */}
-                <a
-                  href={gpayUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handlePayWithGPay();
-                  }}
-                  className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-750 active:scale-[0.99] text-white font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <span className="text-base">⚡</span>
-                  <span>Pay via Google Pay</span>
-                </a>
-
-                {/* Paytm Button */}
-                <a
-                  href={paytmUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handlePayWithPaytm();
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-slate-750 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <span className="text-sm"> Paytm </span>
-                  <span>Pay via Paytm UPI</span>
-                </a>
-
-                {/* Any UPI App Button */}
-                <a
-                  href={upiUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handlePayWithAnyUpi();
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <span className="text-sm">💳</span>
-                  <span>Pay with Other UPI Apps (BHIM, Cred, etc.)</span>
-                </a>
-
-                {/* Divider */}
-                <div className="flex items-center gap-3 text-slate-500 text-xs py-1">
-                  <div className="flex-1 h-px bg-slate-700/60"></div>
-                  <span className="uppercase text-[10px] tracking-wider font-bold">Or Scan Standee QR</span>
-                  <div className="flex-1 h-px bg-slate-700/60"></div>
-                </div>
-
-                {/* QR Code Section for Desktop / Secondary device */}
-                <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center space-y-3">
-                  <div className="w-44 h-44 bg-white p-2 rounded-xl shadow-md flex items-center justify-center overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img 
-                      src={qrCodeUrl} 
-                      alt="PhonePe UPI QR Code" 
-                      className="w-40 h-40 object-contain"
-                    />
-                  </div>
-                  
-                  <div className="space-y-1 w-full">
-                    <span className="text-[10px] text-slate-400 block font-semibold uppercase">
-                      Merchant UPI ID
+                {/* Razorpay Online Payment Option */}
+                {schoolGateway?.razorpay?.enabled && (
+                  <button
+                    type="button"
+                    onClick={handlePayWithRazorpay}
+                    disabled={isRazorpayProcessing}
+                    className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-blue-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-blue-400/40 disabled:opacity-50"
+                  >
+                    <CreditCard className="w-5 h-5 text-blue-200" />
+                    <span>
+                      {isRazorpayProcessing ? 'Opening Razorpay Checkout...' : `Pay ₹${formattedAmount} Online (Cards / NetBanking / UPI)`}
                     </span>
-                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200">
-                      <span className="truncate max-w-[220px]">{pa}</span>
-                      <button
-                        type="button"
-                        onClick={handleCopyUpi}
-                        className="text-blue-400 hover:text-blue-300 p-1 cursor-pointer"
-                        title="Copy UPI ID"
-                      >
-                        {copiedUpi ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
+                    <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
+                  </button>
+                )}
+
+                {/* Payment Actions & Gateway Options */}
+                {gatewayParam === 'razorpay' ? (
+                  <div className="space-y-4 pt-1">
+                    <button
+                      type="button"
+                      onClick={handlePayWithRazorpay}
+                      disabled={isRazorpayProcessing}
+                      className="w-full py-4 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-extrabold text-sm shadow-xl shadow-blue-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-blue-400/40 disabled:opacity-50"
+                    >
+                      <CreditCard className="w-5 h-5 text-blue-200" />
+                      <span>
+                        {isRazorpayProcessing ? 'Opening Razorpay Checkout...' : `Pay ₹${formattedAmount} Online (Cards / NetBanking / UPI)`}
+                      </span>
+                      <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
+                    </button>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 text-slate-500 text-xs py-1">
+                      <div className="flex-1 h-px bg-slate-700/60"></div>
+                      <span className="uppercase text-[10px] tracking-wider font-bold">Or Scan Razorpay Dynamic QR</span>
+                      <div className="flex-1 h-px bg-slate-700/60"></div>
+                    </div>
+
+                    {/* QR Code Section for Desktop / Secondary device */}
+                    <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center space-y-3">
+                      <div className="w-44 h-44 bg-white p-2 rounded-xl shadow-md flex items-center justify-center overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(typeof window !== 'undefined' ? window.location.href : '')}`}
+                          alt="Razorpay Online Payment QR Code" 
+                          className="w-40 h-40 object-contain"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1 w-full">
+                        <span className="text-[10px] text-blue-400 block font-bold uppercase tracking-wider">
+                          Official Razorpay Online Gateway
+                        </span>
+                        <span className="text-xs text-slate-200 font-mono">
+                          Allotted: ₹{formattedAmount}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-slate-400">
+                        Scan with any UPI app (Google Pay, PhonePe, Paytm, BHIM) or phone camera to pay directly.
+                      </p>
+                    </div>
+
+                    {/* Instructions Box */}
+                    <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-400">
+                      <h4 className="font-bold text-slate-300 flex items-center gap-1.5 text-xs">
+                        <AlertCircle className="w-3.5 h-3.5 text-blue-400" />
+                        <span>How to Complete Online Payment:</span>
+                      </h4>
+                      <ol className="list-decimal pl-4 space-y-1">
+                        <li>Tap <strong>Pay ₹{formattedAmount} Online</strong> above.</li>
+                        <li>Select your payment method: UPI, Credit/Debit Card, Net Banking (all banks), or Wallets.</li>
+                        <li>Authorize the transaction in your banking app.</li>
+                        <li>Payment is verified in real-time and recorded directly into the school records!</li>
+                      </ol>
                     </div>
                   </div>
+                ) : (
+                  <>
+                    {/* Primary PhonePe Button */}
+                    <a
+                      href={phonepeUrl}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handlePayWithPhonePe();
+                      }}
+                      className="w-full py-3.5 px-4 rounded-xl bg-[#5f259f] hover:bg-[#501c87] active:scale-[0.99] text-white font-extrabold text-sm shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-purple-400/30"
+                    >
+                      <Smartphone className="w-5 h-5" />
+                      <span>Pay ₹{formattedAmount} with PhonePe</span>
+                      <ArrowRight className="w-4 h-4 ml-auto opacity-70" />
+                    </a>
 
-                  <p className="text-[11px] text-slate-400">
-                    Open PhonePe or any camera UPI scanner to pay directly from your bank.
-                  </p>
-                </div>
+                    {/* Google Pay Button */}
+                    <a
+                      href={gpayUrl}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handlePayWithGPay();
+                      }}
+                      className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-750 active:scale-[0.99] text-white font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <span className="text-base">⚡</span>
+                      <span>Pay via Google Pay</span>
+                    </a>
 
-                {/* Instructions Box */}
-                <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-400">
-                  <h4 className="font-bold text-slate-300 flex items-center gap-1.5 text-xs">
-                    <AlertCircle className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Payment Details & Steps:</span>
-                  </h4>
-                  <ol className="list-decimal pl-4 space-y-1">
-                    <li>Tap <strong>Open & Pay in PhonePe</strong> above to complete transaction.</li>
-                    <li>Confirm the allotted amount <strong>₹{formattedAmount}</strong> and payee details.</li>
-                    <li>Enter your secure UPI PIN to finalize payment.</li>
-                    <li>Save a screenshot or UTR number once completed.</li>
-                  </ol>
-                </div>
+                    {/* Paytm Button */}
+                    <a
+                      href={paytmUrl}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handlePayWithPaytm();
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-slate-750 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <span className="text-sm"> Paytm </span>
+                      <span>Pay via Paytm UPI</span>
+                    </a>
+
+                    {/* Any UPI App Button */}
+                    <a
+                      href={upiUrl}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handlePayWithAnyUpi();
+                      }}
+                      className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold text-xs border border-slate-700/60 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <span className="text-sm">💳</span>
+                      <span>Pay with Other UPI Apps (BHIM, Cred, etc.)</span>
+                    </a>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3 text-slate-500 text-xs py-1">
+                      <div className="flex-1 h-px bg-slate-700/60"></div>
+                      <span className="uppercase text-[10px] tracking-wider font-bold">Or Scan Standee QR</span>
+                      <div className="flex-1 h-px bg-slate-700/60"></div>
+                    </div>
+
+                    {/* QR Code Section for Desktop / Secondary device */}
+                    <div className="bg-slate-900/90 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center space-y-3">
+                      <div className="w-44 h-44 bg-white p-2 rounded-xl shadow-md flex items-center justify-center overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img 
+                          src={qrCodeUrl} 
+                          alt="PhonePe UPI QR Code" 
+                          className="w-40 h-40 object-contain"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1 w-full">
+                        <span className="text-[10px] text-slate-400 block font-semibold uppercase">
+                          Merchant UPI ID
+                        </span>
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200">
+                          <span className="truncate max-w-[220px]">{pa}</span>
+                          <button
+                            type="button"
+                            onClick={handleCopyUpi}
+                            className="text-blue-400 hover:text-blue-300 p-1 cursor-pointer"
+                            title="Copy UPI ID"
+                          >
+                            {copiedUpi ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-400">
+                        Open PhonePe or any camera UPI scanner to pay directly from your bank.
+                      </p>
+                    </div>
+
+                    {/* Instructions Box */}
+                    <div className="bg-slate-900/50 border border-slate-750 rounded-xl p-3.5 space-y-2 text-[11px] text-slate-400">
+                      <h4 className="font-bold text-slate-300 flex items-center gap-1.5 text-xs">
+                        <AlertCircle className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Payment Details & Steps:</span>
+                      </h4>
+                      <ol className="list-decimal pl-4 space-y-1">
+                        <li>Tap <strong>Open & Pay in PhonePe</strong> above to complete transaction.</li>
+                        <li>Confirm the allotted amount <strong>₹{formattedAmount}</strong> and payee details.</li>
+                        <li>Enter your secure UPI PIN to finalize payment.</li>
+                        <li>Save a screenshot or UTR number once completed.</li>
+                      </ol>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>

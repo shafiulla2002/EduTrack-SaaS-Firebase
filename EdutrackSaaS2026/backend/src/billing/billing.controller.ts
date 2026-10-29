@@ -237,6 +237,29 @@ export class BillingController {
       razorpaySignature,
     );
   }
+
+  @Post('razorpay/check-status')
+  async checkRazorpayPaymentStatus(
+    @Req() req: any,
+    @Body('orderId') orderId?: string,
+    @Body('paymentLinkId') paymentLinkId?: string,
+    @Body('studentId') studentId?: string,
+    @Body('opportunityId') opportunityId?: string,
+    @Body('items') items?: { oliId: string; productId: string; amount: number }[],
+  ) {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant not identified in session.');
+    }
+    return this.billingService.checkRazorpayOrderStatus(
+      tenantId,
+      orderId,
+      paymentLinkId,
+      studentId,
+      opportunityId,
+      items,
+    );
+  }
 }
 
 // ── PUBLIC BILLING CONTROLLER (Parents Payment Link - No Login Required) ──────
@@ -301,6 +324,34 @@ export class PublicBillingController {
     );
   }
 
+  @Post('razorpay/check-status')
+  async checkPublicRazorpayPaymentStatus(
+    @Body('tenantId') tenantId: string,
+    @Body('orderId') orderId?: string,
+    @Body('paymentLinkId') paymentLinkId?: string,
+    @Body('studentId') studentId?: string,
+    @Body('opportunityId') opportunityId?: string,
+    @Body('items') items?: { oliId: string; productId: string; amount: number }[],
+    @Body('pa') pa?: string,
+  ) {
+    let resolvedTenantId = tenantId;
+    if (!resolvedTenantId && pa) {
+      const info = await this.billingService.getPublicSchoolPaymentInfo(pa);
+      resolvedTenantId = (info as any).tenantId;
+    }
+    if (!resolvedTenantId) {
+      throw new BadRequestException('School identifier not found.');
+    }
+    return this.billingService.checkRazorpayOrderStatus(
+      resolvedTenantId,
+      orderId,
+      paymentLinkId,
+      studentId,
+      opportunityId,
+      items,
+    );
+  }
+
   @Post('razorpay/webhook')
   async handleRazorpayWebhook(
     @Body() body: any,
@@ -308,6 +359,17 @@ export class PublicBillingController {
     @Req() req: any,
   ) {
     return this.billingService.handleRazorpayWebhook(body, signature, req.rawBody);
+  }
+
+  @Get('invoices/:id/pdf')
+  async getPublicPdfData(@Param('id') id: string) {
+    return this.billingService.getInvoicePDFData(id);
+  }
+
+  @Get('invoices/:id/pdf/download')
+  async downloadPublicInvoicePdf(@Param('id') id: string, @Res() res: any) {
+    const data = await this.billingService.getInvoicePDFData(id);
+    return this.billingService.generateReceiptPdfStream(data, res);
   }
 }
 

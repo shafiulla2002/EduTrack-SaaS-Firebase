@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { api, fastGet, getCachedData } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
@@ -230,6 +230,9 @@ export default function FeesBillingPage() {
   const [isPaymentLinkCopied, setIsPaymentLinkCopied] = useState(false);
   const [officialRazorpayLink, setOfficialRazorpayLink] = useState('');
   const [isGeneratingOfficialLink, setIsGeneratingOfficialLink] = useState(false);
+  const [activeRazorpayOrderId, setActiveRazorpayOrderId] = useState<string | null>(null);
+  const [activeRazorpayLinkId, setActiveRazorpayLinkId] = useState<string | null>(null);
+  const [isCheckingPaymentStatus, setIsCheckingPaymentStatus] = useState(false);
 
   // Load initial options & recent invoices
   useEffect(() => {
@@ -548,6 +551,12 @@ export default function FeesBillingPage() {
       if (orderData.paymentLinkUrl) {
         setOfficialRazorpayLink(orderData.paymentLinkUrl);
       }
+      if (orderData.orderId) {
+        setActiveRazorpayOrderId(orderData.orderId);
+      }
+      if (orderData.paymentLinkId) {
+        setActiveRazorpayLinkId(orderData.paymentLinkId);
+      }
 
       const rawContact = orderData.parentPhone || sharePhoneNumber || '';
       const cleanContactDigits = String(rawContact).replace(/[^0-9]/g, '');
@@ -691,10 +700,196 @@ export default function FeesBillingPage() {
     }
   };
 
+  // Check Razorpay online payment status directly with backend & Razorpay API
+  const checkRazorpayStatus = useCallback(async (isManual = false) => {
+    if (!activeRazorpayOrderId && !activeRazorpayLinkId) {
+      if (isManual) {
+        setToastMessage('Waiting for Razorpay link initialization...');
+        setTimeout(() => setToastMessage(null), 3000);
+      }
+      return false;
+    }
+    if (isSubmittingPayment) return false;
+
+    if (isManual) setIsCheckingPaymentStatus(true);
+    try {
+      const openOpp = selectedStudent?.account?.opportunities?.[0];
+      const itemsToPay = feeItems
+        .filter(item => item.isSelected && item.input > 0)
+        .map(item => ({ oliId: item.id, productId: item.productId, amount: item.input }));
+
+      const res = await api.post('/billing/razorpay/check-status', {
+        orderId: activeRazorpayOrderId,
+        paymentLinkId: activeRazorpayLinkId,
+        studentId: selectedStudent?.account?.id,
+        opportunityId: openOpp?.id,
+        items: itemsToPay,
+      });
+
+      if (res.data?.isPaid) {
+        const createdInvoiceId = res.data.invoiceId;
+        const nextBalance = Math.max(0, (selectedStudent.totalPendingBalance || 0) - billingTotal);
+        const paymentDateFormatted = new Date().toLocaleString('en-IN');
+        const parentPhoneResolved = selectedStudent.account.parentPhone 
+          || selectedStudent.fatherPhone 
+          || selectedStudent.motherPhone 
+          || selectedStudent.guardianPhone 
+          || selectedStudent.account.phone 
+          || '';
+
+        const paymentRecord: PaymentSuccessRecord = {
+          invoiceId: createdInvoiceId,
+          receiptNumber: createdInvoiceId,
+          transactionId: res.data.paymentId || createdInvoiceId,
+          studentId: selectedStudent.account.id,
+          studentName: selectedStudent.account.name,
+          rollNo: selectedStudent.account.rollNo || '',
+          className: selectedStudent.account.class || '',
+          sectionName: selectedStudent.account.section || '',
+          fatherName: selectedStudent.account.fatherName || '',
+          motherName: selectedStudent.account.motherName || '',
+          parentPhone: parentPhoneResolved,
+          fatherPhone: selectedStudent.fatherPhone || '',
+          motherPhone: selectedStudent.motherPhone || '',
+          guardianPhone: selectedStudent.guardianPhone || '',
+          amountPaid: billingTotal,
+          totalInvoiceAmount: billingTotal,
+          remainingBalance: nextBalance,
+          paymentMethod: 'RAZORPAY',
+          paymentMethodLabel: 'Razorpay Online Gateway',
+          paymentDate: paymentDateFormatted,
+          schoolName: schoolName || 'CS EduTrack',
+          items: itemsToPay.map(item => {
+            const matchedFee = feeItems.find(f => f.id === item.oliId);
+            return {
+              particulars: matchedFee?.name || 'Fee Component',
+              amount: item.amount,
+            };
+          }),
+        };
+
+        setLastPaymentSuccess(paymentRecord);
+        setLastPaidStudentName(selectedStudent.account.name);
+        setLastPaidAmount(billingTotal);
+        setSuccessInvoiceId(createdInvoiceId);
+        setSuccessRemainingBalance(nextBalance);
+        setSuccessPaymentDate(paymentDateFormatted);
+
+        const initialSharePhone = normalizeWhatsAppNumber(parentPhoneResolved).normalized || parentPhoneResolved;
+        setSharePhoneNumber(initialSharePhone);
+
+        setConfirmModalOpen(false);
+        setSuccessModalOpen(true);
+        setToastMessage(`Payment of ₹${billingTotal.toLocaleString()} verified and recorded successfully!`);
+
+        dispatchSchoolSetupUpdated();
+
+        // Reload recent invoices
+        try {
+          const txRes = await fastGet('/billing/invoices/recent', undefined, { ttlMs: 0 });
+          if (txRes && Array.isArray(txRes)) setTransactions(txRes);
+        } catch {}
+
+        setTimeout(() => setToastMessage(null), 4000);
+        return true;
+      } else if (isManual) {
+        setToastMessage('Payment pending: Parent has not completed payment yet on phone.');
+        setTimeout(() => setToastMessage(null), 3500);
+        return false;
+      }
+    } catch (err: any) {
+      if (isManual) {
+        console.warn('Check payment status error:', err);
+        setToastMessage('Could not verify status with Razorpay. Please retry.');
+        setTimeout(() => setToastMessage(null), 3000);
+      }
+      return false;
+    } finally {
+      if (isManual) setIsCheckingPaymentStatus(false);
+    }
+    return false;
+  }, [activeRazorpayOrderId, activeRazorpayLinkId, isSubmittingPayment, selectedStudent, feeItems, billingTotal, schoolName]);
+
+  // Automatically generate official Razorpay short link (rzp.io) whenever Razorpay gateway is selected
+  useEffect(() => {
+    let isCancelled = false;
+
+    const generateOfficialLink = async () => {
+      if (selectedChannel !== 'RAZORPAY' || !selectedStudent || billingTotal <= 0) {
+        return;
+      }
+      const openOpp = selectedStudent.account.opportunities?.[0];
+      const itemsToPay = feeItems
+        .filter(item => item.isSelected && item.input > 0)
+        .map(item => ({ oliId: item.id, productId: item.productId, amount: item.input }));
+      if (itemsToPay.length === 0) return;
+
+      setIsGeneratingOfficialLink(true);
+      try {
+        const res = await api.post('/billing/razorpay/create-order', {
+          opportunityId: openOpp?.id || '',
+          studentId: selectedStudent.account.id,
+          items: itemsToPay,
+        });
+
+        if (!isCancelled && res.data) {
+          if (res.data.paymentLinkUrl) {
+            setOfficialRazorpayLink(res.data.paymentLinkUrl);
+          }
+          if (res.data.orderId) {
+            setActiveRazorpayOrderId(res.data.orderId);
+          }
+          if (res.data.paymentLinkId) {
+            setActiveRazorpayLinkId(res.data.paymentLinkId);
+          }
+        }
+      } catch (e: any) {
+        console.warn('Auto Razorpay link generation note:', e);
+      } finally {
+        if (!isCancelled) {
+          setIsGeneratingOfficialLink(false);
+        }
+      }
+    };
+
+    generateOfficialLink();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedChannel, selectedStudent?.account?.id, billingTotal]);
+
+  // Background Auto-Polling (every 5 seconds while on Razorpay tab and link is active)
+  useEffect(() => {
+    if (selectedChannel !== 'RAZORPAY' || (!activeRazorpayOrderId && !activeRazorpayLinkId) || successModalOpen) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      checkRazorpayStatus(false);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [selectedChannel, activeRazorpayOrderId, activeRazorpayLinkId, successModalOpen, checkRazorpayStatus]);
+
   const handleFinalizePayment = async () => {
     if (!selectedStudent || billingTotal <= 0 || isSubmittingPayment) return;
 
     if (selectedChannel === 'RAZORPAY') {
+      setIsSubmittingPayment(true);
+      try {
+        const isPaid = await checkRazorpayStatus(false);
+        if (isPaid) {
+          setConfirmModalOpen(false);
+          setIsSubmittingPayment(false);
+          return;
+        }
+      } catch (e) {
+        console.warn('Status check before finalize error:', e);
+      } finally {
+        setIsSubmittingPayment(false);
+      }
+
       setConfirmModalOpen(false);
       await handleRazorpayPayment();
       return;
@@ -1914,8 +2109,10 @@ export default function FeesBillingPage() {
 
                 const razorpayPortalPaymentUrl = `${origin}/pay?gateway=razorpay&am=${billingTotal}&student=${encodeURIComponent(studentName)}&roll=${encodeURIComponent(studentRoll)}&class=${encodeURIComponent(studentClass)}&particulars=${encodeURIComponent(selectedItemsNames)}&school=${encodeURIComponent(merchantName)}&tr=${encodeURIComponent(txnRef)}&tenantId=${encodeURIComponent(tenant?.id || '')}${oppId ? `&opp=${encodeURIComponent(oppId)}` : ''}${studentId ? `&sid=${encodeURIComponent(studentId)}` : ''}`;
 
-                const razorpayOnlinePaymentUrl = officialRazorpayLink || razorpayPortalPaymentUrl;
-                const razorpayQrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(razorpayOnlinePaymentUrl)}`;
+                const razorpayOnlinePaymentUrl = officialRazorpayLink || (isGeneratingOfficialLink ? 'Generating official rzp.io payment link...' : 'Preparing official Razorpay link...');
+                const razorpayQrCodeUrl = officialRazorpayLink
+                  ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(officialRazorpayLink)}`
+                  : '';
 
                 return (
                   <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4">
@@ -1950,17 +2147,21 @@ export default function FeesBillingPage() {
                           Razorpay Online Payment QR
                         </span>
 
-                        <div className="w-36 h-36 bg-white p-2 border border-slate-200 rounded-xl shadow-xs flex items-center justify-center overflow-hidden">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img 
-                            src={razorpayQrCodeUrl} 
-                            alt="Razorpay Online QR Code" 
-                            className="w-32 h-32 object-contain"
-                            key={razorpayQrCodeUrl}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
+                        <div className="w-36 h-36 bg-white p-2 border border-slate-200 rounded-xl shadow-xs flex flex-col items-center justify-center overflow-hidden">
+                          {officialRazorpayLink ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img 
+                              src={razorpayQrCodeUrl} 
+                              alt="Razorpay Online QR Code" 
+                              className="w-32 h-32 object-contain"
+                              key={razorpayQrCodeUrl}
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center space-y-2 p-2">
+                              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                              <span className="text-[10px] text-slate-500 font-semibold">Generating QR...</span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="space-y-0.5 w-full">
@@ -1992,6 +2193,10 @@ export default function FeesBillingPage() {
                                 <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                   Official rzp.io Link
                                 </span>
+                              ) : isGeneratingOfficialLink ? (
+                                <span className="text-[9px] text-blue-700 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 animate-pulse">
+                                  Generating rzp.io Link...
+                                </span>
                               ) : (
                                 <button
                                   type="button"
@@ -2011,6 +2216,8 @@ export default function FeesBillingPage() {
                                       });
                                       if (res.data?.paymentLinkUrl) {
                                         setOfficialRazorpayLink(res.data.paymentLinkUrl);
+                                        setActiveRazorpayOrderId(res.data.orderId || null);
+                                        setActiveRazorpayLinkId(res.data.paymentLinkId || null);
                                         setToastMessage('Official Razorpay short link generated!');
                                         setTimeout(() => setToastMessage(null), 3000);
                                       }
@@ -2023,7 +2230,7 @@ export default function FeesBillingPage() {
                                   disabled={isGeneratingOfficialLink}
                                   className="text-[10px] text-blue-600 hover:text-blue-800 font-bold underline cursor-pointer disabled:opacity-50"
                                 >
-                                  {isGeneratingOfficialLink ? 'Generating...' : '⚡ Get rzp.io Link'}
+                                  ⚡ Get rzp.io Link
                                 </button>
                               )}
                               <span className="text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
@@ -2036,25 +2243,27 @@ export default function FeesBillingPage() {
                             <input
                               type="text"
                               readOnly
-                              value={razorpayOnlinePaymentUrl}
+                              value={officialRazorpayLink || (isGeneratingOfficialLink ? 'Generating official rzp.io payment link...' : 'Preparing official Razorpay link...')}
                               className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs text-slate-700 font-mono outline-none select-all"
                               title="Click to select payment link"
                               onClick={(e) => (e.target as HTMLInputElement).select()}
                             />
                             <button
                               type="button"
+                              disabled={!officialRazorpayLink}
                               onClick={() => {
+                                if (!officialRazorpayLink) return;
                                 if (navigator?.clipboard) {
-                                  navigator.clipboard.writeText(razorpayOnlinePaymentUrl);
+                                  navigator.clipboard.writeText(officialRazorpayLink);
                                   setIsPaymentLinkCopied(true);
-                                  setToastMessage('Razorpay payment link copied to clipboard!');
+                                  setToastMessage('Official Razorpay payment link copied to clipboard!');
                                   setTimeout(() => {
                                     setIsPaymentLinkCopied(false);
                                     setToastMessage(null);
                                   }, 3000);
                                 }
                               }}
-                              className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                              className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-bold border border-slate-200 flex items-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50"
                               title="Copy link to clipboard"
                             >
                               {isPaymentLinkCopied ? (
@@ -2069,15 +2278,17 @@ export default function FeesBillingPage() {
                                 </>
                               )}
                             </button>
-                            <a
-                              href={razorpayOnlinePaymentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 shrink-0"
-                              title="Preview payment gateway page"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
+                            {officialRazorpayLink ? (
+                              <a
+                                href={officialRazorpayLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 shrink-0"
+                                title="Open payment link"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            ) : null}
                           </div>
                           <p className="text-[10px] text-slate-400">
                             On opening this link, parent can pay ₹{billingTotal.toLocaleString()} online via Credit/Debit Cards, Net Banking, or UPI.
@@ -2115,6 +2326,13 @@ export default function FeesBillingPage() {
                                   return;
                                 }
 
+                                const shareLink = officialRazorpayLink || '';
+                                if (!shareLink) {
+                                  setToastMessage('Please wait: official Razorpay link is being generated...');
+                                  setTimeout(() => setToastMessage(null), 3000);
+                                  return;
+                                }
+
                                 const cleanPhone = (sharePhoneNumber || selectedStudent?.account?.parentPhone || '').replace(/[^0-9]/g, '');
                                 const valid10 = cleanPhone.length >= 10 ? cleanPhone.slice(-10) : cleanPhone;
                                 const targetPhone = valid10.length === 10 ? `91${valid10}` : valid10;
@@ -2129,7 +2347,7 @@ export default function FeesBillingPage() {
                                   `💰 *Allotted Fee Amount:* ₹${billingTotal.toLocaleString()}\n` +
                                   `📝 *Fee Particulars:* ${selectedItemsNames}\n\n` +
                                   `👉 *Pay Online (Cards / NetBanking / UPI):*\n` +
-                                  `${razorpayOnlinePaymentUrl}\n\n` +
+                                  `${shareLink}\n\n` +
                                   `_(You can pay using Credit/Debit Card, Net Banking of any bank, UPI, or Wallets)._\n\n` +
                                   `Thank you,\n` +
                                   `*${merchantName}*`;
@@ -2139,10 +2357,11 @@ export default function FeesBillingPage() {
                                   : `https://wa.me/?text=${encodeURIComponent(shareMsg)}`;
 
                                 window.open(waUrl, '_blank', 'noopener,noreferrer');
-                                setToastMessage('WhatsApp opened with payment link and student details!');
+                                setToastMessage('WhatsApp opened with official Razorpay payment link!');
                                 setTimeout(() => setToastMessage(null), 4000);
                               }}
-                              className="w-full sm:w-auto px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
+                              disabled={!officialRazorpayLink}
+                              className="w-full sm:w-auto px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0 disabled:opacity-50"
                             >
                               <MessageCircle className="w-4 h-4" />
                               <span>Share WhatsApp</span>
@@ -2150,7 +2369,40 @@ export default function FeesBillingPage() {
                           </div>
                         </div>
 
-                        {/* 3. Action buttons: Instant Razorpay Checkout */}
+                        {/* 3. Real-Time Payment Monitor & Manual Status Check */}
+                        <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-blue-900 flex items-center gap-1.5">
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
+                              </span>
+                              <span>Real-Time Payment Monitor</span>
+                            </span>
+                            <span className="text-[10px] text-blue-700 font-semibold bg-blue-100/60 px-2 py-0.5 rounded-full border border-blue-200">
+                              Auto-sync active (5s)
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            Once parent completes payment via QR code or WhatsApp link, EduTrack will automatically detect it, deduct student fees from Fee Management, and create the invoice PDF.
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => checkRazorpayStatus(true)}
+                              disabled={isCheckingPaymentStatus || isSubmittingPayment}
+                              className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-blue-50 active:scale-95 text-blue-700 border border-blue-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingPaymentStatus ? 'animate-spin text-blue-600' : ''}`} />
+                              <span>{isCheckingPaymentStatus ? 'Checking with Razorpay...' : 'Check Payment Status'}</span>
+                            </button>
+                            <span className="text-[10px] text-slate-500 italic">
+                              Click if parent completed payment on phone
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 4. Action buttons: Instant In-Person Razorpay Checkout */}
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs">
                           <button
                             type="button"
@@ -2159,7 +2411,7 @@ export default function FeesBillingPage() {
                             className="w-full sm:w-auto flex-1 py-2.5 px-4 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-500/10 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <CreditCard className="w-4 h-4" />
-                            <span>{isSubmittingPayment ? 'Processing Checkout...' : `Pay ₹${billingTotal.toLocaleString()} via Razorpay Checkout`}</span>
+                            <span>{isSubmittingPayment ? 'Processing Checkout...' : `Pay ₹${billingTotal.toLocaleString()} via Razorpay Checkout (In-Person)`}</span>
                           </button>
                         </div>
 
