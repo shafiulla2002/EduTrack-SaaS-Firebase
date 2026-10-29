@@ -113,12 +113,21 @@ export default function LandingPage() {
           </div>
         </div>
 
-        <button
-          onClick={() => setSupportModalOpen(true)}
-          className="px-3 py-1.5 sm:px-5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold glass-panel text-slate-300 hover:text-white transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
-        >
-          Contact Support
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/super-admin"
+            className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold bg-brand-600/20 hover:bg-brand-600/30 text-brand-300 border border-brand-500/30 transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95 flex items-center gap-1.5"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            <span>Super Admin</span>
+          </Link>
+          <button
+            onClick={() => setSupportModalOpen(true)}
+            className="px-3 py-1.5 sm:px-5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold glass-panel text-slate-300 hover:text-white transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
+          >
+            Contact Support
+          </button>
+        </div>
       </header>
 
       {/* Main Content */}

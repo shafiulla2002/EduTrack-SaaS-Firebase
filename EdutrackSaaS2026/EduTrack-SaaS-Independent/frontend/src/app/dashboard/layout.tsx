@@ -22,21 +22,8 @@ export default function DashboardLayout({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const { schoolName, schoolType, adminName, logoUrl, currentUser, loading, subscription, isSubscriptionActive, showLockPopup, setShowLockPopup } = useTenant();
-  const [isImpersonating, setIsImpersonating] = useState(false);
-  const [impersonatedSchool, setImpersonatedSchool] = useState('');
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isImp = sessionStorage.getItem('impersonating_from_platform') === 'true';
-      setIsImpersonating(isImp);
-      const impSchool = sessionStorage.getItem('impersonated_school_name');
-      setImpersonatedSchool(impSchool || schoolName);
-    } else {
-      setImpersonatedSchool(schoolName);
-    }
-  }, [schoolName]);
-
-  const activeSchoolDisplayName = impersonatedSchool || schoolName;
+  const isImpersonating = typeof window !== 'undefined' && sessionStorage.getItem('impersonating_from_platform') === 'true';
+  const impersonatedSchool = typeof window !== 'undefined' ? (sessionStorage.getItem('impersonated_school_name') || schoolName) : schoolName;
 
   const desktopSidebarRef = useRef<HTMLElement>(null);
   const mobileSidebarRef = useRef<HTMLElement>(null);
@@ -591,6 +578,17 @@ export default function DashboardLayout({
             </svg>
           ),
         },
+        {
+          name: 'Backup Super Admin View',
+          href: '/dashboard/backup-super-admin',
+          svg: (
+            <svg className="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          ),
+        },
       ],
     },
   ];
@@ -763,16 +761,15 @@ export default function DashboardLayout({
       fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
       fastGet('/academics/sections', undefined, { ttlMs: 60000 }).catch(() => {});
+    } else if (href.startsWith('/dashboard/staff')) {
+      fastGet('/staff', undefined, { ttlMs: 30000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/teachers')) {
       fastGet('/timetable/workload/dashboard', undefined, { ttlMs: 60000 }).catch(() => {});
-    } else if (href.startsWith('/dashboard/staff')) {
-      fastGet('/teachers', undefined, { ttlMs: 30000 }).catch(() => {});
-      fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/attendance-mgmt') || href.startsWith('/dashboard/attendance')) {
       fastGet('/attendance/dashboard', undefined, { ttlMs: 30000 }).catch(() => {});
       fastGet('/academics/classes', undefined, { ttlMs: 60000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/billing') || href.startsWith('/dashboard/fee-mgmt')) {
-      fastGet('/dashboard/summary', undefined, { ttlMs: 30000 }).catch(() => {});
+      fastGet('/billing/dashboard-summary', undefined, { ttlMs: 30000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/expenses')) {
       fastGet('/expenses', undefined, { ttlMs: 30000 }).catch(() => {});
     } else if (href.startsWith('/dashboard/grades')) {
@@ -1749,14 +1746,13 @@ function NotificationBell() {
 
   const fetchNotifications = async (force = false) => {
     if (!currentUser?.id) return;
-    // Don't poll in background tabs to avoid unnecessary network and server load
     if (!force && typeof document !== 'undefined' && document.visibilityState !== 'visible') {
       return;
     }
     try {
-      const res = await fastGet('/communications/user-notifications', undefined, { ttlMs: 60000, forceRefresh: force });
+      const res = await api.get(`/communications/user/${currentUser.id}`);
       setNotifications(res.data || []);
-    } catch {
+    } catch (err) {
       // Non-critical background polling - fail quietly
     }
   };

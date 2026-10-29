@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { School, User, Mail, MapPin, Calendar, Loader2, AlertCircle } from 'lucide-react';
 import { api, setStoredAuth } from '@/lib/api';
 import { useTenant } from '../providers/TenantContext';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 function RegisterSchoolContent() {
   const router = useRouter();
@@ -65,6 +67,42 @@ function RegisterSchoolContent() {
     }
 
     setLoading(true);
+
+    // Sync registration directly to Firebase Firestore for Real-time Super Admin tracking
+    try {
+      const slug = formData.schoolName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15) || 'school';
+      const firestoreSchoolId = `sch-${slug}-${Date.now().toString().slice(-4)}`;
+      const subDomain = slug;
+
+      await setDoc(doc(db, 'schools', firestoreSchoolId), {
+        id: firestoreSchoolId,
+        name: formData.schoolName,
+        schoolName: formData.schoolName,
+        subDomain: subDomain,
+        adminName: formData.adminName,
+        contactEmail: formData.email,
+        contactPhone: formData.mobileNumber,
+        address: formData.address,
+        schoolType: formData.schoolType,
+        academicYear: formData.academicYear,
+        status: 'PENDING_APPROVAL',
+        registrationSource: 'PORTAL',
+        studentCount: 0,
+        createdAt: new Date().toISOString(),
+        subscription: {
+          status: 'PENDING_APPROVAL',
+          expiryDate: new Date(Date.now() + 14 * 86400000).toISOString(),
+          billingCycle: '14_DAYS',
+          plan: {
+            name: formData.subscriptionPlan || 'TRIAL',
+            price: 0
+          }
+        }
+      }, { merge: true });
+    } catch (fErr) {
+      console.warn('[Firebase] Non-blocking registration sync notice:', fErr);
+    }
+
     try {
       const response = await api.post('/tenant/register', formData);
       const data = response.data;
