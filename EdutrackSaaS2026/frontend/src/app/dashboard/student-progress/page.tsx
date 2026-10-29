@@ -1,12 +1,58 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api, fastGet, getCachedData } from '@/lib/api';
 import LoadingSpinner from '@/components/loading/LoadingSpinner';
 import { AreaChart, TrendingUp, BookOpen, Clock, FileText, CheckCircle2, ChevronRight, User, Sparkles, BarChart3, RefreshCw } from 'lucide-react';
 
 export default function StudentProgressPage() {
   const [classes, setClasses] = useState<any[]>([]);
+
+  // Deduplicate and naturally sort classes (Nursery, LKG, UKG, Class-1 to 12, Section-A/B)
+  const uniqueClasses = useMemo(() => {
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+    const result: any[] = [];
+
+    const normalize = (str: string) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    const getSortScore = (name: string) => {
+      const lower = (name || '').toLowerCase();
+      if (lower.includes('nurs')) return 1;
+      if (lower.includes('lkg')) return 2;
+      if (lower.includes('ukg')) return 3;
+      const match = lower.match(/\b(?:class|grade)?[-\s]*(\d+)\b/);
+      if (match) return 10 + parseInt(match[1], 10);
+      return 100;
+    };
+
+    for (const c of classes) {
+      if (!c) continue;
+      const id = c.classSectionId || c.id;
+      const name = c.className || `${c.classOnlyName || ''} - ${c.sectionOnlyName || ''}`.trim();
+      if (!id || !name) continue;
+
+      const normName = normalize(name);
+      if (seenIds.has(id) || seenNames.has(normName)) {
+        continue;
+      }
+
+      seenIds.add(id);
+      seenNames.add(normName);
+      result.push({
+        ...c,
+        classSectionId: id,
+        className: name,
+      });
+    }
+
+    return result.sort((a, b) => {
+      const scoreA = getSortScore(a.className);
+      const scoreB = getSortScore(b.className);
+      if (scoreA !== scoreB) return scoreA - scoreB;
+      return a.className.localeCompare(b.className, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }, [classes]);
   const [selectedClass, setSelectedClass] = useState<string>('');
   const [students, setStudents] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
@@ -501,7 +547,7 @@ export default function StudentProgressPage() {
               className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#2E5BFF] text-sm font-semibold"
             >
               <option value="">Select Class / Section</option>
-              {classes.map(c => <option key={c.classSectionId} value={c.classSectionId}>{c.className}</option>)}
+              {uniqueClasses.map(c => <option key={c.classSectionId} value={c.classSectionId}>{c.className}</option>)}
             </select>
           </div>
           <div>
