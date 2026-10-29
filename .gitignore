@@ -38,3 +38,6 @@ temp_*/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Standalone Super Admin Repository (Separate Git Repo)
+edutrack-superadmin-portal/
