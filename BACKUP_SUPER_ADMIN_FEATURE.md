@@ -1,23 +1,26 @@
 # EduTrack SaaS — Super Admin Feature & Multi-Tenant Architecture
 
-> **Backup & Feature Specification Document**  
-> **Route URL:** `/dashboard/backup-super-admin` & `/dashboard/super-admin`  
-> **Interactive Preview File:** [`frontend/src/app/dashboard/backup-super-admin/page.tsx`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/frontend/src/app/dashboard/backup-super-admin/page.tsx)  
-> **Production File:** [`frontend/src/app/dashboard/super-admin/page.tsx`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/frontend/src/app/dashboard/super-admin/page.tsx)
+> **Feature Specification Document**  
+> **Standalone Portal Directory:** [`edutrack-superadmin-portal/`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal)  
+> **Master Dashboard Page:** [`edutrack-superadmin-portal/src/app/page.tsx`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal/src/app/page.tsx)  
+> **Firebase Firestore Engine:** [`edutrack-superadmin-portal/src/lib/superAdminFirebase.ts`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal/src/lib/superAdminFirebase.ts)  
+> **Isolation Status:** **Completely removed from the School ERP application**; operates as an independent control center.
 
 ---
 
 ## 1. Overview of the Super Admin Portal
 
-The **Super Admin Portal** is the centralized master dashboard of the EduTrack SaaS platform. While individual school principals, teachers, and accountants only have access to their own school's dashboard, the **Super Admin** oversees the entire multi-tenant infrastructure across all schools.
+The **Super Admin Portal** is an isolated, master control center for the EduTrack SaaS platform. Individual school principals, teachers, drivers, and accountants only have access to their own school's dashboard within the school ERP application, while the **Super Admin** runs entirely independently to oversee multi-tenant infrastructure across all schools.
 
 ### Key Capabilities:
-1. **Multi-Tenant School Tracking:** Monitor every school using the platform, their custom subdomain (`<subdomain>.edutrack.com`), contact emails, student headcounts, and activation dates.
-2. **Subscription Management:** View active subscription plans (`TRIAL`, `BASIC`, `PREMIUM`, `ENTERPRISE`), validity dates, and subscription statuses (`ACTIVE`, `PAST_DUE`, `EXPIRED`, `CANCELLED`).
-3. **Manual Overrides:** Instantly extend a school's trial, renew their plan, change their tier, or suspend/reactivate access with one click.
-4. **Modular Feature ACL (Access Control):** Toggle specific functional modules (e.g., GPS Transport, Hostel, Payroll, RFID Attendance) on or off per plan tier.
-5. **Billing & Manual Invoicing:** Issue custom invoices directly to school administrators and log recurring payment gateway transactions.
-6. **Platform Gateways & Tax Rules:** Manage Razorpay and Stripe API keys, GST percentage, currency (`INR`), and platform branding.
+1. **Multi-Tenant School Tracking:** Monitor every school using the platform, custom subdomains (`<subdomain>.edutrack.com`), contact emails, student headcounts, and activation dates.
+2. **Registration Approvals Queue:** Review applications submitted by schools via `/register-school`. Approve or reject registrations with 1-click.
+3. **Subscription Management:** View active subscription plans (`TRIAL`, `BASIC`, `PREMIUM`, `ENTERPRISE`), validity dates, and subscription statuses (`ACTIVE`, `PAST_DUE`, `EXPIRED`, `CANCELLED`).
+4. **Manual Overrides & Grace Extensions:** Instantly grant +14 days grace extensions, renew plans, change tiers, or suspend/reactivate access.
+5. **Modular Feature ACL (Access Control):** Toggle specific functional modules (e.g., GPS Transport, Hostel, Payroll, RFID Attendance) on or off per plan tier.
+6. **Broadcast Communication Hub:** Dispatch priority announcements directly to school administrators.
+7. **Billing & Manual Invoicing:** Issue custom invoices directly to school administrators and log recurring payment gateway transactions.
+8. **Platform Gateways & Tax Rules:** Manage Razorpay and Stripe API keys, GST percentage, currency (`INR`), and platform branding.
 
 ---
 
@@ -79,36 +82,39 @@ The Super Admin can configure which modules are available for each subscription 
 | `hostel` | Hostel Allocation | ❌ | ❌ | ✅ |
 | `payroll` | Staff Payroll Ledger | ❌ | ❌ | ✅ |
 
-> **Automated Lockout Mechanism:**  
-> When a school's subscription expires (`EXPIRED`), the application dashboard displays a full-screen grace/renewal warning, preventing teachers and drivers from using system features until renewed by Super Admin or online payment.
-
 ---
 
-## 5. File Inventory in this Repository
+## 5. File Inventory for Standalone Portal
 
 | Component | File Path | Description |
 | :--- | :--- | :--- |
-| **Backup / Interactive Preview** | [`frontend/src/app/dashboard/backup-super-admin/page.tsx`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/frontend/src/app/dashboard/backup-super-admin/page.tsx) | **Self-contained interactive replica** with mock data and full UI testing capabilities. |
-| **Live Super Admin Page** | [`frontend/src/app/dashboard/super-admin/page.tsx`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/frontend/src/app/dashboard/super-admin/page.tsx) | Production page connected to NestJS backend endpoints. |
-| **Payment Settings Page** | [`frontend/src/app/dashboard/super-admin/payment-settings/page.tsx`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/frontend/src/app/dashboard/super-admin/payment-settings/page.tsx) | Configures company GST, bank accounts, UPI IDs, and invoice numbering. |
-| **Sidebar Navigation** | [`frontend/src/app/dashboard/layout.tsx`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/frontend/src/app/dashboard/layout.tsx#L539-L562) | Displays the Super Admin links when the user role is `SUPER_ADMIN`. |
-| **Platform Controller** | [`backend/src/modules/platform-admin/platform-admin.controller.ts`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/backend/src/modules/platform-admin/platform-admin.controller.ts) | Backend REST controller for `/api/platform-admin/*` routes. |
-| **Platform Service** | [`backend/src/modules/platform-admin/platform-admin.service.ts`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/backend/src/modules/platform-admin/platform-admin.service.ts) | Business logic for metrics, schools list, and plans. |
-| **Subscription Module** | [`backend/src/modules/subscription/subscription.service.ts`](file:///c:/VikasSchool/EduTrack-SaaS-Independent/backend/src/modules/subscription/subscription.service.ts) | Subscription lifecycle and gateway webhooks. |
+| **Super Admin App Root** | [`edutrack-superadmin-portal/src/app/page.tsx`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal/src/app/page.tsx) | Complete standalone master control dashboard. |
+| **Firestore Service** | [`edutrack-superadmin-portal/src/lib/superAdminFirebase.ts`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal/src/lib/superAdminFirebase.ts) | Real-time Firebase Firestore client (`edutrack-52e6c`). |
+| **Firebase Config** | [`edutrack-superadmin-portal/src/lib/firebase.ts`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal/src/lib/firebase.ts) | Firebase app initialization. |
+| **App Layout** | [`edutrack-superadmin-portal/src/app/layout.tsx`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal/src/app/layout.tsx) | Standalone portal layout. |
+| **Global Styles** | [`edutrack-superadmin-portal/src/app/globals.css`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal/src/app/globals.css) | Custom styles and glassmorphism tokens. |
+| **Configuration** | [`edutrack-superadmin-portal/package.json`](file:///c:/EduTrackSaaS%202027/edutrack-superadmin-portal/package.json) | Standalone npm dependencies and scripts (port `3005`). |
 
 ---
 
-## 6. How to View and Test the Backup Super Admin Feature
+## 6. How to Run and Test the Standalone Super Admin Portal
 
-1. Ensure the frontend dev server is running (e.g. `npm run dev` in `c:\VikasSchool\EduTrack-SaaS-Independent\frontend`).
-2. Navigate directly to:
+1. Navigate to the standalone directory:
+   ```bash
+   cd "c:\EduTrackSaaS 2027\edutrack-superadmin-portal"
    ```
-   http://localhost:3000/dashboard/backup-super-admin
+2. Start the development server:
+   ```bash
+   npm run dev
    ```
-3. You will be able to:
-   - View the metric cards and interactive school tenant table.
-   - Click **"Adjust Plan"** on any school to test modifying plans, expiry dates, or statuses.
-   - Switch to **"Plans & Feature ACLs"** to test toggling feature flags and pricing.
-   - Switch to **"Invoices & Payment Log"** to generate test invoices.
-   - Switch to **"Payment Gateways & Settings"** to review gateway settings.
-   - Click **"Reset Demo Data"** at any point to restore original mock values.
+3. Open in your browser:
+   ```
+   http://localhost:3005
+   ```
+4. You can independently:
+   - View real-time school tenants and live counts.
+   - Review pending school registration applications.
+   - Grant instant +14 days grace extensions and adjust subscription tiers.
+   - Dispatch platform broadcast announcements.
+   - Configure modular plan feature ACLs and pricing.
+   - Manage payment gateways and manual invoices.
