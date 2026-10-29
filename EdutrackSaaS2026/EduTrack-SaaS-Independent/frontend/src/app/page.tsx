@@ -6,15 +6,31 @@ import { useRouter } from 'next/navigation';
 import { Shield, BookOpen, GraduationCap, Users, ArrowRight } from 'lucide-react';
 import ContactSupportModal from '@/components/ContactSupportModal';
 import { getStoredToken, getActiveRole } from '@/lib/api';
+import SuperAdminPortalPage from './dashboard/backup-super-admin/page';
 
 export default function LandingPage() {
   const router = useRouter();
   const [supportModalOpen, setSupportModalOpen] = useState(false);
   const [isResumingSession, setIsResumingSession] = useState(true);
+  const [isSuperAdminHost, setIsSuperAdminHost] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      const hostname = window.location.hostname.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      // If deployed at edutrack-superadmin.vercel.app or contains 'superadmin' in domain
+      if (
+        hostname.includes('superadmin') ||
+        hostname.includes('super-admin') ||
+        search.includes('superadmin') ||
+        search.includes('portal=superadmin')
+      ) {
+        setIsSuperAdminHost(true);
+        setIsResumingSession(false);
+        return;
+      }
+
       const token = getStoredToken();
       if (token) {
         const role = getActiveRole();
@@ -32,6 +48,10 @@ export default function LandingPage() {
     } catch {}
     setIsResumingSession(false);
   }, [router]);
+
+  if (isSuperAdminHost) {
+    return <SuperAdminPortalPage />;
+  }
 
   if (isResumingSession) {
     return (
@@ -171,6 +191,37 @@ export default function LandingPage() {
               </Link>
             );
           })}
+        </div>
+
+        {/* Super Admin Control Center Access Card */}
+        <div className="w-full max-w-4xl mt-4">
+          <Link
+            href="/dashboard/super-admin"
+            className="glass-card p-4 sm:p-5 rounded-2xl border border-brand-500/30 bg-brand-950/20 hover:bg-brand-900/30 text-left flex flex-col sm:flex-row items-center justify-between gap-4 transition-all group shadow-xl"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-brand-500/30">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm sm:text-base text-white group-hover:text-brand-300 transition-colors">
+                    EduTrack SaaS Master Super Admin Control Center
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-500/20 text-brand-300 border border-brand-500/40">
+                    Live Firestore
+                  </span>
+                </div>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  Review pending school registration approvals, manage tenant subscriptions, and track platform metrics.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-300 group-hover:translate-x-1 transition-transform shrink-0">
+              <span>Open Master Portal</span>
+              <ArrowRight className="w-4 h-4" />
+            </div>
+          </Link>
         </div>
       </section>
 
