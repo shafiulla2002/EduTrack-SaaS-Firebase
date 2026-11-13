@@ -120,10 +120,10 @@ export default function StandardBusMap({ buses, stops = [], center, zoom = 14, h
           <Marker 
             key={`bus-${bus.id}`} 
             position={[bus.lat, bus.lng]} 
-            icon={getBusIcon(bus.isOnline)}
+            icon={getBusIcon(Boolean(bus.isOnline))}
           >
             <Tooltip permanent direction="top" offset={[0, -10]} className="font-bold">
-              Bus {bus.busNumber} ({Math.round(bus.speed)} km/h)
+              Bus {bus.busNumber} ({Math.round(bus.speed || 0)} km/h)
             </Tooltip>
           </Marker>
         ))}

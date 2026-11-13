@@ -71,8 +71,8 @@ const mapContainerStyle = {
   borderRadius: '1.5rem',
 };
 
-// Map options with clean modern controls
-const mapOptions: google.maps.MapOptions = {
+// Map options with clean modern controls (typed as any to avoid missing @types/google.maps build errors)
+const mapOptions: any = {
   disableDefaultUI: false,
   zoomControl: true,
   mapTypeControl: true,
@@ -101,13 +101,13 @@ export default function GoogleBusMap({
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
   });
 
-  const [map, setMap] = useState<google.maps.Map | null>(null);
-  const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
+  const [map, setMap] = useState<any>(null);
+  const [directions, setDirections] = useState<any>(null);
   const [activeBusInfo, setActiveBusInfo] = useState<BusLocation | null>(null);
   const lastEtaCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastEtaTimeRef = useRef<number>(0);
 
-  const onLoad = useCallback(function callback(mapInstance: google.maps.Map) {
+  const onLoad = useCallback(function callback(mapInstance: any) {
     setMap(mapInstance);
   }, []);
 
@@ -154,8 +154,9 @@ export default function GoogleBusMap({
   // Fit bounds when multiple buses are present on initial load
   const hasFitBoundsRef = useRef(false);
   useEffect(() => {
-    if (map && buses.length > 1 && !hasFitBoundsRef.current && window.google?.maps) {
-      const bounds = new window.google.maps.LatLngBounds();
+    const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
+    if (map && buses.length > 1 && !hasFitBoundsRef.current && gmaps) {
+      const bounds = new gmaps.LatLngBounds();
       let hasValidCoords = false;
       buses.forEach((b) => {
         if (b.lat && b.lng) {
@@ -178,7 +179,8 @@ export default function GoogleBusMap({
 
   // Dynamic ETA calculation
   useEffect(() => {
-    if (!isLoaded || buses.length !== 1 || !etaDestination || !onEtaUpdate || !window.google?.maps) return;
+    const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
+    if (!isLoaded || buses.length !== 1 || !etaDestination || !onEtaUpdate || !gmaps) return;
 
     const activeBus = buses[0];
     if (!activeBus.lat || !activeBus.lng) return;
@@ -204,15 +206,15 @@ export default function GoogleBusMap({
     }
 
     if (shouldRecalculate) {
-      const directionsService = new window.google.maps.DirectionsService();
+      const directionsService = new gmaps.DirectionsService();
       directionsService.route(
         {
           origin: { lat: activeBus.lat, lng: activeBus.lng },
           destination: { lat: etaDestination.lat, lng: etaDestination.lng },
-          travelMode: window.google.maps.TravelMode.DRIVING,
+          travelMode: gmaps.TravelMode.DRIVING,
         },
-        (result, status) => {
-          if (status === window.google.maps.DirectionsStatus.OK && result) {
+        (result: any, status: any) => {
+          if (status === gmaps.DirectionsStatus.OK && result) {
             const leg = result.routes[0]?.legs[0];
             if (leg) {
               const etaText = leg.duration?.text || '';
@@ -228,8 +230,9 @@ export default function GoogleBusMap({
 
   // Route Polyline via Google Directions API
   useEffect(() => {
-    if (isLoaded && stops.length >= 2 && !directions && window.google?.maps) {
-      const directionsService = new window.google.maps.DirectionsService();
+    const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
+    if (isLoaded && stops.length >= 2 && !directions && gmaps) {
+      const directionsService = new gmaps.DirectionsService();
       const origin = stops[0];
       const destination = stops[stops.length - 1];
       const waypoints = stops.slice(1, -1).map((stop) => ({
@@ -242,10 +245,10 @@ export default function GoogleBusMap({
           origin: { lat: origin.lat, lng: origin.lng },
           destination: { lat: destination.lat, lng: destination.lng },
           waypoints,
-          travelMode: window.google.maps.TravelMode.DRIVING,
+          travelMode: gmaps.TravelMode.DRIVING,
         },
-        (result, status) => {
-          if (status === window.google.maps.DirectionsStatus.OK && result) {
+        (result: any, status: any) => {
+          if (status === gmaps.DirectionsStatus.OK && result) {
             setDirections(result);
           }
         }
@@ -283,6 +286,8 @@ export default function GoogleBusMap({
       </div>
     );
   }
+
+  const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
 
   return (
     <div style={{ height }} className="w-full relative shadow-inner rounded-3xl overflow-hidden bg-slate-100 border border-slate-200">
@@ -342,7 +347,7 @@ export default function GoogleBusMap({
                     <circle cx="14" cy="14" r="5" fill="#ffffff"/>
                   </svg>
                 `),
-              anchor: window.google?.maps ? new window.google.maps.Point(14, 14) : undefined,
+              anchor: gmaps ? new gmaps.Point(14, 14) : undefined,
             }}
           />
         ))}
@@ -379,7 +384,7 @@ export default function GoogleBusMap({
               }}
               icon={{
                 url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgBusIcon),
-                anchor: window.google?.maps ? new window.google.maps.Point(radius, radius) : undefined,
+                anchor: gmaps ? new gmaps.Point(radius, radius) : undefined,
               }}
             />
           );
