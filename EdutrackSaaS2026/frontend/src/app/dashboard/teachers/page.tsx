@@ -793,6 +793,7 @@ export default function TeacherClassManagement() {
   const initialData = getCachedData<any>('/timetable/workload/dashboard');
   const [isLoading, setIsLoading] = useState(() => !initialData);
   const [isTimetableLoading, setIsTimetableLoading] = useState(false);
+  const [isSavingTimetable, setIsSavingTimetable] = useState(false);
   const [timetableError, setTimetableError] = useState<string | null>(null);
   
   const [teachers, setTeachers] = useState<Teacher[]>(() => {
@@ -870,6 +871,8 @@ export default function TeacherClassManagement() {
   const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [isCreatingClassSection, setIsCreatingClassSection] = useState(false);
+  const [isLoadingTeachersForStep3, setIsLoadingTeachersForStep3] = useState(false);
 
   // ── TIMETABLE EDITOR STATE ──
   const [ttSelectedClassSectionId, setTtSelectedClassSectionId] = useState('');
@@ -1936,6 +1939,7 @@ export default function TeacherClassManagement() {
   const handleSaveTimetable = async () => {
     if (!ttSelectedClassSectionId) return;
     try {
+      setIsSavingTimetable(true);
       setIsLoading(true);
       const periodsList: any[] = [];
       const dayMap: Record<string, string> = {
@@ -1978,6 +1982,7 @@ export default function TeacherClassManagement() {
       console.error('Error saving timetable:', err);
       showToast(err.response?.data?.message || 'Failed to save timetable.', 'error');
     } finally {
+      setIsSavingTimetable(false);
       setIsLoading(false);
     }
   };
@@ -2344,6 +2349,7 @@ export default function TeacherClassManagement() {
       return;
     }
     setIsLoading(true);
+    setIsLoadingTeachersForStep3(true);
     try {
       const subjectIds = Array.from(selectedSubjects);
       const teachersBySubjectRes = await api.get(`/timetable/teachers/subject?subjectIds=${subjectIds.join(',')}`);
@@ -2370,6 +2376,7 @@ export default function TeacherClassManagement() {
       console.error('Failed to load assignments page options:', err);
     } finally {
       setIsLoading(false);
+      setIsLoadingTeachersForStep3(false);
     }
   };
 
@@ -2427,6 +2434,7 @@ export default function TeacherClassManagement() {
       }
     });
 
+    setIsCreatingClassSection(true);
     try {
       setIsLoading(true);
       const res = await api.post('/timetable/class-sections', {
@@ -2440,10 +2448,13 @@ export default function TeacherClassManagement() {
 
       setSuccessMessage(`Class Section created successfully.`);
       setShowSuccessModal(true);
+      showToast('Class Section created successfully.', 'success');
+      await loadWorkloadDashboard();
     } catch (err: any) {
       console.error('Wizard submit failed:', err);
       showToast(err.response?.data?.message || 'Failed to complete class section creation.', 'error');
     } finally {
+      setIsCreatingClassSection(false);
       setIsLoading(false);
     }
   };
@@ -2862,8 +2873,30 @@ export default function TeacherClassManagement() {
               </div>
 
               <div className="flex gap-3 justify-between mt-6 pt-4 border-t border-slate-100">
-                <button onClick={() => setCurrentStep(1)} className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all flex items-center gap-1.5"><ArrowLeft className="w-3.5 h-3.5" /> Back</button>
-                <button onClick={handleStep2Next} className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all flex items-center gap-1.5">Next: Assign Teachers <ArrowRight className="w-3.5 h-3.5" /></button>
+                <button 
+                  onClick={() => setCurrentStep(1)} 
+                  disabled={isLoadingTeachersForStep3}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back
+                </button>
+                <button 
+                  onClick={handleStep2Next} 
+                  disabled={isLoadingTeachersForStep3}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                >
+                  {isLoadingTeachersForStep3 ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      <span>Loading Teachers...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Next: Assign Teachers</span>
+                      <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           )}
@@ -2950,8 +2983,30 @@ export default function TeacherClassManagement() {
               </div>
 
               <div className="flex gap-3 justify-between mt-6 pt-4 border-t border-slate-100">
-                <button onClick={() => setCurrentStep(2)} className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all flex items-center gap-1.5"><ArrowLeft className="w-3.5 h-3.5" /> Back</button>
-                <button onClick={handleWizardSubmit} className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs transition-all flex items-center gap-1.5">Create Class Section <Check className="w-3.5 h-3.5" /></button>
+                <button 
+                  onClick={() => setCurrentStep(2)} 
+                  disabled={isCreatingClassSection}
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back
+                </button>
+                <button 
+                  onClick={handleWizardSubmit} 
+                  disabled={isCreatingClassSection}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs transition-all flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                >
+                  {isCreatingClassSection ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      <span>Creating Class Section...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Create Class Section</span>
+                      <Check className="w-3.5 h-3.5 shrink-0" />
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           )}
@@ -3216,15 +3271,27 @@ export default function TeacherClassManagement() {
                       setTimetableData(cleared);
                     }
                   }}
-                  className="px-4 py-2 border border-slate-200 bg-white rounded-xl text-xs font-bold text-slate-600"
+                  className="px-4 py-2 border border-slate-200 bg-white rounded-xl text-xs font-bold text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  disabled={isSavingTimetable}
                 >
                   🧹 Clear Inputs
                 </button>
                 <button
                   onClick={handleSaveTimetable}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold text-white shadow-sm"
+                  disabled={isSavingTimetable}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold text-white shadow-sm flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer transition-all"
                 >
-                  💾 Save Timetable
+                  {isSavingTimetable ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      <span>Saving Timetable...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>💾</span>
+                      <span>Save Timetable</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -4158,6 +4225,28 @@ export default function TeacherClassManagement() {
                 )}
               </div>
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── CLASS SECTION SETUP SUCCESS MODAL ── */}
+      {isMounted && showSuccessModal && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 sm:p-6 animate-fade-in" onClick={handleDoneWizard}>
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 text-center space-y-4 animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+              <Check className="w-6 h-6 stroke-[2.5]" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Class Section Created!</h3>
+              <p className="text-xs text-slate-500 mt-1">{successMessage || 'Class Section created successfully.'}</p>
+            </div>
+            <button
+              onClick={handleDoneWizard}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+            >
+              Done & Return to Dashboard
+            </button>
           </div>
         </div>,
         document.body

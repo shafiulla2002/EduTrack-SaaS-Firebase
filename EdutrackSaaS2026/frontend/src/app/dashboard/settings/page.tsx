@@ -6,10 +6,12 @@ import { api } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
 import { resizeAndCompressImage } from '@/lib/image';
 import { useToast } from '@/components/Toast';
+import LoadingSpinner from '@/components/loading/LoadingSpinner';
 import { 
   Building2, Landmark, CheckCircle, Save, QrCode, 
   Plus, Trash2, Calendar, ShieldAlert, Globe, Link as LinkIcon,
-  CreditCard, Eye, EyeOff, ShieldCheck, AlertCircle, KeyRound, Lock
+  CreditCard, Eye, EyeOff, ShieldCheck, AlertCircle, KeyRound, Lock,
+  Loader2
 } from 'lucide-react';
 
 interface BankAccount {
@@ -54,6 +56,9 @@ function SettingsPageContent() {
 
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [setupData, setSetupData] = useState<any>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [savingBank, setSavingBank] = useState(false);
+  const [addingAcademicYear, setAddingAcademicYear] = useState(false);
 
   // 2. UPI Gateway Keys
   const [gpayId, setGpayId] = useState('');
@@ -168,6 +173,7 @@ function SettingsPageContent() {
   // Handle Save
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSavingSettings(true);
     try {
       if (activeTab === 'profile') {
         const payload = {
@@ -202,6 +208,8 @@ function SettingsPageContent() {
     } catch (err: any) {
       console.error('Error saving settings profile:', err);
       showToast('Failed to save configuration settings: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -280,6 +288,7 @@ function SettingsPageContent() {
       return;
     }
 
+    setSavingBank(true);
     try {
       await api.put('/tenant/banking-upi', {
         bankName: newBank.bankName,
@@ -316,6 +325,8 @@ function SettingsPageContent() {
     } catch (err: any) {
       console.error('Error adding bank account:', err);
       showToast('Failed to save bank account: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setSavingBank(false);
     }
   };
 
@@ -356,6 +367,7 @@ function SettingsPageContent() {
     const startYear = Number(years[0]);
     const endYear = Number(years[1]);
 
+    setAddingAcademicYear(true);
     try {
       await api.post('/academics/academic-years', {
         name: cleanRange,
@@ -371,6 +383,8 @@ function SettingsPageContent() {
     } catch (err: any) {
       console.error('Error adding academic year:', err);
       showToast('Failed to add academic year: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setAddingAcademicYear(false);
     }
   };
 
@@ -465,7 +479,16 @@ function SettingsPageContent() {
       </div>
 
       {/* Tab Contents */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+      {loadingProfile ? (
+        <div className="flex flex-col items-center justify-center min-h-[420px] py-24 gap-4 bg-white border border-slate-200 rounded-2xl shadow-xs animate-in fade-in duration-200">
+          <LoadingSpinner size="xl" variant="brand" />
+          <div className="text-center">
+            <p className="text-sm font-bold text-slate-800">Loading School Setup</p>
+            <p className="text-xs font-medium text-slate-400 mt-1">Fetching organization branding and configuration...</p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Left Side forms depending on tab */}
         <div className="lg:col-span-2 space-y-6">
           {/* TAB 1: PROFILE SETUP */}
@@ -606,10 +629,20 @@ function SettingsPageContent() {
                 <div className="sm:col-span-2 pt-4">
                   <button
                     type="submit"
-                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10"
+                    disabled={savingSettings}
+                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                   >
-                    <Save className="w-4 h-4" />
-                    Save Organization Branding
+                    {savingSettings ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                        <span>Saving Organization Branding...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 shrink-0" />
+                        <span>Save Organization Branding</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -698,10 +731,20 @@ function SettingsPageContent() {
                   <div className="sm:col-span-2 md:col-span-3 pt-2">
                     <button
                       type="submit"
-                      className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10"
+                      disabled={savingBank}
+                      className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                     >
-                      <Plus className="w-4 h-4" />
-                      Add Bank Account Row
+                      {savingBank ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                          <span>Adding Bank Account...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 shrink-0" />
+                          <span>Add Bank Account Row</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </form>
@@ -811,10 +854,20 @@ function SettingsPageContent() {
                   <div className="pt-4">
                     <button
                       type="submit"
-                      className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10"
+                      disabled={savingSettings}
+                      className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                     >
-                      <Save className="w-4 h-4" />
-                      Save UPI Integration Keys
+                      {savingSettings ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                          <span>Saving UPI Keys...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 shrink-0" />
+                          <span>Save UPI Integration Keys</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </form>
@@ -1004,10 +1057,19 @@ function SettingsPageContent() {
                     <button
                       type="submit"
                       disabled={savingRazorpay}
-                      className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10 disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="min-h-[44px] px-6 py-2.5 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                     >
-                      <Save className="w-4 h-4" />
-                      {savingRazorpay ? 'Saving Configuration...' : 'Save Razorpay Gateway Configuration'}
+                      {savingRazorpay ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                          <span>Saving Configuration...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 shrink-0" />
+                          <span>Save Razorpay Gateway Configuration</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </form>
@@ -1039,10 +1101,20 @@ function SettingsPageContent() {
                   </div>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold min-h-[44px] flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10"
+                    disabled={addingAcademicYear}
+                    className="px-5 py-2 rounded-xl bg-[#2E5BFF] hover:bg-blue-600 text-white text-[13px] font-semibold min-h-[44px] flex items-center gap-2 cursor-pointer shadow-md shadow-blue-500/10 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                   >
-                    <Plus className="w-4 h-4" />
-                    Configure Year
+                    {addingAcademicYear ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                        <span>Configuring...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4 shrink-0" />
+                        <span>Configure Year</span>
+                      </>
+                    )}
                   </button>
                 </form>
                 <p className="text-[10px] text-slate-400 font-semibold">
@@ -1161,6 +1233,7 @@ function SettingsPageContent() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -1168,8 +1241,12 @@ function SettingsPageContent() {
 export default function SettingsPage() {
   return (
     <React.Suspense fallback={
-      <div className="p-8 text-center text-slate-500 font-medium">
-        Loading settings...
+      <div className="flex flex-col items-center justify-center min-h-[420px] py-24 gap-4 bg-white border border-slate-200 rounded-2xl shadow-xs">
+        <LoadingSpinner size="xl" variant="brand" />
+        <div className="text-center">
+          <p className="text-sm font-bold text-slate-800">Loading School Setup</p>
+          <p className="text-xs font-medium text-slate-400 mt-1">Fetching organization branding and configuration...</p>
+        </div>
       </div>
     }>
       <SettingsPageContent />

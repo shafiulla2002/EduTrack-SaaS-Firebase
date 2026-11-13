@@ -6,7 +6,7 @@ import {
   Clock, Calendar, Plus, Filter, BookOpen, 
   Trash2, Edit3, CheckCircle, AlertTriangle, 
   ArrowLeftRight, UserCheck, RefreshCw, Upload,
-  Users, BarChart3, Layers, Settings, X
+  Users, BarChart3, Layers, Settings, X, Loader2
 } from 'lucide-react';
 import { api, fastGet, getCachedData } from '@/lib/api';
 import { dispatchSchoolSetupUpdated } from '@/lib/events';
@@ -83,6 +83,7 @@ export default function TimetablePage() {
 
   // Selected filters for grid
   const [selectedClassSectionId, setSelectedClassSectionId] = useState('');
+  const [isSavingTimetable, setIsSavingTimetable] = useState(false);
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState(() => {
     const cachedAY = getCachedData<any[]>('/timetable/academic-years');
     return Array.isArray(cachedAY) && cachedAY.length > 0 ? cachedAY[0].id : '';
@@ -291,6 +292,7 @@ export default function TimetablePage() {
 
   // Timetable saving
   const handleSaveTimetable = async () => {
+    setIsSavingTimetable(true);
     try {
       const cells = [];
       const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -323,6 +325,8 @@ export default function TimetablePage() {
       fetchWorkloads();
     } catch (err: any) {
       showAlert('error', err.response?.data?.message || 'Failed to save timetable grid.');
+    } finally {
+      setIsSavingTimetable(false);
     }
   };
 
@@ -728,9 +732,17 @@ export default function TimetablePage() {
               <div className="w-full sm:w-auto">
                 <button
                   onClick={handleSaveTimetable}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg transition-transform hover:scale-[1.02] min-h-[44px]"
+                  disabled={isSavingTimetable}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg transition-transform hover:scale-[1.02] min-h-[44px] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  Save Timetable
+                  {isSavingTimetable ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                      <span>Saving Timetable...</span>
+                    </>
+                  ) : (
+                    <span>Save Timetable</span>
+                  )}
                 </button>
               </div>
             </div>
