@@ -9,7 +9,7 @@ const StandardBusMap = dynamic(() => import('./StandardBusMap'), {
   loading: () => (
     <div
       className="w-full bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400 font-bold animate-pulse border border-slate-200"
-      style={{ height: '450px' }}
+      style={{ height: '520px' }}
     >
       Loading Fallback Fleet Map...
     </div>
@@ -40,7 +40,7 @@ export interface BusLocation {
 }
 
 function getHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Earth radius in km
+  const R = 6371;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a =
@@ -71,20 +71,91 @@ const mapContainerStyle = {
   borderRadius: '1.5rem',
 };
 
-const mapOptions: any = {
-  disableDefaultUI: false,
-  zoomControl: true,
-  mapTypeControl: true,
-  streetViewControl: false,
-  fullscreenControl: true,
-  gestureHandling: 'cooperative',
-};
+// High-Contrast HD Street Style - clear roads, bold labels, vivid landmarks
+const highContrastStreetStyle = [
+  { featureType: 'administrative', elementType: 'labels.text.fill', stylers: [{ color: '#0f172a' }, { weight: 1.2 }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#1e3a8a' }, { weight: 2 }] },
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#f8fafc' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#f1f5f9' }] },
+  { featureType: 'poi.school', elementType: 'geometry', stylers: [{ color: '#fef08a' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#dcfce7' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#cbd5e1' }, { weight: 1.8 }] },
+  { featureType: 'road.highway', elementType: 'geometry.fill', stylers: [{ color: '#fbbf24' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#d97706' }, { weight: 2 }] },
+  { featureType: 'road.arterial', elementType: 'geometry.fill', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road.arterial', elementType: 'geometry.stroke', stylers: [{ color: '#94a3b8' }, { weight: 1.5 }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#1e293b' }] },
+  { featureType: 'transit.line', elementType: 'geometry', stylers: [{ color: '#e2e8f0' }] },
+  { featureType: 'transit.station', elementType: 'geometry', stylers: [{ color: '#f1f5f9' }] },
+  { featureType: 'water', elementType: 'geometry.fill', stylers: [{ color: '#7dd3fc' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#0284c7' }] },
+];
+
+// Dark Mode Fleet Radar Style
+const darkRadarStyle = [
+  { featureType: 'all', elementType: 'geometry', stylers: [{ color: '#0b1329' }] },
+  { featureType: 'all', elementType: 'labels.text.stroke', stylers: [{ lightness: -80 }] },
+  { featureType: 'all', elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2563eb' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0369a1' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
+];
 
 const GOOGLE_MAPS_API_KEY =
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
   'AIzaSyDdGFriMwQIm-DUMoyaUcH6BXhmhSGnTvU';
 
-// Robust React ErrorBoundary to prevent any Google Maps script error from crashing Next.js
+// Vector SVG Icon Generator for Sharp Vehicle Display
+function createBusSvg(bus: BusLocation, isSelected: boolean) {
+  const isOnline = bus.isOnline !== false;
+  const ringColor = isSelected ? '#ef4444' : isOnline ? '#10b981' : '#64748b';
+  const size = isSelected ? 54 : 46;
+  const half = size / 2;
+
+  return `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <filter id="bs" x="0" y="0" width="${size}" height="${size}" filterUnits="userSpaceOnUse">
+        <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.45"/>
+      </filter>
+      <g filter="url(#bs)">
+        <!-- Outer Status Ring -->
+        <circle cx="${half}" cy="${half}" r="${half - 3}" fill="${ringColor}" stroke="#ffffff" stroke-width="2.5"/>
+        <!-- Yellow Vehicle Shield -->
+        <circle cx="${half}" cy="${half}" r="${half - 6.5}" fill="#f59e0b"/>
+        <!-- Vector Bus Body -->
+        <path d="M${half - 11} ${half - 9}C${half - 11} ${half - 11} ${half - 9} ${half - 12} ${half - 7} ${half - 12}H${half + 7}C${half + 9} ${half - 12} ${half + 11} ${half - 11} ${half + 11} ${half - 9}V${half + 7}C${half + 11} ${half + 8} ${half + 9} ${half + 9} ${half + 7} ${half + 9}V${half + 11}H${half + 5}V${half + 9}H${half - 5}V${half + 11}H${half - 7}V${half + 9}C${half - 9} ${half + 9} ${half - 11} ${half + 8} ${half - 11} ${half + 7}V${half - 9}Z" fill="#0f172a"/>
+        <!-- Large Windshield Glass -->
+        <path d="M${half - 9} ${half - 8.5}H${half + 9}V${half - 2.5}H${half - 9}V${half - 8.5}Z" fill="#bae6fd"/>
+        <!-- Side Windows -->
+        <circle cx="${half - 6}" cy="${half + 1.5}" r="1.5" fill="#e2e8f0"/>
+        <circle cx="${half - 1}" cy="${half + 1.5}" r="1.5" fill="#e2e8f0"/>
+        <circle cx="${half + 4}" cy="${half + 1.5}" r="1.5" fill="#e2e8f0"/>
+        <!-- Bright Headlights -->
+        <circle cx="${half - 7}" cy="${half + 6}" r="1.5" fill="#fef08a"/>
+        <circle cx="${half + 7}" cy="${half + 6}" r="1.5" fill="#fef08a"/>
+      </g>
+    </svg>
+  `;
+}
+
+// Vector SVG Teardrop Pin for Bus Stops
+function createStopSvg(idx: number) {
+  return `
+    <svg width="34" height="42" viewBox="0 0 34 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <filter id="ss" x="0" y="0" width="34" height="42" filterUnits="userSpaceOnUse">
+        <feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.4"/>
+      </filter>
+      <g filter="url(#ss)">
+        <path d="M17 2C9.268 2 3 8.268 3 16C3 24.5 17 38 17 38C17 38 31 24.5 31 16C31 8.268 24.732 2 17 2Z" fill="#10b981" stroke="#ffffff" stroke-width="2"/>
+        <circle cx="17" cy="15" r="7.5" fill="#ffffff"/>
+        <text x="17" y="19" font-size="10" font-weight="900" font-family="system-ui, -apple-system, sans-serif" text-anchor="middle" fill="#047857">${idx + 1}</text>
+      </g>
+    </svg>
+  `;
+}
+
 class GoogleMapErrorBoundary extends React.Component<
   { fallback: React.ReactNode; children: React.ReactNode },
   { hasError: boolean }
@@ -99,7 +170,7 @@ class GoogleMapErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: any) {
-    console.warn('Caught Google Maps runtime exception:', error);
+    console.warn('Google Maps runtime caught by ErrorBoundary:', error);
   }
 
   render() {
@@ -114,8 +185,8 @@ function InnerGoogleBusMap({
   buses,
   stops = [],
   center,
-  zoom = 13,
-  height = '500px',
+  zoom = 15,
+  height = '520px',
   etaDestination,
   onEtaUpdate,
   selectedBusId,
@@ -127,12 +198,14 @@ function InnerGoogleBusMap({
   });
 
   const [map, setMap] = useState<any>(null);
+  const [mapTheme, setMapTheme] = useState<'streets' | 'satellite' | 'dark' | 'terrain'>('satellite');
   const [directions, setDirections] = useState<any>(null);
   const [activeBusInfo, setActiveBusInfo] = useState<BusLocation | null>(null);
   const [authError, setAuthError] = useState(false);
   const lastEtaCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastEtaTimeRef = useRef<number>(0);
-  const polylineRef = useRef<any>(null);
+  const polylineOuterRef = useRef<any>(null);
+  const polylineInnerRef = useRef<any>(null);
 
   // Catch Google's gm_authFailure (e.g. RefererNotAllowedMapError)
   useEffect(() => {
@@ -160,7 +233,7 @@ function InnerGoogleBusMap({
     setMap(null);
   }, []);
 
-  // Compute fallback center if not provided
+  // Compute fallback center if not provided (Banaganapalle Town Center)
   const computedCenter = React.useMemo(() => {
     if (center && center.lat && center.lng) return center;
     if (buses.length > 0 && buses[0].lat && buses[0].lng) {
@@ -180,7 +253,7 @@ function InnerGoogleBusMap({
         if (map && target.lat && target.lng) {
           try {
             map.panTo({ lat: target.lat, lng: target.lng });
-            map.setZoom(15);
+            map.setZoom(16);
           } catch {}
         }
       }
@@ -196,36 +269,6 @@ function InnerGoogleBusMap({
       }
     }
   }, [buses, activeBusInfo]);
-
-  // Fit bounds when multiple buses are present on initial load
-  const hasFitBoundsRef = useRef(false);
-  useEffect(() => {
-    const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
-    if (map && buses.length > 1 && !hasFitBoundsRef.current && gmaps && !authError) {
-      try {
-        const bounds = new gmaps.LatLngBounds();
-        let hasValidCoords = false;
-        buses.forEach((b) => {
-          if (b.lat && b.lng) {
-            bounds.extend({ lat: b.lat, lng: b.lng });
-            hasValidCoords = true;
-          }
-        });
-        stops.forEach((s) => {
-          if (s.lat && s.lng) {
-            bounds.extend({ lat: s.lat, lng: s.lng });
-            hasValidCoords = true;
-          }
-        });
-        if (hasValidCoords) {
-          map.fitBounds(bounds, 50);
-          hasFitBoundsRef.current = true;
-        }
-      } catch (err) {
-        console.warn('Bounds fitting error:', err);
-      }
-    }
-  }, [map, buses, stops, authError]);
 
   // Dynamic ETA calculation
   useEffect(() => {
@@ -310,15 +353,19 @@ function InnerGoogleBusMap({
     }
   }, [isLoaded, stops, directions, authError]);
 
-  // Safe Native Polyline Drawing to completely prevent the `setAt` / `setPath` unhandled crash
+  // Safe Multi-Layer Polyline Rendering (Vivid Blue Core + Dark Outline for Sharp Visibility)
   useEffect(() => {
     const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
     if (!map || !gmaps || authError) return;
 
     try {
-      if (polylineRef.current) {
-        polylineRef.current.setMap(null);
-        polylineRef.current = null;
+      if (polylineOuterRef.current) {
+        polylineOuterRef.current.setMap(null);
+        polylineOuterRef.current = null;
+      }
+      if (polylineInnerRef.current) {
+        polylineInnerRef.current.setMap(null);
+        polylineInnerRef.current = null;
       }
 
       let pathCoords: any[] = [];
@@ -329,30 +376,49 @@ function InnerGoogleBusMap({
       }
 
       if (pathCoords.length > 1) {
-        polylineRef.current = new gmaps.Polyline({
+        // Outer dark casing
+        polylineOuterRef.current = new gmaps.Polyline({
           path: pathCoords,
           geodesic: true,
-          strokeColor: '#2563eb',
-          strokeOpacity: 0.85,
-          strokeWeight: 5,
+          strokeColor: '#0f172a',
+          strokeOpacity: 0.6,
+          strokeWeight: 7,
+          zIndex: 1,
         });
-        polylineRef.current.setMap(map);
+        polylineOuterRef.current.setMap(map);
+
+        // Inner glowing blue core
+        polylineInnerRef.current = new gmaps.Polyline({
+          path: pathCoords,
+          geodesic: true,
+          strokeColor: '#38bdf8',
+          strokeOpacity: 0.95,
+          strokeWeight: 4,
+          zIndex: 2,
+        });
+        polylineInnerRef.current.setMap(map);
       }
     } catch (e) {
-      console.warn('Native polyline error:', e);
+      console.warn('Polyline render error:', e);
     }
 
     return () => {
-      if (polylineRef.current) {
+      if (polylineOuterRef.current) {
         try {
-          polylineRef.current.setMap(null);
+          polylineOuterRef.current.setMap(null);
         } catch {}
-        polylineRef.current = null;
+        polylineOuterRef.current = null;
+      }
+      if (polylineInnerRef.current) {
+        try {
+          polylineInnerRef.current.setMap(null);
+        } catch {}
+        polylineInnerRef.current = null;
       }
     };
   }, [map, directions, stops, authError]);
 
-  // If Google Maps fails to load or domain is restricted, gracefully fall back to Standard Leaflet Map
+  // Fallback to Standard Leaflet Map if domain restricted or load error
   if (loadError || authError) {
     return (
       <div className="relative w-full rounded-3xl overflow-hidden">
@@ -360,9 +426,9 @@ function InnerGoogleBusMap({
           <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-start gap-2 shadow-xs">
             <span className="text-base">⚠️</span>
             <div>
-              <strong className="block font-black">Google Maps API Domain Restriction</strong>
+              <strong className="block font-black">Google Maps API Domain Restriction Active</strong>
               <span>
-                Your Google Cloud API key requires website authorization for <code>https://edutrack-live-app.vercel.app/*</code>. Running in Standard Leaflet mode with live bus tracking active.
+                Add <code>https://edutrack-live-app.vercel.app/*</code> in Google Cloud Console Credentials. Running in Standard Leaflet mode.
               </span>
             </div>
           </div>
@@ -397,6 +463,22 @@ function InnerGoogleBusMap({
 
   const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
 
+  // Compute mapTypeId and styles
+  const mapTypeId = mapTheme === 'satellite' ? 'hybrid' : mapTheme === 'terrain' ? 'terrain' : 'roadmap';
+  const currentStyles =
+    mapTheme === 'streets' ? highContrastStreetStyle : mapTheme === 'dark' ? darkRadarStyle : [];
+
+  const dynamicMapOptions = {
+    disableDefaultUI: false,
+    zoomControl: true,
+    mapTypeControl: false, // We provide our own beautiful top-bar switcher
+    streetViewControl: false,
+    fullscreenControl: true,
+    gestureHandling: 'cooperative',
+    mapTypeId,
+    styles: currentStyles,
+  };
+
   return (
     <div style={{ height }} className="w-full relative shadow-inner rounded-3xl overflow-hidden bg-slate-100 border border-slate-200">
       {/* Live Status Overlay Badge */}
@@ -408,54 +490,88 @@ function InnerGoogleBusMap({
         <span>Google Maps GPS Tracking ({buses.length} {buses.length === 1 ? 'Bus' : 'Buses'})</span>
       </div>
 
+      {/* Interactive HD Map View Selector */}
+      <div className="absolute top-3 right-3 z-10 bg-white/95 backdrop-blur-md p-1 rounded-2xl shadow-md border border-slate-200 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setMapTheme('satellite')}
+          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            mapTheme === 'satellite'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-700 hover:bg-slate-100'
+          }`}
+          title="Ultra-Clear Google Satellite & Aerial Photography"
+        >
+          🛰️ Satellite (Clear)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMapTheme('streets')}
+          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            mapTheme === 'streets'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-700 hover:bg-slate-100'
+          }`}
+          title="High-Contrast Street & Road Network"
+        >
+          🗺️ HD Streets
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMapTheme('dark')}
+          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            mapTheme === 'dark'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-700 hover:bg-slate-100'
+          }`}
+          title="Dark Radar Mode"
+        >
+          🌙 Dark Radar
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMapTheme('terrain')}
+          className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+            mapTheme === 'terrain'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-700 hover:bg-slate-100'
+          }`}
+          title="Topographic Terrain"
+        >
+          🏔️ Terrain
+        </button>
+      </div>
+
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={computedCenter}
         zoom={zoom}
-        options={mapOptions}
+        options={dynamicMapOptions}
         onLoad={onLoad}
         onUnmount={onUnmount}
       >
-        {/* Stop Markers */}
+        {/* Stop Markers with Sequence Number Teardrop Pins */}
         {stops.map((stop, idx) => (
           <Marker
             key={`stop-${idx}`}
             position={{ lat: stop.lat, lng: stop.lng }}
-            title={stop.name}
+            title={`Stop ${idx + 1}: ${stop.name}`}
             icon={{
-              url:
-                'data:image/svg+xml;charset=UTF-8,' +
-                encodeURIComponent(`
-                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="14" cy="14" r="11" fill="#10b981" stroke="#ffffff" stroke-width="2.5"/>
-                    <circle cx="14" cy="14" r="5" fill="#ffffff"/>
-                  </svg>
-                `),
-              anchor: gmaps ? new gmaps.Point(14, 14) : undefined,
+              url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(createStopSvg(idx)),
+              anchor: gmaps ? new gmaps.Point(17, 38) : undefined,
             }}
           />
         ))}
 
-        {/* Live Bus Markers */}
+        {/* Live Sharp Vector Bus Markers */}
         {buses.map((bus) => {
           const isSelected = activeBusInfo?.id === bus.id;
-          const isOnline = bus.isOnline !== false;
-          const ringColor = isSelected ? '#ef4444' : isOnline ? '#10b981' : '#64748b';
-          const size = isSelected ? 48 : 42;
-          const radius = size / 2;
-
-          const svgBusIcon = `
-            <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <filter id="bussd" x="0" y="0" width="${size}" height="${size}" filterUnits="userSpaceOnUse">
-                <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/>
-              </filter>
-              <g filter="url(#bussd)">
-                <circle cx="${radius}" cy="${radius}" r="${radius - 3}" fill="${ringColor}" stroke="#ffffff" stroke-width="3"/>
-                <circle cx="${radius}" cy="${radius}" r="${radius - 7}" fill="#f59e0b"/>
-                <text x="${radius}" y="${radius + 4}" font-size="${isSelected ? 16 : 14}" text-anchor="middle" dominant-baseline="middle">🚌</text>
-              </g>
-            </svg>
-          `;
+          const svgIcon = createBusSvg(bus, isSelected);
+          const size = isSelected ? 54 : 46;
+          const half = size / 2;
 
           return (
             <Marker
@@ -467,8 +583,8 @@ function InnerGoogleBusMap({
                 if (onSelectBus) onSelectBus(bus);
               }}
               icon={{
-                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgBusIcon),
-                anchor: gmaps ? new gmaps.Point(radius, radius) : undefined,
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgIcon),
+                anchor: gmaps ? new gmaps.Point(half, half) : undefined,
               }}
             />
           );
@@ -483,7 +599,7 @@ function InnerGoogleBusMap({
               if (onSelectBus) onSelectBus(null);
             }}
           >
-            <div style={{ minWidth: 220, padding: '4px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+            <div style={{ minWidth: 230, padding: '4px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: 6, marginBottom: 8 }}>
                 <strong style={{ color: '#1e3a8a', fontSize: 14 }}>
                   🚌 {activeBusInfo.busNumber}
@@ -503,7 +619,7 @@ function InnerGoogleBusMap({
                 </span>
               </div>
 
-              <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.6 }}>
+              <div style={{ fontSize: 11, color: '#334155', lineHeight: 1.6 }}>
                 {activeBusInfo.registrationNo && (
                   <div>
                     <strong style={{ color: '#0f172a' }}>Plate:</strong> {activeBusInfo.registrationNo}
@@ -526,7 +642,7 @@ function InnerGoogleBusMap({
                 )}
                 <div>
                   <strong style={{ color: '#0f172a' }}>Speed:</strong>{' '}
-                  <span style={{ color: '#2563eb', fontWeight: 800 }}>
+                  <span style={{ color: '#0284c7', fontWeight: 800 }}>
                     {Math.round(activeBusInfo.speed || 0)} km/h
                   </span>
                 </div>
@@ -561,8 +677,8 @@ export default function GoogleBusMap(props: GoogleBusMapProps) {
       }))}
       stops={props.stops || []}
       center={props.center || { lat: 15.3196, lng: 78.1348 }}
-      zoom={props.zoom || 13}
-      height={props.height || '500px'}
+      zoom={props.zoom || 15}
+      height={props.height || '520px'}
     />
   );
 

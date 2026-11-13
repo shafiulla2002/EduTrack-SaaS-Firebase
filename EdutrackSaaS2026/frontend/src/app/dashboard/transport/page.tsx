@@ -136,8 +136,8 @@ export default function SchoolAdminTransportPage() {
       routeName: 'Route 1 - North Campus Express',
       status: 'ACTIVE',
       dutyStatus: 'EN_ROUTE',
-      lat: 15.3225,
-      lng: 78.1382,
+      lat: 15.3198,
+      lng: 78.1352,
       speed: 38,
       heading: 45,
       isOnline: true,
@@ -148,11 +148,11 @@ export default function SchoolAdminTransportPage() {
       registrationNo: 'AP-04-TX-1002',
       driverName: 'Suresh Reddy',
       driverPhone: '+91 98765 43211',
-      routeName: 'Route 2 - Metro Town Shuttle',
+      routeName: 'Route 2 - Town Metro Shuttle',
       status: 'ACTIVE',
       dutyStatus: 'REACHED_STOP',
-      lat: 15.3185,
-      lng: 78.1330,
+      lat: 15.3215,
+      lng: 78.1372,
       speed: 0,
       heading: 180,
       isOnline: true,
@@ -166,8 +166,8 @@ export default function SchoolAdminTransportPage() {
       routeName: 'Route 3 - South High School Route',
       status: 'ACTIVE',
       dutyStatus: 'EN_ROUTE',
-      lat: 15.3142,
-      lng: 78.1415,
+      lat: 15.3160,
+      lng: 78.1330,
       speed: 42,
       heading: 270,
       isOnline: true,
@@ -178,9 +178,9 @@ export default function SchoolAdminTransportPage() {
 
   const sampleStops = [
     { name: 'CS EduTrack Main Campus', lat: 15.3196, lng: 78.1348 },
-    { name: 'Banaganapalli Clock Tower', lat: 15.3240, lng: 78.1395 },
-    { name: 'Town Bus Terminal', lat: 15.3170, lng: 78.1310 },
-    { name: 'Railway Station Junction', lat: 15.3285, lng: 78.1440 },
+    { name: 'Banaganapalli Clock Tower & Bazaar', lat: 15.3218, lng: 78.1375 },
+    { name: 'RTC Bus Stand & Junction', lat: 15.3188, lng: 78.1360 },
+    { name: 'Govt Junior College Bypass', lat: 15.3150, lng: 78.1320 },
   ];
 
   // GPS Movement Simulation loop (every 2.5s)
@@ -662,7 +662,7 @@ export default function SchoolAdminTransportPage() {
               buses={activeFleet}
               stops={displayStops}
               height="520px"
-              zoom={13}
+              zoom={15}
               selectedBusId={selectedBusId}
               onSelectBus={(bus) => setSelectedBusId(bus?.id || null)}
             />
