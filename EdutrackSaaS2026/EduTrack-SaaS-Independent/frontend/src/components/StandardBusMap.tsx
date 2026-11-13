@@ -14,17 +14,20 @@ interface Stop {
 interface BusLocation {
   id: string;
   busNumber: string;
+  registrationNo?: string;
+  driverName?: string;
+  dutyStatus?: string;
   lat: number;
   lng: number;
-  speed: number;
-  heading: number;
-  isOnline: boolean;
+  speed?: number;
+  heading?: number;
+  isOnline?: boolean;
 }
 
 interface StandardBusMapProps {
   buses: BusLocation[];
-  stops: Stop[];
-  center: { lat: number; lng: number };
+  stops?: Stop[];
+  center?: { lat: number; lng: number };
   zoom?: number;
   height?: string;
 }
@@ -54,12 +57,14 @@ function MapController({ center, buses }: { center: { lat: number, lng: number }
   return null;
 }
 
-export default function StandardBusMap({ buses, stops, center, zoom = 14, height = '400px' }: StandardBusMapProps) {
+export default function StandardBusMap({ buses, stops = [], center, zoom = 14, height = '400px' }: StandardBusMapProps) {
   // Fix Next.js hydration issues with react-leaflet
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const defaultCenter = center || (buses.length > 0 && buses[0].lat && buses[0].lng ? { lat: buses[0].lat, lng: buses[0].lng } : { lat: 15.3196, lng: 78.1348 });
 
   if (!mounted) {
     return (
@@ -69,15 +74,15 @@ export default function StandardBusMap({ buses, stops, center, zoom = 14, height
     );
   }
 
-  const polylinePositions = stops.map(s => [s.lat, s.lng] as [number, number]);
+  const polylinePositions = (stops || []).map(s => [s.lat, s.lng] as [number, number]);
 
   return (
     <div style={{ height }} className="w-full relative shadow-inner rounded-3xl overflow-hidden bg-slate-50 border border-slate-200">
       <div className="absolute top-4 left-4 z-[400] bg-white/90 backdrop-blur px-3 py-1.5 rounded-lg shadow-sm border border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-        Standard Map Mode
+        Standard Map Mode (Fallback)
       </div>
       <MapContainer 
-        center={[center.lat, center.lng]} 
+        center={[defaultCenter.lat, defaultCenter.lng]} 
         zoom={zoom} 
         style={{ height: '100%', width: '100%', zIndex: 1 }}
         zoomControl={false}
@@ -87,7 +92,7 @@ export default function StandardBusMap({ buses, stops, center, zoom = 14, height
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
         
-        <MapController center={center} buses={buses} />
+        <MapController center={defaultCenter} buses={buses.map(b => ({ ...b, speed: b.speed || 0, heading: b.heading || 0, isOnline: b.isOnline ?? true }))} />
 
         {/* Draw Route Polyline */}
         {polylinePositions.length > 0 && (

@@ -1,32 +1,46 @@
 'use client';
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { GoogleMap, useJsApiLoader, Marker, Polyline } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
 import dynamic from 'next/dynamic';
 
 const StandardBusMap = dynamic(() => import('./StandardBusMap'), {
   ssr: false,
-  loading: () => <div className="w-full bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400 font-bold animate-pulse border border-slate-200" style={{ height: '400px' }}>Loading Standard Map...</div>
+  loading: () => (
+    <div
+      className="w-full bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400 font-bold animate-pulse border border-slate-200"
+      style={{ height: '450px' }}
+    >
+      Loading Fallback Fleet Map...
+    </div>
+  ),
 });
 
-interface Stop {
+export interface Stop {
   name: string;
   lat: number;
   lng: number;
 }
 
-interface BusLocation {
+export interface BusLocation {
   id: string;
   busNumber: string;
+  registrationNo?: string;
+  driverName?: string;
+  driverPhone?: string;
+  routeName?: string;
+  status?: string;
+  dutyStatus?: string;
   lat: number;
   lng: number;
-  speed: number;
-  heading: number;
-  isOnline: boolean;
+  speed?: number;
+  heading?: number;
+  isOnline?: boolean;
+  lastUpdate?: string;
 }
 
 function getHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Radius of the Earth in km
+  const R = 6371; // Earth radius in km
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a =
@@ -39,14 +53,16 @@ function getHaversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: 
   return R * c;
 }
 
-interface GoogleBusMapProps {
+export interface GoogleBusMapProps {
   buses: BusLocation[];
-  stops: Stop[];
-  center: { lat: number; lng: number };
+  stops?: Stop[];
+  center?: { lat: number; lng: number };
   zoom?: number;
   height?: string;
   etaDestination?: { lat: number; lng: number } | null;
   onEtaUpdate?: (eta: string) => void;
+  selectedBusId?: string | null;
+  onSelectBus?: (bus: BusLocation | null) => void;
 }
 
 const mapContainerStyle = {
@@ -55,56 +71,134 @@ const mapContainerStyle = {
   borderRadius: '1.5rem',
 };
 
-// Map options to remove default UI and style it
-const options = {
-  disableDefaultUI: true,
+// Map options with clean modern controls
+const mapOptions: google.maps.MapOptions = {
+  disableDefaultUI: false,
   zoomControl: true,
-  mapId: '8d123439b1a5e', // Use a custom MapID for advanced markers/styling if needed
+  mapTypeControl: true,
+  streetViewControl: false,
+  fullscreenControl: true,
+  gestureHandling: 'cooperative',
 };
 
-export default function GoogleBusMap({ buses, stops, center, zoom = 14, height = '400px', etaDestination, onEtaUpdate }: GoogleBusMapProps) {
+const GOOGLE_MAPS_API_KEY =
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  'AIzaSyDdGFriMwQIm-DUMoyaUcH6BXhmhSGnTvU';
+
+export default function GoogleBusMap({
+  buses,
+  stops = [],
+  center,
+  zoom = 13,
+  height = '500px',
+  etaDestination,
+  onEtaUpdate,
+  selectedBusId,
+  onSelectBus,
+}: GoogleBusMapProps) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
   });
 
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
+  const [activeBusInfo, setActiveBusInfo] = useState<BusLocation | null>(null);
   const lastEtaCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastEtaTimeRef = useRef<number>(0);
 
-  const onLoad = useCallback(function callback(map: google.maps.Map) {
-    setMap(map);
+  const onLoad = useCallback(function callback(mapInstance: google.maps.Map) {
+    setMap(mapInstance);
   }, []);
 
-  const onUnmount = useCallback(function callback(map: google.maps.Map) {
+  const onUnmount = useCallback(function callback() {
     setMap(null);
   }, []);
 
-  // Calculate dynamic ETA to student stop with throttling
+  // Compute fallback center if not provided
+  const computedCenter = React.useMemo(() => {
+    if (center && center.lat && center.lng) return center;
+    if (buses.length > 0 && buses[0].lat && buses[0].lng) {
+      const avgLat = buses.reduce((acc, b) => acc + (b.lat || 0), 0) / buses.length;
+      const avgLng = buses.reduce((acc, b) => acc + (b.lng || 0), 0) / buses.length;
+      return { lat: avgLat, lng: avgLng };
+    }
+    // Default to Banaganapalle / school campus
+    return { lat: 15.3196, lng: 78.1348 };
+  }, [center, buses]);
+
+  // Handle external selection change
   useEffect(() => {
-    if (!isLoaded || buses.length !== 1 || !etaDestination || !onEtaUpdate) return;
+    if (selectedBusId) {
+      const target = buses.find((b) => b.id === selectedBusId);
+      if (target) {
+        setActiveBusInfo(target);
+        if (map && target.lat && target.lng) {
+          map.panTo({ lat: target.lat, lng: target.lng });
+          map.setZoom(15);
+        }
+      }
+    }
+  }, [selectedBusId, buses, map]);
+
+  // Keep active bus info updated if live GPS position shifts
+  useEffect(() => {
+    if (activeBusInfo) {
+      const updated = buses.find((b) => b.id === activeBusInfo.id);
+      if (updated) {
+        setActiveBusInfo(updated);
+      }
+    }
+  }, [buses, activeBusInfo]);
+
+  // Fit bounds when multiple buses are present on initial load
+  const hasFitBoundsRef = useRef(false);
+  useEffect(() => {
+    if (map && buses.length > 1 && !hasFitBoundsRef.current && window.google?.maps) {
+      const bounds = new window.google.maps.LatLngBounds();
+      let hasValidCoords = false;
+      buses.forEach((b) => {
+        if (b.lat && b.lng) {
+          bounds.extend({ lat: b.lat, lng: b.lng });
+          hasValidCoords = true;
+        }
+      });
+      stops.forEach((s) => {
+        if (s.lat && s.lng) {
+          bounds.extend({ lat: s.lat, lng: s.lng });
+          hasValidCoords = true;
+        }
+      });
+      if (hasValidCoords) {
+        map.fitBounds(bounds, 50);
+        hasFitBoundsRef.current = true;
+      }
+    }
+  }, [map, buses, stops]);
+
+  // Dynamic ETA calculation
+  useEffect(() => {
+    if (!isLoaded || buses.length !== 1 || !etaDestination || !onEtaUpdate || !window.google?.maps) return;
 
     const activeBus = buses[0];
     if (!activeBus.lat || !activeBus.lng) return;
 
     const now = Date.now();
     const timeElapsedMs = now - lastEtaTimeRef.current;
-    
+
     let shouldRecalculate = false;
     if (!lastEtaCoordsRef.current) {
       shouldRecalculate = true;
     } else {
-      const distanceMoved = getHaversineDistanceKm(
-        activeBus.lat,
-        activeBus.lng,
-        lastEtaCoordsRef.current.lat,
-        lastEtaCoordsRef.current.lng
-      ) * 1000; // in meters
+      const distanceMoved =
+        getHaversineDistanceKm(
+          activeBus.lat,
+          activeBus.lng,
+          lastEtaCoordsRef.current.lat,
+          lastEtaCoordsRef.current.lng
+        ) * 1000;
 
-      if (distanceMoved > 100) {
-        shouldRecalculate = true;
-      } else if (timeElapsedMs > 45000) { // 45 seconds
+      if (distanceMoved > 100 || timeElapsedMs > 45000) {
         shouldRecalculate = true;
       }
     }
@@ -126,22 +220,19 @@ export default function GoogleBusMap({ buses, stops, center, zoom = 14, height =
               lastEtaTimeRef.current = now;
               onEtaUpdate(etaText);
             }
-          } else {
-            console.error('Error fetching ETA directions', status);
           }
         }
       );
     }
   }, [isLoaded, buses, etaDestination, onEtaUpdate]);
 
-  // Calculate route polyline natively with Google Directions API
+  // Route Polyline via Google Directions API
   useEffect(() => {
-    if (isLoaded && stops.length >= 2 && !directions && process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+    if (isLoaded && stops.length >= 2 && !directions && window.google?.maps) {
       const directionsService = new window.google.maps.DirectionsService();
-      
       const origin = stops[0];
       const destination = stops[stops.length - 1];
-      const waypoints = stops.slice(1, -1).map(stop => ({
+      const waypoints = stops.slice(1, -1).map((stop) => ({
         location: { lat: stop.lat, lng: stop.lng },
         stopover: true,
       }));
@@ -154,100 +245,217 @@ export default function GoogleBusMap({ buses, stops, center, zoom = 14, height =
           travelMode: window.google.maps.TravelMode.DRIVING,
         },
         (result, status) => {
-          if (status === window.google.maps.DirectionsStatus.OK) {
+          if (status === window.google.maps.DirectionsStatus.OK && result) {
             setDirections(result);
-          } else {
-            console.error('Error fetching directions', status);
           }
         }
       );
     }
   }, [isLoaded, stops, directions]);
 
-  // Center map on active bus if only one is tracked
-  useEffect(() => {
-    if (map && buses.length === 1 && buses[0].isOnline) {
-      map.panTo({ lat: buses[0].lat, lng: buses[0].lng });
-    }
-  }, [buses, map]);
-
-  const hasGoogleKey = Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
-
-  if (loadError || !hasGoogleKey) {
-    return <StandardBusMap buses={buses} stops={stops} center={center} zoom={zoom} height={height} />;
+  // If Google Maps fails to load, gracefully fall back to Standard Leaflet Map
+  if (loadError) {
+    console.warn('Google Maps API failed to load. Falling back to Standard Map:', loadError);
+    return (
+      <StandardBusMap
+        buses={buses.map((b) => ({
+          ...b,
+          heading: b.heading || 0,
+          speed: b.speed || 0,
+          isOnline: b.isOnline ?? true,
+        }))}
+        stops={stops}
+        center={computedCenter}
+        zoom={zoom}
+        height={height}
+      />
+    );
   }
 
   if (!isLoaded) {
     return (
-      <div style={{ height }} className="w-full bg-slate-100 rounded-3xl flex items-center justify-center text-slate-400 font-bold animate-pulse border border-slate-200">
-        Loading Real-Time Map...
+      <div
+        style={{ height }}
+        className="w-full bg-slate-100 rounded-3xl flex flex-col items-center justify-center text-slate-500 font-bold gap-2 animate-pulse border border-slate-200"
+      >
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-bold tracking-wide">Connecting to Google Maps GPS Engine...</span>
       </div>
     );
   }
 
   return (
-    <div style={{ height }} className="w-full relative shadow-inner rounded-3xl overflow-hidden bg-slate-50">
-
+    <div style={{ height }} className="w-full relative shadow-inner rounded-3xl overflow-hidden bg-slate-100 border border-slate-200">
+      {/* Live Status Overlay Badge */}
+      <div className="absolute top-3 left-3 z-10 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-xl shadow-md border border-slate-200 flex items-center gap-2 text-xs font-bold text-slate-800">
+        <span className="relative flex h-2.5 w-2.5">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+        </span>
+        <span>Google Maps GPS Tracking ({buses.length} {buses.length === 1 ? 'Bus' : 'Buses'})</span>
+      </div>
 
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
-        center={center}
+        center={computedCenter}
         zoom={zoom}
-        options={options}
+        options={mapOptions}
         onLoad={onLoad}
         onUnmount={onUnmount}
       >
-        {/* Draw Route Line (Fall back to direct Polyline if Directions API isn't ready) */}
+        {/* Draw Route Line via Directions API */}
         {directions && (
           <Polyline
             path={directions.routes[0].overview_path}
             options={{
-              strokeColor: '#3b82f6',
-              strokeOpacity: 0.8,
-              strokeWeight: 6,
+              strokeColor: '#2563eb',
+              strokeOpacity: 0.85,
+              strokeWeight: 5,
             }}
           />
         )}
-        
-        {!directions && stops.length > 0 && (
+
+        {/* Fallback Direct Polyline */}
+        {!directions && stops.length > 1 && (
           <Polyline
-            path={stops.map(s => ({ lat: s.lat, lng: s.lng }))}
+            path={stops.map((s) => ({ lat: s.lat, lng: s.lng }))}
             options={{
-              strokeColor: '#94a3b8',
-              strokeOpacity: 0.6,
+              strokeColor: '#3b82f6',
+              strokeOpacity: 0.7,
               strokeWeight: 4,
             }}
           />
         )}
 
-        {/* Draw Stops */}
+        {/* Stop Markers */}
         {stops.map((stop, idx) => (
           <Marker
-            key={idx}
+            key={`stop-${idx}`}
             position={{ lat: stop.lat, lng: stop.lng }}
-            icon={{
-              url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="8" fill="#ffffff" stroke="#2563eb" stroke-width="4"/></svg>'),
-              anchor: new window.google.maps.Point(12, 12),
-            }}
             title={stop.name}
+            icon={{
+              url:
+                'data:image/svg+xml;charset=UTF-8,' +
+                encodeURIComponent(`
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="14" cy="14" r="11" fill="#10b981" stroke="#ffffff" stroke-width="2.5"/>
+                    <circle cx="14" cy="14" r="5" fill="#ffffff"/>
+                  </svg>
+                `),
+              anchor: window.google?.maps ? new window.google.maps.Point(14, 14) : undefined,
+            }}
           />
         ))}
 
-        {/* Draw Buses with live animation/icon */}
-        {buses.map((bus) => (
-          <Marker
-            key={bus.id}
-            position={{ lat: bus.lat, lng: bus.lng }}
-            title={`Bus ${bus.busNumber} (${Math.round(bus.speed)} km/h)`}
-            icon={{
-              // Use a bus icon with a pinging effect natively rendered or a simple SVG
-              url: bus.isOnline 
-                ? 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="20" cy="20" r="16" fill="#10b981"/><circle cx="20" cy="20" r="8" fill="#ffffff"/></svg>')
-                : 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="20" cy="20" r="16" fill="#94a3b8"/><circle cx="20" cy="20" r="8" fill="#ffffff"/></svg>'),
-              anchor: new window.google.maps.Point(20, 20),
+        {/* Live Bus Markers */}
+        {buses.map((bus) => {
+          const isSelected = activeBusInfo?.id === bus.id;
+          const isOnline = bus.isOnline !== false;
+          const ringColor = isSelected ? '#ef4444' : isOnline ? '#10b981' : '#64748b';
+          const size = isSelected ? 48 : 42;
+          const radius = size / 2;
+
+          const svgBusIcon = `
+            <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <filter id="bussd" x="0" y="0" width="${size}" height="${size}" filterUnits="userSpaceOnUse">
+                <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/>
+              </filter>
+              <g filter="url(#bussd)">
+                <circle cx="${radius}" cy="${radius}" r="${radius - 3}" fill="${ringColor}" stroke="#ffffff" stroke-width="3"/>
+                <circle cx="${radius}" cy="${radius}" r="${radius - 7}" fill="#f59e0b"/>
+                <text x="${radius}" y="${radius + 4}" font-size="${isSelected ? 16 : 14}" text-anchor="middle" dominant-baseline="middle">🚌</text>
+              </g>
+            </svg>
+          `;
+
+          return (
+            <Marker
+              key={bus.id}
+              position={{ lat: bus.lat, lng: bus.lng }}
+              title={`Bus ${bus.busNumber} • ${Math.round(bus.speed || 0)} km/h`}
+              onClick={() => {
+                setActiveBusInfo(bus);
+                if (onSelectBus) onSelectBus(bus);
+              }}
+              icon={{
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgBusIcon),
+                anchor: window.google?.maps ? new window.google.maps.Point(radius, radius) : undefined,
+              }}
+            />
+          );
+        })}
+
+        {/* Interactive InfoWindow on Marker Click */}
+        {activeBusInfo && activeBusInfo.lat && activeBusInfo.lng && (
+          <InfoWindow
+            position={{ lat: activeBusInfo.lat, lng: activeBusInfo.lng }}
+            onCloseClick={() => {
+              setActiveBusInfo(null);
+              if (onSelectBus) onSelectBus(null);
             }}
-          />
-        ))}
+          >
+            <div style={{ minWidth: 220, padding: '4px', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: 6, marginBottom: 8 }}>
+                <strong style={{ color: '#1e3a8a', fontSize: 14 }}>
+                  🚌 {activeBusInfo.busNumber}
+                </strong>
+                <span
+                  style={{
+                    backgroundColor: activeBusInfo.isOnline !== false ? '#dcfce7' : '#f1f5f9',
+                    color: activeBusInfo.isOnline !== false ? '#15803d' : '#475569',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: 9999,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {activeBusInfo.isOnline !== false ? '● Live' : 'Offline'}
+                </span>
+              </div>
+
+              <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.6 }}>
+                {activeBusInfo.registrationNo && (
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Plate:</strong> {activeBusInfo.registrationNo}
+                  </div>
+                )}
+                {activeBusInfo.driverName && (
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Driver:</strong> {activeBusInfo.driverName}
+                  </div>
+                )}
+                {activeBusInfo.driverPhone && (
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Phone:</strong> {activeBusInfo.driverPhone}
+                  </div>
+                )}
+                {activeBusInfo.routeName && (
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Route:</strong> {activeBusInfo.routeName}
+                  </div>
+                )}
+                <div>
+                  <strong style={{ color: '#0f172a' }}>Speed:</strong>{' '}
+                  <span style={{ color: '#2563eb', fontWeight: 800 }}>
+                    {Math.round(activeBusInfo.speed || 0)} km/h
+                  </span>
+                </div>
+                {activeBusInfo.dutyStatus && (
+                  <div>
+                    <strong style={{ color: '#0f172a' }}>Duty:</strong>{' '}
+                    <span style={{ fontWeight: 700, color: '#059669' }}>
+                      {activeBusInfo.dutyStatus.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                )}
+                <div style={{ marginTop: 6, paddingTop: 4, borderTop: '1px dashed #e2e8f0', fontSize: 10, color: '#94a3b8' }}>
+                  GPS: {activeBusInfo.lat.toFixed(5)}, {activeBusInfo.lng.toFixed(5)}
+                </div>
+              </div>
+            </div>
+          </InfoWindow>
+        )}
       </GoogleMap>
     </div>
   );
