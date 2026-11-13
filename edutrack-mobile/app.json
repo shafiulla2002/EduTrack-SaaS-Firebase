@@ -2,7 +2,7 @@
   "expo": {
     "name": "EduTrack",
     "slug": "edutrack",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "edutrack",
@@ -21,13 +21,15 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.INTERNET",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.VIBRATE",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
