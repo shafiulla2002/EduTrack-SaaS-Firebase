@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
-import { GoogleMap, useJsApiLoader, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import dynamic from 'next/dynamic';
 
 const StandardBusMap = dynamic(() => import('./StandardBusMap'), {
@@ -71,7 +71,6 @@ const mapContainerStyle = {
   borderRadius: '1.5rem',
 };
 
-// Map options with clean modern controls (typed as any to avoid missing @types/google.maps build errors)
 const mapOptions: any = {
   disableDefaultUI: false,
   zoomControl: true,
@@ -85,7 +84,33 @@ const GOOGLE_MAPS_API_KEY =
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
   'AIzaSyDdGFriMwQIm-DUMoyaUcH6BXhmhSGnTvU';
 
-export default function GoogleBusMap({
+// Robust React ErrorBoundary to prevent any Google Maps script error from crashing Next.js
+class GoogleMapErrorBoundary extends React.Component<
+  { fallback: React.ReactNode; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any) {
+    console.warn('Caught Google Maps runtime exception:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+
+function InnerGoogleBusMap({
   buses,
   stops = [],
   center,
@@ -104,8 +129,28 @@ export default function GoogleBusMap({
   const [map, setMap] = useState<any>(null);
   const [directions, setDirections] = useState<any>(null);
   const [activeBusInfo, setActiveBusInfo] = useState<BusLocation | null>(null);
+  const [authError, setAuthError] = useState(false);
   const lastEtaCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastEtaTimeRef = useRef<number>(0);
+  const polylineRef = useRef<any>(null);
+
+  // Catch Google's gm_authFailure (e.g. RefererNotAllowedMapError)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const prevAuthFailure = (window as any).gm_authFailure;
+    (window as any).gm_authFailure = () => {
+      console.warn('Google Maps RefererNotAllowedMapError detected. Falling back to Standard Map.');
+      setAuthError(true);
+      if (typeof prevAuthFailure === 'function') {
+        try {
+          prevAuthFailure();
+        } catch {}
+      }
+    };
+    return () => {
+      (window as any).gm_authFailure = prevAuthFailure;
+    };
+  }, []);
 
   const onLoad = useCallback(function callback(mapInstance: any) {
     setMap(mapInstance);
@@ -123,7 +168,6 @@ export default function GoogleBusMap({
       const avgLng = buses.reduce((acc, b) => acc + (b.lng || 0), 0) / buses.length;
       return { lat: avgLat, lng: avgLng };
     }
-    // Default to Banaganapalle / school campus
     return { lat: 15.3196, lng: 78.1348 };
   }, [center, buses]);
 
@@ -134,8 +178,10 @@ export default function GoogleBusMap({
       if (target) {
         setActiveBusInfo(target);
         if (map && target.lat && target.lng) {
-          map.panTo({ lat: target.lat, lng: target.lng });
-          map.setZoom(15);
+          try {
+            map.panTo({ lat: target.lat, lng: target.lng });
+            map.setZoom(15);
+          } catch {}
         }
       }
     }
@@ -155,32 +201,36 @@ export default function GoogleBusMap({
   const hasFitBoundsRef = useRef(false);
   useEffect(() => {
     const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
-    if (map && buses.length > 1 && !hasFitBoundsRef.current && gmaps) {
-      const bounds = new gmaps.LatLngBounds();
-      let hasValidCoords = false;
-      buses.forEach((b) => {
-        if (b.lat && b.lng) {
-          bounds.extend({ lat: b.lat, lng: b.lng });
-          hasValidCoords = true;
+    if (map && buses.length > 1 && !hasFitBoundsRef.current && gmaps && !authError) {
+      try {
+        const bounds = new gmaps.LatLngBounds();
+        let hasValidCoords = false;
+        buses.forEach((b) => {
+          if (b.lat && b.lng) {
+            bounds.extend({ lat: b.lat, lng: b.lng });
+            hasValidCoords = true;
+          }
+        });
+        stops.forEach((s) => {
+          if (s.lat && s.lng) {
+            bounds.extend({ lat: s.lat, lng: s.lng });
+            hasValidCoords = true;
+          }
+        });
+        if (hasValidCoords) {
+          map.fitBounds(bounds, 50);
+          hasFitBoundsRef.current = true;
         }
-      });
-      stops.forEach((s) => {
-        if (s.lat && s.lng) {
-          bounds.extend({ lat: s.lat, lng: s.lng });
-          hasValidCoords = true;
-        }
-      });
-      if (hasValidCoords) {
-        map.fitBounds(bounds, 50);
-        hasFitBoundsRef.current = true;
+      } catch (err) {
+        console.warn('Bounds fitting error:', err);
       }
     }
-  }, [map, buses, stops]);
+  }, [map, buses, stops, authError]);
 
   // Dynamic ETA calculation
   useEffect(() => {
     const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
-    if (!isLoaded || buses.length !== 1 || !etaDestination || !onEtaUpdate || !gmaps) return;
+    if (!isLoaded || buses.length !== 1 || !etaDestination || !onEtaUpdate || !gmaps || authError) return;
 
     const activeBus = buses[0];
     if (!activeBus.lat || !activeBus.lng) return;
@@ -206,72 +256,130 @@ export default function GoogleBusMap({
     }
 
     if (shouldRecalculate) {
-      const directionsService = new gmaps.DirectionsService();
-      directionsService.route(
-        {
-          origin: { lat: activeBus.lat, lng: activeBus.lng },
-          destination: { lat: etaDestination.lat, lng: etaDestination.lng },
-          travelMode: gmaps.TravelMode.DRIVING,
-        },
-        (result: any, status: any) => {
-          if (status === gmaps.DirectionsStatus.OK && result) {
-            const leg = result.routes[0]?.legs[0];
-            if (leg) {
-              const etaText = leg.duration?.text || '';
-              lastEtaCoordsRef.current = { lat: activeBus.lat, lng: activeBus.lng };
-              lastEtaTimeRef.current = now;
-              onEtaUpdate(etaText);
+      try {
+        const directionsService = new gmaps.DirectionsService();
+        directionsService.route(
+          {
+            origin: { lat: activeBus.lat, lng: activeBus.lng },
+            destination: { lat: etaDestination.lat, lng: etaDestination.lng },
+            travelMode: gmaps.TravelMode.DRIVING,
+          },
+          (result: any, status: any) => {
+            if (status === gmaps.DirectionsStatus.OK && result) {
+              const leg = result.routes[0]?.legs[0];
+              if (leg) {
+                const etaText = leg.duration?.text || '';
+                lastEtaCoordsRef.current = { lat: activeBus.lat, lng: activeBus.lng };
+                lastEtaTimeRef.current = now;
+                onEtaUpdate(etaText);
+              }
             }
           }
-        }
-      );
+        );
+      } catch {}
     }
-  }, [isLoaded, buses, etaDestination, onEtaUpdate]);
+  }, [isLoaded, buses, etaDestination, onEtaUpdate, authError]);
 
   // Route Polyline via Google Directions API
   useEffect(() => {
     const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
-    if (isLoaded && stops.length >= 2 && !directions && gmaps) {
-      const directionsService = new gmaps.DirectionsService();
-      const origin = stops[0];
-      const destination = stops[stops.length - 1];
-      const waypoints = stops.slice(1, -1).map((stop) => ({
-        location: { lat: stop.lat, lng: stop.lng },
-        stopover: true,
-      }));
+    if (isLoaded && stops.length >= 2 && !directions && gmaps && !authError) {
+      try {
+        const directionsService = new gmaps.DirectionsService();
+        const origin = stops[0];
+        const destination = stops[stops.length - 1];
+        const waypoints = stops.slice(1, -1).map((stop) => ({
+          location: { lat: stop.lat, lng: stop.lng },
+          stopover: true,
+        }));
 
-      directionsService.route(
-        {
-          origin: { lat: origin.lat, lng: origin.lng },
-          destination: { lat: destination.lat, lng: destination.lng },
-          waypoints,
-          travelMode: gmaps.TravelMode.DRIVING,
-        },
-        (result: any, status: any) => {
-          if (status === gmaps.DirectionsStatus.OK && result) {
-            setDirections(result);
+        directionsService.route(
+          {
+            origin: { lat: origin.lat, lng: origin.lng },
+            destination: { lat: destination.lat, lng: destination.lng },
+            waypoints,
+            travelMode: gmaps.TravelMode.DRIVING,
+          },
+          (result: any, status: any) => {
+            if (status === gmaps.DirectionsStatus.OK && result) {
+              setDirections(result);
+            }
           }
-        }
-      );
+        );
+      } catch {}
     }
-  }, [isLoaded, stops, directions]);
+  }, [isLoaded, stops, directions, authError]);
 
-  // If Google Maps fails to load, gracefully fall back to Standard Leaflet Map
-  if (loadError) {
-    console.warn('Google Maps API failed to load. Falling back to Standard Map:', loadError);
+  // Safe Native Polyline Drawing to completely prevent the `setAt` / `setPath` unhandled crash
+  useEffect(() => {
+    const gmaps = typeof window !== 'undefined' ? (window as any).google?.maps : null;
+    if (!map || !gmaps || authError) return;
+
+    try {
+      if (polylineRef.current) {
+        polylineRef.current.setMap(null);
+        polylineRef.current = null;
+      }
+
+      let pathCoords: any[] = [];
+      if (directions?.routes?.[0]?.overview_path) {
+        pathCoords = directions.routes[0].overview_path;
+      } else if (stops && stops.length > 1) {
+        pathCoords = stops.map((s) => ({ lat: s.lat, lng: s.lng }));
+      }
+
+      if (pathCoords.length > 1) {
+        polylineRef.current = new gmaps.Polyline({
+          path: pathCoords,
+          geodesic: true,
+          strokeColor: '#2563eb',
+          strokeOpacity: 0.85,
+          strokeWeight: 5,
+        });
+        polylineRef.current.setMap(map);
+      }
+    } catch (e) {
+      console.warn('Native polyline error:', e);
+    }
+
+    return () => {
+      if (polylineRef.current) {
+        try {
+          polylineRef.current.setMap(null);
+        } catch {}
+        polylineRef.current = null;
+      }
+    };
+  }, [map, directions, stops, authError]);
+
+  // If Google Maps fails to load or domain is restricted, gracefully fall back to Standard Leaflet Map
+  if (loadError || authError) {
     return (
-      <StandardBusMap
-        buses={buses.map((b) => ({
-          ...b,
-          heading: b.heading || 0,
-          speed: b.speed || 0,
-          isOnline: b.isOnline ?? true,
-        }))}
-        stops={stops}
-        center={computedCenter}
-        zoom={zoom}
-        height={height}
-      />
+      <div className="relative w-full rounded-3xl overflow-hidden">
+        {authError && (
+          <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-800 flex items-start gap-2 shadow-xs">
+            <span className="text-base">⚠️</span>
+            <div>
+              <strong className="block font-black">Google Maps API Domain Restriction</strong>
+              <span>
+                Your Google Cloud API key requires website authorization for <code>https://edutrack-live-app.vercel.app/*</code>. Running in Standard Leaflet mode with live bus tracking active.
+              </span>
+            </div>
+          </div>
+        )}
+        <StandardBusMap
+          buses={buses.map((b) => ({
+            ...b,
+            heading: b.heading || 0,
+            speed: b.speed || 0,
+            isOnline: b.isOnline ?? true,
+          }))}
+          stops={stops}
+          center={computedCenter}
+          zoom={zoom}
+          height={height}
+        />
+      </div>
     );
   }
 
@@ -308,30 +416,6 @@ export default function GoogleBusMap({
         onLoad={onLoad}
         onUnmount={onUnmount}
       >
-        {/* Draw Route Line via Directions API */}
-        {directions && (
-          <Polyline
-            path={directions.routes[0].overview_path}
-            options={{
-              strokeColor: '#2563eb',
-              strokeOpacity: 0.85,
-              strokeWeight: 5,
-            }}
-          />
-        )}
-
-        {/* Fallback Direct Polyline */}
-        {!directions && stops.length > 1 && (
-          <Polyline
-            path={stops.map((s) => ({ lat: s.lat, lng: s.lng }))}
-            options={{
-              strokeColor: '#3b82f6',
-              strokeOpacity: 0.7,
-              strokeWeight: 4,
-            }}
-          />
-        )}
-
         {/* Stop Markers */}
         {stops.map((stop, idx) => (
           <Marker
@@ -463,5 +547,28 @@ export default function GoogleBusMap({
         )}
       </GoogleMap>
     </div>
+  );
+}
+
+export default function GoogleBusMap(props: GoogleBusMapProps) {
+  const fallback = (
+    <StandardBusMap
+      buses={props.buses.map((b) => ({
+        ...b,
+        heading: b.heading || 0,
+        speed: b.speed || 0,
+        isOnline: b.isOnline ?? true,
+      }))}
+      stops={props.stops || []}
+      center={props.center || { lat: 15.3196, lng: 78.1348 }}
+      zoom={props.zoom || 13}
+      height={props.height || '500px'}
+    />
+  );
+
+  return (
+    <GoogleMapErrorBoundary fallback={fallback}>
+      <InnerGoogleBusMap {...props} />
+    </GoogleMapErrorBoundary>
   );
 }
