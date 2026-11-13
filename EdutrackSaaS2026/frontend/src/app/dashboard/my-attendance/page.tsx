@@ -29,6 +29,7 @@ export default function TeacherMyAttendancePage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
   const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
+  const [scannerInitialTab, setScannerInitialTab] = useState<'QR' | 'FACE'>('QR');
 
   const [todayStatus, setTodayStatus] = useState<{
     marked: boolean;
@@ -125,11 +126,27 @@ export default function TeacherMyAttendancePage() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsScannerOpen(true)}
+            onClick={() => {
+              setScannerInitialTab('QR');
+              setIsScannerOpen(true);
+            }}
             className="px-4 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-500/20 transition-all flex items-center gap-2 cursor-pointer"
           >
             <QrCode className="w-4 h-4" />
             Scan Attendance QR
+          </button>
+
+          <button
+            onClick={() => {
+              setScannerInitialTab('FACE');
+              setIsScannerOpen(true);
+            }}
+            className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+            title="Face Recognition Attendance"
+          >
+            <UserCheck className="w-4 h-4 text-amber-600" />
+            <span>Face Attendance</span>
+            <span className="text-[9px] bg-amber-200/80 text-amber-800 px-1.5 py-0.2 rounded-full font-black">Soon</span>
           </button>
 
           <button
@@ -189,13 +206,29 @@ export default function TeacherMyAttendancePage() {
                 Verified for Today
               </div>
             ) : (
-              <button
-                onClick={() => setIsScannerOpen(true)}
-                className="px-6 py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-2xl shadow-lg shadow-blue-500/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
-              >
-                <QrCode className="w-4 h-4" />
-                Mark Attendance Now
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  onClick={() => {
+                    setScannerInitialTab('QR');
+                    setIsScannerOpen(true);
+                  }}
+                  className="px-6 py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-2xl shadow-lg shadow-blue-500/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+                >
+                  <QrCode className="w-4 h-4" />
+                  Mark Attendance Now
+                </button>
+                <button
+                  onClick={() => {
+                    setScannerInitialTab('FACE');
+                    setIsScannerOpen(true);
+                  }}
+                  className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-2xl border border-white/20 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+                >
+                  <UserCheck className="w-4 h-4 text-amber-300" />
+                  <span>Face Scan</span>
+                  <span className="text-[9px] bg-amber-400 text-slate-900 font-black px-1.5 py-0.5 rounded-full">Soon</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -366,6 +399,7 @@ export default function TeacherMyAttendancePage() {
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onAttendanceSuccess={handleScanSuccess}
+        initialTab={scannerInitialTab}
       />
     </div>
   );

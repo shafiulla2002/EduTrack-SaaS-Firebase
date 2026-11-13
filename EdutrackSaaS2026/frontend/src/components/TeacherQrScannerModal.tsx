@@ -26,14 +26,16 @@ interface TeacherQrScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAttendanceSuccess?: (data: any) => void;
+  initialTab?: 'QR' | 'FACE';
 }
 
 export default function TeacherQrScannerModal({
   isOpen,
   onClose,
   onAttendanceSuccess,
+  initialTab = 'QR',
 }: TeacherQrScannerModalProps) {
-  const [activeTab, setActiveTab] = useState<'QR' | 'FACE'>('QR');
+  const [activeTab, setActiveTab] = useState<'QR' | 'FACE'>(initialTab);
   const [scannerState, setScannerState] = useState<
     'STARTING' | 'SCANNING' | 'VALIDATING' | 'SUCCESS' | 'ERROR' | 'PERMISSION_REQUIRED'
   >('STARTING');
@@ -44,13 +46,18 @@ export default function TeacherQrScannerModal({
   const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
   const [manualToken, setManualToken] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
-  const [faceScanProgress, setFaceScanProgress] = useState(0);
-  const [isFaceCapturing, setIsFaceCapturing] = useState(false);
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const isScanningRef = useRef(false);
+
+  // Sync initialTab when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   // Request Geolocation early
   useEffect(() => {
@@ -83,15 +90,19 @@ export default function TeacherQrScannerModal({
       setScannerState('STARTING');
       setErrorMessage('');
       setSuccessData(null);
-      setIsFaceCapturing(false);
-      setFaceScanProgress(0);
       return;
     }
 
-    // Set initial facingMode based on tab: Front camera for FACE, Rear camera for QR
-    const targetFacing = activeTab === 'FACE' ? 'user' : 'environment';
+    if (activeTab === 'FACE') {
+      // Face Recognition is on hold - release camera resources
+      stopAllCameraResources();
+      return;
+    }
+
+    // When in QR mode, activate rear camera for QR scanning
+    const targetFacing = 'environment';
     setCameraFacing(targetFacing);
-    initCamera(activeTab, targetFacing);
+    initCamera(targetFacing);
 
     return () => {
       stopAllCameraResources();
@@ -127,7 +138,7 @@ export default function TeacherQrScannerModal({
     }
   };
 
-  const initCamera = async (mode: 'QR' | 'FACE', facing: 'environment' | 'user') => {
+  const initCamera = async (facing: 'environment' | 'user') => {
     await stopAllCameraResources();
     setScannerState('STARTING');
     setErrorMessage('');
@@ -135,85 +146,61 @@ export default function TeacherQrScannerModal({
     // Wait a tick for the DOM container to be fully visible
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    if (mode === 'FACE') {
-      // Direct high-res front camera stream for Face Verification
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: facing },
-            width: { ideal: 640 },
-            height: { ideal: 640 },
-          },
-          audio: false,
-        });
+    // QR Code Scanner using Html5Qrcode
+    const container = document.getElementById('qr-reader-container');
+    if (!container) {
+      setScannerState('ERROR');
+      setErrorMessage('Scanner container could not be found in DOM.');
+      return;
+    }
 
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-        setScannerState('SCANNING');
-      } catch (err: any) {
-        console.error('Face camera error:', err);
-        handleCameraError(err);
-      }
-    } else {
-      // QR Code Scanner using Html5Qrcode
-      const container = document.getElementById('qr-reader-container');
-      if (!container) {
-        setScannerState('ERROR');
-        setErrorMessage('Scanner container could not be found in DOM.');
-        return;
-      }
+    try {
+      const html5QrCode = new Html5Qrcode('qr-reader-container');
+      html5QrCodeRef.current = html5QrCode;
 
-      try {
-        const html5QrCode = new Html5Qrcode('qr-reader-container');
-        html5QrCodeRef.current = html5QrCode;
+      const config = {
+        fps: 15,
+        qrbox: { width: 240, height: 240 },
+        aspectRatio: 1.0,
+      };
 
-        const config = {
-          fps: 15,
-          qrbox: { width: 240, height: 240 },
-          aspectRatio: 1.0,
-        };
-
-        const onScanSuccess = async (decodedText: string) => {
-          if (!isScanningRef.current) return;
-          isScanningRef.current = false;
-          try {
-            await html5QrCode.stop();
-          } catch {}
-          handleQrScanned(decodedText);
-        };
-
-        // Try preferred facing mode first
+      const onScanSuccess = async (decodedText: string) => {
+        if (!isScanningRef.current) return;
+        isScanningRef.current = false;
         try {
-          await html5QrCode.start(
-            { facingMode: facing },
-            config,
-            onScanSuccess,
-            () => {}
-          );
-        } catch (initialErr) {
-          console.warn('Initial facingMode failed, checking available cameras:', initialErr);
-          const cameras = await Html5Qrcode.getCameras();
-          if (cameras && cameras.length > 0) {
-            const chosenCam =
-              facing === 'user'
-                ? cameras.find((c) => c.label.toLowerCase().includes('front') || c.label.toLowerCase().includes('user')) || cameras[0]
-                : cameras.find((c) => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('rear') || c.label.toLowerCase().includes('environment')) || cameras[cameras.length - 1];
+          await html5QrCode.stop();
+        } catch {}
+        handleQrScanned(decodedText);
+      };
 
-            await html5QrCode.start(chosenCam.id, config, onScanSuccess, () => {});
-          } else {
-            throw initialErr;
-          }
+      // Try preferred facing mode first
+      try {
+        await html5QrCode.start(
+          { facingMode: facing },
+          config,
+          onScanSuccess,
+          () => {}
+        );
+      } catch (initialErr) {
+        console.warn('Initial facingMode failed, checking available cameras:', initialErr);
+        const cameras = await Html5Qrcode.getCameras();
+        if (cameras && cameras.length > 0) {
+          const chosenCam =
+            facing === 'user'
+              ? cameras.find((c) => c.label.toLowerCase().includes('front') || c.label.toLowerCase().includes('user')) || cameras[0]
+              : cameras.find((c) => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('rear') || c.label.toLowerCase().includes('environment')) || cameras[cameras.length - 1];
+
+          await html5QrCode.start(chosenCam.id, config, onScanSuccess, () => {});
+        } else {
+          throw initialErr;
         }
-
-        isScanningRef.current = true;
-        setScannerState('SCANNING');
-      } catch (err: any) {
-        console.error('QR camera start error:', err);
-        handleCameraError(err);
       }
+
+      isScanningRef.current = true;
+      setScannerState('SCANNING');
+    } catch (err: any) {
+      console.error('QR camera start error:', err);
+      handleCameraError(err);
     }
   };
 
@@ -237,76 +224,7 @@ export default function TeacherQrScannerModal({
   const toggleCameraFacing = async () => {
     const newFacing = cameraFacing === 'environment' ? 'user' : 'environment';
     setCameraFacing(newFacing);
-    await initCamera(activeTab, newFacing);
-  };
-
-  // Face Recognition: Capture & Verify Face
-  const handleCaptureFace = async () => {
-    if (!videoRef.current || isFaceCapturing) return;
-
-    setIsFaceCapturing(true);
-    setFaceScanProgress(25);
-
-    try {
-      // Simulate biometric face scanning animation steps
-      await new Promise((r) => setTimeout(r, 400));
-      setFaceScanProgress(60);
-
-      // Capture frame from video onto an off-screen canvas
-      const video = videoRef.current;
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 480;
-      canvas.height = video.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Mirror horizontally if user front camera
-        if (cameraFacing === 'user') {
-          ctx.translate(canvas.width, 0);
-          ctx.scale(-1, 1);
-        }
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
-      const faceSnapshot = canvas.toDataURL('image/jpeg', 0.85);
-
-      setFaceScanProgress(90);
-      await new Promise((r) => setTimeout(r, 400));
-
-      setScannerState('VALIDATING');
-
-      // Post face verification to backend
-      const payload: any = {
-        faceImage: faceSnapshot,
-        scanSource: 'FACE_RECOGNITION',
-      };
-
-      if (coords.lat != null && coords.lng != null) {
-        payload.latitude = coords.lat;
-        payload.longitude = coords.lng;
-      }
-
-      const response = await api.post('/teacher-attendance/face-scan', payload);
-      const resData = response.data;
-
-      if (resData.success) {
-        setSuccessData(resData);
-        setScannerState('SUCCESS');
-        if (onAttendanceSuccess) onAttendanceSuccess(resData);
-      } else {
-        setScannerState('ERROR');
-        setErrorMessage(resData.message || 'Face attendance verification failed.');
-      }
-    } catch (err: any) {
-      console.error('Face scan API error:', err);
-      setScannerState('ERROR');
-      setErrorMessage(
-        err.response?.data?.message ||
-          err.message ||
-          'Unable to record face attendance. Please verify your connection and try again.'
-      );
-    } finally {
-      setIsFaceCapturing(false);
-      setFaceScanProgress(0);
-    }
+    await initCamera(newFacing);
   };
 
   // QR Code Verification
@@ -408,37 +326,77 @@ export default function TeacherQrScannerModal({
               }}
               className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'FACE'
-                  ? 'bg-white text-emerald-700 shadow-xs'
+                  ? 'bg-white text-amber-800 shadow-xs ring-1 ring-amber-300'
                   : 'text-slate-600 hover:text-slate-800'
               }`}
             >
               <UserCheck className="w-3.5 h-3.5" />
               <span>Face Recognition</span>
+              <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-bold ml-0.5">Soon</span>
             </button>
           </div>
         </div>
 
         {/* Modal Body */}
         <div className="p-5 flex flex-col items-center justify-center overflow-y-auto min-h-[360px]">
-          {/* CAMERA VIEWPORT BOX - ALWAYS MOUNTED TO PREVENT COLLAPSE */}
-          {(scannerState === 'STARTING' || scannerState === 'SCANNING') && (
+          {/* 1. FACE RECOGNITION (ON HOLD / COMING SOON VIEW) */}
+          {activeTab === 'FACE' && (
+            <div className="py-6 w-full flex flex-col items-center text-center gap-3 animate-in fade-in duration-200">
+              <div className="relative">
+                <div className="w-16 h-16 rounded-3xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/10">
+                  <UserCheck className="w-8 h-8" />
+                </div>
+                <span className="absolute -top-1 -right-2 px-2 py-0.5 bg-amber-500 text-white text-[9px] font-black rounded-full uppercase tracking-wider shadow-xs">
+                  On Hold
+                </span>
+              </div>
+
+              <div>
+                <h4 className="text-base font-black text-slate-900">
+                  Face Recognition Attendance
+                </h4>
+                <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+                  Biometric Facial Verification
+                </p>
+              </div>
+
+              {/* Exact user requirement alert banner */}
+              <div className="w-full max-w-sm bg-amber-50/90 border border-amber-200 rounded-2xl p-4 text-left shadow-xs">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-amber-950 leading-relaxed">
+                      This feature is currently unavailable. It will be available as soon as new updates arrive.
+                    </p>
+                    <p className="text-[11px] text-amber-700 mt-1.5 leading-relaxed">
+                      Please use the <strong>Scan QR Code</strong> option below to record your check-in for today.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="w-full max-w-sm pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('QR');
+                  }}
+                  className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-2xl font-black text-xs shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+                >
+                  <Scan className="w-4 h-4" />
+                  <span>Switch to Scan QR Code</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 2. QR CAMERA VIEWPORT BOX (ACTIVE WHEN IN QR MODE) */}
+          {activeTab === 'QR' && (scannerState === 'STARTING' || scannerState === 'SCANNING') && (
             <div className="w-full flex flex-col items-center">
               <div className="relative w-full max-w-[290px] aspect-square rounded-3xl overflow-hidden bg-slate-950 shadow-inner border-2 border-slate-200">
-                {/* 1. QR Container Element (Mounted when in QR mode) */}
                 <div
                   id="qr-reader-container"
-                  className={`w-full h-full object-cover ${activeTab === 'QR' ? 'block' : 'hidden'}`}
-                />
-
-                {/* 2. Direct Video Element for Face Verification Mode */}
-                <video
-                  ref={videoRef}
-                  playsInline
-                  autoPlay
-                  muted
-                  className={`w-full h-full object-cover ${
-                    activeTab === 'FACE' ? 'block' : 'hidden'
-                  } ${cameraFacing === 'user' ? 'scale-x-[-1]' : ''}`}
+                  className="w-full h-full object-cover"
                 />
 
                 {/* Starting / Loading Overlay */}
@@ -450,19 +408,8 @@ export default function TeacherQrScannerModal({
                   </div>
                 )}
 
-                {/* Face Scanning Overlay (When in Face Mode & Scanning) */}
-                {activeTab === 'FACE' && scannerState === 'SCANNING' && (
-                  <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                    {/* Oval Biometric Reticle */}
-                    <div className="w-48 h-60 border-2 border-dashed border-emerald-400 rounded-[50%] relative shadow-[0_0_20px_rgba(16,185,129,0.35)] animate-pulse">
-                      {/* Scanning Laser Beam */}
-                      <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_8px_#10b981] animate-bounce" />
-                    </div>
-                  </div>
-                )}
-
-                {/* QR Target Reticle (When in QR Mode & Scanning) */}
-                {activeTab === 'QR' && scannerState === 'SCANNING' && (
+                {/* QR Target Reticle */}
+                {scannerState === 'SCANNING' && (
                   <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
                     <div className="w-48 h-48 border-2 border-blue-500 rounded-2xl relative shadow-[0_0_20px_rgba(59,130,246,0.35)]">
                       <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-500 -mt-1 -ml-1 rounded-tl" />
@@ -476,35 +423,9 @@ export default function TeacherQrScannerModal({
 
               {/* Status and Controls under Viewport */}
               <div className="mt-4 text-center space-y-2 w-full max-w-[290px]">
-                {activeTab === 'FACE' ? (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={handleCaptureFace}
-                      disabled={isFaceCapturing || scannerState !== 'SCANNING'}
-                      className="w-full py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      {isFaceCapturing ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Verifying Face ({faceScanProgress}%)...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          <span>Capture Face & Mark Attendance</span>
-                        </>
-                      )}
-                    </button>
-                    <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
-                      Look directly into the camera inside the oval frame
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-xs font-bold text-slate-700">
-                    Align the school attendance QR code within the square frame
-                  </p>
-                )}
+                <p className="text-xs font-bold text-slate-700">
+                  Align the school attendance QR code within the square frame
+                </p>
 
                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-400">
                   <div className="flex items-center gap-1.5">
@@ -552,7 +473,7 @@ export default function TeacherQrScannerModal({
 
               <button
                 type="button"
-                onClick={() => initCamera(activeTab, cameraFacing)}
+                onClick={() => initCamera(cameraFacing)}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer"
               >
                 Allow Camera Access &amp; Retry
@@ -677,7 +598,7 @@ export default function TeacherQrScannerModal({
               <div className="flex gap-2 w-full mt-2">
                 <button
                   type="button"
-                  onClick={() => initCamera(activeTab, cameraFacing)}
+                  onClick={() => initCamera(cameraFacing)}
                   className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer"
                 >
                   Try Again
