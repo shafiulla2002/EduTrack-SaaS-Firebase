@@ -8,7 +8,7 @@ import {
   MapPin, Calendar as CalendarIcon, DollarSign, BookOpen, ShieldAlert,
   Percent, Trash2, FileText, Download, Bell, Loader2
 } from 'lucide-react';
-import { api, fastGet } from '@/lib/api';
+import { api, fastGet, getCachedData } from '@/lib/api';
 import EditStudentModal from '@/components/EditStudentModal';
 import { useSchoolSetupUpdate } from '@/lib/events';
 import { useToast } from '@/components/Toast';
@@ -44,6 +44,44 @@ interface Student {
   profilePhotoUrl?: string | null;
 }
 
+// ── Unified Student Data Mapper (Requirement 16) ──────────────────────────
+function mapStudentRecord(s: any): Student {
+  const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
+  const due = s.balanceDue !== undefined ? Number(s.balanceDue) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
+  const totalFees = s.totalFees !== undefined ? Number(s.totalFees) : (paid + due);
+  const pendingPercentage = s.pendingPercentage !== undefined ? Number(s.pendingPercentage) : (totalFees > 0 ? Math.round((due / totalFees) * 100) : 0);
+  const paidPercentage = s.paidPercentage !== undefined ? Number(s.paidPercentage) : (totalFees > 0 ? Math.round((paid / totalFees) * 100) : 100);
+
+  const financialStatus = s.financialStatus || (due > 0 ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
+
+  const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
+  const cleanPhone = !rawPhone ? 'N/A' : (rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone);
+
+  return {
+    id: s.id,
+    rollNo: s.rollNo || 'N/A',
+    name: s.user?.name || s.name || 'Unknown Student',
+    email: s.user?.email || 'N/A',
+    phone: cleanPhone,
+    fatherPhone: s.fatherPhone || 'N/A',
+    motherPhone: s.motherPhone || 'N/A',
+    guardianPhone: s.guardianPhone || 'N/A',
+    class: s.classSection?.class?.name || s.class || 'N/A',
+    section: s.classSection?.section?.name || s.section || 'N/A',
+    fatherName: s.fatherName || s.parentName || 'N/A',
+    motherName: s.motherName || 'N/A',
+    aadharNo: s.aadharNo || 'N/A',
+    paidAmount: paid,
+    balanceDue: due,
+    totalFees,
+    pendingPercentage,
+    paidPercentage,
+    financialStatus,
+    academicYearId: s.classSection?.class?.academicYearId || '',
+    profilePhotoUrl: s.profilePhotoUrl || null,
+  };
+}
+
 export default function StudentsDirectory() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -56,14 +94,14 @@ export default function StudentsDirectory() {
   const [selectedSection, setSelectedSection] = useState('All');
   const [selectedFinancialStatus, setSelectedFinancialStatus] = useState('All');
 
-  // Metadata dropdown options
-  const [academicYears, setAcademicYears] = useState<any[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [sections, setSections] = useState<any[]>([]);
+  // Metadata dropdown options initialized from SWR cache
+  const [academicYears, setAcademicYears] = useState<any[]>(() => getCachedData<any[]>('/academics/academic-years') || []);
+  const [classes, setClasses] = useState<any[]>(() => getCachedData<any[]>('/academics/classes') || []);
+  const [sections, setSections] = useState<any[]>(() => getCachedData<any[]>('/academics/sections') || []);
 
   // Refs to prevent dropdown option loading from invalidating buildStudentQueryParams callback
-  const classesRef = useRef<any[]>([]);
-  const sectionsRef = useRef<any[]>([]);
+  const classesRef = useRef<any[]>(classes);
+  const sectionsRef = useRef<any[]>(sections);
 
   useEffect(() => {
     classesRef.current = classes;
@@ -73,12 +111,17 @@ export default function StudentsDirectory() {
     sectionsRef.current = sections;
   }, [sections]);
 
+  // Initial cached dataset for instant 0ms render
+  const initialCached = getCachedData<any>('/students', { page: 1, limit: 20 });
+  const initialRawData = initialCached?.data || (Array.isArray(initialCached) ? initialCached : []);
+
   // Request-specific loading states (Requirement 13)
-  const [loadingStudents, setLoadingStudents] = useState(true);
+  const [loadingStudents, setLoadingStudents] = useState(() => initialRawData.length === 0);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
-  // Student dataset
-  const [students, setStudents] = useState<Student[]>([]);
+  // Student dataset initialized synchronously from cache
+  const [students, setStudents] = useState<Student[]>(() => initialRawData.map(mapStudentRecord));
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
   // Delete modal state
@@ -117,142 +160,68 @@ export default function StudentsDirectory() {
   // Pagination States
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-
-  // Race Condition & Abort Guards (Requirement 4 & 15)
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const requestIdRef = useRef<number>(0);
-
-  // ── Unified Student Data Mapper (Requirement 16) ──────────────────────────
-  const mapStudentRecord = useCallback((s: any): Student => {
-    const paid = s.paidAmount !== undefined ? Number(s.paidAmount) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.paidAmount), 0) || 0);
-    const due = s.balanceDue !== undefined ? Number(s.balanceDue) : (s.invoices?.reduce((sum: number, inv: any) => sum + Number(inv.remainingBalance), 0) || 0);
-    const totalFees = s.totalFees !== undefined ? Number(s.totalFees) : (paid + due);
-    const pendingPercentage = s.pendingPercentage !== undefined ? Number(s.pendingPercentage) : (totalFees > 0 ? Math.round((due / totalFees) * 100) : 0);
-    const paidPercentage = s.paidPercentage !== undefined ? Number(s.paidPercentage) : (totalFees > 0 ? Math.round((paid / totalFees) * 100) : 100);
-
-    const financialStatus = s.financialStatus || (due > 0 ? `Pending Due (${pendingPercentage}%)` : 'Fully Paid (100%)');
-
-    const rawPhone = s.user?.phone || s.fatherPhone || s.guardianPhone || s.motherPhone || '';
-    const cleanPhone = !rawPhone ? 'N/A' : (rawPhone.includes('-') ? rawPhone.split('-').pop() || rawPhone : rawPhone);
-
-    return {
-      id: s.id,
-      rollNo: s.rollNo || 'N/A',
-      name: s.user?.name || s.name || 'Unknown Student',
-      email: s.user?.email || 'N/A',
-      phone: cleanPhone,
-      fatherPhone: s.fatherPhone || 'N/A',
-      motherPhone: s.motherPhone || 'N/A',
-      guardianPhone: s.guardianPhone || 'N/A',
-      class: s.classSection?.class?.name || s.class || 'N/A',
-      section: s.classSection?.section?.name || s.section || 'N/A',
-      fatherName: s.fatherName || s.parentName || 'N/A',
-      motherName: s.motherName || 'N/A',
-      aadharNo: s.aadharNo || 'N/A',
-      paidAmount: paid,
-      balanceDue: due,
-      totalFees,
-      pendingPercentage,
-      paidPercentage,
-      financialStatus,
-      academicYearId: s.classSection?.class?.academicYearId || '',
-      profilePhotoUrl: s.profilePhotoUrl || null,
-    };
-  }, []);
-
-  // ── Canonical Query Builder (Requirements 9, 10, 11) ──────────────────────
-  const buildStudentQueryParams = useCallback((pageNumber?: number, customLimit?: number) => {
-    const academicYearId = selectedYear === 'All' || !selectedYear ? undefined : selectedYear;
-
-    const currentClasses = classesRef.current.length > 0 ? classesRef.current : classes;
-    const currentSections = sectionsRef.current.length > 0 ? sectionsRef.current : sections;
-
-    // Requirement 10: Scope class resolution to the currently selected academicYearId
-    let classId: string | undefined;
-    let className: string | undefined;
-
-    if (selectedClass !== 'All' && selectedClass.trim()) {
-      className = selectedClass.trim();
-      if (academicYearId) {
-        const matchingClass = currentClasses.find(c => c.name === selectedClass && c.academicYearId === academicYearId);
-        if (matchingClass) {
-          classId = matchingClass.id;
-        }
-      } else {
-        const matchingClass = currentClasses.find(c => c.name === selectedClass);
-        if (matchingClass) {
-          classId = matchingClass.id;
-        }
-      }
-    }
-
-    // Requirement 11: Canonical section filter
-    let sectionId: string | undefined;
-    let sectionName: string | undefined;
-
-    if (selectedSection !== 'All' && selectedSection.trim()) {
-      sectionName = selectedSection.trim();
-      const cleanSecFilter = selectedSection.replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
-      const matchingSection = currentSections.find(s => {
-        if (s.name === selectedSection) return true;
-        const sClean = (s.name || '').replace(/^section\s*[-_]?/i, '').trim().toLowerCase();
-        return sClean === cleanSecFilter;
-      });
-      if (matchingSection) {
-        sectionId = matchingSection.id;
-      }
-    }
-
-    const trimmedSearch = search.trim();
-
-    return {
-      ...(pageNumber !== undefined ? { page: pageNumber } : {}),
-      ...(customLimit !== undefined ? { limit: customLimit } : {}),
-      search: trimmedSearch || undefined,
-      classId,
-      className: !classId ? className : undefined,
-      sectionId,
-      sectionName: !sectionId ? sectionName : undefined,
-      academicYearId,
-      financialStatus: selectedFinancialStatus === 'All' ? undefined : selectedFinancialStatus,
-    };
-  }, [selectedYear, selectedClass, selectedSection, selectedFinancialStatus, search]);
-
-  // ── Scoped Class & Section Dropdown Lists ─────────────────────────────────
-  const filteredClassesForYear = useMemo(() => {
-    if (selectedYear === 'All' || !selectedYear) return classes;
-    return classes.filter(c => c.academicYearId === selectedYear);
-  }, [classes, selectedYear]);
+  const [total, setTotal] = useState(() => initialCached?.total !== undefined ? initialCached.total : initialRawData.length);
+  const [totalPages, setTotalPages] = useState(() => initialCached?.totalPages !== undefined ? initialCached.totalPages : Math.ceil((initialCached?.total || initialRawData.length || 1) / 20));
 
   const availableClassNames = useMemo(() => {
-    const names = Array.from(new Set(filteredClassesForYear.map(c => c.name))).filter(Boolean);
-    return names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [filteredClassesForYear]);
+    const names = classes.map((c: any) => c.name).filter(Boolean);
+    return Array.from(new Set(names));
+  }, [classes]);
 
   const availableSectionNames = useMemo(() => {
-    const names = Array.from(new Set(sections.map(s => s.name))).filter(Boolean);
-    return names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const names = sections.map((s: any) => s.name).filter(Boolean);
+    return Array.from(new Set(names));
   }, [sections]);
 
-  // ── Load Filter Options (Years, Classes, Sections) ────────────────────────
-  const loadFilterOptions = async () => {
+  const buildStudentQueryParams = useCallback((pageNumber?: number, limitCount?: number) => {
+    const params: any = {};
+    if (pageNumber !== undefined) params.page = pageNumber;
+    if (limitCount !== undefined) params.limit = limitCount;
+    if (search.trim()) {
+      params.search = search.trim();
+    }
+    if (selectedYear !== 'All') {
+      params.academicYearId = selectedYear;
+    }
+    if (selectedClass !== 'All') {
+      const cls = classesRef.current.find((c: any) => c.name === selectedClass || c.id === selectedClass);
+      if (cls) {
+        params.classId = cls.id;
+      }
+      params.className = selectedClass;
+    }
+    if (selectedSection !== 'All') {
+      const sec = sectionsRef.current.find((s: any) => s.name === selectedSection || s.id === selectedSection);
+      if (sec) {
+        params.sectionId = sec.id;
+      }
+      params.sectionName = selectedSection;
+    }
+    if (selectedFinancialStatus !== 'All') {
+      params.financialStatus = selectedFinancialStatus;
+    }
+    return params;
+  }, [search, selectedYear, selectedClass, selectedSection, selectedFinancialStatus]);
+
+  const loadFilterOptions = useCallback(async () => {
     try {
-      const [ayRes, classRes, secRes] = await Promise.all([
+      const [yearsRes, classesRes, sectionsRes] = await Promise.all([
         fastGet('/academics/academic-years', undefined, { ttlMs: 60000 }),
         fastGet('/academics/classes', undefined, { ttlMs: 60000 }),
         fastGet('/academics/sections', undefined, { ttlMs: 60000 }),
       ]);
-      setAcademicYears(ayRes.data || []);
-      setClasses(classRes.data || []);
-      classesRef.current = classRes.data || [];
-      setSections(secRes.data || []);
-      sectionsRef.current = secRes.data || [];
+      if (yearsRes.data) setAcademicYears(yearsRes.data);
+      if (classesRes.data) setClasses(classesRes.data);
+      if (sectionsRes.data) setSections(sectionsRes.data);
     } catch (err) {
       console.error('Failed to load filter options:', err);
     }
-  };
+  }, []);
+
+  // Race Condition & Abort Guards (Requirement 4 & 15)
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef<number>(0);
+  const isInitialMountRef = useRef<boolean>(false);
 
   // ── Load Students with Race-Condition & Abort Controller Guard ────────────
   const loadStudents = useCallback(async (pageNumber = 1) => {
@@ -267,15 +236,33 @@ export default function StudentsDirectory() {
     requestIdRef.current += 1;
     const currentRequestId = requestIdRef.current;
 
-    // 3. Mark loading immediately (Requirements 2, 3, 14, 15)
-    setLoadingStudents(true);
+    const queryParams = buildStudentQueryParams(pageNumber, limit);
+    const cached = getCachedData<any>('/students', queryParams);
+    
+    // Only show full loading spinner if no cached data is available for these query params
+    if (!cached) {
+      setLoadingStudents(true);
+    }
+    setFetchError(null);
 
     try {
-      const queryParams = buildStudentQueryParams(pageNumber, limit);
-
-      const res = await api.get('/students', {
+      const res = await fastGet('/students', {
         params: queryParams,
         signal: controller.signal,
+      }, {
+        ttlMs: 30000,
+        onRevalidate: (fresh) => {
+          if (currentRequestId !== requestIdRef.current) return;
+          const freshData = fresh?.data || (Array.isArray(fresh) ? fresh : []);
+          const freshTotal = fresh?.total !== undefined ? fresh.total : (Array.isArray(fresh) ? fresh.length : 0);
+          const freshTotalPages = fresh?.totalPages !== undefined ? fresh.totalPages : Math.ceil(freshTotal / limit);
+          const freshPage = fresh?.page !== undefined ? fresh.page : pageNumber;
+          setStudents(freshData.map(mapStudentRecord));
+          setTotal(freshTotal);
+          setTotalPages(freshTotalPages);
+          setPage(freshPage);
+          setLoadingStudents(false);
+        }
       });
 
       // 4. Ignore superseded response if newer filter request was initiated
@@ -293,18 +280,20 @@ export default function StudentsDirectory() {
       setTotal(serverTotal);
       setTotalPages(serverTotalPages);
       setPage(serverPage);
+      setFetchError(null);
     } catch (err: any) {
       if (axios.isCancel(err) || err?.name === 'CanceledError' || currentRequestId !== requestIdRef.current) {
         return; // Request was cancelled by a newer filter action; silently discard
       }
       console.error('Failed to load students:', err);
+      setFetchError(err?.response?.data?.message || err?.message || 'Unable to load student records. Please try again.');
       showToast('Failed to load students directory records.', 'error');
     } finally {
       if (currentRequestId === requestIdRef.current) {
         setLoadingStudents(false);
       }
     }
-  }, [buildStudentQueryParams, limit, mapStudentRecord, showToast]);
+  }, [buildStudentQueryParams, limit, showToast]);
 
   // Initial load
   useEffect(() => {
@@ -315,7 +304,16 @@ export default function StudentsDirectory() {
     loadStudents(1);
   }, [loadStudents]);
 
+  // Suppress duplicate initial mount refetch from setup status event, while preserving legitimate downstream updates
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      isInitialMountRef.current = true;
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleSchoolSetupUpdate = useCallback(() => {
+    if (!isInitialMountRef.current) return;
     loadFilterOptions();
     loadStudents(1);
   }, [loadStudents]);
@@ -954,13 +952,34 @@ export default function StudentsDirectory() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-[13px] text-slate-600 font-medium">
-              {/* Requirements 2 & 14: Strict 3-state rendering */}
+              {/* Requirements 2, 4 & 14: Strict 4-state rendering */}
               {loadingStudents ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <LoadingSpinner size="lg" variant="brand" />
                       <p className="text-xs font-semibold text-slate-500">Loading student directory records...</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : fetchError ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center gap-3 max-w-md mx-auto">
+                      <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
+                        <AlertTriangle className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-800">Unable to load student records</h3>
+                        <p className="text-xs text-slate-500 font-medium mt-1">{fetchError}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => loadStudents(page)}
+                        className="mt-2 px-4 py-2 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-2"
+                      >
+                        Retry
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -1118,6 +1137,23 @@ export default function StudentsDirectory() {
               <LoadingSpinner size="lg" variant="brand" />
               <p className="text-xs font-semibold text-slate-500">Loading student directory records...</p>
             </div>
+          ) : fetchError ? (
+            <div className="p-8 text-center flex flex-col items-center justify-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Unable to load student records</h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">{fetchError}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadStudents(page)}
+                className="mt-2 px-4 py-2 bg-[#2E5BFF] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer inline-flex items-center gap-2"
+              >
+                Retry
+              </button>
+            </div>
           ) : students.length === 0 ? (
             <div className="p-8 text-center">
               <EmptyState
@@ -1130,43 +1166,45 @@ export default function StudentsDirectory() {
               const hasDue = student.balanceDue > 0;
               return (
                 <div key={student.id} className="p-4 space-y-3">
-                  <div className="flex justify-between items-start gap-2">
+                  <div className="flex items-start justify-between gap-2.5">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <button
                         type="button"
                         onClick={() => navigateToProfile(student)}
                         onMouseEnter={() => prefetchProfile(student)}
-                        className="cursor-pointer transition-transform hover:scale-105"
+                        className="cursor-pointer transition-transform hover:scale-105 shrink-0"
                         title={`View profile of ${student.name}`}
                       >
                         <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold font-mono">
-                          Roll: {student.rollNo}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-150 text-[10px] font-black font-mono whitespace-nowrap shrink-0">
+                            Roll #{student.rollNo}
+                          </span>
+                        </div>
                         <h4 
                           onClick={() => navigateToProfile(student)}
                           onMouseEnter={() => prefetchProfile(student)}
-                          className="text-sm font-bold text-slate-800 mt-1 truncate hover:text-blue-600 transition-colors cursor-pointer"
+                          className="text-sm font-black text-slate-900 mt-0.5 truncate hover:text-blue-600 transition-colors cursor-pointer"
                           title={`View profile of ${student.name}`}
                         >
                           {student.name}
                         </h4>
-                        <p className="text-xs text-slate-400 font-medium mt-0.5 truncate">{student.email}</p>
+                        <p className="text-xs text-slate-400 font-medium truncate">{student.email}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5 whitespace-nowrap ${
+                      <span className={`px-2 py-1 rounded-full text-[10px] sm:text-[11px] font-black inline-flex items-center gap-1 whitespace-nowrap shadow-2xs ${
                         hasDue 
-                          ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          ? 'bg-amber-50 text-amber-800 border border-amber-200' 
+                          : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                         {hasDue ? (
-                          <span>Pending ₹{Number(student.balanceDue).toLocaleString('en-IN')} Due</span>
+                          <span>₹{Number(student.balanceDue).toLocaleString('en-IN')} Due</span>
                         ) : (
-                          <span>Fully Paid ₹0 Balance</span>
+                          <span>Paid</span>
                         )}
                       </span>
                       {hasDue && (
@@ -1175,7 +1213,7 @@ export default function StudentsDirectory() {
                           onClick={() => handleNotifySingleStudent(student)}
                           disabled={notifyingStudentId === student.id}
                           title={`Send fee due push notification to parent of ${student.name}`}
-                          className="p-1 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 transition-all shadow-2xs"
+                          className="p-1 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 transition-all shadow-2xs shrink-0 cursor-pointer"
                         >
                           {notifyingStudentId === student.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />

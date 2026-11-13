@@ -14,6 +14,11 @@ import {
   UserCheck,
   ShieldCheck,
   Loader2,
+  Scan,
+  User,
+  Sparkles,
+  Smartphone,
+  KeyRound,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -28,199 +33,283 @@ export default function TeacherQrScannerModal({
   onClose,
   onAttendanceSuccess,
 }: TeacherQrScannerModalProps) {
+  const [activeTab, setActiveTab] = useState<'QR' | 'FACE'>('QR');
   const [scannerState, setScannerState] = useState<
-    'IDLE' | 'PERMISSION_REQUIRED' | 'SCANNING' | 'VALIDATING' | 'SUCCESS' | 'ERROR'
-  >('IDLE');
+    'STARTING' | 'SCANNING' | 'VALIDATING' | 'SUCCESS' | 'ERROR' | 'PERMISSION_REQUIRED'
+  >('STARTING');
   const [errorMessage, setErrorMessage] = useState('');
   const [successData, setSuccessData] = useState<any>(null);
-  const [locationStatus, setLocationStatus] = useState<string>('Requesting location...');
+  const [locationStatus, setLocationStatus] = useState<string>('Detecting location...');
   const [coords, setCoords] = useState<{ lat?: number; lng?: number }>({});
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
+  const [manualToken, setManualToken] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [faceScanProgress, setFaceScanProgress] = useState(0);
+  const [isFaceCapturing, setIsFaceCapturing] = useState(false);
+
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const isScanningRef = useRef(false);
 
-  // Listen for native mobile app camera permission event
+  // Request Geolocation early
   useEffect(() => {
-    const handleNativeCameraGranted = () => {
-      console.log('[TEACHER_SCANNER] Native camera permission granted, starting scanner...');
-      startScanner();
-    };
-    window.addEventListener('edutrack_camera_granted', handleNativeCameraGranted);
-    return () => {
-      window.removeEventListener('edutrack_camera_granted', handleNativeCameraGranted);
-    };
-  }, []);
+    if (!isOpen) return;
 
-  // Request Geolocation early when modal opens
-  useEffect(() => {
-    if (!isOpen) {
-      cleanupScanner();
-      setScannerState('IDLE');
-      setErrorMessage('');
-      setSuccessData(null);
-      return;
-    }
-
-    if (navigator.geolocation) {
+    if (navigator?.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           setCoords({
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
           });
-          setLocationStatus('Location verified');
+          setLocationStatus('GPS Verified');
         },
         (err) => {
           console.warn('Geolocation capture:', err.message);
-          setLocationStatus('Location optional/denied');
+          setLocationStatus('GPS Optional/Unavailable');
         },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
       );
     } else {
-      setLocationStatus('Geolocation unsupported');
+      setLocationStatus('GPS Unsupported');
     }
-
-    startScanner();
-
-    return () => {
-      cleanupScanner();
-    };
   }, [isOpen]);
 
-  const cleanupScanner = async () => {
-    if (html5QrCodeRef.current) {
-      try {
-        if (isScanningRef.current) {
-          await html5QrCodeRef.current.stop();
-        }
-        await html5QrCodeRef.current.clear();
-      } catch (e) {
-        // ignore cleanup error
-      } finally {
-        html5QrCodeRef.current = null;
-        isScanningRef.current = false;
-      }
-    }
-  };
-
-  const requestCameraAccess = async (): Promise<boolean> => {
-    // Notify native mobile app bridge if inside React Native WebView
-    if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
-      try {
-        (window as any).ReactNativeWebView.postMessage(
-          JSON.stringify({
-            type: 'EDUTRACK_REQUEST_CAMERA',
-          })
-        );
-      } catch (e) {}
-    }
-
-    // Direct browser/webview getUserMedia check
-    if (navigator?.mediaDevices?.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-        });
-        // Immediately stop test tracks so html5-qrcode can acquire cleanly
-        stream.getTracks().forEach((track) => track.stop());
-        return true;
-      } catch (err: any) {
-        console.warn('Camera getUserMedia check error:', err);
-        return false;
-      }
-    }
-    return true;
-  };
-
-  const startScanner = async () => {
-    setErrorMessage('');
-
-    // Check / prompt camera permission
-    const hasPermission = await requestCameraAccess();
-    if (!hasPermission) {
-      setScannerState('PERMISSION_REQUIRED');
+  // Main Camera Lifecycle Manager
+  useEffect(() => {
+    if (!isOpen) {
+      stopAllCameraResources();
+      setScannerState('STARTING');
+      setErrorMessage('');
+      setSuccessData(null);
+      setIsFaceCapturing(false);
+      setFaceScanProgress(0);
       return;
     }
 
-    setScannerState('SCANNING');
+    // Set initial facingMode based on tab: Front camera for FACE, Rear camera for QR
+    const targetFacing = activeTab === 'FACE' ? 'user' : 'environment';
+    setCameraFacing(targetFacing);
+    initCamera(activeTab, targetFacing);
 
-    // Wait for DOM layout
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    const container = document.getElementById('qr-reader-container');
-    if (!container) return;
+    return () => {
+      stopAllCameraResources();
+    };
+  }, [isOpen, activeTab]);
 
-    try {
-      await cleanupScanner();
+  const stopAllCameraResources = async () => {
+    isScanningRef.current = false;
 
-      const html5QrCode = new Html5Qrcode('qr-reader-container');
-      html5QrCodeRef.current = html5QrCode;
-
-      const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0,
-      };
-
-      const onScanSuccess = async (decodedText: string) => {
-        if (!isScanningRef.current) return;
-        isScanningRef.current = false;
-
-        try {
-          await html5QrCode.stop();
-        } catch {}
-
-        handleQrScanned(decodedText);
-      };
-
-      // Try environment (back) camera first
+    // 1. Stop Html5Qrcode instance
+    if (html5QrCodeRef.current) {
       try {
-        await html5QrCode.start(
-          { facingMode: 'environment' },
-          config,
-          onScanSuccess,
-          () => {}
-        );
-      } catch (envErr) {
-        console.warn('FacingMode environment failed, checking device cameras list:', envErr);
-        const cameras = await Html5Qrcode.getCameras();
-        if (cameras && cameras.length > 0) {
-          const backCam =
-            cameras.find(
-              (c) =>
-                c.label.toLowerCase().includes('back') ||
-                c.label.toLowerCase().includes('rear') ||
-                c.label.toLowerCase().includes('environment')
-            ) || cameras[cameras.length - 1];
+        await html5QrCodeRef.current.stop();
+      } catch (e) {}
+      try {
+        await html5QrCodeRef.current.clear();
+      } catch (e) {}
+      html5QrCodeRef.current = null;
+    }
 
+    // 2. Stop raw HTML5 video stream tracks
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (e) {}
+      });
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const initCamera = async (mode: 'QR' | 'FACE', facing: 'environment' | 'user') => {
+    await stopAllCameraResources();
+    setScannerState('STARTING');
+    setErrorMessage('');
+
+    // Wait a tick for the DOM container to be fully visible
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    if (mode === 'FACE') {
+      // Direct high-res front camera stream for Face Verification
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 640 },
+            height: { ideal: 640 },
+          },
+          audio: false,
+        });
+
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setScannerState('SCANNING');
+      } catch (err: any) {
+        console.error('Face camera error:', err);
+        handleCameraError(err);
+      }
+    } else {
+      // QR Code Scanner using Html5Qrcode
+      const container = document.getElementById('qr-reader-container');
+      if (!container) {
+        setScannerState('ERROR');
+        setErrorMessage('Scanner container could not be found in DOM.');
+        return;
+      }
+
+      try {
+        const html5QrCode = new Html5Qrcode('qr-reader-container');
+        html5QrCodeRef.current = html5QrCode;
+
+        const config = {
+          fps: 15,
+          qrbox: { width: 240, height: 240 },
+          aspectRatio: 1.0,
+        };
+
+        const onScanSuccess = async (decodedText: string) => {
+          if (!isScanningRef.current) return;
+          isScanningRef.current = false;
+          try {
+            await html5QrCode.stop();
+          } catch {}
+          handleQrScanned(decodedText);
+        };
+
+        // Try preferred facing mode first
+        try {
           await html5QrCode.start(
-            backCam.id,
+            { facingMode: facing },
             config,
             onScanSuccess,
             () => {}
           );
-        } else {
-          throw envErr;
-        }
-      }
+        } catch (initialErr) {
+          console.warn('Initial facingMode failed, checking available cameras:', initialErr);
+          const cameras = await Html5Qrcode.getCameras();
+          if (cameras && cameras.length > 0) {
+            const chosenCam =
+              facing === 'user'
+                ? cameras.find((c) => c.label.toLowerCase().includes('front') || c.label.toLowerCase().includes('user')) || cameras[0]
+                : cameras.find((c) => c.label.toLowerCase().includes('back') || c.label.toLowerCase().includes('rear') || c.label.toLowerCase().includes('environment')) || cameras[cameras.length - 1];
 
-      isScanningRef.current = true;
-    } catch (err: any) {
-      console.error('Camera start error:', err);
-      if (
-        err?.name === 'NotAllowedError' ||
-        err?.name === 'PermissionDeniedError' ||
-        String(err).toLowerCase().includes('permission')
-      ) {
-        setScannerState('PERMISSION_REQUIRED');
-      } else {
-        setScannerState('ERROR');
-        setErrorMessage(
-          err?.message ||
-            'Unable to start camera. Please verify camera settings and try again.'
-        );
+            await html5QrCode.start(chosenCam.id, config, onScanSuccess, () => {});
+          } else {
+            throw initialErr;
+          }
+        }
+
+        isScanningRef.current = true;
+        setScannerState('SCANNING');
+      } catch (err: any) {
+        console.error('QR camera start error:', err);
+        handleCameraError(err);
       }
     }
   };
 
+  const handleCameraError = (err: any) => {
+    const errorStr = String(err?.name || err?.message || err).toLowerCase();
+    if (
+      errorStr.includes('notallowed') ||
+      errorStr.includes('permission') ||
+      errorStr.includes('denied')
+    ) {
+      setScannerState('PERMISSION_REQUIRED');
+    } else {
+      setScannerState('ERROR');
+      setErrorMessage(
+        err?.message ||
+          'Unable to open camera. Please check your browser camera permissions or try switching cameras.'
+      );
+    }
+  };
+
+  const toggleCameraFacing = async () => {
+    const newFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+    setCameraFacing(newFacing);
+    await initCamera(activeTab, newFacing);
+  };
+
+  // Face Recognition: Capture & Verify Face
+  const handleCaptureFace = async () => {
+    if (!videoRef.current || isFaceCapturing) return;
+
+    setIsFaceCapturing(true);
+    setFaceScanProgress(25);
+
+    try {
+      // Simulate biometric face scanning animation steps
+      await new Promise((r) => setTimeout(r, 400));
+      setFaceScanProgress(60);
+
+      // Capture frame from video onto an off-screen canvas
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 480;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Mirror horizontally if user front camera
+        if (cameraFacing === 'user') {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+      const faceSnapshot = canvas.toDataURL('image/jpeg', 0.85);
+
+      setFaceScanProgress(90);
+      await new Promise((r) => setTimeout(r, 400));
+
+      setScannerState('VALIDATING');
+
+      // Post face verification to backend
+      const payload: any = {
+        faceImage: faceSnapshot,
+        scanSource: 'FACE_RECOGNITION',
+      };
+
+      if (coords.lat != null && coords.lng != null) {
+        payload.latitude = coords.lat;
+        payload.longitude = coords.lng;
+      }
+
+      const response = await api.post('/teacher-attendance/face-scan', payload);
+      const resData = response.data;
+
+      if (resData.success) {
+        setSuccessData(resData);
+        setScannerState('SUCCESS');
+        if (onAttendanceSuccess) onAttendanceSuccess(resData);
+      } else {
+        setScannerState('ERROR');
+        setErrorMessage(resData.message || 'Face attendance verification failed.');
+      }
+    } catch (err: any) {
+      console.error('Face scan API error:', err);
+      setScannerState('ERROR');
+      setErrorMessage(
+        err.response?.data?.message ||
+          err.message ||
+          'Unable to record face attendance. Please verify your connection and try again.'
+      );
+    } finally {
+      setIsFaceCapturing(false);
+      setFaceScanProgress(0);
+    }
+  };
+
+  // QR Code Verification
   const handleQrScanned = async (scannedText: string) => {
     setScannerState('VALIDATING');
     setErrorMessage('');
@@ -242,9 +331,7 @@ export default function TeacherQrScannerModal({
       if (resData.success) {
         setSuccessData(resData);
         setScannerState('SUCCESS');
-        if (onAttendanceSuccess) {
-          onAttendanceSuccess(resData);
-        }
+        if (onAttendanceSuccess) onAttendanceSuccess(resData);
       } else {
         setScannerState('ERROR');
         setErrorMessage(resData.message || 'Attendance verification failed.');
@@ -252,250 +339,358 @@ export default function TeacherQrScannerModal({
     } catch (err: any) {
       console.error('Scan API error:', err);
       setScannerState('ERROR');
-      const msg =
+      setErrorMessage(
         err.response?.data?.message ||
-        err.message ||
-        'Unable to connect to the server. Please try again.';
-      setErrorMessage(msg);
+          err.message ||
+          'Unable to verify attendance QR. Please try again.'
+      );
     }
+  };
+
+  const handleManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualToken.trim()) return;
+    handleQrScanned(manualToken.trim());
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#2E5BFF] flex items-center justify-center font-bold">
-              <Camera className="w-4 h-4" />
+      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[92vh]">
+        {/* Header with Mode Tabs */}
+        <div className="px-5 pt-4 pb-3 border-b border-slate-100 bg-slate-50/70">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                {activeTab === 'QR' ? <Scan className="w-4 h-4" /> : <Sparkles className="w-4 h-4 text-emerald-600" />}
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-800">Teacher Daily Attendance</h3>
+                <p className="text-[11px] text-slate-400 font-medium">CS EduTrack Smart Verification</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-[15px] font-bold text-slate-800">Scan Attendance QR</h3>
-              <p className="text-[11px] text-slate-400 font-medium">CS EduTrack Teacher Portal</p>
-            </div>
+
+            <button
+              onClick={() => {
+                stopAllCameraResources();
+                onClose();
+              }}
+              className="w-8 h-8 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={() => {
-              cleanupScanner();
-              onClose();
-            }}
-            className="w-8 h-8 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-600 flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          {/* Mode Switcher Tabs */}
+          <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-200/60 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => {
+                setShowManualInput(false);
+                setActiveTab('QR');
+              }}
+              className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'QR'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              <Scan className="w-3.5 h-3.5" />
+              <span>Scan QR Code</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowManualInput(false);
+                setActiveTab('FACE');
+              }}
+              className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'FACE'
+                  ? 'bg-white text-emerald-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Face Recognition</span>
+            </button>
+          </div>
         </div>
 
-        {/* Content Body */}
-        <div className="p-6 flex flex-col items-center justify-center overflow-y-auto">
-          {/* Scanner Viewfinder Box - Kept in DOM to avoid race conditions */}
-          <div className={`w-full flex flex-col items-center ${scannerState === 'SCANNING' ? 'block' : 'hidden'}`}>
-            <div className="relative w-full max-w-[280px] aspect-square rounded-2xl overflow-hidden bg-black shadow-inner border-2 border-dashed border-blue-400">
-              <div id="qr-reader-container" className="w-full h-full object-cover"></div>
-              {/* Visual Target Reticle */}
-              <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-                <div className="w-48 h-48 border-2 border-[#2E5BFF] rounded-xl relative shadow-[0_0_15px_rgba(46,91,255,0.4)] animate-pulse">
-                  <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-[#2E5BFF] -mt-1 -ml-1"></div>
-                  <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-[#2E5BFF] -mt-1 -mr-1"></div>
-                  <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-[#2E5BFF] -mb-1 -ml-1"></div>
-                  <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-[#2E5BFF] -mb-1 -mr-1"></div>
+        {/* Modal Body */}
+        <div className="p-5 flex flex-col items-center justify-center overflow-y-auto min-h-[360px]">
+          {/* CAMERA VIEWPORT BOX - ALWAYS MOUNTED TO PREVENT COLLAPSE */}
+          {(scannerState === 'STARTING' || scannerState === 'SCANNING') && (
+            <div className="w-full flex flex-col items-center">
+              <div className="relative w-full max-w-[290px] aspect-square rounded-3xl overflow-hidden bg-slate-950 shadow-inner border-2 border-slate-200">
+                {/* 1. QR Container Element (Mounted when in QR mode) */}
+                <div
+                  id="qr-reader-container"
+                  className={`w-full h-full object-cover ${activeTab === 'QR' ? 'block' : 'hidden'}`}
+                />
+
+                {/* 2. Direct Video Element for Face Verification Mode */}
+                <video
+                  ref={videoRef}
+                  playsInline
+                  autoPlay
+                  muted
+                  className={`w-full h-full object-cover ${
+                    activeTab === 'FACE' ? 'block' : 'hidden'
+                  } ${cameraFacing === 'user' ? 'scale-x-[-1]' : ''}`}
+                />
+
+                {/* Starting / Loading Overlay */}
+                {scannerState === 'STARTING' && (
+                  <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center text-white gap-2.5 z-10 p-4 text-center">
+                    <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+                    <span className="text-xs font-bold text-slate-200">Starting Camera Feed...</span>
+                    <span className="text-[10px] text-slate-400">Please allow camera access when prompted</span>
+                  </div>
+                )}
+
+                {/* Face Scanning Overlay (When in Face Mode & Scanning) */}
+                {activeTab === 'FACE' && scannerState === 'SCANNING' && (
+                  <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                    {/* Oval Biometric Reticle */}
+                    <div className="w-48 h-60 border-2 border-dashed border-emerald-400 rounded-[50%] relative shadow-[0_0_20px_rgba(16,185,129,0.35)] animate-pulse">
+                      {/* Scanning Laser Beam */}
+                      <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_8px_#10b981] animate-bounce" />
+                    </div>
+                  </div>
+                )}
+
+                {/* QR Target Reticle (When in QR Mode & Scanning) */}
+                {activeTab === 'QR' && scannerState === 'SCANNING' && (
+                  <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+                    <div className="w-48 h-48 border-2 border-blue-500 rounded-2xl relative shadow-[0_0_20px_rgba(59,130,246,0.35)]">
+                      <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-500 -mt-1 -ml-1 rounded-tl" />
+                      <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-blue-500 -mt-1 -mr-1 rounded-tr" />
+                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-blue-500 -mb-1 -ml-1 rounded-bl" />
+                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-blue-500 -mb-1 -mr-1 rounded-br" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Status and Controls under Viewport */}
+              <div className="mt-4 text-center space-y-2 w-full max-w-[290px]">
+                {activeTab === 'FACE' ? (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleCaptureFace}
+                      disabled={isFaceCapturing || scannerState !== 'SCANNING'}
+                      className="w-full py-3 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isFaceCapturing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Verifying Face ({faceScanProgress}%)...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>Capture Face & Mark Attendance</span>
+                        </>
+                      )}
+                    </button>
+                    <p className="text-[11px] text-slate-500 mt-1.5 font-medium">
+                      Look directly into the camera inside the oval frame
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs font-bold text-slate-700">
+                    Align the school attendance QR code within the square frame
+                  </p>
+                )}
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-400">
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-blue-500" />
+                    <span>{locationStatus}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={toggleCameraFacing}
+                    className="flex items-center gap-1 text-blue-600 font-bold hover:underline cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Flip Camera</span>
+                  </button>
                 </div>
               </div>
             </div>
-
-            <div className="mt-4 text-center">
-              <p className="text-xs font-semibold text-slate-700">
-                Position the school attendance QR inside the frame
-              </p>
-              <div className="flex items-center justify-center gap-1.5 mt-2 text-[11px] text-slate-400">
-                <MapPin className="w-3.5 h-3.5 text-blue-500" />
-                <span>{locationStatus}</span>
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* PERMISSION REQUIRED SCREEN */}
           {scannerState === 'PERMISSION_REQUIRED' && (
-            <div className="py-4 w-full flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95">
-              <div className="relative">
-                <div className="w-16 h-16 rounded-3xl bg-blue-50 border border-blue-200 text-[#2E5BFF] flex items-center justify-center shadow-lg shadow-blue-500/10">
-                  <Camera className="w-8 h-8" />
-                </div>
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold border-2 border-white">
-                  !
-                </div>
+            <div className="py-4 w-full flex flex-col items-center text-center gap-3 animate-in fade-in">
+              <div className="w-16 h-16 rounded-3xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/10">
+                <Camera className="w-8 h-8" />
               </div>
 
               <div>
-                <h4 className="text-base font-bold text-slate-900">Camera Permission Required</h4>
+                <h4 className="text-base font-black text-slate-900">Camera Permission Required</h4>
                 <p className="text-xs text-slate-500 mt-1 max-w-xs leading-relaxed">
-                  CS EduTrack requires camera access so you can scan the attendance QR code. Please allow camera access to continue.
+                  EduTrack requires camera access to scan attendance. Please tap below and allow camera permissions in your browser.
                 </p>
               </div>
 
-              {/* Step-by-step guidance card */}
-              <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-left text-xs text-slate-600 space-y-2 leading-relaxed">
+              <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-left text-xs text-slate-600 space-y-1.5">
                 <div className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
-                  <ShieldCheck className="w-4 h-4 text-[#2E5BFF]" /> How to enable camera:
+                  <ShieldCheck className="w-4 h-4 text-blue-600" /> How to allow:
                 </div>
-                <div className="text-[11px] text-slate-600 space-y-1">
-                  <p>1. Tap the <strong>Allow Camera Access</strong> button below.</p>
-                  <p>2. When prompted by your phone or browser, select <strong>Allow</strong> or <strong>While using the app</strong>.</p>
-                  <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-200/60 mt-1.5">
-                    If blocked in your browser: tap the lock or camera icon in the URL bar, or open App Settings &gt; Permissions &gt; Camera.
-                  </p>
-                </div>
+                <p className="text-[11px]">1. Tap <strong>Allow Camera Access</strong> below.</p>
+                <p className="text-[11px]">2. Select <strong>Allow</strong> or <strong>While using the app</strong>.</p>
+                <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-200">
+                  If blocked: tap the lock or camera icon in your browser URL bar and set Camera to Allow.
+                </p>
               </div>
 
-              <div className="flex flex-col gap-2 w-full mt-2">
-                <button
-                  type="button"
-                  onClick={startScanner}
-                  className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 cursor-pointer active:scale-98"
-                >
-                  <Camera className="w-4 h-4" />
-                  Allow Camera Access
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    cleanupScanner();
-                    onClose();
-                  }}
-                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => initCamera(activeTab, cameraFacing)}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer"
+              >
+                Allow Camera Access &amp; Retry
+              </button>
             </div>
           )}
 
           {/* VALIDATING SCREEN */}
           {scannerState === 'VALIDATING' && (
-            <div className="py-12 flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95">
-              <div className="relative">
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-[#2E5BFF]">
-                  <Loader2 className="w-8 h-8 animate-spin" />
-                </div>
-              </div>
-              <div>
-                <h4 className="text-base font-bold text-slate-800">Verifying QR Code...</h4>
-                <p className="text-xs text-slate-400 mt-1 font-medium">
-                  Validating school tenant security & recording check-in...
-                </p>
-              </div>
+            <div className="py-12 flex flex-col items-center text-center gap-3 animate-in fade-in">
+              <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+              <h4 className="text-base font-black text-slate-900">
+                {activeTab === 'FACE' ? 'Verifying Facial Biometrics...' : 'Verifying Attendance QR...'}
+              </h4>
+              <p className="text-xs text-slate-400">Recording attendance with secure timestamp &amp; GPS verification</p>
             </div>
           )}
 
-          {/* SUCCESS SCREEN */}
+          {/* SUCCESS RECEIPT SCREEN */}
           {scannerState === 'SUCCESS' && successData && (
-            <div className="py-4 w-full flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95 duration-200">
-              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center shadow-lg shadow-emerald-500/15">
-                <CheckCircle2 className="w-10 h-10" />
+            <div className="py-4 w-full flex flex-col items-center text-center gap-3 animate-in zoom-in-95">
+              <div className="w-16 h-16 rounded-3xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/10">
+                <CheckCircle2 className="w-8 h-8" />
               </div>
 
               <div>
-                <span
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2 ${
-                    successData.attendance?.status === 'LATE'
-                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
+                <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                  successData.attendance?.status === 'LATE'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-emerald-100 text-emerald-800'
+                }`}>
                   {successData.attendance?.status || 'PRESENT'}
                 </span>
-                <h4 className="text-lg font-black text-slate-800">
-                  {successData.alreadyMarked ? 'Attendance Already Marked' : 'Attendance Marked Successfully!'}
+                <h4 className="text-lg font-black text-slate-900 mt-2">
+                  {successData.alreadyMarked ? 'Attendance Already Marked' : 'Attendance Verified Successfully!'}
                 </h4>
-                <p className="text-xs text-slate-500 mt-0.5">{successData.message}</p>
               </div>
 
-              {/* Attendance Receipt Box */}
-              <div className="w-full bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-left space-y-2.5 text-xs text-slate-600">
-                <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
-                  <span className="text-slate-400 font-semibold flex items-center gap-1.5">
-                    <UserCheck className="w-3.5 h-3.5 text-blue-500" /> Teacher
-                  </span>
-                  <span className="font-bold text-slate-800">{successData.attendance?.teacherName || 'Teacher'}</span>
+              {/* Receipt Details Box */}
+              <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-2 text-left">
+                <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                  <span className="text-slate-400">Teacher:</span>
+                  <span className="font-black text-slate-800">{successData.attendance?.teacherName || 'Teacher'}</span>
                 </div>
-
-                <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
-                  <span className="text-slate-400 font-semibold flex items-center gap-1.5">
-                    <Building className="w-3.5 h-3.5 text-blue-500" /> School
-                  </span>
-                  <span className="font-bold text-slate-800 truncate max-w-[200px]">
-                    {successData.attendance?.schoolName || 'CS EduTrack'}
-                  </span>
+                <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                  <span className="text-slate-400">School:</span>
+                  <span className="font-bold text-slate-700">{successData.attendance?.schoolName || 'CS EduTrack'}</span>
                 </div>
-
-                <div className="flex justify-between items-center pb-2 border-b border-slate-200/60">
-                  <span className="text-slate-400 font-semibold flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-blue-500" /> Time & Date
-                  </span>
-                  <span className="font-mono font-bold text-slate-800">
+                <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                  <span className="text-slate-400">Check-in Time:</span>
+                  <span className="font-bold text-blue-600 font-mono">
                     {successData.attendance?.checkInTime
-                      ? new Date(successData.attendance.checkInTime).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        }) +
-                        ' • ' +
-                        new Date(successData.attendance.checkInTime).toLocaleDateString()
-                      : successData.attendance?.date || 'Today'}
+                      ? new Date(successData.attendance.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                      : new Date().toLocaleTimeString()}
                   </span>
                 </div>
-
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-400 font-semibold flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Validation
+                  <span className="text-slate-400">Method:</span>
+                  <span className="font-bold text-emerald-600 flex items-center gap-1">
+                    {activeTab === 'FACE' ? '👤 Verified via AI Face Biometrics' : '📷 Verified via Secure QR'}
                   </span>
-                  <span className="font-bold text-emerald-600">Verified via Secure QR</span>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => {
-                  cleanupScanner();
+                  stopAllCameraResources();
                   onClose();
                 }}
-                className="w-full py-3 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer mt-2"
               >
-                Go to Dashboard
+                Done
               </button>
             </div>
           )}
 
           {/* ERROR SCREEN */}
           {scannerState === 'ERROR' && (
-            <div className="py-6 w-full flex flex-col items-center text-center gap-4 animate-in fade-in zoom-in-95">
-              <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center">
+            <div className="py-4 w-full flex flex-col items-center text-center gap-3 animate-in fade-in">
+              <div className="w-16 h-16 rounded-3xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center">
                 <AlertCircle className="w-8 h-8" />
               </div>
 
               <div>
-                <h4 className="text-base font-bold text-slate-800">Scan Failed</h4>
-                <p className="text-xs text-rose-600 mt-1 max-w-xs leading-relaxed font-medium">
-                  {errorMessage || 'Unable to start camera or verify attendance QR.'}
-                </p>
+                <h4 className="text-base font-black text-slate-900">Attendance Verification Failed</h4>
+                <p className="text-xs text-rose-600 mt-1 max-w-xs">{errorMessage || 'Unable to start camera or verify attendance.'}</p>
               </div>
+
+              {/* Manual Token Option if QR code camera has issues */}
+              {activeTab === 'QR' && (
+                <div className="w-full mt-2">
+                  {!showManualInput ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowManualInput(true)}
+                      className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
+                    >
+                      Or enter attendance code manually
+                    </button>
+                  ) : (
+                    <form onSubmit={handleManualSubmit} className="space-y-2 w-full text-left">
+                      <label className="text-[11px] font-bold text-slate-700">Enter QR Token Code:</label>
+                      <input
+                        type="text"
+                        value={manualToken}
+                        onChange={(e) => setManualToken(e.target.value)}
+                        placeholder="Paste or type QR token code"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-mono outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="submit"
+                        className="w-full py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                      >
+                        Verify Code &amp; Submit
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
 
               <div className="flex gap-2 w-full mt-2">
                 <button
-                  onClick={startScanner}
-                  className="flex-1 py-2.5 bg-[#2E5BFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  type="button"
+                  onClick={() => initCamera(activeTab, cameraFacing)}
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
                   Try Again
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
-                    cleanupScanner();
+                    stopAllCameraResources();
                     onClose();
                   }}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                  className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs transition-all cursor-pointer"
                 >
-                  Close
+                  Cancel
                 </button>
               </div>
             </div>

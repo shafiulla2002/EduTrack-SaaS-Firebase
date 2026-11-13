@@ -17,3 +17,21 @@ export class ScanAttendanceDto {
   @IsString()
   scanSource?: string; // IN_APP_SCANNER, MOBILE_CAMERA_DEEP_LINK, etc.
 }
+
+export class FaceScanAttendanceDto {
+  @IsOptional()
+  @IsString()
+  faceImage?: string;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  @IsOptional()
+  @IsString()
+  scanSource?: string;
+}

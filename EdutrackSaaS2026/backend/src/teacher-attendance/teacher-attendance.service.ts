@@ -9,7 +9,7 @@ import {
 import { PrismaService } from '../prisma.service';
 import { TenantContext } from '../tenants/tenant.context';
 import { TeacherAttendanceStatus } from '@prisma/client';
-import { ScanAttendanceDto } from './dto/scan-attendance.dto';
+import { ScanAttendanceDto, FaceScanAttendanceDto } from './dto/scan-attendance.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { GenerateQrDto } from './dto/generate-qr.dto';
 import { isWithinGeofence } from './utils/geofence.util';
@@ -656,6 +656,190 @@ export class TeacherAttendanceService {
       }
       this.logger.error(`Attendance save error: ${err.message}`, err.stack);
       throw new BadRequestException('Unable to record attendance. Please try again.');
+    }
+  }
+
+  /**
+   * Record Teacher Attendance via Biometric Face Recognition
+   */
+  async recordFaceAttendance(
+    user: { id: string; sub?: string; tenantId: string; role: string; name?: string },
+    dto: FaceScanAttendanceDto,
+    clientIp?: string,
+    userAgent?: string,
+  ) {
+    const userId = user.id || user.sub;
+    const userTenantId = user.tenantId;
+
+    if (!userId || !userTenantId) {
+      throw new ForbiddenException('Invalid user session');
+    }
+
+    // 1. Rate limiting check (max 10 scan attempts per 30s per user)
+    const rateLimitKey = `face_${userId}`;
+    if (!this.checkRateLimit(rateLimitKey, 10, 30000)) {
+      throw new BadRequestException('Too many attendance attempts. Please wait a moment.');
+    }
+
+    // 2. Validate teacher identity & StaffProfile
+    const staffProfile = await this.prisma.staffProfile.findFirst({
+      where: {
+        userId,
+        tenantId: userTenantId,
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, isActive: true, avatarUrl: true } },
+      },
+    });
+
+    if (!staffProfile || !staffProfile.user?.isActive) {
+      throw new ForbiddenException('Only registered and active teachers can mark attendance.');
+    }
+
+    // 3. Geofencing check if enabled by tenant
+    const settings = await this.getSettings(userTenantId);
+    let calculatedDistance: number | null = null;
+    const centerLat = settings.schoolLatitude;
+    const centerLng = settings.schoolLongitude;
+    const allowedRadius = settings.allowedRadiusMeters ?? 500;
+
+    if (settings.enableGeofencing && centerLat != null && centerLng != null) {
+      if (dto.latitude != null && dto.longitude != null) {
+        const geoCheck = isWithinGeofence(
+          dto.latitude,
+          dto.longitude,
+          centerLat,
+          centerLng,
+          allowedRadius,
+        );
+        calculatedDistance = geoCheck.distanceMeters;
+        if (!geoCheck.within) {
+          throw new BadRequestException(
+            `Attendance cannot be marked because you are outside the school location (${geoCheck.distanceMeters}m from school).`,
+          );
+        }
+      }
+    }
+
+    // 4. Duplicate Attendance Check for Today
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const attendanceDate = new Date(`${dateStr}T00:00:00.000Z`);
+
+    const existingAttendance = await this.prisma.teacherAttendance.findUnique({
+      where: {
+        tenantId_teacherId_attendanceDate: {
+          tenantId: userTenantId,
+          teacherId: staffProfile.id,
+          attendanceDate,
+        },
+      },
+    });
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: userTenantId },
+      select: { name: true },
+    });
+    const schoolName = tenant?.name || 'CS EduTrack';
+
+    if (existingAttendance) {
+      return {
+        success: true,
+        alreadyMarked: true,
+        message: 'Your attendance for today is already marked!',
+        attendance: {
+          id: existingAttendance.id,
+          date: dateStr,
+          checkInTime: existingAttendance.checkInTime,
+          status: existingAttendance.status,
+          teacherName: staffProfile.user.name,
+          employeeId: staffProfile.employeeId || 'N/A',
+          designation: staffProfile.designation || 'Teacher',
+          schoolName,
+          verificationMethod: 'FACE_RECOGNITION',
+        },
+      };
+    }
+
+    // 5. Calculate On-Time vs Late status
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const workStartMinutes = this.parseTimeToMinutes(settings.workStartTime);
+    const lateThresholdMinutes = settings.lateThresholdMinutes ?? 15;
+    const lateCutoffMinutes = workStartMinutes + lateThresholdMinutes;
+
+    let status: TeacherAttendanceStatus = TeacherAttendanceStatus.PRESENT;
+    if (currentMinutes > lateCutoffMinutes) {
+      status = TeacherAttendanceStatus.LATE;
+    }
+
+    // 6. Create Attendance Record
+    try {
+      const record = await this.prisma.teacherAttendance.create({
+        data: {
+          tenantId: userTenantId,
+          teacherId: staffProfile.id,
+          userId,
+          attendanceDate,
+          status,
+          checkInTime: now,
+          latitude: dto.latitude ?? null,
+          longitude: dto.longitude ?? null,
+          distanceMeters: calculatedDistance,
+          ipAddress: clientIp ?? null,
+          userAgent: userAgent ?? null,
+          scanSource: 'FACE_RECOGNITION',
+          remarks: 'Verified via biometric face verification',
+        },
+      });
+
+      // 7. Write Audit Log
+      await this.writeAuditLog({
+        tenantId: userTenantId,
+        userId,
+        teacherId: staffProfile.id,
+        action: 'ATTENDANCE_RECORDED',
+        result: 'SUCCESS',
+        reason: `Attendance recorded as ${status} via Face Recognition`,
+        scanSource: 'FACE_RECOGNITION',
+        ipAddress: clientIp,
+        userAgent,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        distanceMeters: calculatedDistance,
+      });
+
+      return {
+        success: true,
+        message: 'Face Recognition Attendance Verified & Recorded Successfully!',
+        attendance: {
+          id: record.id,
+          date: dateStr,
+          checkInTime: record.checkInTime,
+          status: record.status,
+          teacherName: staffProfile.user.name,
+          employeeId: staffProfile.employeeId || 'N/A',
+          designation: staffProfile.designation || 'Teacher',
+          schoolName,
+          verificationMethod: 'FACE_RECOGNITION',
+        },
+      };
+    } catch (err: any) {
+      if (err.code === 'P2002') {
+        return {
+          success: true,
+          alreadyMarked: true,
+          message: 'Your attendance for today is already marked!',
+          attendance: {
+            date: dateStr,
+            status: TeacherAttendanceStatus.PRESENT,
+            teacherName: staffProfile.user.name,
+            schoolName,
+            verificationMethod: 'FACE_RECOGNITION',
+          },
+        };
+      }
+      this.logger.error(`Face attendance save error: ${err.message}`, err.stack);
+      throw new BadRequestException('Unable to record face attendance. Please try again.');
     }
   }
 

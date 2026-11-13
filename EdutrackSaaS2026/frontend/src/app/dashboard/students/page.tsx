@@ -1166,43 +1166,45 @@ export default function StudentsDirectory() {
               const hasDue = student.balanceDue > 0;
               return (
                 <div key={student.id} className="p-4 space-y-3">
-                  <div className="flex justify-between items-start gap-2">
+                  <div className="flex items-start justify-between gap-2.5">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <button
                         type="button"
                         onClick={() => navigateToProfile(student)}
                         onMouseEnter={() => prefetchProfile(student)}
-                        className="cursor-pointer transition-transform hover:scale-105"
+                        className="cursor-pointer transition-transform hover:scale-105 shrink-0"
                         title={`View profile of ${student.name}`}
                       >
                         <StudentAvatar studentName={student.name} profilePhotoUrl={student.profilePhotoUrl} size="sm" />
                       </button>
                       <div className="min-w-0 flex-1">
-                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold font-mono">
-                          Roll: {student.rollNo}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-150 text-[10px] font-black font-mono whitespace-nowrap shrink-0">
+                            Roll #{student.rollNo}
+                          </span>
+                        </div>
                         <h4 
                           onClick={() => navigateToProfile(student)}
                           onMouseEnter={() => prefetchProfile(student)}
-                          className="text-sm font-bold text-slate-800 mt-1 truncate hover:text-blue-600 transition-colors cursor-pointer"
+                          className="text-sm font-black text-slate-900 mt-0.5 truncate hover:text-blue-600 transition-colors cursor-pointer"
                           title={`View profile of ${student.name}`}
                         >
                           {student.name}
                         </h4>
-                        <p className="text-xs text-slate-400 font-medium mt-0.5 truncate">{student.email}</p>
+                        <p className="text-xs text-slate-400 font-medium truncate">{student.email}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold inline-flex items-center gap-1.5 whitespace-nowrap ${
+                      <span className={`px-2 py-1 rounded-full text-[10px] sm:text-[11px] font-black inline-flex items-center gap-1 whitespace-nowrap shadow-2xs ${
                         hasDue 
-                          ? 'bg-amber-50 text-amber-700 border border-amber-200' 
-                          : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          ? 'bg-amber-50 text-amber-800 border border-amber-200' 
+                          : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasDue ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                         {hasDue ? (
-                          <span>Pending ₹{Number(student.balanceDue).toLocaleString('en-IN')} Due</span>
+                          <span>₹{Number(student.balanceDue).toLocaleString('en-IN')} Due</span>
                         ) : (
-                          <span>Fully Paid ₹0 Balance</span>
+                          <span>Paid</span>
                         )}
                       </span>
                       {hasDue && (
@@ -1211,7 +1213,7 @@ export default function StudentsDirectory() {
                           onClick={() => handleNotifySingleStudent(student)}
                           disabled={notifyingStudentId === student.id}
                           title={`Send fee due push notification to parent of ${student.name}`}
-                          className="p-1 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 transition-all shadow-2xs"
+                          className="p-1 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700 transition-all shadow-2xs shrink-0 cursor-pointer"
                         >
                           {notifyingStudentId === student.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />

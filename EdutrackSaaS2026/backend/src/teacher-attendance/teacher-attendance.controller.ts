@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
-import { ScanAttendanceDto } from './dto/scan-attendance.dto';
+import { ScanAttendanceDto, FaceScanAttendanceDto } from './dto/scan-attendance.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { GenerateQrDto } from './dto/generate-qr.dto';
 
@@ -77,6 +77,22 @@ export class TeacherAttendanceController {
     @Headers('user-agent') userAgent: string,
   ) {
     return this.attendanceService.scanAndRecordAttendance(
+      req.user,
+      dto,
+      ip,
+      userAgent,
+    );
+  }
+
+  @Post('face-scan')
+  @Roles(Role.TEACHER, Role.STAFF, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+  async faceScanAttendance(
+    @Req() req: any,
+    @Body() dto: FaceScanAttendanceDto,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    return this.attendanceService.recordFaceAttendance(
       req.user,
       dto,
       ip,
